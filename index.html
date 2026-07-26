@@ -1264,6 +1264,27 @@ const AUTOSAVE_KEY='mb_autosave';
 const AUTOSAVE_IDLE=3000;   // save 3s after edits stop
 const AUTOSAVE_PERIOD=60000; // and at least once a minute
 let autosaveTimer=null, lastAutosave=0, autosaveReady=false;
+// 모바일/태블릿에서는 자동 저장·이어하기(복구) 기능을 끈다.
+// checkAutosave 는 모바일 모듈(applyMode)보다 먼저 실행되므로 body 클래스에만
+// 의존할 수 없어 detectMode 와 동일한 판별 로직을 여기서도 사용한다.
+function mbDeviceIsMobileOrTablet(){
+  var b=document.body;
+  if(b.classList.contains('mb-mobile')||b.classList.contains('mb-tablet')) return true;
+  if(b.classList.contains('mb-pc')) return false;
+  try{
+    if(window.__mbForce) return window.__mbForce!=='pc';
+    var q=(location.search.match(/[?&]mbmode=(mobile|tablet|pc)/)||[])[1];
+    if(q) return q!=='pc';
+    var w=window.innerWidth,h=window.innerHeight,shortSide=Math.min(w,h),longSide=Math.max(w,h);
+    var coarse=!!(window.matchMedia&&window.matchMedia('(pointer:coarse)').matches);
+    var ua=(navigator.userAgent||'');
+    var phoneUA=/Android.*Mobile|iPhone|iPod/i.test(ua);
+    var tabletUA=/iPad|Android(?!.*Mobile)|Tablet|PlayBook|Silk/i.test(ua);
+    if((coarse&&shortSide<600)||phoneUA) return true;
+    if((coarse&&shortSide<=1024&&longSide<=1400)||(tabletUA&&!phoneUA)) return true;
+  }catch(e){}
+  return false;
+}
 function autosaveSnapshot(){
   return JSON.stringify({
     v:1, comps, uid,
@@ -1274,6 +1295,7 @@ function autosaveSnapshot(){
 }
 function doAutosave(){
   if(!autosaveReady)return;
+  if(mbDeviceIsMobileOrTablet())return; // 모바일/태블릿은 자동 저장 안 함
   try{
     localStorage.setItem(AUTOSAVE_KEY,autosaveSnapshot());
     lastAutosave=Date.now();
@@ -1282,6 +1304,7 @@ function doAutosave(){
 }
 function scheduleAutosave(){
   if(!autosaveReady)return;
+  if(mbDeviceIsMobileOrTablet())return; // 모바일/태블릿은 자동 저장 안 함
   clearTimeout(autosaveTimer);
   // periodic guarantee: if it's been a while, save right away
   if(Date.now()-lastAutosave>AUTOSAVE_PERIOD){ doAutosave(); return; }
@@ -1303,6 +1326,8 @@ function showAutosaveMark(){
 }
 // Offers to restore the previous session if a snapshot exists.
 function checkAutosave(){
+  // 모바일/태블릿에서는 이어하기(복구) 안내를 띄우지 않고 자동 저장도 하지 않는다.
+  if(mbDeviceIsMobileOrTablet()){ autosaveReady=false; return; }
   let raw=null;
   try{ raw=localStorage.getItem(AUTOSAVE_KEY); }catch(e){}
   autosaveReady=true;
@@ -4495,9 +4520,12 @@ body.mb-landscape.mb-side-open #mbCtx{left:calc((100% - 300px)/2);}
    하나의 세로 스택으로 묶어 겹치지 않게 배치. 세로/가로 공통. */
 #mbTools{
   position:fixed;z-index:1385;flex-direction:column;gap:10px;align-items:center;
+  transition:right .22s ease;
 }
 body.mb-portrait #mbTools{right:12px;bottom:150px;}   /* 도크 위 */
 body.mb-landscape #mbTools{right:12px;bottom:14px;}
+/* 가로에서 속성 패널이 열리면 우측 컨트롤을 패널 폭(300px)만큼 왼쪽으로 밀어 겹침 방지 */
+body.mb-landscape.mb-side-open #mbTools{right:312px;}
 .mb-fab{
   width:52px;height:52px;border:none;border-radius:16px;cursor:pointer;
   display:flex;align-items:center;justify-content:center;font-size:24px;
@@ -4612,6 +4640,7 @@ body.mb-mobile .modal-bg, body.mb-tablet .modal-bg{ z-index:2200!important; }
 .mb-mode-seg .seg:active{background:#f3f6f8;}
 .mb-mode-seg .seg.on{background:var(--mb-accent);border-color:var(--mb-accent);color:#fff;}
 .mb-sheet-label{font-size:12px;font-weight:700;color:var(--mb-ink-soft,#8a949c);margin:2px 2px 8px;}
+.mb-menu-ver{margin-top:14px;padding-top:12px;border-top:1px solid var(--mb-line);text-align:center;font-size:12px;color:#aab2ba;user-select:none;}
 
 /* 레이어 트리 */
 .mb-layer{display:flex;align-items:center;gap:9px;padding:11px 10px;border-radius:10px;border:1px solid transparent;cursor:pointer;font-size:13.5px;color:var(--mb-ink);}
@@ -4665,7 +4694,9 @@ body.mb-tablet.mb-landscape.mb-preview .canvas-scroll{left:0;}
   -webkit-user-select:none;user-select:none;touch-action:none;
 }
 body.mb-portrait #mbMiniMap{left:12px;bottom:170px;top:auto;right:auto;}   /* 세로: 좌하단(도크 위) */
-body.mb-landscape #mbMiniMap{right:12px;top:62px;left:auto;bottom:auto;}   /* 가로: 우상단 */
+body.mb-landscape #mbMiniMap{right:76px;top:62px;left:auto;bottom:auto;}   /* 가로: 우상단(우측 컨트롤 왼쪽) */
+/* 가로에서 속성 패널이 열리면 미니맵도 패널 폭만큼 왼쪽으로 (사용자가 직접 옮긴 경우는 제외) */
+body.mb-landscape.mb-side-open #mbMiniMap:not(.mb-moved){right:312px;}
 /* PC 모드(모바일/태블릿 클래스가 없을 때): 캔버스 우상단(속성 패널 왼쪽)에 표시.
    기본은 숨김이고 body.mb-pc-mini 가 있을 때만 보인다. */
 body:not(.mb-mobile):not(.mb-tablet) #mbMiniMap{display:none;right:252px;top:112px;left:auto;bottom:auto;}
@@ -4854,6 +4885,9 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
       if(oriChanged||force) resetMiniMapPos();
       buildDock(); buildRail(); renderCtx(); syncHistBtns();
       setTimeout(function(){ mbFit(); clampMiniMap(); updateMiniMap(true); updateZoomBadge(); },60);
+    } else {
+      // PC 로 전환되면 자동 저장을 다시 켠다(모바일/태블릿에서 꺼졌던 경우 대비)
+      try{ if(typeof autosaveReady!=='undefined') autosaveReady=true; }catch(e){}
     }
   }
   // 현재 모드에 맞춰 좌측 하단 전환 버튼의 활성(토글) 표시를 갱신한다
@@ -5254,6 +5288,10 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
         '<button class="seg'+(cur==='mobile'?' on':'')+'" onclick="setDeviceMode(\'mobile\')">'+
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>모바일</button>'+
       '</div>';
+    // 버전 표기: PC 좌측 하단의 "by June (ver...)" 값을 그대로 가져와 메뉴 맨 아래에 표시
+    var verEl=document.getElementById('verText');
+    var verTxt=verEl?verEl.textContent:'';
+    var verHtml=verTxt?('<div class="mb-menu-ver">'+verTxt+'</div>'):'';
     return ''+
     '<button class="mb-big-btn" onclick="mbNavItem(\'layers\')"><span class="ic">🗂️</span>레이어</button>'+
     '<button class="mb-big-btn primary" onclick="mbEnterPreview()"><span class="ic">▶️</span>미리보기</button>'+
@@ -5262,7 +5300,7 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
     '<button class="mb-big-btn" onclick="mbSafe(openTemplates)"><span class="ic">📑</span>템플릿</button>'+
     '<button class="mb-big-btn" onclick="mbClearCanvas()"><span class="ic">🧹</span>전체 지우기</button>'+
     '<button class="mb-big-btn" onclick="mbSafe(openGuide)"><span class="ic">📖</span>사용 가이드</button>'+
-    seg;
+    seg+verHtml;
   }
   window.mbNavItem=function(k){ mbOpenSheet(k); };
   window.mbSafe=function(fn){ try{ mbCloseSheet(); if(typeof fn==='function') fn(); }catch(e){ mbToast('작업 실패'); } };
