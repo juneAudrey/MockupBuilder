@@ -355,6 +355,9 @@
   .zi-row button:hover{background:#eef2f5;}
   .grp{border:1px solid var(--ax-border);border-radius:6px;padding:9px;margin-bottom:9px;background:#fafbfc;}
   .grp-h{font-size:11px;font-weight:700;color:var(--ax-green-dark);margin-bottom:7px;text-transform:uppercase;letter-spacing:.3px;}
+  /* 접힌 위치·크기 그룹은 얇은 바처럼 보이도록 박스 여백/배경을 줄인다 */
+  .possize-grp.collapsed{padding:3px 6px;background:transparent;}
+  .possize-grp.collapsed .grp-h{margin-bottom:0;}
   .ubtn-list{display:flex;flex-direction:column;gap:5px;margin-bottom:6px;}
   .ubtn-row{display:flex;gap:4px;align-items:center;}
   .ubtn-row input{flex:1;padding:4px 6px;border:1px solid var(--ax-border);border-radius:4px;font-size:12px;}
@@ -618,7 +621,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260726.005)</span>
+      <span id="verText">by June (ver.20260726.006)</span>
     </div>
   </div>
 
@@ -646,6 +649,8 @@
         <button class="zoom-btn" onclick="zoomStep(1)" title="확대">＋</button>
         <button class="zoom-btn wide" onclick="setZoom(1)" title="100%로 되돌리기">100%</button>
       </span>
+      <span class="tb-sep"></span>
+      <label class="chk"><input type="checkbox" id="miniChk" onchange="togglePcMiniMap()"> 미니맵</label>
     </div>
     <div class="canvas-scroll">
       <div class="canvas-holder">
@@ -2064,6 +2069,28 @@ function drawGuides(lines){
   });
 }
 function clearGuides(){canvas.querySelectorAll('.guideline,.gl-dist').forEach(e=>e.remove());}
+// +/- 단축키 처리: 선택된 컴포넌트 유형에 맞는 추가/삭제 함수로 위임한다.
+// 삭제(-)는 항상 "맨 뒤" 항목을 지운다. 처리했으면 true 를 반환한다.
+function itemShortcut(action){
+  const c=comps.find(x=>x.id===sel);if(!c)return false;
+  if(c.type==='grid'){
+    if(action==='add'){ addGridCol(); return true; }
+    const n=gridColsArr(c).length; if(n>0){ delGridCol(n-1); } return true;
+  }
+  if(c.type==='searchbar'){
+    if(action==='add'){ addSearchField(); return true; }
+    const n=(c.fields||[]).length; if(n>0){ delSearchField(n-1); } return true;
+  }
+  if(c.type==='tabs'){
+    if(action==='add'){ ilAdd('text','탭'); return true; }
+    const n=ilItems(c,'text').length; if(n>0){ ilDel('text',n-1); } return true;
+  }
+  if(c.type==='combo'||c.type==='radio'){
+    if(action==='add'){ ilAdd('options','옵션'); return true; }
+    const n=ilItems(c,'options').length; if(n>0){ ilDel('options',n-1); } return true;
+  }
+  return false;
+}
 document.addEventListener('keydown',e=>{
   const typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
   const mod=e.ctrlKey||e.metaKey;
@@ -2074,6 +2101,15 @@ document.addEventListener('keydown',e=>{
   if((e.key==='Delete'||e.key==='Backspace')&&sel!==null&&!typing){
     e.preventDefault();
     delSel();
+  }
+  // +/- 단축키: 선택한 컴포넌트에서 항목(탭/조회조건/옵션/컬럼)을 하나 추가(+)하거나
+  // 맨 뒤에서 하나 삭제(-)한다. 입력 중이거나 단일 선택이 아니면 무시한다.
+  if(!typing && sel!==null && selIds.size===1){
+    const plus = e.key==='+' || e.key==='=' || e.code==='NumpadAdd';
+    const minus = e.key==='-' || e.key==='_' || e.code==='NumpadSubtract';
+    if(plus||minus){
+      if(itemShortcut(plus?'add':'del')){ e.preventDefault(); return; }
+    }
   }
   if(e.key==='Escape'){
     // 열려 있는 팝업을 닫는다. 여러 개가 겹쳐 있을 수 있으므로 위에 뜬 것부터 순서대로
@@ -2118,8 +2154,8 @@ function renderProps(){
       html+=`<div class="prop"><label>트리 항목${qh('한 줄에 하나씩 입력합니다. 앞에 <b>공백 2칸</b>을 넣을 때마다 한 단계씩 하위 항목이 됩니다.<br><br>하위가 있는 항목에는 자동으로 −/+ 접기 버튼이 표시됩니다.')}</label>
         <textarea class="tree-ta" rows="9" oninput="upd('text',this.value)" spellcheck="false">${esc(c.text||'')}</textarea></div>`;
 
-    } else if(c.type!=='grid'){
-      const lbl=c.type==='tabs'?'탭 이름 (쉼표 구분)':(c.type==='daterange'?'표시 텍스트':'텍스트');
+    } else if(c.type!=='grid'&&c.type!=='tabs'){
+      const lbl=(c.type==='daterange'?'표시 텍스트':'텍스트');
       const tip=c.type==='daterange'?qh('"YYYY-MM-DD ~ YYYY-MM-DD" 형식으로 입력하면 내보내기 결과물에서 <b>시작일·종료일 두 개의 실제 날짜 입력</b>으로 표시됩니다.'):'';
       html+=`<div class="prop"><label>${lbl}${tip}</label><input value="${(c.text||'').replace(/"/g,'&quot;')}" oninput="upd('text',this.value)"></div>`;
     }
@@ -2134,7 +2170,7 @@ function renderProps(){
       </select></div>`;
     }
   }
-  html+=`<div class="prop-row">
+  const posHtml=`<div class="prop-row">
     <div class="prop"><label>X</label><input type="number" data-prop="x" value="${c.x}" oninput="upd('x',+this.value)"></div>
     <div class="prop"><label>Y</label><input type="number" data-prop="y" value="${c.y}" oninput="upd('y',+this.value)"></div>
   </div>
@@ -2162,11 +2198,11 @@ function renderProps(){
   if(c.type==='button')
     html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.ghost?'checked':''} onchange="upd('ghost',this.checked)"> 아웃라인 스타일</label></div>`;
   if(c.type==='combo'){
-    html+=`<div class="prop"><label>옵션 (쉼표 구분)${qh('옵션을 입력하면 내보내기 결과물에서 클릭 시 실제 목록이 펼쳐지고 항목을 선택할 수 있습니다.')}</label><input value="${(c.options||'').replace(/"/g,'&quot;')}" oninput="upd('options',this.value)" placeholder="예: 옵션1,옵션2,옵션3"></div>`;
+    html+=itemListEditor(c,'options','옵션',qh('＋ 옵션 추가 버튼으로 항목을 추가하고, 각 칸에 옵션명을 입력합니다. 드래그로 순서를 바꾸거나 ×로 삭제할 수 있습니다.<br><br>내보내기 결과물에서 클릭 시 실제 목록이 펼쳐지고 항목을 선택할 수 있습니다.'),'옵션');
   }
   if(c.type==='radio'){
     const ropts=(c.options||'').split(',').map(s=>s.trim()).filter(Boolean);
-    html+=`<div class="prop"><label>옵션 (쉼표 구분)${qh('옵션을 입력하면 여러 개의 라디오 버튼 그룹으로 표시되며, 내보내기 결과물에서 클릭하면 그룹 내에서 하나만 선택되도록 동작합니다.<br><br>비워두면 이전처럼 단일 라디오로 표시됩니다.')}</label><input value="${(c.options||'').replace(/"/g,'&quot;')}" oninput="upd('options',this.value)" placeholder="예: 옵션1,옵션2,옵션3"></div>`;
+    html+=itemListEditor(c,'options','옵션',qh('＋ 옵션 추가 버튼으로 항목을 추가하고, 각 칸에 옵션명을 입력합니다. 드래그로 순서를 바꾸거나 ×로 삭제할 수 있습니다.<br><br>내보내기 결과물에서 클릭하면 그룹 내에서 하나만 선택되도록 동작합니다.<br><br>비워두면 이전처럼 단일 라디오로 표시됩니다.'),'옵션');
     if(ropts.length){
       const rsel=c.selected||0;
       const ropts_html=ropts.map((n,i)=>`<option value="${i}"${i===rsel?' selected':''}>${esc(n)||'(이름없음)'}</option>`).join('');
@@ -2308,16 +2344,133 @@ function renderProps(){
     html+=`</div><button class="ubtn-add" onclick="addSearchField()">＋ 조건 필드 추가</button></div>`;
   }
   if(c.type==='tabs'){
+    html+=itemListEditor(c,'text','탭',qh('＋ 탭 추가 버튼으로 탭(페이지)을 추가하고, 각 칸에 탭 이름을 입력합니다. 드래그로 순서를 바꾸거나 ×로 삭제할 수 있습니다.'),'탭');
     const tnames=(c.text||'').split(',').map(s=>s.trim()).filter(Boolean);
     const tactive=c.active||0;
     const topts=tnames.map((n,i)=>`<option value="${i}"${i===tactive?' selected':''}>${esc(n)||'(이름없음)'}</option>`).join('');
-    html+=`<div class="prop"><label>편집할 탭(페이지)${qh('도구상자의 컴포넌트를 캔버스로 끌어와 <b>탭 헤더 아래 콘텐츠 영역</b>(점선 표시)에 놓으면 여기서 선택한 탭 페이지에 배치됩니다.<br><br>캔버스에서 탭 헤더를 직접 클릭해도 편집할 탭을 전환할 수 있습니다.')}</label><select onchange="upd('active',+this.value)">${topts}</select></div>`;
+    html+=`<div class="prop"><label>편집할 탭(페이지)${qh('도구상자의 컴포넌트를 캔버스로 끌어와 <b>탭 헤더 아래 콘텐츠 영역</b>(점선 표시)에 놓으면 여기서 선택한 탭 페이지에 배치됩니다.<br><br>캔버스에서 탭 헤더를 직접 클릭해도 편집할 탭을 전환할 수 있습니다.')}</label><select onchange="upd('active',+this.value)">${topts||'<option>(탭 없음)</option>'}</select></div>`;
 
   }
   html+=`<div class="prop"><label>정렬 (Z순서)</label><div class="zi-row"><button onclick="zorder('front')">맨 앞</button><button onclick="zorder('back')">맨 뒤</button></div></div>`;
   html+=`<button class="del-btn" onclick="delSel()">삭제 (Del)</button>`;
+  html+=`<div class="grp possize-grp${posSizeExpanded?'':' collapsed'}" style="margin-top:12px;"><div class="grp-h gcol-grp-h">
+      <span>위치 · 크기</span>
+      <button class="gcol-grp-toggle" title="위치·크기 보기/숨기기" onclick="togglePosSize()">${posSizeExpanded?'숨기기 ▾':'보기 ▸'}</button>
+    </div>${posSizeExpanded?posHtml:''}</div>`;
   html+=`<div class="hint">Tip: 컴포넌트를 드래그해 이동, 모서리 핸들로 크기 조절. Del 키로 삭제.</div>`;
   p.innerHTML=html;
+}
+// ---- Generic item-list editor (탭 이름 / 콤보·라디오 옵션) ----
+// tabs/combo/radio 는 항목을 콤마 문자열 하나(c.text 또는 c.options)로 저장한다.
+// 렌더링·내보내기는 그대로 두고, 속성 패널만 그리드 컬럼/조회조건 필드처럼
+// "＋ 추가" 버튼 + 개별 입력칸 + 드래그 정렬 + × 삭제 방식으로 바꾼다.
+function ilItems(c,prop){
+  const raw=c[prop]||'';
+  return raw.split(',').map(s=>s.trim()).filter(Boolean);
+}
+function itemListEditor(c,prop,itemLabel,tip,ph){
+  const items=ilItems(c,prop);
+  let h=`<div class="grp"><div class="grp-h">
+    <span>${itemLabel} (${items.length})${tip||''}</span></div>`;
+  h+=`<div class="sfield-list">`;
+  items.forEach((name,i)=>{
+    h+=`<div class="sfield-row" draggable="true"
+      ondragstart="ilDragStart(event,${i})" ondragover="ilDragOver(event)"
+      ondragleave="ilDragLeave(event)" ondrop="ilDrop(event,'${prop}',${i})" ondragend="ilDragEnd(event)">
+      <div class="sf-row1">
+        <span class="sf-handle" title="드래그해서 순서 변경">⠿</span>
+        <input class="sf-label" value="${name.replace(/"/g,'&quot;')}" oninput="ilUpd('${prop}',${i},this.value)" placeholder="${ph||itemLabel}명">
+        <button class="ubtn-del" title="삭제" onclick="ilDel('${prop}',${i})">×</button>
+      </div>
+    </div>`;
+  });
+  h+=`</div><button class="ubtn-add" onclick="ilAdd('${prop}','${ph||itemLabel}')">＋ ${itemLabel} 추가</button></div>`;
+  return h;
+}
+// tabs 는 active, radio 는 selected 인덱스를 항목 수 범위 안으로 보정한다.
+function ilClampIdx(c){
+  const nText=ilItems(c,'text').length;
+  const nOpts=ilItems(c,'options').length;
+  if(c.type==='tabs'&&c.active!=null) c.active=Math.max(0,Math.min(c.active,Math.max(0,nText-1)));
+  if(c.type==='radio'&&c.selected!=null) c.selected=Math.max(0,Math.min(c.selected,Math.max(0,nOpts-1)));
+}
+function ilAdd(prop,ph){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  pushHistory();
+  const items=ilItems(c,prop);
+  items.push((ph||'항목')+(items.length+1));
+  c[prop]=items.join(',');
+  ilClampIdx(c);
+  render();
+}
+function ilUpd(prop,i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  const items=ilItems(c,prop);if(i<0||i>=items.length)return;
+  items[i]=v;
+  c[prop]=items.join(',');
+  drawCanvas();
+}
+function ilDel(prop,i){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  const items=ilItems(c,prop);if(i<0||i>=items.length)return;
+  pushHistory();
+  // 탭을 삭제하면 그 탭 페이지(tabIdx===i)에 들어있던 자식 컴포넌트들도 함께 삭제하고,
+  // 뒤쪽 탭(tabIdx>i)에 있던 자식들은 인덱스를 한 칸씩 당겨 원래 탭에 그대로 남게 한다.
+  // comps 전체가 pushHistory 로 스냅샷되므로 Ctrl+Z 한 번이면 탭과 자식 전부 복구된다.
+  if(c.type==='tabs'){
+    const removeIds=collectWithChildren(
+      comps.filter(k=>k.parent===c.id&&(k.tabIdx||0)===i).map(k=>k.id)
+    );
+    const removeSet=new Set(removeIds);
+    comps=comps.filter(k=>!removeSet.has(k.id));
+    comps.forEach(k=>{ if(k.parent===c.id&&(k.tabIdx||0)>i) k.tabIdx=(k.tabIdx||0)-1; });
+    if(selIds.size){ const kept=[...selIds].filter(id=>!removeSet.has(id)); selIds=new Set(kept); if(!selIds.has(sel)) sel=c.id, selIds.add(c.id); }
+  }
+  items.splice(i,1);
+  c[prop]=items.join(',');
+  ilClampIdx(c);
+  render();
+}
+let ilDragIdx=null;
+function ilDragStart(e,i){
+  ilDragIdx=i;
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain',String(i));
+  e.currentTarget.classList.add('dragging');
+}
+function ilDragOver(e){ e.preventDefault(); e.dataTransfer.dropEffect='move'; e.currentTarget.classList.add('drag-over'); }
+function ilDragLeave(e){ e.currentTarget.classList.remove('drag-over'); }
+function ilDrop(e,prop,i){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  const from=ilDragIdx; ilDragIdx=null;
+  if(from===null||from===i)return;
+  pushHistory();
+  const items=ilItems(c,prop);
+  const [item]=items.splice(from,1);
+  const insertAt=from<i?i-1:i;
+  items.splice(insertAt,0,item);
+  c[prop]=items.join(',');
+  // 탭 순서를 바꾸면 각 탭의 자식 컴포넌트(tabIdx)도 함께 따라가야 한다.
+  // 이전 인덱스 → 새 인덱스 매핑을 만들어 자식들의 tabIdx 를 재배치한다.
+  if(c.type==='tabs'){
+    // 이전 인덱스 → 새 인덱스 매핑 재현 (items 는 이미 이동 반영된 상태이므로 length=원본 개수)
+    const N=items.length;
+    const src=[];for(let k=0;k<N;k++)src.push(k);
+    const moved=src.splice(from,1)[0];
+    src.splice(insertAt,0,moved);
+    // src[newIdx] = oldIdx  →  oldIdx 를 newIdx 로 매핑
+    const remap={};src.forEach((oldIdx,newIdx)=>{remap[oldIdx]=newIdx;});
+    comps.forEach(k=>{ if(k.parent===c.id){ const o=k.tabIdx||0; if(remap[o]!=null) k.tabIdx=remap[o]; } });
+    if(c.active!=null&&remap[c.active]!=null) c.active=remap[c.active];
+  }
+  render();
+}
+function ilDragEnd(e){
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.sfield-row.drag-over').forEach(el=>el.classList.remove('drag-over'));
+  ilDragIdx=null;
 }
 const STACKED_EXTRA=22; // label line height added when the label sits above/below
 const LABEL_SIDE_W=76;  // width reserved for a label placed to the left/right
@@ -2381,6 +2534,14 @@ let gcolGroupCollapsed=new Set();
 function toggleGcolGroup(cid){
   if(gcolGroupCollapsed.has(cid))gcolGroupCollapsed.delete(cid); else gcolGroupCollapsed.add(cid);
   renderProps();
+  if(window.mbSyncProps)try{window.mbSyncProps();}catch(e){}
+}
+// 위치·크기(X/Y/너비/높이) 그룹은 기본 숨김. "보기"를 누르면 펼친다.
+let posSizeExpanded=false;
+function togglePosSize(){
+  posSizeExpanded=!posSizeExpanded;
+  renderProps();
+  if(window.mbSyncProps)try{window.mbSyncProps();}catch(e){}
 }
 function gridColsArr(c){
   return (c.text||'').split(',').map(s=>s.trim());
@@ -3712,6 +3873,13 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260726.006', date:'2026년 7월 26일', items:[
+    {t:'방향키로 이동', d:'컴포넌트를 선택한 뒤 <b>방향키(↑↓←→)</b>를 누르면 <b>격자 한 칸씩</b> 이동합니다. 이동 거리는 우측 상단 <b>스냅 크기</b> 값을 따릅니다. 여러 개를 선택하면 함께 움직이고, 탭 안의 컴포넌트도 같이 이동합니다.'},
+    {t:'항목 추가 단축키 (+ / −)', d:'<b>탭·조회조건·콤보박스·라디오·그리드</b>를 선택한 상태에서 <b>+</b> 키로 항목(탭·조건·옵션·컬럼)을 하나 추가하고, <b>−</b> 키로 맨 뒤 항목을 하나 삭제할 수 있습니다.'},
+    {t:'항목 추가 버튼 방식', d:'<b>탭·콤보박스·라디오</b>의 항목을 조회조건·그리드처럼 <b>「＋ 추가」 버튼</b>으로 하나씩 추가하고, 각 칸에서 이름을 편집하거나 ⠿ 핸들로 순서를 바꿀 수 있습니다.'},
+    {t:'모바일 속성 버튼 토글', d:'모바일·태블릿 하단의 <b>속성</b> 버튼을 다시 누르면 열린 속성창이 <b>닫기(✕)</b>를 누른 것처럼 닫힙니다.'},
+    {t:'PC 미니맵', d:'PC 화면에도 <b>미니맵</b>이 추가되었습니다. 상단 툴바 줌 오른쪽의 <b>「미니맵」 체크박스</b>로 켜고 끌 수 있으며(기본은 꺼짐), 켜면 캔버스 우상단에 표시됩니다. 미니맵 본문을 <b>클릭·드래그</b>하면 해당 위치로 화면이 이동하고, ⠿ 손잡이로 미니맵 위치를 옮기거나 ◱ 버튼으로 접을 수 있습니다.'}
+  ]},
   {ver:'20260726.005', date:'2026년 7월 26일', items:[
     {t:'화면 모드 강제 전환', d:'PC·태블릿·모바일 화면을 <b>직접 골라 전환</b>할 수 있습니다. <b>PC 모드</b>에서는 좌측 하단(버전 표기 위)에 아이콘 3개가, <b>모바일·태블릿 모드</b>에서는 상단 <b>☰ 메뉴</b> 맨 아래 「화면 모드」에서 전환합니다. 현재 모드는 아이콘이 <b>초록색으로 채워져</b> 표시되고, 마우스를 올리면 이름이 나타납니다. 자동 감지 결과와 다르게 강제로 특정 화면을 확인하고 싶을 때 사용합니다.'},
     {t:'로고 클릭 시 홈 이동', d:'상단 <b>Mockup Builder</b> 로고를 누르면 소개 페이지(mockupbuilder.pages.dev)가 <b>새 창</b>으로 열립니다.'}
@@ -4498,6 +4666,11 @@ body.mb-tablet.mb-landscape.mb-preview .canvas-scroll{left:0;}
 }
 body.mb-portrait #mbMiniMap{left:12px;bottom:170px;top:auto;right:auto;}   /* 세로: 좌하단(도크 위) */
 body.mb-landscape #mbMiniMap{right:12px;top:62px;left:auto;bottom:auto;}   /* 가로: 우상단 */
+/* PC 모드(모바일/태블릿 클래스가 없을 때): 캔버스 우상단(속성 패널 왼쪽)에 표시.
+   기본은 숨김이고 body.mb-pc-mini 가 있을 때만 보인다. */
+body:not(.mb-mobile):not(.mb-tablet) #mbMiniMap{display:none;right:252px;top:112px;left:auto;bottom:auto;}
+body:not(.mb-mobile):not(.mb-tablet).mb-pc-mini #mbMiniMap{display:block;}
+body:not(.mb-mobile):not(.mb-tablet).mb-pc-mini #mbMiniMap.mb-moved{display:block;}
 /* 사용자가 드래그로 옮기면 인라인 스타일이 우선 */
 #mbMiniMap.mb-moved{left:auto;right:auto;top:auto;bottom:auto;}
 #mbMiniCanvas{display:block;}
@@ -4875,7 +5048,7 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
   };
 
   /* ---------- Bottom Sheet ---------- */
-  var sheetOpen=false;
+  var sheetOpen=false, sheetKind=null;
   window.mbOpenSheet=function(kind){
     var body=document.getElementById('mbSheetBody'), title=document.getElementById('mbSheetTitle');
     if(kind==='all'){ title.textContent='컴포넌트 추가'; body.innerHTML=allCompsHTML(); }
@@ -4883,9 +5056,9 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
     else if(kind==='layers'){ title.textContent='레이어'; body.innerHTML=layersHTML(); }
     else if(kind==='opts'){ title.textContent='보기 설정'; body.innerHTML=optsHTML(); syncOptsUI(); }
     else if(kind==='menu'){ title.textContent='메뉴'; body.innerHTML=menuHTML(); }
-    document.getElementById('mbSheetBg').classList.add('show'); sheetOpen=true;
+    document.getElementById('mbSheetBg').classList.add('show'); sheetOpen=true; sheetKind=kind;
   };
-  window.mbCloseSheet=function(){ unmountProps(); document.getElementById('mbSheetBg').classList.remove('show'); sheetOpen=false; };
+  window.mbCloseSheet=function(){ unmountProps(); document.getElementById('mbSheetBg').classList.remove('show'); sheetOpen=false; sheetKind=null; };
   window.mbSheetBgTap=function(e){ if(e.target&&e.target.id==='mbSheetBg') mbCloseSheet(); };
 
   function allCompsHTML(){
@@ -4914,6 +5087,7 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
     if(moved && moved.classList.contains('mb-in-sheet')){ try{ legacyUnmount(); }catch(e){} }
     hostContainer.innerHTML='<div id="mbPropHost"></div>';
     var host=document.getElementById('mbPropHost');
+    propLastHTML=''; // 새 호스트는 반드시 첫 복사에서 채워지도록 캐시를 비운다
     copyPropsInto(host);
     // 열려 있는 동안 값 변경(재렌더)을 반영: 짧은 주기로 HTML 변화 시에만 복사
     clearInterval(propRefreshTimer);
@@ -4927,10 +5101,15 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
     var props=document.getElementById('props');
     try{ renderProps(); }catch(e){}
     var htmlNow=props?props.innerHTML:'';
-    if(htmlNow===propLastHTML && host.__filled) return; // 변화 없으면 스킵
-    // 단, 편집 중 포커스가 host 안 input 에 있으면 덮어쓰지 않음(입력 방해 방지)
+    // 호스트가 이미 같은 내용으로 채워져 있을 때만 스킵한다.
+    // (아직 비어 있으면 캐시 값과 무관하게 반드시 채운다 → 빈 창 방지)
+    if(host.__filled && htmlNow===propLastHTML) return;
+    // 단, 편집 중 포커스가 host 안 '텍스트 입력칸'에 있을 때만 덮어쓰지 않는다(입력 방해 방지).
+    // 버튼/셀렉트(보기·숨기기 토글 등)에 포커스가 있는 경우는 즉시 반영해야 하므로 예외로 둔다.
     var ae=document.activeElement;
-    if(host.__filled && ae && host.contains(ae)) return;
+    var editing = ae && host.contains(ae) &&
+      (ae.tagName==='TEXTAREA' || (ae.tagName==='INPUT' && ae.type!=='button' && ae.type!=='checkbox' && ae.type!=='radio' && ae.type!=='range'));
+    if(host.__filled && editing) return;
     propLastHTML=htmlNow;
     host.innerHTML = htmlNow || '<div class="empty-props" style="color:#94a2ae;text-align:center;padding:24px 0;">컴포넌트를 선택하면<br>여기에 속성이 표시됩니다.</div>';
     host.__filled=true;
@@ -4948,10 +5127,20 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
       props.classList.remove('mb-in-sheet'); props.removeAttribute('style');
     }
   }
-  // 속성 열기: 세로=시트 / 가로=사이드패널
+  // 속성 열기/닫기 토글: 세로=시트 / 가로=사이드패널.
+  // 세로 모드에서는 사이드패널이 CSS로 숨겨지므로(display:none) 반드시 시트를 쓴다.
+  // mb-landscape 가 명시적으로 있고 mb-portrait 가 아닐 때만 사이드패널을 사용한다.
   window.mbOpenProps=function(){
-    if(document.body.classList.contains('mb-landscape')){ mbOpenSide(); }
-    else { mbOpenSheet('props'); }
+    var b=document.body;
+    var useSide = b.classList.contains('mb-landscape') && !b.classList.contains('mb-portrait');
+    if(useSide){
+      var panel=document.getElementById('mbSidePanel');
+      if(panel && panel.classList.contains('open')){ mbCloseSide(); }
+      else { mbOpenSide(); }
+    } else {
+      if(sheetOpen && sheetKind==='props'){ mbCloseSheet(); }
+      else { mbOpenSheet('props'); }
+    }
   };
   window.mbOpenSide=function(){
     var panel=document.getElementById('mbSidePanel'), body=document.getElementById('mbSideBody');
@@ -4974,6 +5163,11 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
       else { mountProps(document.getElementById('mbSideBody')); }
     }
   }
+  // 속성 패널 토글(보기/숨기기 등)이 renderProps 만 호출해도 모바일/태블릿 호스트를 즉시 갱신
+  window.mbSyncProps=function(){
+    var host=document.getElementById('mbPropHost');
+    if(host){ propLastHTML=''; copyPropsInto(host); }
+  };
 
   /* ---------- 레이어 ---------- */
   function layersHTML(){
@@ -5273,7 +5467,9 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
   function canvasLogicalSize(){ var w=parseInt(canvas.style.width,10)||canvas.offsetWidth||1100, h=parseInt(canvas.style.height,10)||canvas.offsetHeight||700; return {w:w,h:h}; }
   function updateMiniMap(force){
     var e=miniEls(); if(!e.map||!e.cvs) return;
-    if(!document.body.classList.contains('mb-mobile') && !document.body.classList.contains('mb-tablet')) return;
+    var isPC = !document.body.classList.contains('mb-mobile') && !document.body.classList.contains('mb-tablet');
+    // PC 에서는 미니맵 체크가 켜져 있을 때만(그리고 미리보기 아닐 때만) 갱신
+    if(isPC && !document.body.classList.contains('mb-pc-mini')) return;
     if(document.body.classList.contains('mb-preview')) return;
     if(e.map.classList.contains('mini-collapsed')) return;
     var sc=document.querySelector('.canvas-scroll'); if(!sc) return;
@@ -5309,6 +5505,18 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
   }
   window.mbToggleMiniMap=function(ev){ if(ev) ev.stopPropagation(); var map=document.getElementById('mbMiniMap'); if(!map) return; var col=map.classList.toggle('mini-collapsed'); var b=document.getElementById('mbMiniToggle'); if(b) b.textContent=col?'▣':'◱'; if(!col) updateMiniMap(true); };
   window.mbUpdateMiniMap=function(){ updateMiniMap(true); };
+  // PC 상단 툴바의 「미니맵」 체크박스: 켜면 미니맵 표시, 끄면 숨김
+  window.togglePcMiniMap=function(){
+    var chk=document.getElementById('miniChk');
+    var on=chk?chk.checked:true;
+    document.body.classList.toggle('mb-pc-mini', on);
+    if(on){
+      // 켜질 때 접힘 상태였다면 펼친 상태로 되돌리고 갱신
+      var map=document.getElementById('mbMiniMap');
+      if(map){ map.classList.remove('mb-moved'); }
+      updateMiniMap(true);
+    }
+  };
   function setupMiniMap(){
     var e=miniEls(); if(!e.map||e.map.__mbMini) return; e.map.__mbMini=true;
     var sc=document.querySelector('.canvas-scroll'); if(sc) sc.addEventListener('scroll',function(){ updateMiniMap(); },{passive:true});
@@ -5344,6 +5552,18 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
     },{passive:false});
     e.map.addEventListener('touchmove',function(ev){ if(!navDrag||ev.touches.length!==1) return; ev.preventDefault(); ev.stopPropagation(); miniScrollTo(ev.touches[0].clientX,ev.touches[0].clientY); },{passive:false});
     e.map.addEventListener('touchend',function(){ navDrag=false; },{passive:true});
+
+    // (B-PC) 마우스로 지도 본문을 클릭/드래그하면 뷰포트 이동(스크롤) — PC 지원
+    var mNav=false;
+    e.map.addEventListener('mousedown',function(ev){
+      if(ev.target&&(ev.target.id==='mbMiniToggle'||ev.target.id==='mbMiniMove')) return;
+      if(e.map.classList.contains('mini-collapsed')) return;
+      ev.preventDefault(); ev.stopPropagation(); mNav=true;
+      miniScrollTo(ev.clientX,ev.clientY);
+      var mm=function(m){ if(mNav){ miniScrollTo(m.clientX,m.clientY); } };
+      var mu=function(){ mNav=false; document.removeEventListener('mousemove',mm); document.removeEventListener('mouseup',mu); };
+      document.addEventListener('mousemove',mm); document.addEventListener('mouseup',mu);
+    });
 
     setInterval(function(){ updateMiniMap(); },300);
     updateMiniMap(true);
@@ -5390,7 +5610,7 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
   function hookRender(){
     if(window.__mbRenderHooked) return; window.__mbRenderHooked=true;
     var _r=window.render;
-    window.render=function(){ var out=_r.apply(this,arguments); try{ if(curMode&&curMode!=='pc'){ renderCtx(); syncHistBtns(); } }catch(e){} return out; };
+    window.render=function(){ var out=_r.apply(this,arguments); try{ if(curMode&&curMode!=='pc'){ renderCtx(); syncHistBtns(); } else { updateMiniMap(); } }catch(e){} return out; };
   }
 
   // 모바일/태블릿에서는 투어(화면 둘러보기)를 비활성화한다.
@@ -5422,6 +5642,8 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
     hookTour();
     setupBrandLogo();
     setupTouch(); setupCanvasResizeTouch(); setupMiniMap();
+    // PC 미니맵: 기본 켜짐(체크박스 상태 반영). 모바일/태블릿은 자체 위치를 쓰므로 이 클래스와 무관.
+    try{ if(typeof togglePcMiniMap==='function') togglePcMiniMap(); }catch(e){}
     updateZoomBadge();
     if(curMode&&curMode!=='pc') maybeCoach();
     var rt=null;
