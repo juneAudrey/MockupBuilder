@@ -78,7 +78,7 @@
   .tmpl-card .ti{font-size:13px;font-weight:700;color:var(--ax-navy);margin-bottom:4px;}
   .tmpl-card .td{font-size:11px;color:var(--ax-gray);line-height:1.4;}
   .tmpl-card .tw{display:inline-block;margin-top:6px;font-size:10px;color:#b8860b;background:#fff7e0;border:1px solid #f0dca0;border-radius:4px;padding:1px 6px;}
-  .tool{display:flex;align-items:center;gap:8px;padding:7px 9px;background:#fafbfc;border:1px solid var(--ax-border);border-radius:5px;margin-bottom:5px;font-size:12px;transition:.12s;
+  .tool{display:flex;align-items:center;gap:8px;padding:6px 9px;background:#fafbfc;border:1px solid var(--ax-border);border-radius:5px;margin-bottom:5px;font-size:12px;transition:.12s;
     cursor:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'><g transform='translate(3,2)'><path d='M2 1 L2 15 L5.6 11.7 L8.2 17.6 L11 16.3 L8.4 10.6 L13 10.3 Z' fill='%23ffffff' stroke='%23111111' stroke-width='1.6' stroke-linejoin='round'/></g></svg>") 5 3, grab;}
   .tool:hover{border-color:var(--ax-green);background:var(--ax-green-light);}
   .tool:active{cursor:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'><g transform='translate(3,2)'><path d='M2 1 L2 15 L5.6 11.7 L8.2 17.6 L11 16.3 L8.4 10.6 L13 10.3 Z' fill='%231e9e6a' stroke='%23ffffff' stroke-width='1.6' stroke-linejoin='round'/></g></svg>") 5 3, grabbing;}
@@ -124,6 +124,17 @@
   /* history can grow long - keep the dialog a sensible height */
   #patchBody{max-height:52vh;overflow-y:auto;}
   .pt-ver span{color:#8a949c;font-weight:500;margin-left:6px;}
+  /* Date-grouped layout: one date header, then each build (.NNN) as a sub-section. */
+  .pt-day{margin-bottom:18px;}
+  .pt-day:last-child{margin-bottom:0;}
+  .pt-day-hd{font-size:13px;font-weight:800;color:var(--ax-navy);background:var(--ax-green-light);
+    display:inline-block;padding:5px 12px;border-radius:20px;margin-bottom:12px;}
+  .pt-build{padding-left:12px;border-left:3px solid #e2e8ee;margin:0 0 14px 2px;}
+  .pt-build:last-child{margin-bottom:0;}
+  .pt-build-hd{font-size:11.5px;font-weight:700;color:var(--ax-green-dark);
+    background:#eef6f1;display:inline-block;padding:2px 9px;border-radius:12px;margin-bottom:9px;}
+  .pt-day.history .pt-day-hd{background:#eef1f4;color:#5b6b7c;}
+  .pt-day.history .pt-build-hd{background:#eef1f4;color:#6b7480;}
   .pt-item{margin-bottom:13px;padding-bottom:12px;border-bottom:1px solid #f2f4f6;}
   .pt-item:last-child{border-bottom:none;margin-bottom:0;}
   .pt-t{font-size:13.5px;font-weight:700;color:var(--ax-navy);margin-bottom:4px;display:flex;align-items:center;gap:7px;}
@@ -160,6 +171,13 @@
   .guideline.h{height:1px;left:0;right:0;box-shadow:0 0 0 .5px rgba(255,59,127,.3);}
   #selbox{position:absolute;border:1px solid var(--sel);background:rgba(38,128,235,.12);z-index:710;pointer-events:none;display:none;}
   .gl-dist{position:absolute;background:#ff3b7f;color:#fff;font-size:10px;padding:1px 4px;border-radius:3px;z-index:901;pointer-events:none;white-space:nowrap;}
+  /* Ghost preview shown while dragging a new component from the toolbox */
+  #dropGhost{position:absolute;z-index:905;pointer-events:none;display:none;box-sizing:border-box;
+    border:1.5px dashed var(--ax-green);border-radius:5px;background:rgba(30,158,106,.10);
+    align-items:center;justify-content:center;gap:6px;
+    font-size:12px;font-weight:600;color:var(--ax-green-dark);overflow:hidden;padding:0 8px;}
+  #dropGhost.on{display:flex;}
+  #dropGhost .dg-ic{font-weight:700;}
 
   /* Component base */
   .cmp{position:absolute;cursor:move;user-select:none;}
@@ -612,6 +630,7 @@
       <button id="clearBtn" class="ghost" onclick="clearCanvas()">전체 지우기</button>
       <button id="jsonLoadBtn" class="ghost" onclick="loadJSON()" title="저장해둔 HTML 파일 불러오기">불러오기</button>
       <button id="exportBtn" onclick="exportHTML()" title="화면을 HTML 파일로 저장">저장</button>
+      <button id="previewBtn" class="btn-teal" onclick="previewHTML()" title="컴포넌트 이벤트가 동작하는 미리보기를 새 탭에서 열기">👁 미리보기</button>
     </div>
     <input type="file" id="fileIn" accept=".html,.htm,.json" style="display:none" onchange="doLoad(event)">
   </div>
@@ -671,7 +690,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260727.001)</span>
+      <span id="verText">by June (ver.20260727.005)</span>
     </div>
   </div>
 
@@ -705,6 +724,7 @@
     <div class="canvas-scroll">
       <div class="canvas-holder">
         <div id="canvas"></div>
+        <div id="dropGhost"></div>
         <div id="canvasResize" title="드래그해서 캔버스 크기 조절"></div>
       </div>
     </div>
@@ -1175,8 +1195,42 @@ function snap(v){
 // ---- Drag from toolbox (and click-to-place mode) ----
 let clickPlaceMode=false;
 let armedType=null;
+// Ghost preview for dragging a new component out of the toolbox.
+// dropGhostType is the component being dragged; its icon/label come from the tool element.
+let dropGhostType=null, dropGhostLabel='', dropGhostIcon='';
+function dropGhostEl(){ return document.getElementById('dropGhost'); }
+function hideDropGhost(){ dropGhostType=null; const g=dropGhostEl(); if(g)g.classList.remove('on'); }
+// Position+size the ghost so the component is centered under the cursor (same
+// feel as dragging an existing component), snapping like the real placement will.
+// The ghost is a sibling of #canvas (which is CSS-scaled by `zoom`), so we scale
+// its coordinates by `zoom` to line up with the visible, zoomed canvas.
+function moveDropGhost(clientX,clientY){
+  if(!dropGhostType)return;
+  const g=dropGhostEl(); if(!g)return;
+  const r=canvas.getBoundingClientRect();
+  const d=defaults[dropGhostType]||{w:180,h:52};
+  const cxCanvas=(clientX-r.left)/zoom, cyCanvas=(clientY-r.top)/zoom;
+  const x=Math.max(0,snap(cxCanvas-d.w/2)), y=Math.max(0,snap(cyCanvas-d.h/2));
+  g.style.left=(x*zoom)+'px';
+  g.style.top=(y*zoom)+'px';
+  g.style.width=(d.w*zoom)+'px';
+  g.style.height=(d.h*zoom)+'px';
+  g.classList.add('on');
+}
 document.querySelectorAll('.tool').forEach(t=>{
-  t.addEventListener('dragstart',e=>{e.dataTransfer.setData('type',t.dataset.type);});
+  t.addEventListener('dragstart',e=>{
+    e.dataTransfer.setData('type',t.dataset.type);
+    e.dataTransfer.effectAllowed='copy';
+    dropGhostType=t.dataset.type;
+    const ic=t.querySelector('.ic'); dropGhostIcon=ic?ic.textContent:'';
+    // textContent includes the icon glyph; drop it so the label isn't doubled.
+    dropGhostLabel=t.textContent.replace(dropGhostIcon,'').trim();
+    const g=dropGhostEl();
+    if(g) g.innerHTML=`<span class="dg-ic">${dropGhostIcon}</span><span>${dropGhostLabel}</span>`;
+    // Hide the browser's default drag image so only our ghost shows.
+    try{ const img=new Image(); img.src='data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='; e.dataTransfer.setDragImage(img,0,0); }catch(_){}
+  });
+  t.addEventListener('dragend',hideDropGhost);
   t.addEventListener('click',()=>{
     if(!clickPlaceMode)return;
     armedType = (armedType===t.dataset.type) ? null : t.dataset.type; // clicking the same tool again disarms it
@@ -1199,14 +1253,19 @@ function updateArmedUI(){
 }
 // Places a new top-level (or Tab-nested, if dropped/clicked inside a Tab's content area) component of `type`
 // at canvas-local coordinates (x,y). Shared by both drag-and-drop and click-to-place.
-function placeNewComponent(type,x,y){
+// When `centered` is true (drag-and-drop), the component is centered on (x,y) so it lands
+// exactly where the drag ghost was shown; hit-testing still uses the raw cursor point.
+function placeNewComponent(type,x,y,centered){
   pushHistory();
   const d=JSON.parse(JSON.stringify(defaults[type]));
   if(type==='date') d.text=todayStr();
+  // px,py = where the component's top-left should go (centered on cursor for drag-drop)
+  const px = centered ? x-d.w/2 : x;
+  const py = centered ? y-d.h/2 : y;
   const tabTarget=hitTestTabContainer(x,y);
   const splitTarget=!tabTarget ? hitTestSplitContainer(x,y) : null;
   if(tabTarget && type!=='tabs'){ // don't allow nesting a tab inside another tab
-    const nx=snap(x-tabTarget.cx), ny=snap(y-tabTarget.cy);
+    const nx=snap(px-tabTarget.cx), ny=snap(py-tabTarget.cy);
     comps.push({id:uid++,type,x:Math.max(0,nx),y:Math.max(0,ny),parent:tabTarget.c.id,tabIdx:tabTarget.c.active||0,...d});
   } else if(splitTarget){
     const paneRect=splitTarget.pane===0?splitTarget.rects.pane0:splitTarget.rects.pane1;
@@ -1217,7 +1276,7 @@ function placeNewComponent(type,x,y){
     const dock = type==='split' ? 'fill' : 'none';
     let nx=0, ny=0, nw=paneRect.w, nh=paneRect.h;
     if(dock==='none'){
-      nx=Math.max(0,snap(x-splitTarget.cx)); ny=Math.max(0,snap(y-splitTarget.cy));
+      nx=Math.max(0,snap(px-splitTarget.cx)); ny=Math.max(0,snap(py-splitTarget.cy));
       nw=d.w; nh=d.h;
     }
     comps.push({id:newId,type,...d,x:nx,y:ny,w:nw,h:nh,parent:splitTarget.c.id,pane:splitTarget.pane,dock});
@@ -1231,19 +1290,30 @@ function placeNewComponent(type,x,y){
       });
     }
   } else {
-    comps.push({id:uid++,type,x:snap(x),y:snap(y),...d});
+    comps.push({id:uid++,type,x:Math.max(0,snap(px)),y:Math.max(0,snap(py)),...d});
   }
   selectSingle(comps[comps.length-1].id);
   render();
 }
 const canvas=document.getElementById('canvas');
-canvas.addEventListener('dragover',e=>e.preventDefault());
+canvas.addEventListener('dragover',e=>{
+  e.preventDefault();
+  if(e.dataTransfer) e.dataTransfer.dropEffect='copy';
+  if(dropGhostType) moveDropGhost(e.clientX,e.clientY);
+});
+// Hide the ghost when the cursor leaves the canvas area (but not on inner-element flicker).
+canvas.addEventListener('dragleave',e=>{
+  if(!dropGhostType)return;
+  const r=canvas.getBoundingClientRect();
+  if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) hideDropGhost();
+});
 canvas.addEventListener('drop',e=>{
   e.preventDefault();
+  hideDropGhost();
   const type=e.dataTransfer.getData('type');
   if(!type) return;
   const r=canvas.getBoundingClientRect();
-  placeNewComponent(type, (e.clientX-r.left)/zoom, (e.clientY-r.top)/zoom);
+  placeNewComponent(type, (e.clientX-r.left)/zoom, (e.clientY-r.top)/zoom, true); // centered on cursor
 });
 // Intercepts mousedown in the CAPTURE phase (before it reaches its target) whenever a tool is armed,
 // so a click anywhere inside the canvas - including on a Tab header, inside a Tab's content area, or
@@ -1819,6 +1889,22 @@ function donutSVG(vals,pal){
 let drag=null;
 function startMove(e,c){
   if(e.target.classList.contains('handle'))return;
+  // Let the grid's own horizontal scrollbar work on the canvas: if the mousedown
+  // landed on the scrollbar track of a scrollable grid body (below its client area),
+  // don't start a component move - let the browser handle the native scrollbar drag.
+  const gbody = e.target.closest && e.target.closest('.ax-grid .gbody.xscroll');
+  if(gbody){
+    const gb=gbody.getBoundingClientRect();
+    // scrollbar sits in the strip between clientHeight and the full offset height.
+    // gb is in scaled screen px; clientHeight is unscaled layout px, so divide by zoom.
+    const offY=(e.clientY - gb.top)/(zoom||1);
+    const overScrollbar = offY > gbody.clientHeight;
+    if(overScrollbar && gbody.scrollWidth>gbody.clientWidth){
+      // Don't start a move and don't re-render (re-rendering would destroy this
+      // element mid-drag and cancel the native scrollbar grab). Just let it scroll.
+      return;
+    }
+  }
   e.stopPropagation();
   const ctrl = e.ctrlKey||e.metaKey;
   if(ctrl){
@@ -2859,6 +2945,23 @@ document.addEventListener('wheel',e=>{
   e.preventDefault();
   setZoom(zoom*(e.deltaY<0?1.1:1/1.1));
 },{passive:false});
+// A grid on the canvas only scrolls horizontally. Let a plain vertical wheel over a
+// scrollable grid body scroll it left/right, so it's reachable with any mouse (no
+// shift key or horizontal wheel needed). Shift+wheel and native horizontal wheels
+// already produce deltaX and are respected too.
+document.addEventListener('wheel',e=>{
+  if(e.ctrlKey||e.metaKey)return; // that's a zoom gesture, handled above
+  const gbody=e.target.closest && e.target.closest('.ax-grid .gbody.xscroll');
+  if(!gbody)return;
+  if(gbody.scrollWidth<=gbody.clientWidth)return; // nothing to scroll
+  const delta = Math.abs(e.deltaX)>Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  if(!delta)return;
+  const before=gbody.scrollLeft;
+  gbody.scrollLeft += delta;
+  // Only swallow the page/canvas scroll when we actually moved the grid, so that a
+  // grid already at its edge doesn't trap the wheel.
+  if(gbody.scrollLeft!==before) e.preventDefault();
+},{passive:false});
 function zoomStep(dir){
   const cur=zoom;
   if(dir>0){ const nx=ZOOM_STEPS.find(s=>s>cur+0.001); setZoom(nx||2); }
@@ -3036,6 +3139,31 @@ function doLoad(e){
 
 // ---- Export HTML ----
 function exportHTML(){
+  const t=screenTitle();
+  const out=buildExportHTML();
+  const b=new Blob([out],{type:'text/html'});
+  saveBlob(b,`${safeName(t,'mockup_export')}_${fileStamp()}.html`,'HTML 파일','text/html','.html')
+    .then(saved=>{ if(saved) clearAutosave(); });
+}
+// Opens the same interactive HTML the export produces in a new browser tab,
+// so every component behaves exactly as it will in the saved file (tabs switch,
+// combos open, checkboxes/radios toggle, tree collapses, split dividers drag).
+function previewHTML(){
+  const out=buildExportHTML();
+  const b=new Blob([out],{type:'text/html'});
+  const url=URL.createObjectURL(b);
+  const w=window.open(url,'_blank');
+  if(!w){
+    // Popup blocked - fall back to a same-tab navigation via a temporary link.
+    const a=document.createElement('a');
+    a.href=url; a.target='_blank'; a.rel='noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  // Release the object URL after the new tab has had time to load it.
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+// Builds the full standalone interactive HTML document (shared by 저장 and 미리보기).
+function buildExportHTML(){
   const cw=document.getElementById('cw').value;
   const ch=document.getElementById('ch').value;
   let body='';
@@ -3228,9 +3356,7 @@ ${body}</div>${interactionScript}
   JSON.stringify({v:1,comps,cw,ch}).replace(/<\//g,'<\\u002f')
 }<\/script>
 </body></html>`;
-  const b=new Blob([out],{type:'text/html'});
-  saveBlob(b,`${safeName(t,'mockup_export')}_${fileStamp()}.html`,'HTML 파일','text/html','.html')
-    .then(saved=>{ if(saved) clearAutosave(); });
+  return out;
 }
 // Recursively builds the export markup for a component, embedding Tab pages (with working click-to-switch) as nested divs.
 function exportComp(c){
@@ -3823,6 +3949,19 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260727.005', date:'2026년 7월 27일', items:[
+    {t:'패치 내역 날짜별 묶음', d:'업데이트 안내를 <b>날짜별로 묶어서</b> 보여줍니다. 같은 날 여러 번 배포된 빌드(예: 20260727 의 001~004)가 <b>하나의 날짜 아래</b> 모여 나오고, 그 안에서 <b>ver.001·002·003…</b> 영역은 각각 구분되어 표시됩니다.'}
+  ]},
+  {ver:'20260727.004', date:'2026년 7월 27일', items:[
+    {t:'편집 중 그리드 좌우 스크롤', d:'컬럼이 많아 가로 스크롤이 생긴 그리드를, <b>편집(캔버스) 상태에서도 직접 스크롤</b>할 수 있습니다. 그리드 위에서 <b>마우스 휠</b>을 굴리면 좌우로 스크롤되고, 그리드 하단의 <b>가로 스크롤바를 드래그</b>해도 컴포넌트가 움직이지 않고 스크롤만 됩니다. 가려져 있던 오른쪽 컬럼을 확인하며 편집하기 편해졌습니다.'}
+  ]},
+  {ver:'20260727.003', date:'2026년 7월 27일', items:[
+    {t:'모바일·태블릿 미리보기 이벤트 동작', d:'모바일·태블릿의 <b>▶ 미리보기</b>가 이제 데스크톱 미리보기·저장 파일과 <b>동일하게 컴포넌트 이벤트가 실제로 동작</b>합니다. 예전에는 편집 화면을 그대로 보여줘서 콤보박스·탭·체크박스 등이 눌리지 않았는데, 이제 저장본과 같은 인터랙티브 화면을 전체 화면으로 띄웁니다.'}
+  ]},
+  {ver:'20260727.002', date:'2026년 7월 27일', items:[
+    {t:'미리보기 버튼 추가', d:'상단 <b>저장</b> 버튼 오른쪽에 <b>👁 미리보기</b> 버튼이 생겼습니다. 누르면 저장 파일과 <b>똑같이 이벤트가 동작하는 화면</b>이 새 탭에서 열립니다. 콤보박스 펼치기, 탭 전환, 체크박스·라디오 선택, 트리 접기/펼치기, 스플릿 구분선 드래그가 모두 실제처럼 동작해, 저장하지 않고도 완성된 모습을 확인할 수 있습니다.'},
+    {t:'도구 드래그 미리보기', d:'도구상자에서 컴포넌트를 끌어올 때, 캔버스 위에 <b>실제 크기의 미리보기</b>가 커서를 따라다닙니다. 놓으면 미리보기가 있던 <b>커서 위치를 중심으로</b> 컴포넌트가 생성됩니다.'}
+  ]},
   {ver:'20260727.001', date:'2026년 7월 27일', items:[
     {t:'이미지 변환 화면 새 단장', d:'화면 캡처를 컴포넌트로 바꾸는 기능을 <b>처음 쓰는 사람도 따라 하기 쉽게</b> 다시 만들었습니다. <b>① Claude 열기 → ② 캡처 이미지 붙이고 전송 → ③ 답을 붙여넣기</b>의 <b>3단계 카드</b>로 흐름이 한눈에 보이고, 진행 중인 단계가 초록색으로 강조됩니다. 어려운 용어(JSON 등)는 <b>「코드」·「Claude의 답」</b>처럼 쉬운 말로 바꿨습니다.'},
     {t:'친절한 실패 안내', d:'붙여넣기가 잘못되면 원인에 따라 <b>무엇을 어떻게 고치면 되는지</b> 안내합니다. 예를 들어 답이 잘려 붙었을 때 「[ 부터 ] 까지 빠짐없이 복사했는지 확인해 주세요」처럼 다음 행동을 알려줍니다. 성공하면 <b>배치된 컴포넌트 개수</b>를 함께 보여줍니다.'},
@@ -3922,6 +4061,31 @@ function patchItemsHTML(items){
       <p>${it.d}</p>
     </div>`).join('');
 }
+// The date portion of a version string ("20260727.004" -> "20260727"); groups builds by day.
+function patchDateKey(ver){ return String(ver||'').split('.')[0]; }
+// The build portion (".004" -> "004"); labels a sub-section inside a day group.
+function patchBuildNo(ver){ const p=String(ver||'').split('.'); return p.length>1?p[1]:''; }
+// Groups a newest-first list of notes into day buckets, preserving order.
+// Returns [{key, date, builds:[note,...]}, ...], newest day first, builds newest first.
+function groupPatchesByDate(notes){
+  const out=[]; const idx={};
+  notes.forEach(n=>{
+    const key=patchDateKey(n.ver);
+    if(idx[key]===undefined){ idx[key]=out.length; out.push({key,date:n.date,builds:[]}); }
+    out[idx[key]].builds.push(n);
+  });
+  return out;
+}
+// Renders one day group: a single date header, then each build as its own labeled block.
+function renderPatchDay(group,history){
+  const builds=group.builds.map(n=>
+    `<div class="pt-build"><div class="pt-build-hd">ver.${n.ver}</div>${patchItemsHTML(n.items)}</div>`
+  ).join('');
+  return `<div class="pt-day${history?' history':''}">
+    <div class="pt-day-hd">${group.date}</div>
+    ${builds}
+  </div>`;
+}
 function renderPatch(){
   const tabs=document.getElementById('patchTabs');
   const body=document.getElementById('patchBody');
@@ -3931,18 +4095,20 @@ function renderPatch(){
     `<div class="tab${patchTab===1?' on':''}" onclick="switchPatchTab(1)">Release History</div>`+
     `<div class="tab${patchTab===2?' on':''}" onclick="switchPatchTab(2)">Mobile</div>`;
   if(patchTab===0){
-    const n=PATCH_NOTES[0];
-    body.innerHTML=`<div class="pt-ver">ver.${n.ver} <span>${n.date}</span></div>`+patchItemsHTML(n.items);
+    // 최신 날짜의 모든 빌드(예: 20260727 의 001~004)를 한 그룹으로 묶어 보여준다.
+    const groups=groupPatchesByDate(PATCH_NOTES);
+    body.innerHTML = groups.length ? renderPatchDay(groups[0],false) : '';
   } else if(patchTab===2){
     // 모바일·태블릿 전용 신규 기능
-    body.innerHTML = MOBILE_PATCH_NOTES.length
-      ? MOBILE_PATCH_NOTES.map(n=>`<div class="pt-rel"><div class="pt-ver">ver.${n.ver} <span>${n.date}</span></div>${patchItemsHTML(n.items)}</div>`).join('')
+    const groups=groupPatchesByDate(MOBILE_PATCH_NOTES);
+    body.innerHTML = groups.length
+      ? groups.map(g=>renderPatchDay(g,true)).join('')
       : '<p style="font-size:12.5px;color:#8a949c;margin:6px 0;">모바일 전용 내역이 없습니다.</p>';
   } else {
-    // every past release, newest first
-    const past=PATCH_NOTES.slice(1);
-    body.innerHTML = past.length
-      ? past.map(n=>`<div class="pt-rel"><div class="pt-ver">ver.${n.ver} <span>${n.date}</span></div>${patchItemsHTML(n.items)}</div>`).join('')
+    // 지난 업데이트: 최신 날짜 그룹을 뺀 나머지를 날짜별로 묶어 최신순으로.
+    const groups=groupPatchesByDate(PATCH_NOTES).slice(1);
+    body.innerHTML = groups.length
+      ? groups.map(g=>renderPatchDay(g,true)).join('')
       : '<p style="font-size:12.5px;color:#8a949c;margin:6px 0;">지난 업데이트 내역이 없습니다.</p>';
   }
   body.scrollTop=0;
@@ -4136,7 +4302,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260727.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260727.005';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
@@ -4656,6 +4822,12 @@ body.mb-preview .cmp .handle,body.mb-preview .cmp .tabtag,body.mb-preview .guide
   font-size:14px;font-weight:700;cursor:pointer;box-shadow:var(--mb-shadow);align-items:center;gap:7px;
 }
 body.mb-preview #mbPreviewExit{display:inline-flex;}
+/* Interactive preview iframe: on mobile/tablet, 미리보기 loads the real export HTML
+   (with working component events) into this frame instead of showing the static
+   design canvas. It fills the viewport; the design canvas is hidden behind it. */
+#mbPreviewFrame{position:fixed;inset:0;width:100%;height:100%;border:none;background:#f4f6f8;z-index:1900;display:none;}
+body.mb-preview.mb-preview-live #mbPreviewFrame{display:block;}
+body.mb-preview.mb-preview-live .canvas-scroll{display:none!important;}
 
 /* ---------- Toast ---------- */
 #mbToast{
@@ -4749,6 +4921,7 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
 </div>
 
 <!-- 프리뷰 종료 -->
+<iframe id="mbPreviewFrame" title="미리보기"></iframe>
 <button id="mbPreviewExit" onclick="mbExitPreview()">✕ 편집으로</button>
 <div id="mbToast"></div>
 
@@ -5279,8 +5452,37 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
   window.mbConfirm=mbConfirm;
 
   /* ---------- Preview ---------- */
-  window.mbEnterPreview=function(){ mbCloseSheet(); try{ selectSingle(null); render(); }catch(e){} document.body.classList.add('mb-preview'); renderCtx(); setTimeout(mbFit,60); };
-  window.mbExitPreview=function(){ document.body.classList.remove('mb-preview'); setTimeout(mbFit,60); };
+  // Mobile/tablet preview shows the SAME interactive HTML as 저장/데스크톱 미리보기,
+  // loaded into a full-screen iframe, so component events (combo, tab, check, radio,
+  // tree, split) actually work — not the static design-mode canvas.
+  window.mbEnterPreview=function(){
+    mbCloseSheet();
+    try{ selectSingle(null); render(); }catch(e){}
+    document.body.classList.add('mb-preview');
+    let ok=false;
+    try{
+      const frame=document.getElementById('mbPreviewFrame');
+      if(frame && typeof buildExportHTML==='function'){
+        const html=buildExportHTML();
+        // Center the mockup in the frame and allow pinch/scroll on touch.
+        const doc=frame.contentWindow.document;
+        doc.open(); doc.write(html); doc.close();
+        try{ doc.documentElement.style.height='100%'; }catch(_){}
+        document.body.classList.add('mb-preview-live');
+        ok=true;
+      }
+    }catch(e){ ok=false; }
+    // Fallback to the old static in-place preview if the iframe couldn't be built.
+    if(!ok){ document.body.classList.remove('mb-preview-live'); renderCtx(); setTimeout(mbFit,60); }
+  };
+  window.mbExitPreview=function(){
+    document.body.classList.remove('mb-preview');
+    if(document.body.classList.contains('mb-preview-live')){
+      document.body.classList.remove('mb-preview-live');
+      try{ const frame=document.getElementById('mbPreviewFrame'); if(frame){ const d=frame.contentWindow.document; d.open(); d.write(''); d.close(); } }catch(e){}
+    }
+    setTimeout(mbFit,60);
+  };
 
   /* ============================================================
      통합 터치 컨트롤러 — 직접 조작(합성 이벤트 미사용)
