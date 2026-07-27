@@ -463,6 +463,48 @@
   .spinner{display:inline-block;width:14px;height:14px;border:2px solid #cfe4d9;border-top-color:var(--ax-green);border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:6px;}
   @keyframes spin{to{transform:rotate(360deg);}}
 
+  /* ---- Convert modal: beginner-friendly step UI ---- */
+  .cv-intro{background:var(--ax-green-light);border:1px solid #bfe3d2;border-radius:8px;padding:13px 15px;margin-bottom:16px;font-size:12.5px;line-height:1.7;color:#2f5346;}
+  .cv-intro b{color:var(--ax-green-dark);}
+  .cv-intro .cv-free{display:inline-block;background:var(--ax-green);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:4px;vertical-align:1px;}
+  .cv-steps{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
+  .cv-step{position:relative;display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--ax-border);border-radius:9px;padding:13px 15px 14px;transition:border-color .15s,box-shadow .15s;}
+  .cv-step.on{border-color:var(--ax-green);box-shadow:0 0 0 2px rgba(30,158,106,.13);}
+  .cv-step.done{border-color:#bfe3d2;background:#fbfefc;}
+  .cv-step-num{flex:none;width:26px;height:26px;border-radius:50%;background:var(--ax-navy);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px;transition:background .15s;}
+  .cv-step.on .cv-step-num{background:var(--ax-green);}
+  .cv-step.done .cv-step-num{background:var(--ax-green);}
+  .cv-step-body{flex:1;min-width:0;}
+  .cv-step-title{font-size:13px;font-weight:700;color:var(--ax-navy);margin-bottom:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .cv-step-desc{font-size:11.5px;color:var(--ax-gray);line-height:1.6;}
+  .cv-step-actions{margin-top:9px;display:flex;gap:7px;flex-wrap:wrap;}
+  .cv-btn-primary{background:var(--ax-green);color:#fff;border:none;padding:8px 15px;border-radius:6px;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s;}
+  .cv-btn-primary:hover{background:var(--ax-green-dark);}
+  .cv-btn-claude{background:#d97757;color:#fff;border:none;padding:8px 15px;border-radius:6px;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s;}
+  .cv-btn-claude:hover{background:#c86544;}
+  .cv-btn-soft{background:#eef1f4;color:var(--ax-navy);border:1px solid var(--ax-border);padding:8px 13px;border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:background .12s;}
+  .cv-btn-soft:hover{background:#e2e6ea;}
+  .cv-paste{width:100%;padding:10px 12px;border:1.5px solid var(--ax-border);border-radius:7px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.5;resize:vertical;transition:border-color .15s,box-shadow .15s;}
+  .cv-paste:focus{outline:none;border-color:var(--ax-green);box-shadow:0 0 0 2px rgba(30,158,106,.12);}
+  .cv-paste.filled{border-color:var(--ax-green);background:#fbfefc;}
+  .cv-optrow{margin-top:10px;font-size:11.5px;}
+  .cv-optrow label{display:flex;align-items:center;gap:7px;cursor:pointer;color:#4b5563;line-height:1.5;font-weight:400;}
+  .cv-detail{margin-top:8px;font-size:11.5px;}
+  .cv-detail summary{cursor:pointer;color:var(--ax-green-dark);font-weight:600;list-style:none;display:inline-flex;align-items:center;gap:5px;user-select:none;}
+  .cv-detail summary::-webkit-details-marker{display:none;}
+  .cv-detail summary::before{content:'▸';font-size:10px;transition:transform .15s;}
+  .cv-detail[open] summary::before{transform:rotate(90deg);}
+  .cv-detail-body{margin-top:8px;padding:11px 13px;background:#f7f9fb;border:1px solid var(--ax-border);border-radius:7px;color:#4b5563;line-height:1.7;}
+  .cv-detail-body .cv-prompt{margin-top:8px;width:100%;padding:8px 10px;border:1px solid var(--ax-border);border-radius:5px;font-size:11px;font-family:ui-monospace,monospace;background:#fff;color:#555;}
+  .cv-tip{display:flex;gap:7px;margin-top:12px;padding:9px 12px;background:#fffdf5;border:1px solid #f0e6c8;border-radius:7px;font-size:11.5px;color:#7a6a3a;line-height:1.6;}
+  .cv-status-box{margin-top:4px;padding:11px 13px;border-radius:7px;font-size:12px;line-height:1.6;text-align:left;display:none;}
+  .cv-status-box.show{display:block;}
+  .cv-status-box.ok{background:var(--ax-green-light);border:1px solid #bfe3d2;color:var(--ax-green-dark);}
+  .cv-status-box.err{background:#fdf0f0;border:1px solid #f3c9cb;color:#a3383c;}
+  .cv-status-box.info{background:#f0f7ff;border:1px solid #cfe4fb;color:#1f4a75;}
+  .cv-status-box b{font-weight:700;}
+  .cv-status-box .cv-fix{margin-top:5px;font-size:11.5px;opacity:.92;}
+
   /* ---- Export-mode interactive component states (only used by exported HTML markup) ---- */
   .ax-input-x,.ax-date-x{width:100%;height:100%;display:flex;align-items:center;gap:3px;}
   .ax-input-el,.ax-date-el{flex:1;min-width:0;height:100%;border:1px solid var(--ax-border);border-radius:4px;background:#fff;padding:0 8px;font-size:12px;color:#111;outline:none;font-family:inherit;transition:border-color .12s,box-shadow .12s;}
@@ -621,7 +663,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260726.006)</span>
+      <span id="verText">by June (ver.20260727.001)</span>
     </div>
   </div>
 
@@ -670,95 +712,73 @@
 <div class="modal-bg" id="convBg">
   <div class="modal" style="width:900px;max-width:96vw;">
     <div class="modal-h">
-      <h2>🖼 이미지 → 컴포넌트 변환</h2>
+      <h2>🖼 화면 캡처로 컴포넌트 만들기</h2>
       <span class="x" onclick="closeConvert()">×</span>
     </div>
     <div class="modal-b">
-      <div class="tabs">
-        <div class="tab on" id="tabJSON" onclick="switchTab('json')">JSON 붙여넣기 (무료)</div>
-        <div class="tab" id="tabAI" onclick="switchTab('ai')">AI 비전 분석</div>
-        <div class="tab" id="tabBrowser" onclick="switchTab('browser')">브라우저 처리</div>
-      </div>
-
-      <!-- AI tab -->
-      <div id="paneAI" style="display:none;">
-        <div class="guide purple">
-          <b>AI 비전 분석 방식</b> — 이미지를 Claude에 보내 컴포넌트 종류·위치·라벨 텍스트까지 인식해 배치합니다. 정형화된 업무 화면 레이아웃에 정확합니다.
-          <ol>
-            <li>Anthropic API 키를 입력합니다 (sk-ant-...로 시작).</li>
-            <li>화면 캡처 이미지를 아래 영역에 끌어놓거나 클릭해 선택합니다.</li>
-            <li>"변환 실행"을 누르면 분석 후 캔버스에 컴포넌트가 자동 배치됩니다.</li>
-            <li>이후 도구상자·속성창으로 자유롭게 수정하세요.</li>
-          </ol>
-          <span class="warn">⚠ 키는 이 브라우저 세션에만 사용되며 저장·전송되지 않습니다. 라벨/버튼 등 텍스트까지 인식됩니다.</span>
-        </div>
-        <div class="field">
-          <label>Anthropic API 키</label>
-          <input type="password" id="apiKey" placeholder="sk-ant-api03-...">
-        </div>
-      </div>
-
-      <!-- Browser tab -->
-      <div id="paneBrowser" style="display:none;">
-        <div class="guide">
-          <b>브라우저 처리 방식</b> — 외부 API 없이 브라우저 안에서 이미지의 사각형 윤곽을 검출해 대략적인 박스로 배치합니다. 키가 필요 없습니다.
-          <ol>
-            <li>화면 캡처 이미지를 아래 영역에 끌어놓거나 클릭해 선택합니다.</li>
-            <li>"변환 실행"을 누르면 감지된 영역이 텍스트박스로 배치됩니다.</li>
-            <li>각 박스의 종류(라벨/버튼/그리드 등)와 텍스트를 속성창에서 직접 지정하세요.</li>
-          </ol>
-          <span class="warn">⚠ 텍스트는 읽지 못하며 컴포넌트 종류 구분이 정확하지 않습니다. 밑그림(윤곽)만 잡아주는 보조 용도입니다.</span>
-        </div>
-      </div>
-
-      <!-- JSON paste tab (free, no API key) -->
       <div id="paneJSON">
-        <button type="button" class="guide-toggle-btn" onclick="toggleJsonGuide()">
-          <span class="guide-toggle-ic" id="jsonGuideIc">▸</span>
-          <span>📖 사용 방법 안내 (JSON 붙여넣기, 무료)</span>
-        </button>
-        <div class="guide" id="jsonGuideBody" style="display:none;">
-          <b>JSON 붙여넣기 방식 (무료, API 키 불필요)</b> — Claude.ai 채팅(무료 버전 포함)에 화면 캡처를 올려서 컴포넌트 JSON을 받아온 뒤, 그 결과를 여기에 붙여넣으면 캔버스에 자동 배치됩니다.
-          <ol>
-            <li>아래 <b>"🤖 Claude로 열기"</b> 버튼을 누르면 프롬프트가 입력된 상태로 Claude가 새 창에 열립니다. (직접 붙여넣으려면 "프롬프트 복사")</li>
-            <li>열린 Claude 화면에 <b>화면 캡처 이미지를 첨부</b>한 뒤 전송합니다.</li>
-            <li>Claude가 답한 JSON 배열 전체를 복사해 아래 입력창에 붙여넣습니다.</li>
-            <li>"JSON 적용" 버튼을 누르면 캔버스에 컴포넌트가 자동 배치됩니다.</li>
-            <li>이후 도구상자·속성창으로 자유롭게 추가/수정/삭제하세요.</li>
-          </ol>
-          <span class="tipline">💡 항목명(라벨)은 별도 컴포넌트가 아니라 <b>입력칸에 포함된 형태</b>로 만들어집니다. 배치 후 속성창의 「라벨」에서 내용·위치(위·왼쪽·오른쪽·아래)를 바꾸거나 숨길 수 있습니다.</span>
-          <span class="warn">⚠ 이 방식은 이 도구에서 API를 직접 호출하지 않으므로 별도 API 키나 결제가 필요 없습니다.</span>
+        <div class="cv-intro">
+          만들고 싶은 화면을 <b>사진(캡처)으로 찍어</b> Claude에게 보여주면, Claude가 그 화면을 이 도구에서 쓸 수 있는 <b>코드</b>로 바꿔 줍니다. 그 코드를 여기에 붙여넣기만 하면 화면이 자동으로 그려져요.<span class="cv-free">완전 무료 · 가입/결제 불필요</span>
         </div>
-        <div class="field">
-          <label>Claude에게 보낼 프롬프트 (복사해서 사용)</label>
-          <textarea id="jsonPrompt" readonly rows="5"></textarea>
-          <button type="button" class="btn-claude-sm" onclick="openInClaude()">🤖 Claude로 열기</button>
-          <button type="button" class="btn-ghost-sm" onclick="copyPrompt()">📋 프롬프트 복사</button>
-        </div>
-        <div class="field">
-          <label>Claude가 답한 JSON 붙여넣기</label>
-          <textarea id="jsonIn" rows="8" placeholder='[{"type":"combo","x":20,"y":20,"w":180,"h":52,"text":"선택","showLabel":true,"labelText":"거래처","labelPos":"top"}, ...]'></textarea>
-        </div>
-        <div class="field" style="margin-bottom:0;">
-          <label class="cbx" style="font-weight:400;display:flex;align-items:center;gap:6px;cursor:pointer;">
-            <input type="checkbox" id="jsonClearChk" checked> 기존 캔버스 내용을 지우고 붙여넣기 (해제하면 기존 컴포넌트에 추가로 배치)
-          </label>
-        </div>
-      </div>
 
-      <!-- shared upload -->
-      <div class="drop-zone" id="dropZone">
-        <div class="big">📂</div>
-        <div>이미지를 끌어놓거나 클릭해 선택</div>
-        <div style="font-size:11px;margin-top:4px;">PNG · JPG</div>
+        <div class="cv-steps">
+          <!-- STEP 1 -->
+          <div class="cv-step on" id="cvStep1">
+            <div class="cv-step-num">1</div>
+            <div class="cv-step-body">
+              <div class="cv-step-title">🤖 Claude 열기</div>
+              <div class="cv-step-desc">아래 버튼을 누르면 새 창에 Claude가 열립니다. (질문은 이미 적혀 있어요 — 그대로 두세요.)</div>
+              <div class="cv-step-actions">
+                <button type="button" class="cv-btn-claude" onclick="openInClaude()">🤖 Claude 열기</button>
+                <button type="button" class="cv-btn-soft" onclick="copyPrompt()">📋 질문만 복사</button>
+              </div>
+              <details class="cv-detail">
+                <summary>Claude에 보내는 질문 미리 보기</summary>
+                <div class="cv-detail-body">
+                  이 질문은 화면을 코드로 바꿔 달라는 요청이에요. 손댈 필요 없이 <b>화면 캡처 이미지만 첨부</b>해서 보내면 됩니다.
+                  <textarea id="jsonPrompt" class="cv-prompt" readonly rows="3"></textarea>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <!-- STEP 2 -->
+          <div class="cv-step" id="cvStep2">
+            <div class="cv-step-num">2</div>
+            <div class="cv-step-body">
+              <div class="cv-step-title">📎 캡처 이미지 붙이고 전송</div>
+              <div class="cv-step-desc">열린 Claude 화면에 만들고 싶은 <b>화면 캡처 이미지를 붙여넣거나 첨부</b>한 뒤 전송하세요. 잠시 뒤 Claude가 코드로 답해 줍니다.</div>
+            </div>
+          </div>
+
+          <!-- STEP 3 -->
+          <div class="cv-step" id="cvStep3">
+            <div class="cv-step-num">3</div>
+            <div class="cv-step-body">
+              <div class="cv-step-title">📋 Claude의 답을 여기에 붙여넣기</div>
+              <div class="cv-step-desc">Claude가 준 답(<b>[</b> 로 시작해서 <b>]</b> 로 끝나는 부분)을 <b>전체 복사</b>해서 아래 칸에 붙여넣으세요.</div>
+              <textarea id="jsonIn" class="cv-paste" rows="6" placeholder="여기에 Claude의 답을 붙여넣으면 화면이 자동으로 만들어집니다.&#10;( [ 로 시작해 ] 로 끝나는 부분 전체를 붙여넣으세요 )"></textarea>
+              <div class="cv-optrow">
+                <label>
+                  <input type="checkbox" id="jsonClearChk" checked> 지금 캔버스에 있는 내용을 지우고 새로 그리기
+                  <span style="color:#9aa4af;">(체크를 풀면 기존 화면에 이어서 추가돼요)</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cv-tip">
+          <span>💡</span>
+          <span>항목 이름(라벨)은 따로 만들어지지 않고 <b>입력칸에 붙은 형태</b>로 들어가요. 배치 후 오른쪽 속성창의 「라벨」에서 글자·위치(위·왼쪽·오른쪽·아래)를 바꾸거나 숨길 수 있습니다.</span>
+        </div>
+
+        <div class="cv-status-box" id="convStatus"></div>
       </div>
-      <input type="file" id="imgIn" accept="image/*" style="display:none">
-      <div class="preview" id="preview"></div>
-      <div class="status" id="convStatus"></div>
     </div>
     <div class="modal-f">
-      <button class="btn-cancel" onclick="closeConvert()">취소</button>
-      <button class="btn-primary" id="runBtn" onclick="runConvert()" disabled>변환 실행</button>
+      <button class="btn-cancel" onclick="closeConvert()">닫기</button>
+      <button class="btn-primary" id="runBtn" onclick="runConvert()">✓ 화면 만들기</button>
     </div>
   </div>
 </div>
@@ -3235,65 +3255,41 @@ function exportComp(c){
 }
 
 // ================= IMAGE CONVERSION =================
-let convMode='json'; let convImg=null; // {dataUrl, mime, w, h}
-
-function openConvert(){document.getElementById('convBg').classList.add('on');document.getElementById('jsonPrompt').value=JSON_PROMPT;switchTab(convMode);}
-function toggleJsonGuide(){
-  const body=document.getElementById('jsonGuideBody');
-  const ic=document.getElementById('jsonGuideIc');
-  const open=body.style.display==='none';
-  body.style.display=open?'block':'none';
-  ic.textContent=open?'▾':'▸';
+function openConvert(){
+  document.getElementById('convBg').classList.add('on');
+  document.getElementById('jsonPrompt').value=JSON_PROMPT;
+  cvSetStep(1);
+  clearStatus();
+  const ta=document.getElementById('jsonIn');
+  ta.classList.remove('filled');
 }
 function closeConvert(){document.getElementById('convBg').classList.remove('on');resetConv();}
-function resetConv(){convImg=null;document.getElementById('preview').innerHTML='';document.getElementById('convStatus').innerHTML='';document.getElementById('convStatus').className='status';document.getElementById('runBtn').disabled=true;document.getElementById('imgIn').value='';document.getElementById('jsonIn').value='';document.getElementById('jsonClearChk').checked=true;}
-function switchTab(m){
-  convMode=m;
-  document.getElementById('tabAI').classList.toggle('on',m==='ai');
-  document.getElementById('tabBrowser').classList.toggle('on',m==='browser');
-  document.getElementById('tabJSON').classList.toggle('on',m==='json');
-  document.getElementById('paneAI').style.display=m==='ai'?'block':'none';
-  document.getElementById('paneBrowser').style.display=m==='browser'?'block':'none';
-  document.getElementById('paneJSON').style.display=m==='json'?'block':'none';
-  const needsImage = (m==='ai'||m==='browser');
-  document.getElementById('dropZone').style.display = needsImage?'block':'none';
-  document.getElementById('preview').style.display = needsImage?'block':'none';
-  const runBtn=document.getElementById('runBtn');
-  runBtn.textContent = m==='json' ? 'JSON 적용' : '변환 실행';
-  runBtn.disabled = needsImage ? !convImg : false;
-  setStatus('');
+function resetConv(){
+  clearStatus();
+  const ta=document.getElementById('jsonIn');
+  ta.value='';ta.classList.remove('filled');
+  document.getElementById('jsonClearChk').checked=true;
+  const d=document.querySelector('#paneJSON .cv-detail');if(d)d.removeAttribute('open');
+  cvSetStep(1);
 }
-
-const dropZone=document.getElementById('dropZone');
-const imgIn=document.getElementById('imgIn');
-dropZone.addEventListener('click',()=>imgIn.click());
-dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('hover');});
-dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('hover'));
-dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('hover');if(e.dataTransfer.files[0])handleImg(e.dataTransfer.files[0]);});
-imgIn.addEventListener('change',e=>{if(e.target.files[0])handleImg(e.target.files[0]);});
-
-function handleImg(f){
-  if(!f.type.startsWith('image/')){setStatus('이미지 파일만 가능합니다.',true);return;}
-  const r=new FileReader();
-  r.onload=()=>{
-    const img=new Image();
-    img.onload=()=>{
-      convImg={dataUrl:r.result,mime:f.type,w:img.width,h:img.height};
-      document.getElementById('preview').innerHTML=`<img src="${r.result}"><div style="font-size:11px;color:#888;margin-top:4px;">${img.width} × ${img.height}px</div>`;
-      document.getElementById('runBtn').disabled=false;
-      setStatus('');
-    };
-    img.src=r.result;
-  };
-  r.readAsDataURL(f);
+// Highlight the current step (1..3), mark earlier ones done.
+function cvSetStep(n){
+  for(let i=1;i<=3;i++){
+    const el=document.getElementById('cvStep'+i);
+    if(!el)continue;
+    el.classList.toggle('on',i===n);
+    el.classList.toggle('done',i<n);
+  }
 }
-function setStatus(msg,err){const s=document.getElementById('convStatus');s.innerHTML=msg;s.className='status'+(err?' err':'');}
-
-function runConvert(){
-  if(convMode==='json'){ runJSON(); return; }
-  if(!convImg){setStatus('먼저 이미지를 선택하세요.',true);return;}
-  if(convMode==='ai') runAI(); else runBrowser();
+// New status box (info/ok/err), with an optional "how to fix" line.
+function setStatus(msg,kind,fix){
+  const s=document.getElementById('convStatus');
+  s.className='cv-status-box show '+(kind||'info');
+  s.innerHTML=msg+(fix?`<div class="cv-fix">${fix}</div>`:'');
 }
+function clearStatus(){const s=document.getElementById('convStatus');s.className='cv-status-box';s.innerHTML='';}
+
+function runConvert(){ runJSON(); }
 
 // ---- JSON paste (free path, no API key / no direct API call) ----
 const JSON_PROMPT=`이 화면 캡처를 분석해 UI 컴포넌트를 JSON 배열로만 출력. 설명·코드블록 없이 JSON만.
@@ -3355,12 +3351,23 @@ radio는 "options":"전체,확정,미확정". required는 별표(*)면 true. 조
 {"type":"grid","x":20,"y":226,"w":1060,"h":300,"text":"출고번호,출고일,수불유형,수불유형명,창고,출고수량,금액,청고명,코스트센터,코스트센터명,품목,품목명","gtitle":"출고내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true,"userBtns":[{"label":"품목참조"},{"label":"재고현황"}],"rows":8},
 {"type":"button","x":880,"y":545,"w":90,"h":34,"text":"저장","ghost":true},
 {"type":"button","x":980,"y":545,"w":90,"h":34,"text":"확정"}]`;
+// When the user pastes/types the answer, advance to step 3 and give a filled cue.
+(function(){
+  const ta=document.getElementById('jsonIn');
+  if(!ta)return;
+  const onFill=()=>{
+    const has=ta.value.trim().length>0;
+    ta.classList.toggle('filled',has);
+    if(has)cvSetStep(3);
+    if(has)clearStatus();
+  };
+  ta.addEventListener('input',onFill);
+  ta.addEventListener('paste',()=>setTimeout(onFill,0));
+})();
 function copyPrompt(){
-  const ta=document.getElementById('jsonPrompt');
-  ta.select();
   navigator.clipboard&&navigator.clipboard.writeText(JSON_PROMPT).then(
-    ()=>setStatus('프롬프트를 복사했습니다. claude.ai에 이미지와 함께 붙여넣으세요.'),
-    ()=>setStatus('클립보드 복사에 실패했습니다. 위 텍스트를 직접 선택해 복사해주세요.',true)
+    ()=>{cvSetStep(2);setStatus('📋 질문을 복사했어요. Claude 채팅창에 붙여넣고, <b>화면 캡처 이미지도 함께 첨부</b>해서 보내세요.','ok');},
+    ()=>setStatus('복사가 안 됐어요.','err','위 미리 보기 칸의 글자를 직접 드래그해서 복사해 주세요.')
   );
 }
 // Opens claude.ai in a new tab with the prompt already filled in.
@@ -3370,75 +3377,70 @@ function openInClaude(){
   const url='https://claude.ai/new?q='+encodeURIComponent(JSON_PROMPT);
   const done=()=>{
     window.open(url,'_blank','noopener');
-    setStatus('Claude를 프롬프트가 입력된 상태로 열었습니다. 화면 캡처 이미지를 첨부한 뒤 전송하세요. (프롬프트는 클립보드에도 복사해 두었습니다)');
+    cvSetStep(2);
+    setStatus('🤖 Claude를 새 창에 열었어요. 그 화면에 <b>만들고 싶은 화면 캡처 이미지를 첨부</b>하고 전송하세요.','ok','새 창이 안 열렸다면 팝업 차단을 해제하거나, 왼쪽 「질문만 복사」로 직접 붙여넣어 주세요.');
   };
   if(navigator.clipboard) navigator.clipboard.writeText(JSON_PROMPT).then(done,done);
   else done();
 }
 function runJSON(){
   const raw=document.getElementById('jsonIn').value.trim();
-  if(!raw){setStatus('Claude가 답한 JSON을 붙여넣어 주세요.',true);return;}
+  if(!raw){
+    setStatus('아직 붙여넣은 내용이 없어요.','err','3번 칸에 Claude가 준 답을 붙여넣은 뒤 다시 눌러 주세요.');
+    return;
+  }
   try{
     let txt=raw.replace(/```json/gi,'').replace(/```/g,'').trim();
     const m=txt.match(/\[[\s\S]*\]/);
     if(m)txt=m[0];
-    const items=JSON.parse(txt);
-    if(!Array.isArray(items)||!items.length)throw new Error('JSON 배열 형식이 아니거나 비어 있습니다.');
+    else throw new Error('NO_BRACKET');
+    let items;
+    try{ items=JSON.parse(txt); }
+    catch(e){ throw new Error('PARSE'); }
+    if(!Array.isArray(items))throw new Error('NOT_ARRAY');
+    if(!items.length)throw new Error('EMPTY');
     const clearFirst=document.getElementById('jsonClearChk').checked;
     placeItems(items,1,clearFirst);
     fitZoomToViewport();
-    setStatus(`${items.length}개 컴포넌트를 배치했습니다.${clearFirst?' (기존 내용은 초기화됨)':''}`);
-    setTimeout(closeConvert,700);
+    cvSetStep(3);
+    setStatus(`✅ 완성! <b>${items.length}개</b>의 컴포넌트를 화면에 그렸어요.${clearFirst?' (기존 내용은 지웠어요)':' (기존 화면에 이어서 추가했어요)'}`,'ok');
+    setTimeout(closeConvert,900);
   }catch(err){
-    setStatus('적용 실패: '+err.message,true);
+    let fix;
+    switch(err.message){
+      case 'NO_BRACKET':
+        fix='Claude 답에서 <b>[</b> 로 시작해 <b>]</b> 로 끝나는 부분을 찾지 못했어요. 그 부분 전체를 다시 복사해 붙여넣어 주세요.';break;
+      case 'PARSE':
+        fix='붙여넣은 코드 중간이 잘렸거나 일부만 복사된 것 같아요. Claude 답의 <b>[</b> 부터 <b>]</b> 까지를 빠짐없이 복사했는지 확인해 주세요.';break;
+      case 'NOT_ARRAY':
+        fix='형식이 조금 달라요. Claude에게 "다시 [ ] 형태의 목록으로만 답해 줘"라고 요청한 뒤 그 답을 붙여넣어 보세요.';break;
+      case 'EMPTY':
+        fix='내용이 비어 있어요. Claude가 화면을 인식하도록 캡처 이미지를 다시 첨부해 보세요.';break;
+      default:
+        fix='Claude 답 전체를 다시 복사해 붙여넣어 주세요.';
+    }
+    setStatus('붙여넣은 내용을 화면으로 바꾸지 못했어요.','err',fix);
   }
 }
 
-// ---- AI vision ----
-async function runAI(){
-  const key=document.getElementById('apiKey').value.trim();
-  if(!key){setStatus('API 키를 입력하세요.',true);return;}
-  document.getElementById('runBtn').disabled=true;
-  setStatus('<span class="spinner"></span>Claude가 화면을 분석 중입니다...');
-  const scale=convImg.w>1100?1100/convImg.w:1; // fit to canvas width
-  const b64=convImg.dataUrl.split(',')[1];
-  const prompt=`이 화면 캡처를 분석해 UI 컴포넌트를 JSON 배열로만 출력. 설명·마크다운 없이.
-형식: {"type","x","y","w","h","text"}
-type: title section label(독립 텍스트) input combo date daterange(text="YYYY-MM-DD ~ YYYY-MM-DD") check radio button grid(text=컬럼헤더 쉼표구분) tree searchbar
-좌표·크기는 이미지 픽셀 기준 정수. text는 화면에 보이는 값(빈 입력칸이면 "").
-[라벨] input/combo/date/daterange/check/radio 위·옆의 항목명은 별도 label로 빼지 말고 포함: "showLabel":true,"labelText":"항목명","labelPos":"top"|"left"|"right"|"bottom","required":별표(*)면 true. x,y는 라벨 포함 좌상단, h는 라벨+입력칸 합계(top/bottom≈52, 좌우≈30). 라벨 없으면 "showLabel":false. 체크박스는 showLabel:false에 text로 문구. 입력칸과 무관한 텍스트만 label. radio는 "options"에 선택지 쉼표 나열, "selected"에 선택 위치(0부터). combo는 목록이 펼쳐져 보일 때만 "options". 회색 배경(비활성) 칸은 "readonly":true. 라벨 하나 아래 입력칸이 2개 나란히 있으면(예 "통화/환율" 아래 콤보 KR + 숫자칸 1) 합치지 말고 컴포넌트 2개로 분리 — 왼쪽만 라벨을 갖고 오른쪽은 "showLabel":false로 같은 y에 옆에 배치, 각 text에는 자기 칸 값만.
-[tree] 계단식 들여쓰기 목록(좌측메뉴·조직도)은 tree 하나로. text에 줄바꿈(\\n) 나열, 하위는 공백 2칸씩.
-[grid] 표 위의 행 조작 버튼과 "○○내역 (0)건" 제목은 grid에 포함(별도 button/label 금지): "gtitle":"요청내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true. 그 외 버튼은 "userBtns":[{"label":"품목참조"}]. 필수 컬럼은 "*품목코드". 하단 신규·저장 등만 button.
-[searchbar] 상단에 "라벨+입력필드"가 가로로 나열되고 줄 끝에 조회 버튼과 접기·펼치기 아이콘이 있는 영역은 쪼개지 말고 하나로(조건이 하나뿐이어도, 조회 버튼은 포함하므로 button 금지): {"type":"searchbar","x","y","w","h","collapsed":접힌상태면 true,"fields":[{"label","type","required"}]}. fields type은 모양에 맞게 text|combo|date|daterange|search|radio, radio는 "options":"전체,확정,미확정", required는 별표(*)면 true. 라벨 없는 칸도 "label":""로 포함, 회색 칸은 "readonly":true.
-[레이아웃 정규화] 원본 픽셀 위치를 그대로 옮기지 말고 폭 1060 기준으로 재배치: 세로 순서 title → searchbar → 섹션별 입력 → grid → 하단 버튼. 왼쪽 여백 x:20 통일, 같은 줄은 y를 맞춤. 입력은 한 줄에 4~6개 균등 배치(라벨 포함 높이 52, 컨트롤 30). 구획 제목(일반정보 등)은 section. 겹치지 않게, 폭을 넘으면 다음 줄로. 3D 테두리·아이콘·색 배경 등 장식은 재현 금지.
-[구형 화면일 때] 입력칸이 촘촘히 붙어 있고 회색 3D 테두리·작은 폰트를 쓰는 옛날 업무 시스템 화면이면 원본 좌표를 베끼지 말고 재배치: 맨 위 경로(A > B > C(코드))는 마지막 화면 이름만 title로. 위쪽에 흩어진 조회 항목은 모두 모아 searchbar 하나로(돋보기 아이콘 붙은 칸은 search, ~로 이어진 두 날짜는 daterange 하나, 코드칸+옆의 회색 이름칸은 search 하나로 합침, 값은 text에 넣지 말고 라벨만). 표는 grid 하나로(컬럼 원본 순서, rows는 대략, 행 조작 버튼이 없어도 showToolbar/stdAdd/stdCancel/stdCopy/stdDelete 추가, 제목 없으면 gtitle을 지어줌). 우측 상단 단독 버튼은 button, 하단에 저장·확정 button 추가. 좌표는 x:20부터 폭 1060 기준으로 새로 배치.
-이미지 크기 ${convImg.w}x${convImg.h}.`;
-  try{
-    const res=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:{"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:4000,messages:[{role:"user",content:[
-        {type:"image",source:{type:"base64",media_type:convImg.mime,data:b64}},
-        {type:"text",text:prompt}
-      ]}]})
-    });
-    if(!res.ok){const t=await res.text();throw new Error("API "+res.status+": "+t.slice(0,180));}
-    const data=await res.json();
-    let txt=(data.content||[]).filter(i=>i.type==='text').map(i=>i.text).join('\n');
-    txt=txt.replace(/```json/gi,'').replace(/```/g,'').trim();
-    const m=txt.match(/\[[\s\S]*\]/);
-    if(m)txt=m[0];
-    const items=JSON.parse(txt);
-    placeItems(items,scale);
-    fitZoomToViewport();
-    setStatus(`${items.length}개 컴포넌트를 배치했습니다.`);
-    setTimeout(closeConvert,700);
-  }catch(err){
-    setStatus('변환 실패: '+err.message,true);
-    document.getElementById('runBtn').disabled=false;
-  }
+// ---- Seed sample ----
+function defaultScreen(){
+  return [
+    {id:uid++,type:'title',x:20,y:16,w:200,h:34,text:'프로그램 제목',required:false,readonly:false},
+    {id:uid++,type:'searchbar',x:20,y:64,w:1060,h:84,text:'',required:false,readonly:false,collapsed:false,
+      fields:[
+        {label:'조건1',type:'text',required:false},
+        {label:'조건2',type:'text',required:false}
+      ]}
+  ];
+}
+function seed(){
+  comps=defaultScreen();
+  render();
 }
 
+// Places an array of imported/template JSON items onto the canvas.
+// scale: multiply all coordinates (1 = as-is). clearFirst: wipe canvas first.
 function placeItems(items,scale,clearFirst){
   pushHistory();
   if(clearFirst) comps=[];
@@ -3447,7 +3449,7 @@ function placeItems(items,scale,clearFirst){
   // Properties (beyond type/x/y/w/h/text/required) that a JSON item may set directly; copied through as-is.
   const passthroughKeys=['gtitle','userBtns','stdAdd','stdCancel','stdCopy','stdDelete','rows','showToolbar',
     'options','readonly','ghost','active','collapsed','ctitle','chartType','color','showArrow','selected','selectedLine','showLines',
-    'showLabel','labelText','labelPos','required'];
+    'showLabel','labelText','labelPos','required','checked'];
   const idMap={}; // _tempId (author-assigned, only needed for Tab parent/child references) -> real comp id
   const built=[];
   items.forEach(it=>{
@@ -3462,6 +3464,7 @@ function placeItems(items,scale,clearFirst){
     if(LABELED_TYPES.includes(type)) base.showLabel=false;
     const extra={};
     passthroughKeys.forEach(k=>{ if(it[k]!==undefined) extra[k]=it[k]; });
+    if(it.required===true) required=true;
     if(type==='searchbar'){
       if(Array.isArray(it.fields)&&it.fields.length){
         extra.fields=it.fields.map(f=>{
@@ -3493,92 +3496,6 @@ function placeItems(items,scale,clearFirst){
     comps.push(comp);
   });
   selectSingle(null);render();
-}
-
-// ---- Browser processing (rectangle detection) ----
-function runBrowser(){
-  document.getElementById('runBtn').disabled=true;
-  setStatus('<span class="spinner"></span>윤곽을 분석 중입니다...');
-  setTimeout(()=>{
-    try{
-      const boxes=detectBoxes(convImg.dataUrl);
-      const scale=convImg.w>1100?1100/convImg.w:1;
-      pushHistory();
-      boxes.forEach(b=>{
-        const base=JSON.parse(JSON.stringify(defaults.input));
-        comps.push({...base,id:uid++,type:'input',
-          x:Math.round(b.x*scale),y:Math.round(b.y*scale),
-          w:Math.round(b.w*scale),h:Math.round(b.h*scale),text:''});
-      });
-      selectSingle(null);render();
-      fitZoomToViewport();
-      setStatus(`${boxes.length}개 영역을 텍스트박스로 배치했습니다. 종류·텍스트는 속성창에서 지정하세요.`);
-      setTimeout(closeConvert,900);
-    }catch(err){setStatus('분석 실패: '+err.message,true);document.getElementById('runBtn').disabled=false;}
-  },50);
-}
-
-function detectBoxes(dataUrl){
-  // downscale, edge->row/col projection based box finding (lightweight heuristic)
-  const img=new Image();img.src=dataUrl;
-  const cv=document.createElement('canvas');
-  const MAXW=800;const s=Math.min(1,MAXW/convImg.w);
-  cv.width=Math.round(convImg.w*s);cv.height=Math.round(convImg.h*s);
-  const ctx=cv.getContext('2d');ctx.drawImage(img,0,0,cv.width,cv.height);
-  const {data,width,height}=ctx.getImageData(0,0,cv.width,cv.height);
-  // grayscale + edge (simple gradient)
-  const edge=new Uint8Array(width*height);
-  const gray=(i)=>(data[i]*0.3+data[i+1]*0.59+data[i+2]*0.11);
-  for(let y=1;y<height-1;y++)for(let x=1;x<width-1;x++){
-    const i=(y*width+x)*4;
-    const gx=Math.abs(gray(i+4)-gray(i-4));
-    const gy=Math.abs(gray(i+width*4)-gray(i-width*4));
-    edge[y*width+x]=(gx+gy)>40?1:0;
-  }
-  // find horizontal runs (potential control top/bottom borders), then group into boxes
-  const boxes=[];const visited=new Uint8Array(width*height);
-  const minW=Math.round(40*s), minH=Math.round(14*s);
-  for(let y=0;y<height;y++)for(let x=0;x<width;x++){
-    if(edge[y*width+x]&&!visited[y*width+x]){
-      // flood-fill bounding box of connected edge region
-      let stack=[[x,y]];let minx=x,maxx=x,miny=y,maxy=y,cnt=0;
-      while(stack.length&&cnt<8000){
-        const[cx,cy]=stack.pop();const idx=cy*width+cx;
-        if(cx<0||cy<0||cx>=width||cy>=height||visited[idx]||!edge[idx])continue;
-        visited[idx]=1;cnt++;
-        if(cx<minx)minx=cx;if(cx>maxx)maxx=cx;if(cy<miny)miny=cy;if(cy>maxy)maxy=cy;
-        stack.push([cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]);
-      }
-      const bw=maxx-minx,bh=maxy-miny;
-      if(bw>=minW&&bh>=minH&&bw<width*0.98&&bh<height*0.5&&bw/bh>1.2){
-        boxes.push({x:minx/s,y:miny/s,w:bw/s,h:bh/s});
-      }
-    }
-  }
-  // limit & dedupe overlaps
-  boxes.sort((a,b)=>b.w*b.h-a.w*a.h);
-  const out=[];
-  for(const b of boxes){
-    if(out.some(o=>Math.abs(o.x-b.x)<15&&Math.abs(o.y-b.y)<15))continue;
-    out.push(b);if(out.length>=60)break;
-  }
-  return out;
-}
-
-// ---- Seed sample ----
-function defaultScreen(){
-  return [
-    {id:uid++,type:'title',x:20,y:16,w:200,h:34,text:'프로그램 제목',required:false,readonly:false},
-    {id:uid++,type:'searchbar',x:20,y:64,w:1060,h:84,text:'',required:false,readonly:false,collapsed:false,
-      fields:[
-        {label:'조건1',type:'text',required:false},
-        {label:'조건2',type:'text',required:false}
-      ]}
-  ];
-}
-function seed(){
-  comps=defaultScreen();
-  render();
 }
 // =====================================================================
 // Template system: compact per-screen specs + a generic layout engine
@@ -3898,6 +3815,11 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260727.001', date:'2026년 7월 27일', items:[
+    {t:'이미지 변환 화면 새 단장', d:'화면 캡처를 컴포넌트로 바꾸는 기능을 <b>처음 쓰는 사람도 따라 하기 쉽게</b> 다시 만들었습니다. <b>① Claude 열기 → ② 캡처 이미지 붙이고 전송 → ③ 답을 붙여넣기</b>의 <b>3단계 카드</b>로 흐름이 한눈에 보이고, 진행 중인 단계가 초록색으로 강조됩니다. 어려운 용어(JSON 등)는 <b>「코드」·「Claude의 답」</b>처럼 쉬운 말로 바꿨습니다.'},
+    {t:'친절한 실패 안내', d:'붙여넣기가 잘못되면 원인에 따라 <b>무엇을 어떻게 고치면 되는지</b> 안내합니다. 예를 들어 답이 잘려 붙었을 때 「[ 부터 ] 까지 빠짐없이 복사했는지 확인해 주세요」처럼 다음 행동을 알려줍니다. 성공하면 <b>배치된 컴포넌트 개수</b>를 함께 보여줍니다.'},
+    {t:'변환 오류 수정', d:'정상적인 코드를 붙여넣어도 <b>「화면으로 바꾸지 못했어요」</b> 오류가 나던 문제를 해결했습니다. 이제 붙여넣은 내용이 캔버스에 정상적으로 배치됩니다.'}
+  ]},
   {ver:'20260726.006', date:'2026년 7월 26일', items:[
     {t:'방향키로 이동', d:'컴포넌트를 선택한 뒤 <b>방향키(↑↓←→)</b>를 누르면 <b>격자 한 칸씩</b> 이동합니다. 이동 거리는 우측 상단 <b>스냅 크기</b> 값을 따릅니다. 여러 개를 선택하면 함께 움직이고, 탭 안의 컴포넌트도 같이 이동합니다.'},
     {t:'항목 추가 단축키 (+ / −)', d:'<b>탭·조회조건·콤보박스·라디오·그리드</b>를 선택한 상태에서 <b>+</b> 키로 항목(탭·조건·옵션·컬럼)을 하나 추가하고, <b>−</b> 키로 맨 뒤 항목을 하나 삭제할 수 있습니다.'},
@@ -4206,7 +4128,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260726.005';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260727.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
