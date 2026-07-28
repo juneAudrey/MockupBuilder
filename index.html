@@ -21,6 +21,7 @@
     --ax-panel:#ffffff; --sel:#2680eb;
     --ax-readonly-bg:#f6f7f8; --ax-required-bg:#ffffff;
     --ax-canvas-bg:#ffffff; --ax-label-fg:#374151;
+    --ax-grid-line:#f3f5f7;
     /* 상단바(topbar)는 --ax-navy와 별개 변수를 쓴다: --ax-navy는 섹션 헤더·그리드 제목 등
        화면 곳곳의 텍스트 색으로도 쓰이므로, 상단바만 바꾸려면 전용 변수가 필요하다.
        씬모드는 로고·버튼과 같은 계열의 진한 그린, 팻모드는 기존 네이비 그대로. */
@@ -36,6 +37,7 @@
     --ax-bg:#e9eef4; --ax-grid-head:#1c3f66; --ax-grid-head-fg:#ffffff;
     --ax-readonly-bg:#dde8f7; --ax-required-bg:#fdeacb;
     --ax-canvas-bg:#eef2f8; --ax-label-fg:#1a1a1a;
+    --ax-grid-line:#d7e0ec;
     --topbar-bg:#1c3f66; --topbar-ghost-border:#4a5c6e; --topbar-ghost-hover:#3a4c5e;
     --autosave-fg:#7fd8b0;
   }
@@ -137,7 +139,7 @@
   .toolbar2 select,.toolbar2 input[type=number]{padding:4px 6px;border:1px solid var(--ax-border);border-radius:4px;font-size:12px;}
   .toolbar2 .chk{display:flex;align-items:center;gap:4px;}
   #canvas{position:relative;background:var(--ax-canvas-bg);border:1px solid var(--ax-border);border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.06);width:1100px;height:700px;
-    background-image:linear-gradient(#f3f5f7 1px,transparent 1px),linear-gradient(90deg,#f3f5f7 1px,transparent 1px);background-size:10px 10px;}
+    background-image:linear-gradient(var(--ax-grid-line) 1px,transparent 1px),linear-gradient(90deg,var(--ax-grid-line) 1px,transparent 1px);background-size:10px 10px;}
   #canvas.nogrid{background-image:none;}
   .canvas-holder{position:relative;z-index:1;display:inline-block;}
   .tb-sep{width:1px;height:16px;background:var(--ax-border);display:inline-block;margin:0 2px;}
