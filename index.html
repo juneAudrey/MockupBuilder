@@ -4789,6 +4789,9 @@ function loadTemplate(cat,name){
 function setAppSkin(fat){
   document.body.classList.toggle('skin-classic', !!fat);
   try{ localStorage.setItem('mb_skin', fat?'classic':'modern'); }catch(e){}
+  // 모바일/태블릿에서 스킨을 바꾸면 도크·레일의 컴포넌트 목록(조회조건↔팝업)도 다시 그려야
+  // 데스크톱 도구상자와 일치한다. (없으면 조용히 무시)
+  try{ if(window.mbRefreshForSkin) window.mbRefreshForSkin(); }catch(e){}
 }
 // 로고를 누르면 alert 대신 이미지(스와치) 2개짜리 팝업을 띄워 Thin/Fat 중 고르게 한다.
 function openSkinPicker(){
@@ -6377,6 +6380,12 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
 
   window.mbForceMode=function(m){ window.__mbForce=m||null; applyMode(true); };
   window.mbAutoMode=function(){ window.__mbForce=null; applyMode(true); };
+  // 스킨(Thin↔Fat) 전환 시 모바일/태블릿의 도크·레일(컴포넌트 목록: 조회조건↔팝업)과
+  // 브랜드 모드 표시를 다시 그린다. PC 모드에서는 할 일이 없다.
+  window.mbRefreshForSkin=function(){
+    try{ if(curMode&&curMode!=='pc'){ buildDock(); buildRail(); } }catch(e){}
+    try{ if(typeof updateBrandMode==='function') updateBrandMode(); }catch(e){}
+  };
 })();
 </script>
 
