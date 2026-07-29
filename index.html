@@ -3618,39 +3618,54 @@ function selectRadioGroupExport(el){
   el.classList.add('on');
 }
 // Split container: dragging the divider live-resizes both panes and stretches whatever's
-// inside them (e.g. a grid) to exactly fill the new pane size.
+// inside them (e.g. a grid) to exactly fill the new pane size. A fill child can itself be a
+// nested split container - in that case its own pane0/divider/pane1 (baked in at export time
+// with fixed px values) must be recomputed too, all the way down, or nested Fill grids would
+// stop tracking the divider as soon as there's more than one level of split-in-split.
+function layoutSplitExport(wrap){
+  var divider=wrap.querySelector(':scope > .split-divider');
+  if(!divider) return; // wrap isn't itself a split container - nothing more to lay out here
+  var id=divider.getAttribute('data-split-id');
+  var dir=divider.getAttribute('data-split-dir');
+  var pos=parseFloat(divider.getAttribute('data-split-pos'));
+  if(isNaN(pos)) pos=0.5;
+  pos=Math.max(0.15,Math.min(0.85,pos));
+  var pane0=wrap.querySelector(':scope > [data-split-pane="'+id+'-0"]');
+  var pane1=wrap.querySelector(':scope > [data-split-pane="'+id+'-1"]');
+  var DIV=8;
+  var total=dir==='h'?wrap.offsetWidth:wrap.offsetHeight;
+  var w1=Math.max(10,Math.round(total*pos-DIV/2)), w2=Math.max(10,total-w1-DIV);
+  if(dir==='h'){
+    pane0.style.width=w1+'px';
+    divider.style.left=w1+'px';
+    pane1.style.left=(w1+DIV)+'px'; pane1.style.width=w2+'px';
+  } else {
+    pane0.style.height=w1+'px';
+    divider.style.top=w1+'px';
+    pane1.style.top=(w1+DIV)+'px'; pane1.style.height=w2+'px';
+  }
+  resizeChildrenExport(pane0); resizeChildrenExport(pane1);
+}
+function resizeChildrenExport(pane){
+  Array.prototype.forEach.call(pane.children,function(ch){
+    if(ch.getAttribute('data-dock')==='none') return; // freely placed - leave it alone
+    ch.style.width=pane.offsetWidth+'px';
+    ch.style.height=pane.offsetHeight+'px';
+    layoutSplitExport(ch); // if ch is itself a nested split container, relay out its insides too
+  });
+}
 function startSplitDragExport(e){
   e.preventDefault();
   var divider=e.currentTarget;
   var wrap=divider.parentElement;
-  var id=divider.getAttribute('data-split-id');
-  var dir=divider.getAttribute('data-split-dir');
-  var pane0=wrap.querySelector('[data-split-pane="'+id+'-0"]');
-  var pane1=wrap.querySelector('[data-split-pane="'+id+'-1"]');
-  var DIV=8;
-  var total=dir==='h'?wrap.offsetWidth:wrap.offsetHeight;
-  function resizeChildren(pane){
-    Array.prototype.forEach.call(pane.children,function(ch){
-      if(ch.getAttribute('data-dock')==='none') return; // freely placed - leave it alone
-      ch.style.width=pane.offsetWidth+'px';
-      ch.style.height=pane.offsetHeight+'px';
-    });
-  }
   function move(ev){
+    var dir=divider.getAttribute('data-split-dir');
     var rect=wrap.getBoundingClientRect();
-    var pos = dir==='h' ? (ev.clientX-rect.left) : (ev.clientY-rect.top);
-    pos=Math.max(total*0.15,Math.min(total*0.85,pos));
-    var w1=Math.round(pos-DIV/2), w2=total-w1-DIV;
-    if(dir==='h'){
-      pane0.style.width=w1+'px';
-      divider.style.left=w1+'px';
-      pane1.style.left=(w1+DIV)+'px'; pane1.style.width=w2+'px';
-    } else {
-      pane0.style.height=w1+'px';
-      divider.style.top=w1+'px';
-      pane1.style.top=(w1+DIV)+'px'; pane1.style.height=w2+'px';
-    }
-    resizeChildren(pane0); resizeChildren(pane1);
+    var total=dir==='h'?wrap.offsetWidth:wrap.offsetHeight;
+    var raw = dir==='h' ? (ev.clientX-rect.left) : (ev.clientY-rect.top);
+    var pos=Math.max(0.15,Math.min(0.85, raw/total));
+    divider.setAttribute('data-split-pos',pos);
+    layoutSplitExport(wrap);
   }
   function up(){ document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); }
   document.addEventListener('mousemove',move);
@@ -3714,9 +3729,13 @@ function exportComp(c){
     const kids0=comps.filter(k=>k.parent===c.id&&(k.pane||0)===0).map(k=>exportComp(k)).join('');
     const kids1=comps.filter(k=>k.parent===c.id&&(k.pane||0)===1).map(k=>exportComp(k)).join('');
     const dirCls=r.dir==='h'?'split-divider-h':'split-divider-v';
-    html+=`<div class="split-pane" data-split-pane="${c.id}-0" style="position:absolute;left:${r.pane0.x}px;top:${r.pane0.y}px;width:${r.pane0.w}px;height:${r.pane0.h}px;overflow:hidden;">${kids0}</div>`;
-    html+=`<div class="split-divider ${dirCls}" data-split-dir="${r.dir}" data-split-id="${c.id}" style="position:absolute;left:${r.divider.x}px;top:${r.divider.y}px;width:${r.divider.w}px;height:${r.divider.h}px;" onmousedown="startSplitDragExport(event)"></div>`;
-    html+=`<div class="split-pane" data-split-pane="${c.id}-1" style="position:absolute;left:${r.pane1.x}px;top:${r.pane1.y}px;width:${r.pane1.w}px;height:${r.pane1.h}px;overflow:hidden;">${kids1}</div>`;
+    const crossH=r.dir==='h', p0Size=crossH?`width:${r.pane0.w}px;height:100%;`:`width:100%;height:${r.pane0.h}px;`;
+    const p1Size=crossH?`width:${r.pane1.w}px;height:100%;`:`width:100%;height:${r.pane1.h}px;`;
+    const dvSize=crossH?`width:${r.divider.w}px;height:100%;`:`width:100%;height:${r.divider.h}px;`;
+    html+=`<div class="split-pane" data-split-pane="${c.id}-0" style="position:absolute;left:${r.pane0.x}px;top:${r.pane0.y}px;${p0Size}overflow:hidden;">${kids0}</div>`;
+    const cpos=Math.min(0.85,Math.max(0.15,c.pos!=null?c.pos:0.5));
+    html+=`<div class="split-divider ${dirCls}" data-split-dir="${r.dir}" data-split-id="${c.id}" data-split-pos="${cpos}" style="position:absolute;left:${r.divider.x}px;top:${r.divider.y}px;${dvSize}" onmousedown="startSplitDragExport(event)"></div>`;
+    html+=`<div class="split-pane" data-split-pane="${c.id}-1" style="position:absolute;left:${r.pane1.x}px;top:${r.pane1.y}px;${p1Size}overflow:hidden;">${kids1}</div>`;
   }
   if(c.type==='panel'){
     const kids=comps.filter(k=>k.parent===c.id).map(k=>exportComp(k)).join('');
