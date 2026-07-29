@@ -3911,18 +3911,12 @@ function copyPrompt(){
   );
 }
 // Opens claude.ai in a new tab with the prompt already filled in.
-// Also copies it to the clipboard as a fallback (the image still has to be
-// attached by hand, and a browser may drop the query string).
 function openInClaude(){
   const prompt=currentJsonPrompt();
   const url='https://claude.ai/new?q='+encodeURIComponent(prompt);
-  const done=()=>{
-    window.open(url,'_blank','noopener');
-    cvSetStep(2);
-    setStatus('🤖 Claude를 새 창에 열었어요. 그 화면에 <b>만들고 싶은 화면 캡처 이미지를 첨부</b>하고 전송하세요.','ok','새 창이 안 열렸다면 팝업 차단을 해제하거나, 왼쪽 「질문만 복사」로 직접 붙여넣어 주세요.');
-  };
-  if(navigator.clipboard) navigator.clipboard.writeText(prompt).then(done,done);
-  else done();
+  window.open(url,'_blank','noopener');
+  cvSetStep(2);
+  setStatus('🤖 Claude를 새 창에 열었어요. 그 화면에 <b>만들고 싶은 화면 캡처 이미지를 첨부</b>하고 전송하세요.','ok','새 창이 안 열렸다면 팝업 차단을 해제하거나, 왼쪽 「질문만 복사」로 직접 붙여넣어 주세요.');
 }
 // 이미지 변환으로 만든 컴포넌트 기준으로 캔버스 폭/높이를 정확히 맞춘다(필요하면 늘리고,
 // 여유가 많이 남으면 줄인다). 배치 직후 comps 전체(기존+새로 추가된 것)의 최대 범위로 계산하므로
