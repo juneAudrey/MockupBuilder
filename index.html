@@ -25,7 +25,14 @@
     /* 상단바(topbar)는 --ax-navy와 별개 변수를 쓴다: --ax-navy는 섹션 헤더·그리드 제목 등
        화면 곳곳의 텍스트 색으로도 쓰이므로, 상단바만 바꾸려면 전용 변수가 필요하다.
        씬모드는 로고·버튼과 같은 계열의 진한 그린, 팻모드는 기존 네이비 그대로. */
-    --topbar-bg:#125e40; --topbar-ghost-border:#2f6b53; --topbar-ghost-hover:#1c7350;
+    /* 첨부 이미지처럼 진한 그린 바탕에 대각선 삼각형 광택이 겹치는 패턴.
+       여러 겹의 linear-gradient로 밝은/어두운 삼각면을 표현한다. */
+    --topbar-bg:
+      linear-gradient(122deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 30%),
+      linear-gradient(58deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,0) 46%),
+      linear-gradient(300deg, rgba(0,0,0,.20) 0%, rgba(0,0,0,0) 40%),
+      linear-gradient(96deg, #12a178 0%, #0f9670 52%, #14a67c 100%);
+    --topbar-ghost-border:#2f6b53; --topbar-ghost-hover:#1c7350;
     --autosave-fg:#8ee9c3;
   }
   /* 상단 로고를 누르면 body에 이 클래스가 토글되어 두 번째 톤앤매너(Fat Mode)로
@@ -38,7 +45,13 @@
     --ax-readonly-bg:#dde8f7; --ax-required-bg:#fdeacb;
     --ax-canvas-bg:#eef2f8; --ax-label-fg:#1a1a1a;
     --ax-grid-line:#d7e0ec;
-    --topbar-bg:#1c3f66; --topbar-ghost-border:#4a5c6e; --topbar-ghost-hover:#3a4c5e;
+    /* 팻모드는 같은 삼각면 패턴을 파란 계열로만 바꾼다. */
+    --topbar-bg:
+      linear-gradient(122deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 30%),
+      linear-gradient(58deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,0) 46%),
+      linear-gradient(300deg, rgba(0,0,0,.22) 0%, rgba(0,0,0,0) 40%),
+      linear-gradient(96deg, #2b6fb0 0%, #245f9c 52%, #2e77bb 100%);
+    --topbar-ghost-border:#4a5c6e; --topbar-ghost-hover:#3a4c5e;
     --autosave-fg:#7fd8b0;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
@@ -46,7 +59,8 @@
   .app{display:grid;grid-template-columns:180px 1fr 240px;grid-template-rows:44px 1fr;height:100vh;}
 
   /* Top bar */
-  .topbar{grid-column:1/4;background:var(--topbar-bg);color:#fff;display:flex;align-items:center;padding:0 16px 0 0;gap:12px;}
+  .topbar{grid-column:1/4;background-color:#0f9670;background-image:var(--topbar-bg);color:#fff;display:flex;align-items:center;padding:0 16px 0 0;gap:12px;}
+  body.skin-classic .topbar{background-color:#245f9c;}
   .topbar .brand{flex:0 0 180px;}
   /* Buttons are grouped by purpose: the topbar's own 12px gap separates the two sets, and a
      wider left margin on the trailing group pushes the sets further apart, while buttons
