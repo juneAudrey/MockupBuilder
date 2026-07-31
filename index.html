@@ -441,6 +441,15 @@
   .empty-props{color:#9ca3af;font-size:12px;text-align:center;padding:30px 10px;line-height:1.6;}
   .del-btn{width:100%;background:#fdecec;color:var(--ax-req);border:1px solid #f5c2c4;padding:7px;border-radius:4px;cursor:pointer;font-size:12px;margin-top:8px;font-weight:600;}
   .del-btn:hover{background:#fbdcdc;}
+  .gap-adjust{border:1px solid var(--ax-border);border-radius:6px;padding:10px;margin-bottom:12px;background:#fafbfc;}
+  .gap-row{margin-bottom:8px;}
+  .gap-row:last-of-type{margin-bottom:0;}
+  .gap-row label{display:block;font-size:12px;color:#555;margin-bottom:4px;font-weight:600;}
+  .gap-row .gap-val{font-weight:400;color:var(--ax-green);margin-left:4px;}
+  .gap-row .gap-num{width:56px;padding:2px 4px;font-size:12px;border:1px solid var(--ax-border);border-radius:3px;color:var(--ax-green);font-weight:600;text-align:right;margin-left:4px;}
+  .gap-row .gap-num:focus{outline:none;border-color:var(--ax-green);}
+  .gap-row .gap-unit{font-size:11px;color:#9ca3af;margin-left:2px;font-weight:400;}
+  .gap-row input[type=range]{width:100%;accent-color:var(--ax-green);cursor:pointer;}
   .hint{font-size:11px;color:#9ca3af;margin-top:4px;line-height:1.5;}
   /* Small "?" badge that reveals its explanation as a hover tooltip, so long
      descriptions no longer take up permanent space in the property panel. */
@@ -860,7 +869,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260729.001)</span>
+      <span id="verText">by June (ver.20260731.001)</span>
     </div>
   </div>
 
@@ -1218,6 +1227,286 @@ function selectSingle(id){ selIds=new Set(id==null?[]:[id]); sel=id; }
 function toggleSel(id){ if(selIds.has(id)){ selIds.delete(id); } else { selIds.add(id); } sel = selIds.size? [...selIds][selIds.size-1] : null; }
 function isSel(id){ return selIds.has(id); }
 
+// ---- Multi-select alignment (수평/수직/스마트 정렬) ----
+// 정렬 대상: 선택된 것 중 기준과 같은 parent를 공유하는 컴포넌트들만 (좌표계가 동일해야 안전)
+// 기준(anchor)은 항상 선택된 것 중 좌측 상단(x+y 최소)에 위치한 컴포넌트로 고정.
+function alignTargets(){
+  const items=comps.filter(c=>selIds.has(c.id));
+  if(items.length<2) return null;
+  const anchor=items.slice().sort((a,b)=>((a.x||0)+(a.y||0))-((b.x||0)+(b.y||0))||(a.x||0)-(b.x||0)||(a.y||0)-(b.y||0))[0];
+  const pkey=anchor.parent||null;
+  const targets=items.filter(c=>(c.parent||null)===pkey);
+  return {anchor, targets};
+}
+const ALIGN_GAP=12; // 같은 그룹 내 컴포넌트 최소 간격(px)
+// 교차축에서 서로 겹치는 컴포넌트끼리 하나의 그룹(행/열)으로 묶는다.
+//  axis='x'(수평정렬): 교차축=Y. Y구간이 겹치는 것끼리 같은 "행".
+//  axis='y'(수직정렬): 교차축=X. X구간이 겹치는 것끼리 같은 "열".
+//  겹침은 연결(transitive)로 확장한다: A-B 겹치고 B-C 겹치면 A,B,C 한 그룹.
+function groupByCrossOverlap(axis, targets){
+  const CS = axis==='x' ? 'y':'x';   // 교차축 시작좌표
+  const CD = axis==='x' ? 'h':'w';   // 교차축 길이
+  // 같은 행/열 판정: 교차축 구간이 겹치거나, 두 컴포넌트의 교차축 중심이 충분히 가까우면 한 그룹.
+  // (팻모드처럼 컴포넌트 높이가 얇으면 완전 겹침이 안 나므로 중심 근접도 함께 본다)
+  const items=targets.map(c=>({
+    c,
+    s:(c[CS]||0),
+    e:(c[CS]||0)+(c[CD]||0),
+    center:(c[CS]||0)+(c[CD]||0)/2,
+    size:(c[CD]||0)
+  }));
+  items.sort((a,b)=>a.center-b.center);
+  const groups=[]; let cur=[items[0]];
+  let curEnd=items[0].e;                 // 그룹의 교차축 최대 끝
+  let curCenter=items[0].center;         // 그룹의 대표 중심(마지막 요소 기준)
+  let curSize=items[0].size;
+  for(let i=1;i<items.length;i++){
+    const it=items[i];
+    const overlap = it.s < curEnd;                         // 구간이 실제로 겹침
+    // 중심 근접: 두 컴포넌트 중 작은 쪽 크기의 60% 이내면 같은 줄로 간주(얇은 컴포넌트 대응)
+    const tol = Math.max(8, Math.min(curSize, it.size) * 0.6);
+    const nearCenter = Math.abs(it.center - curCenter) <= tol;
+    if(overlap || nearCenter){
+      cur.push(it);
+      curEnd=Math.max(curEnd, it.e);
+      curCenter=it.center; curSize=it.size;                // 체인 방식: 직전 요소와 비교
+    }else{
+      groups.push(cur); cur=[it];
+      curEnd=it.e; curCenter=it.center; curSize=it.size;
+    }
+  }
+  groups.push(cur);
+  return groups.map(g=>g.map(o=>o.c));
+}
+// 실제로 가까운 위치에 있는 것끼리 하나의 "밴드"(열 또는 행)로 묶어 [regionStart, regionEnd] 구간에 분배한다.
+//  groups: 이미 근접도로 클러스터링된 실제 열(또는 행) 목록 (행 개수가 서로 다른 불규칙한 그리드에서도
+//   "몇 번째 칸인가"가 아니라 "실제 좌표가 어디인가"로 묶이므로 열/행이 잘못 병합되지 않는다)
+//  regionStart~regionEnd 구간을 벗어나지 않는 선에서 남는 여유는 밴드 사이에 균등 배분한다.
+//  반환: Map(id -> 새 정렬축 시작좌표)
+function distributeBands(axis, groups, regionStart, regionEnd){
+  const S = axis==='x' ? 'x':'y';
+  const D = axis==='x' ? 'w':'h';
+  const pos=new Map();
+  // 그룹을 자신의 평균 위치 기준 오름차순 정렬(좌→우 / 위→아래)
+  const withAvg=groups.map(g=>({g, avg: g.reduce((s,c)=>s+(c[S]||0),0)/g.length}));
+  withAvg.sort((a,b)=>a.avg-b.avg);
+  const sorted=withAvg.map(o=>o.g);
+  const m=sorted.length;
+  if(m===0) return pos;
+  if(m===1){ sorted[0].forEach(c=>{ pos.set(c.id, regionStart); }); return pos; }
+  // 밴드 크기 = 그 그룹(열/행) 안의 컴포넌트 중 최대 크기(폭/높이)
+  const bandSize=sorted.map(g=>Math.max(...g.map(c=>c[D]||0)));
+  // 밴드 시작좌표 누적 계산(최소 간격 ALIGN_GAP 보장)
+  const bandStart=[regionStart];
+  for(let i=1;i<m;i++) bandStart.push(bandStart[i-1]+bandSize[i-1]+ALIGN_GAP);
+  // 남는 여유 공간이 있으면 밴드 사이 간격에 균등 배분(요청 영역을 최대한 채우도록)
+  const contentEnd=bandStart[m-1]+bandSize[m-1];
+  if(contentEnd<regionEnd){
+    const extraPerGap=(regionEnd-contentEnd)/(m-1);
+    for(let i=1;i<m;i++) bandStart[i]+=extraPerGap*i;
+  }
+  sorted.forEach((g,i)=>{ g.forEach(c=>{ pos.set(c.id, Math.round(bandStart[i])); }); });
+  return pos;
+}
+// 정렬 좌표계의 크기. 최상위=캔버스, 컨테이너 내부=부모 컴포넌트 크기.
+function alignFrameSize(anchor){
+  if(anchor.parent){
+    const p=comps.find(c=>c.id===anchor.parent);
+    if(p) return {w:p.w||canvas.offsetWidth, h:p.h||canvas.offsetHeight};
+  }
+  return {w:canvas.offsetWidth, h:canvas.offsetHeight};
+}
+// 선택되지 않은 형제 컴포넌트 목록(같은 parent 공유, 정렬 영역 침범 방지용)
+function alignSiblingBlockers(anchor){
+  const pkey=anchor.parent||null;
+  return comps.filter(c=>!selIds.has(c.id) && (c.parent||null)===pkey);
+}
+function alignHorizontal(track){
+  const info=alignTargets(); if(!info) return;
+  const {anchor,targets}=info; if(targets.length<2) return;
+  const regionStart=anchor.x||0;      // 기준(좌상단)의 좌측 X
+  // 정렬 영역: 캔버스 전체가 아니라 "선택된 컴포넌트들의 바운딩 박스" 우측 끝까지만 사용
+  let regionEnd=Math.max(...targets.map(c=>(c.x||0)+(c.w||0)));
+  // 선택 안 된 형제 컴포넌트가 선택영역의 Y범위와 겹치고 정렬영역 안쪽에 있으면, 그 앞에서 멈추도록 clamp
+  const selMinY=Math.min(...targets.map(c=>c.y||0));
+  const selMaxY=Math.max(...targets.map(c=>(c.y||0)+(c.h||0)));
+  alignSiblingBlockers(anchor).forEach(o=>{
+    const os=o.y||0, oe=os+(o.h||0), ox=o.x||0;
+    const overlaps = os < selMaxY && oe > selMinY;
+    if(overlaps && ox >= regionStart){ regionEnd=Math.min(regionEnd, ox-ALIGN_GAP); }
+  });
+  if(regionEnd<regionStart) regionEnd=regionStart;
+  if(track!==false) pushHistory();
+  // 실제 "열"(X 위치가 가까운 것끼리)로 클러스터링 → 모든 열이 같은 [기준X, 선택영역 우측끝] 구간을 공유
+  // (행 안에서의 순서(인덱스)로 열을 추정하면, 행마다 컴포넌트 개수/순서가 다른 불규칙한 그리드에서
+  //  서로 다른 열이 잘못 합쳐질 수 있으므로, X 근접도로 실제 열을 먼저 찾는다.)
+  const cols=groupByCrossOverlap('y', targets);
+  const pos=distributeBands('x', cols, regionStart, regionEnd);
+  targets.forEach(c=>{ if(c.id!==anchor.id && pos.has(c.id)) c.x=pos.get(c.id); });
+  render(); scheduleAutosave();
+}
+function alignVertical(track){
+  const info=alignTargets(); if(!info) return;
+  const {anchor,targets}=info; if(targets.length<2) return;
+  const regionStart=anchor.y||0;      // 기준(좌상단)의 상단 Y
+  // 정렬 영역: 캔버스 전체가 아니라 "선택된 컴포넌트들의 바운딩 박스" 하단 끝까지만 사용
+  let regionEnd=Math.max(...targets.map(c=>(c.y||0)+(c.h||0)));
+  // 선택 안 된 형제 컴포넌트가 선택영역의 X범위와 겹치고 정렬영역 안쪽에 있으면, 그 앞에서 멈추도록 clamp
+  const selMinX=Math.min(...targets.map(c=>c.x||0));
+  const selMaxX=Math.max(...targets.map(c=>(c.x||0)+(c.w||0)));
+  alignSiblingBlockers(anchor).forEach(o=>{
+    const os=o.x||0, oe=os+(o.w||0), oy=o.y||0;
+    const overlaps = os < selMaxX && oe > selMinX;
+    if(overlaps && oy >= regionStart){ regionEnd=Math.min(regionEnd, oy-ALIGN_GAP); }
+  });
+  if(regionEnd<regionStart) regionEnd=regionStart;
+  if(track!==false) pushHistory();
+  // 실제 "행"(Y 위치가 가까운 것끼리)로 클러스터링 → 모든 행이 같은 [기준Y, 선택영역 하단끝] 구간을 공유
+  // (열 안에서의 순서(인덱스)로 행을 추정하면, 열마다 컴포넌트 개수/순서가 다른 불규칙한 그리드에서
+  //  서로 다른 행이 잘못 합쳐질 수 있으므로, Y 근접도로 실제 행을 먼저 찾는다.)
+  const rows=groupByCrossOverlap('x', targets);
+  const pos=distributeBands('y', rows, regionStart, regionEnd);
+  targets.forEach(c=>{ if(c.id!==anchor.id && pos.has(c.id)) c.y=pos.get(c.id); });
+  render(); scheduleAutosave();
+}
+function alignSmart(){
+  // 수평 정렬 후 수직 정렬을 차례로 실행 (히스토리 1회만)
+  pushHistory();
+  alignHorizontal(false);
+  alignVertical(false);
+}
+
+// ---- 간격 슬라이더: 멀티 선택 컴포넌트의 간격을 균일하게 크게/작게 조절 ----
+// 기준(좌상단) 고정. 수평 슬라이더=가로 간격(열 사이 간격), 수직 슬라이더=세로 간격(행 사이 간격).
+// 드래그 시작 시 밴드(실제 열/행) 구조를 스냅샷으로 고정하고, 드래그 중에는 pitch만 바꿔 좌표를 계산한다.
+let gapSnap={x:null, y:null};   // axis별 스냅샷
+// axis='x'(가로 간격)면 실제 "열"(X 근접 클러스터)을, axis='y'(세로 간격)면 실제 "행"(Y 근접 클러스터)을 구한다.
+// "몇 번째 칸인가"가 아니라 "실제 좌표가 가까운가"로 묶어야, 칸 크기가 서로 다를 때도 열/행이 흐트러지지 않는다.
+function gapBands(axis, targets){
+  const groups = axis==='x' ? groupByCrossOverlap('y', targets) : groupByCrossOverlap('x', targets);
+  const S = axis==='x' ? 'x' : 'y';
+  const D = axis==='x' ? 'w' : 'h';
+  const withAvg=groups.map(g=>({
+    items:g,
+    avg: g.reduce((s,c)=>s+(c[S]||0),0)/g.length,
+    size: Math.max(...g.map(c=>c[D]||0)),  // 밴드 크기 = 그 열/행 안 최대 폭/높이
+  }));
+  withAvg.sort((a,b)=>a.avg-b.avg);
+  return withAvg;
+}
+// 스냅샷 생성: 실제 열/행 밴드별로 [소속 컴포넌트 id 목록, 밴드 크기]를 저장.
+// 컴포넌트 크기(w/h)는 절대 변경하지 않는다. 위치(간격)만 조절한다.
+function buildGapSnapshot(axis){
+  const info=alignTargets(); if(!info) return null;
+  const {anchor,targets}=info; if(targets.length<2) return null;
+  const S = axis==='x' ? 'x':'y';
+  const anchorStart = anchor[S]||0;   // 기준(좌상단)의 시작 좌표
+  const bands=gapBands(axis, targets);
+  const anchorBandIdx=bands.findIndex(b=>b.items.some(c=>c.id===anchor.id));
+  return {
+    axis, S, anchorStart,
+    anchorBandIdx: anchorBandIdx>=0 ? anchorBandIdx : 0,
+    bands: bands.map(b=>({size:b.size, ids:b.items.map(c=>c.id)})),
+  };
+}
+// 스냅샷 + pitch로 좌표 적용. pitch = 밴드(열/행)의 시작선 사이 간격.
+// 기준이 속한 밴드는 항상 자기 원위치(anchorStart)에 고정되고, 나머지 밴드가 pitch 간격으로 배치된다.
+// 밴드 크기(그 열/행 안의 최대 폭/높이)보다 pitch가 좁아 겹칠 경우에만 최소 간격을 보정한다.
+// 모든 밴드가 동일한 계산을 공유하므로, 특정 칸이 크더라도 다른 열/행이 함께 밀려 격자가 흐트러지지 않는다.
+function applyGapFromSnap(snap, pitch){
+  if(!snap) return;
+  const {S, bands, anchorStart, anchorBandIdx}=snap;
+  const n=bands.length; if(n===0) return;
+  const bandStart=new Array(n);
+  bandStart[anchorBandIdx]=anchorStart;
+  for(let i=anchorBandIdx+1;i<n;i++){
+    const desired=bandStart[i-1]+pitch;
+    const minAllowed=bandStart[i-1]+bands[i-1].size+ALIGN_GAP;
+    bandStart[i]=Math.max(desired, minAllowed);
+  }
+  for(let i=anchorBandIdx-1;i>=0;i--){
+    const desired=bandStart[i+1]-pitch;
+    const maxAllowed=bandStart[i+1]-bands[i].size-ALIGN_GAP;
+    bandStart[i]=Math.min(desired, maxAllowed);
+  }
+  bandStart.forEach((s,i)=>{
+    bands[i].ids.forEach(id=>{ const c=comps.find(x=>x.id===id); if(c) c[S]=Math.round(s); });
+  });
+}
+// 슬라이더 조작 시작(mousedown/touchstart): 히스토리 1회 + 스냅샷 생성.
+function gapSliderStart(axis){
+  pushHistory();
+  gapSnap[axis]=buildGapSnapshot(axis);
+}
+// 슬라이더 입력(oninput): 스냅샷 기준으로 즉시 반영. 스냅샷이 없으면(직접 값변경 등) 새로 생성.
+let gapRaf=null;
+function onGapSlider(axis, value){
+  if(!gapSnap[axis]) gapSnap[axis]=buildGapSnapshot(axis);
+  applyGapFromSnap(gapSnap[axis], +value);
+  // 숫자 입력칸 동기화(슬라이더 DOM은 유지되므로 값만 갱신)
+  const num=document.getElementById(axis==='x'?'gapHInput':'gapVInput');
+  if(num) num.value=value;
+  // 캔버스만 갱신(renderProps 금지 → 슬라이더 DOM 유지). rAF로 프레임당 1회로 병합.
+  if(gapRaf) cancelAnimationFrame(gapRaf);
+  gapRaf=requestAnimationFrame(()=>{ drawCanvas(); gapRaf=null; });
+}
+// 숫자 입력칸에 직접 px 값 입력(키보드): 한 번에 적용.
+function onGapNumber(axis, value){
+  let v=parseInt(value,10); if(isNaN(v)) return;
+  if(v<0) v=0;
+  const range=document.getElementById(axis==='x'?'gapHRange':'gapVRange');
+  if(range){
+    if(v>+range.max) range.max=v;  // 입력값이 슬라이더 최대보다 크면 최대를 늘림
+    range.value=v;
+  }
+  const num=document.getElementById(axis==='x'?'gapHInput':'gapVInput');
+  if(num) num.value=v;
+  pushHistory();
+  gapSnap[axis]=buildGapSnapshot(axis);
+  applyGapFromSnap(gapSnap[axis], v);
+  gapSnap[axis]=null;
+  drawCanvas(); scheduleAutosave();
+}
+// 슬라이더 조작 종료(change/mouseup): 저장 + 스냅샷 해제.
+function gapSliderEnd(axis){
+  gapSnap[axis]=null;
+  if(gapRaf){ cancelAnimationFrame(gapRaf); gapRaf=null; }
+  drawCanvas();
+  scheduleAutosave();
+}
+// 현재 선택 기준으로 슬라이더 최대값 계산: 마지막 밴드가 캔버스를 살짝만 넘도록.
+function gapSliderMax(axis){
+  const info=alignTargets(); if(!info) return 200;
+  const {anchor,targets}=info; if(targets.length<2) return 200;
+  const S = axis==='x' ? 'x':'y';
+  const {w:frameW, h:frameH}=alignFrameSize(anchor);
+  const frameEnd = axis==='x' ? frameW : frameH;
+  const bands=gapBands(axis, targets);
+  if(bands.length<2) return 200;
+  const anchorStart=anchor[S]||0;
+  const lastSize=bands[bands.length-1].size;
+  const m=bands.length;
+  // 마지막 밴드가 frameEnd에 닿는 pitch: anchorStart + pitch*(m-1) + lastSize = frameEnd
+  const pitchFit=(frameEnd - anchorStart - lastSize)/(m-1);
+  // 캔버스를 살짝 넘어가도 되도록 15% 여유. 하한 60 보장.
+  return Math.max(60, Math.round(pitchFit*1.15));
+}
+// 현재 선택된 컴포넌트들의 실제 "밴드(열/행) 시작선 간 거리(피치)" 대표값. 슬라이더 기본값으로 사용.
+function currentGap(axis){
+  const info=alignTargets(); if(!info) return ALIGN_GAP;
+  const {targets}=info; if(targets.length<2) return ALIGN_GAP;
+  const bands=gapBands(axis, targets);
+  if(bands.length<2) return ALIGN_GAP;
+  const S = axis==='x' ? 'x':'y';
+  const starts=bands.map(b=>Math.min(...b.items.map(c=>c[S]||0)));
+  const pitches=[];
+  for(let i=1;i<starts.length;i++) pitches.push(starts[i]-starts[i-1]);
+  pitches.sort((a,b)=>a-b);
+  const mid=Math.round(pitches[Math.floor(pitches.length/2)]);
+  return Math.max(0, mid);
+}
+
+
 // ---- Copy / Paste ----
 let clipboard=[]; let pasteSeq=0;
 function copySelection(){
@@ -1438,7 +1727,7 @@ function defaultSizeFor(type){
   }
   return {w:d.w,h:d.h};
 }
-function hideDropGhost(){ dropGhostType=null; const g=dropGhostEl(); if(g)g.classList.remove('on'); }
+function hideDropGhost(){ dropGhostType=null; lastGhostSnap=null; const g=dropGhostEl(); if(g)g.classList.remove('on'); try{ clearGuides(); }catch(_){} }
 // Position+size the ghost so the component is centered under the cursor (same
 // feel as dragging an existing component), snapping like the real placement will.
 // The ghost is a sibling of #canvas (which is CSS-scaled by `zoom`), so we scale
@@ -1449,13 +1738,29 @@ function moveDropGhost(clientX,clientY){
   const r=canvas.getBoundingClientRect();
   const d=defaultSizeFor(dropGhostType);
   const cxCanvas=(clientX-r.left)/zoom, cyCanvas=(clientY-r.top)/zoom;
-  const x=Math.max(0,snap(cxCanvas-d.w/2)), y=Math.max(0,snap(cyCanvas-d.h/2));
+  let x=Math.max(0,snap(cxCanvas-d.w/2)), y=Math.max(0,snap(cyCanvas-d.h/2));
+  // 스마트 가이드가 켜져 있으면, 기존 컴포넌트/캔버스 기준선에 스냅하고 가이드라인 표시.
+  // 단, 컨테이너(탭/스플릿/패널) 위에 놓는 경우는 부모 상대좌표라 캔버스 절대 가이드가 맞지 않으므로 제외.
+  const smartOn=(()=>{ const e=document.getElementById('smartChk'); return e?e.checked:false; })();
+  const overContainer = hitTestTabContainer(cxCanvas,cyCanvas) || hitTestSplitContainer(cxCanvas,cyCanvas) || hitTestPanelContainer(cxCanvas,cyCanvas);
+  if(smartOn && !overContainer){
+    try{
+      const gRes=computeGuides({id:null, w:d.w, h:d.h}, x, y);
+      x=Math.max(0,gRes.x); y=Math.max(0,gRes.y);
+      drawGuides(gRes.lines);
+      lastGhostSnap={x, y}; // drop 시 이 스냅 위치를 그대로 사용
+    }catch(_){ lastGhostSnap=null; clearGuides(); }
+  }else{
+    lastGhostSnap=null;
+    try{ clearGuides(); }catch(_){}
+  }
   g.style.left=(x*zoom)+'px';
   g.style.top=(y*zoom)+'px';
   g.style.width=(d.w*zoom)+'px';
   g.style.height=(d.h*zoom)+'px';
   g.classList.add('on');
 }
+let lastGhostSnap=null; // 마지막 ghost 스냅 좌표(가이드 적용 결과)
 document.querySelectorAll('.tool').forEach(t=>{
   t.addEventListener('dragstart',e=>{
     e.dataTransfer.setData('type',t.dataset.type);
@@ -1494,7 +1799,7 @@ function updateArmedUI(){
 // at canvas-local coordinates (x,y). Shared by both drag-and-drop and click-to-place.
 // When `centered` is true (drag-and-drop), the component is centered on (x,y) so it lands
 // exactly where the drag ghost was shown; hit-testing still uses the raw cursor point.
-function placeNewComponent(type,x,y,centered){
+function placeNewComponent(type,x,y,centered,snapPos){
   pushHistory();
   const d=JSON.parse(JSON.stringify(defaults[type]));
   const fatMode=document.body.classList.contains('skin-classic');
@@ -1541,7 +1846,10 @@ function placeNewComponent(type,x,y,centered){
     const nx=snap(px-panelTarget.cx), ny=snap(py-panelTarget.cy);
     comps.push({id:uid++,type,x:Math.max(0,nx),y:Math.max(0,ny),parent:panelTarget.c.id,...d});
   } else {
-    comps.push({id:uid++,type,x:Math.max(0,snap(px)),y:Math.max(0,snap(py)),...d});
+    // 스마트 가이드로 스냅된 좌표가 있으면 그대로 사용, 없으면 격자 snap.
+    const fx = snapPos ? Math.max(0, Math.round(snapPos.x)) : Math.max(0,snap(px));
+    const fy = snapPos ? Math.max(0, Math.round(snapPos.y)) : Math.max(0,snap(py));
+    comps.push({id:uid++,type,x:fx,y:fy,...d});
   }
   selectSingle(comps[comps.length-1].id);
   render();
@@ -1560,11 +1868,17 @@ canvas.addEventListener('dragleave',e=>{
 });
 canvas.addEventListener('drop',e=>{
   e.preventDefault();
+  const snapPos=lastGhostSnap; // hideDropGhost가 초기화하기 전에 보관
   hideDropGhost();
   const type=e.dataTransfer.getData('type');
   if(!type) return;
   const r=canvas.getBoundingClientRect();
-  placeNewComponent(type, (e.clientX-r.left)/zoom, (e.clientY-r.top)/zoom, true); // centered on cursor
+  if(snapPos){
+    // 스마트 가이드로 스냅된 좌상단 좌표에 그대로 배치(컨테이너 히트테스트는 커서 위치 기준)
+    placeNewComponent(type, (e.clientX-r.left)/zoom, (e.clientY-r.top)/zoom, true, snapPos);
+  }else{
+    placeNewComponent(type, (e.clientX-r.left)/zoom, (e.clientY-r.top)/zoom, true); // centered on cursor
+  }
 });
 // Intercepts mousedown in the CAPTURE phase (before it reaches its target) whenever a tool is armed,
 // so a click anywhere inside the canvas - including on a Tab header, inside a Tab's content area, or
@@ -2564,6 +2878,10 @@ document.addEventListener('keydown',e=>{
 });
 
 // ---- Properties panel ----
+// "입력 컴포넌트" 그룹(툴박스의 입력 컴포넌트 섹션과 동일한 타입 집합).
+// 정렬/간격 기능은 이 타입들로만 구성된 다중 선택에서만 노출한다.
+const INPUT_COMPONENT_TYPES=['label','input','combo','date','daterange','check','radio','popup'];
+function isInputComponent(c){ return INPUT_COMPONENT_TYPES.includes(c.type); }
 // Builds the small "?" badge whose tooltip replaces the old always-visible hint paragraphs.
 function qh(text){
   return `<span class="qhelp" tabindex="0">?<span class="qtip">${text}</span></span>`;
@@ -2571,8 +2889,57 @@ function qh(text){
 function renderProps(){
   const p=document.getElementById('props');
   if(selIds.size>1){
+    const selComps=comps.filter(c=>selIds.has(c.id));
+    const allInput=selComps.every(isInputComponent);
+    let alignSection='';
+    if(allInput){
+      // 정렬 대상(같은 parent 공유) 확정. 기준은 항상 좌측 상단 컴포넌트.
+      const info=alignTargets();
+      const crossParent=info && info.targets.length<selComps.length;
+      // 슬라이더 기본값=현재 실제 간격, 최대값=캔버스 기준. 현재값이 max보다 크면 max를 늘려 표시.
+      const gapMaxH0=gapSliderMax('x'), gapMaxV0=gapSliderMax('y');
+      const curGapH=currentGap('x'), curGapV=currentGap('y');
+      const gapMaxH=Math.max(gapMaxH0, curGapH);
+      const gapMaxV=Math.max(gapMaxV0, curGapV);
+      alignSection=`
+      <div class="hint" style="margin:2px 0 8px;">정렬 기준은 항상 선택된 컴포넌트 중 <b>좌측 상단</b>에 위치한 컴포넌트입니다.</div>
+      <div class="lp-grid" style="grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+        <button class="lp-btn" onclick="alignHorizontal()">↔ 수평 정렬</button>
+        <button class="lp-btn" onclick="alignVertical()">↕ 수직 정렬</button>
+      </div>
+      <button class="lp-btn" style="width:100%;margin-bottom:12px;" onclick="alignSmart()">✦ 스마트 정렬 (수평 → 수직)</button>
+
+      <div class="gap-adjust">
+        <div class="gap-row">
+          <label>↔ 가로 위치 간격
+            <input type="number" id="gapHInput" class="gap-num" value="${curGapH}" min="0" max="${gapMaxH}" step="1"
+              onchange="onGapNumber('x', this.value)" onkeydown="if(event.key==='Enter'){onGapNumber('x',this.value);this.blur();}"><span class="gap-unit">px</span>
+          </label>
+          <input type="range" id="gapHRange" min="0" max="${gapMaxH}" value="${curGapH}" step="1"
+            onmousedown="gapSliderStart('x')" ontouchstart="gapSliderStart('x')"
+            oninput="onGapSlider('x', this.value)"
+            onchange="gapSliderEnd('x')" onmouseup="gapSliderEnd('x')" ontouchend="gapSliderEnd('x')">
+        </div>
+        <div class="gap-row">
+          <label>↕ 세로 위치 간격
+            <input type="number" id="gapVInput" class="gap-num" value="${curGapV}" min="0" max="${gapMaxV}" step="1"
+              onchange="onGapNumber('y', this.value)" onkeydown="if(event.key==='Enter'){onGapNumber('y',this.value);this.blur();}"><span class="gap-unit">px</span>
+          </label>
+          <input type="range" id="gapVRange" min="0" max="${gapMaxV}" value="${curGapV}" step="1"
+            onmousedown="gapSliderStart('y')" ontouchstart="gapSliderStart('y')"
+            oninput="onGapSlider('y', this.value)"
+            onchange="gapSliderEnd('y')" onmouseup="gapSliderEnd('y')" ontouchend="gapSliderEnd('y')">
+        </div>
+        <div class="hint" style="margin-top:4px;">기준(좌측 상단) 컴포넌트를 고정한 채, 각 컴포넌트의 <b>좌측(시작 위치)</b>이 균일한 간격으로 줄을 서도록 조절됩니다. 컴포넌트 크기는 바뀌지 않습니다.</div>
+      </div>
+      ${crossParent?`<div class="hint" style="margin-bottom:10px;color:#c47a00;">※ 서로 다른 컨테이너에 걸친 컴포넌트는 정렬 대상에서 제외됩니다. 같은 영역의 ${info.targets.length}개만 정렬됩니다.</div>`:''}
+      `;
+    }else{
+      alignSection=`<div class="hint" style="margin:2px 0 12px;color:#8a94a0;">정렬·간격 조절 기능은 <b>입력 컴포넌트</b>(라벨/텍스트박스/콤보박스/날짜/기간/체크박스/라디오/팝업)만 선택했을 때 사용할 수 있습니다.</div>`;
+    }
     p.innerHTML=`<h3>${selIds.size}개 선택됨</h3>
-      <div class="hint" style="margin-bottom:10px;">여러 컴포넌트가 선택되었습니다. 드래그로 함께 이동하거나 Del 키로 모두 삭제할 수 있습니다.<br><br>Ctrl(⌘)+클릭으로 선택에서 빼거나 추가할 수 있습니다.<br><br>Ctrl(⌘)+드래그로 복사하며 이동하거나, Ctrl(⌘)+C / Ctrl(⌘)+V로 복사-붙여넣기할 수 있습니다.</div>
+      <div class="hint" style="margin-bottom:10px;">여러 컴포넌트가 선택되었습니다. 드래그로 함께 이동하거나 Del 키로 모두 삭제할 수 있습니다.<br>Ctrl(⌘)+클릭으로 선택에서 빼거나 추가, Ctrl(⌘)+드래그로 복사 이동할 수 있습니다.</div>
+      ${alignSection}
       <button class="del-btn" onclick="delSel()">선택한 ${selIds.size}개 삭제 (Del)</button>`;
     return;
   }
@@ -4493,6 +4860,11 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260731.001', date:'2026년 7월 31일', items:[
+    {t:'멀티 선택 정렬 영역 제한', d:'여러 컴포넌트를 선택해 <b>수평·수직 정렬</b>을 실행하면, 이제 정렬 범위가 캔버스 전체가 아니라 <b>선택한 컴포넌트들이 차지하던 영역까지만</b> 적용됩니다. 선택하지 않은 다른 컴포넌트가 같은 줄·같은 칸에 있으면 그 앞에서 멈춰서 침범하지 않습니다.'},
+    {t:'정렬·간격 조절 격자 정합성 수정', d:'행·열에 크기가 다른 컴포넌트가 섞여 있을 때, <b>수평/수직 정렬</b>과 <b>가로·세로 간격 슬라이더</b>를 쓰면 특정 칸만 밀려서 표(격자)가 흐트러지던 문제를 고쳤습니다. 이제 실제 좌표가 가까운 컴포넌트끼리 같은 열·행으로 인식해, 칸 크기가 제각각이어도 열은 열끼리·행은 행끼리 항상 나란히 맞춰집니다.'},
+    {t:'정렬 기능, 입력 컴포넌트만 지원', d:'멀티 선택 시 <b>수평·수직·스마트 정렬</b>과 <b>간격 슬라이더</b>는 선택한 컴포넌트가 모두 <b>입력 컴포넌트</b>(라벨·텍스트박스·콤보박스·날짜·기간·체크박스·라디오·팝업)일 때만 표시됩니다. 그리드·차트·트리·버튼·패널 등 다른 종류가 하나라도 섞여 선택되면 정렬 관련 UI는 숨겨지고 안내 문구가 대신 표시됩니다.'}
+  ]},
   {ver:'20260729.001', date:'2026년 7월 29일', items:[
     {t:'스플릿 컨테이너 중첩 시 Fill 버그 수정', d:'스플릿 컨테이너 안에 또 다른 스플릿 컨테이너를 넣어 화면을 4분할 이상으로 나눈 경우, <b>저장·미리보기 화면에서 바깥쪽 구분선을 옮기면</b> 안쪽 스플릿의 그리드가 따라오지 않던 문제를 고쳤습니다. 이제 몇 겹으로 중첩하든 구분선을 옮기면 <b>안쪽 Fill 컴포넌트까지 전부 크기가 같이 조절</b>됩니다.'},
     {t:'모드 전환 아이콘 추가', d:'상단 타이틀과 사용자 가이드 사이에 <b>모드 전환 아이콘</b>이 새로 생겼습니다. 타이틀을 누르는 것과 동일하게, 누르면 Thin Mode ↔ Fat Mode 선택 팝업이 뜹니다.'},
@@ -4907,7 +5279,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260728.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260731.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
