@@ -869,7 +869,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260731.001)</span>
+      <span id="verText">by June (ver.20260805.001)</span>
     </div>
   </div>
 
@@ -954,7 +954,7 @@
             <div class="cv-step-num">2</div>
             <div class="cv-step-body">
               <div class="cv-step-title">📎 캡처 이미지 붙이고 전송</div>
-              <div class="cv-step-desc">열린 Claude 화면에 만들고 싶은 <b>화면 캡처 이미지를 붙여넣거나 첨부</b>한 뒤 전송하세요. 잠시 뒤 Claude가 코드로 답해 줍니다.</div>
+              <div class="cv-step-desc">열린 Claude 화면에 만들고 싶은 <b>화면 캡처 이미지를 붙여넣거나 첨부</b>한 뒤 전송하세요. 잠시 뒤 Claude가 코드로 답해 줍니다.<br><b>💡 그리드 컬럼이 많아 가로 스크롤이 있으면</b>, 한 장에 다 안 담기니 <b>컬럼을 최소 1개씩 겹쳐가며 여러 장</b>으로 나눠 캡처해 순서대로 첨부하세요. Claude가 겹친 컬럼을 알아서 이어 붙여 <b>하나의 그리드</b>로 만들어 줍니다.</div>
             </div>
           </div>
 
@@ -964,7 +964,7 @@
             <div class="cv-step-body">
               <div class="cv-step-title">📋 Claude의 답을 여기에 붙여넣기</div>
               <div class="cv-step-desc">Claude가 준 답(<b>[</b> 로 시작해서 <b>]</b> 로 끝나는 부분)을 <b>전체 복사</b>해서 아래 칸에 붙여넣으세요.</div>
-              <textarea id="jsonIn" class="cv-paste" rows="6" placeholder="여기에 Claude의 답을 붙여넣으면 화면이 자동으로 만들어집니다.&#10;( [ 로 시작해 ] 로 끝나는 부분 전체를 붙여넣으세요 )"></textarea>
+              <textarea id="jsonIn" class="cv-paste" rows="3" placeholder="여기에 Claude의 답을 붙여넣으면 화면이 자동으로 만들어집니다.&#10;( [ 로 시작해 ] 로 끝나는 부분 전체를 붙여넣으세요 )"></textarea>
               <div class="cv-optrow">
                 <label>
                   <input type="checkbox" id="jsonClearChk" checked> 지금 캔버스에 있는 내용을 지우고 새로 그리기
@@ -4227,6 +4227,13 @@ radio는 "options":"전체,확정,미확정". required는 별표(*)면 true. 조
 {"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","gtitle":"요청내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
 그 외 버튼은 "userBtns":[{"label":"품목참조"}]. 필수 컬럼은 "*품목코드". 하단 신규·저장·삭제만 button.
 
+[grid 다중캡처 병합]
+동일 화면의 그리드가 가로 스크롤로 인해 여러 장의 이미지로 나뉘어 첨부된 경우, 이미지 순서대로 컬럼을 좌→우로 이어 붙여 grid 하나로만 출력한다.
+인접한 두 이미지에 동일한 컬럼명이 겹쳐 보이면 뒤 이미지 쪽 겹친 컬럼은 버리고 한 번만 포함한다.
+text(컬럼헤더)는 병합된 전체 순서대로 쉼표로 나열하고, 화면당 보이는 컬럼 수가 아니라 병합 후 전체 컬럼 수 기준으로 작성한다.
+gtitle·showToolbar·stdAdd/stdCancel/stdCopy/stdDelete·userBtns 등 그리드 속성은 여러 이미지에서 반복 확인되더라도 최초 1회만 반영해 하나의 grid 객체로 만든다.
+title·searchbar 등 그리드 밖 다른 컴포넌트도 이미지마다 중복 생성하지 말고 전체 화면 기준 1회만 출력한다.
+
 [레이아웃 정규화 — 모든 화면]
 원본 픽셀을 베끼지 말고 폭 1060 기준 재배치:
 1. 세로 순서 title → searchbar → 섹션별 입력 → grid → 하단 버튼.
@@ -4305,6 +4312,13 @@ h=라벨+입력칸 합(left/right≈23, top/bottom≈52), w 보통 234(popup 420
 
 [grid]
 컬럼 구성이 핵심(툴바·제목은 안 보이니 생략 가능): {"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","rows":8}. 필수 컬럼은 "*컬럼명". 하단 신규·저장 등은 button으로 별도 배치.
+
+[grid 다중캡처 병합]
+동일 화면의 그리드가 가로 스크롤로 인해 여러 장의 이미지로 나뉘어 첨부된 경우, 이미지 순서대로 컬럼을 좌→우로 이어 붙여 grid 하나로만 출력한다.
+인접한 두 이미지에 동일한 컬럼명이 겹쳐 보이면 뒤 이미지 쪽 겹친 컬럼은 버리고 한 번만 포함한다.
+text(컬럼헤더)는 병합된 전체 순서대로 쉼표로 나열하고, 화면당 보이는 컬럼 수가 아니라 병합 후 전체 컬럼 수 기준으로 작성한다.
+rows 등 그리드 속성은 여러 이미지에서 반복 확인되더라도 최초 1회만 반영해 하나의 grid 객체로 만든다.
+title·panel·tabs 등 그리드 밖 다른 컴포넌트도 이미지마다 중복 생성하지 말고 전체 화면 기준 1회만 출력한다.
 
 [레이아웃]
 폭 1060 기준 재배치(원본 픽셀 그대로 베끼지 않음):
@@ -4860,6 +4874,11 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260805.001', date:'2026년 8월 5일', items:[
+    {t:'그리드 여러 장 캡처 자동 병합', d:'이미지 변환 시 <b>컬럼이 많아 가로 스크롤이 생기는 그리드</b>를 <b>여러 장으로 나눠 캡처</b>해 첨부하면, 이제 <b>하나의 그리드로 자동으로 이어 붙여</b> 줍니다. 캡처할 때 <b>컬럼을 최소 1개씩 겹쳐서</b> 찍으면, 겹친 컬럼은 알아서 한 번만 남기고 순서대로 병합합니다. <b>Thin·Fat 두 모드</b> 모두 지원합니다.'},
+    {t:'이미지 변환 창 안내 보강', d:'변환 2단계 안내에 <b>컬럼이 많은 그리드를 겹쳐가며 나눠 찍는 방법</b>을 설명하는 안내를 추가했습니다.'},
+    {t:'이미지 변환 창 스크롤 제거', d:'「Claude의 답 붙여넣기」 칸의 기본 높이를 줄여, <b>Claude 열기·질문 복사</b>를 눌러도 이미지 변환 창에 <b>불필요한 스크롤이 생기지 않도록</b> 했습니다. 붙여넣기 칸은 필요할 때 아래 모서리를 끌어 늘릴 수 있습니다.'}
+  ]},
   {ver:'20260731.001', date:'2026년 7월 31일', items:[
     {t:'멀티 선택 정렬 영역 제한', d:'여러 컴포넌트를 선택해 <b>수평·수직 정렬</b>을 실행하면, 이제 정렬 범위가 캔버스 전체가 아니라 <b>선택한 컴포넌트들이 차지하던 영역까지만</b> 적용됩니다. 선택하지 않은 다른 컴포넌트가 같은 줄·같은 칸에 있으면 그 앞에서 멈춰서 침범하지 않습니다.'},
     {t:'정렬·간격 조절 격자 정합성 수정', d:'행·열에 크기가 다른 컴포넌트가 섞여 있을 때, <b>수평/수직 정렬</b>과 <b>가로·세로 간격 슬라이더</b>를 쓰면 특정 칸만 밀려서 표(격자)가 흐트러지던 문제를 고쳤습니다. 이제 실제 좌표가 가까운 컴포넌트끼리 같은 열·행으로 인식해, 칸 크기가 제각각이어도 열은 열끼리·행은 행끼리 항상 나란히 맞춰집니다.'},
@@ -5279,7 +5298,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260731.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260805.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
