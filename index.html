@@ -337,6 +337,8 @@
   .ax-grid .gr .gcell-check.interactive{cursor:pointer;}
   .ax-grid .gr .gcell-check.interactive .box.on{background:var(--ax-green);border-color:var(--ax-green);position:relative;}
   .ax-grid .gr .gcell-check.interactive .box.on::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;line-height:1;}
+  .ax-grid .gr .gcell-file{width:100%;height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}
+  .ax-grid .gr .gcell-file-ic{width:18px;height:18px;flex:none;color:#9aa1a9;}
   .ax-title{width:100%;height:100%;display:flex;align-items:center;font-size:18px;font-weight:800;color:var(--ax-navy);gap:8px;}
   body.skin-classic .ax-title{color:#c1610a;}
   /* label + field set */
@@ -869,7 +871,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260805.001)</span>
+      <span id="verText">by June (ver.20260806.001)</span>
     </div>
   </div>
 
@@ -1118,7 +1120,7 @@
           <p><b>Q. 조회조건 항목을 늘리거나 회색으로 만들고 싶어요.</b><br>A. 조회조건 패널을 선택하면 속성창에서 <b>필드를 추가·삭제</b>할 수 있습니다. 각 줄의 <b>🔒</b>를 켜면 읽기전용(회색)이 됩니다.</p>
           <p><b>Q. 조직도 같은 계층 목록은 어떻게 만드나요?</b><br>A. 도구상자 「데이터」의 <b>트리</b>를 놓고, 속성창에서 항목을 줄바꿈으로 적으세요. <b>앞에 공백 2칸</b>을 넣을 때마다 한 단계 하위가 됩니다.</p>
           <p><b>Q. 저장할 폴더를 고르고 싶어요.</b><br>A. Chrome·Edge에서 <b>주소가 http로 시작</b>하면 저장 위치를 물어봅니다. 파일을 더블클릭해서 연 경우엔 다운로드 폴더로 바로 저장됩니다.</p>
-          <p><b>Q. 그리드 컬럼을 콤보박스나 날짜로 만들고 싶어요.</b><br>A. 그리드를 선택하면 속성창의 <b>「컬럼」</b> 목록에서 각 컬럼을 텍스트박스·콤보박스·날짜·체크박스 중 하나로 바꿀 수 있습니다. ⠿ 핸들로 드래그하면 순서도 바뀝니다.</p>
+          <p><b>Q. 그리드 컬럼을 콤보박스나 날짜로 만들고 싶어요.</b><br>A. 그리드를 선택하면 속성창의 <b>「컬럼」</b> 목록에서 각 컬럼을 텍스트박스·콤보박스·날짜·체크박스·첨부파일 중 하나로 바꿀 수 있습니다. ⠿ 핸들로 드래그하면 순서도 바뀝니다.</p>
           <p><b>Q. Fat Mode는 뭔가요?</b><br>A. 상단 왼쪽 <b>타이틀</b>을 누르면 뜨는 팝업에서 <b>Thin Mode</b>와 <b>Fat Mode</b> 중 고를 수 있습니다. Fat Mode에서는 라벨이 왼쪽에 붙고, 조회조건 대신 패널+개별 입력을 쓰며, 코드+명칭 조회 항목은 도구상자의 <b>팝업</b> 컴포넌트로 만들 수 있습니다. 그리드 상단 툴바와 필수(*) 표시는 화면에 나타나지 않습니다. 모드를 바꾸면 캔버스가 초기화되니 먼저 저장해두세요.</p>
           <p><b>Q. 패널 안에 컴포넌트를 넣었는데 같이 안 움직여요.</b><br>A. 컴포넌트를 <b>패널 영역 안으로 드래그</b>해서 놓아야 자식으로 연결됩니다. 패널 밖에 있는 컴포넌트는 그냥 위에 겹쳐 보일 뿐, 함께 움직이지 않습니다.</p>
         </div>
@@ -2197,6 +2199,8 @@ function gridCellCtrl(ctype,opts,exp){
     case 'check':
       if(exp) return `<div class="gcell-check interactive" onclick="toggleCheckExport(this)"><span class="box"></span></div>`;
       return `<div class="gcell-check"><span class="box"></span></div>`;
+    case 'file':
+      return `<div class="gcell-file" title="첨부파일"><svg class="gcell-file-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg></div>`;
     default:
       if(exp) return `<input type="text" class="gcell-input">`;
       return '&nbsp;';
@@ -3053,7 +3057,7 @@ function renderProps(){
     const gcols=(c.text||'').split(',').map(s=>s.trim());
     const groupCollapsed=gcolGroupCollapsed.has(String(c.id));
     html+=`<div class="grp"><div class="grp-h gcol-grp-h">
-      <span>컬럼 (${gcols.length})${qh('조회조건 필드처럼 드래그로 순서를 바꾸거나, ×로 삭제할 수 있습니다.<br><br>유형을 텍스트박스·콤보박스·날짜·체크박스 중 하나로 지정하면 내보내기 결과물에서 해당 컴포넌트처럼 동작합니다 (콤보는 클릭 시 목록 펼침, 체크박스는 클릭 시 체크).')}</span>
+      <span>컬럼 (${gcols.length})${qh('조회조건 필드처럼 드래그로 순서를 바꾸거나, ×로 삭제할 수 있습니다.<br><br>유형을 텍스트박스·콤보박스·날짜·체크박스·첨부파일 중 하나로 지정하면 내보내기 결과물에서 해당 컴포넌트처럼 동작합니다 (콤보는 클릭 시 목록 펼침, 체크박스는 클릭 시 체크, 첨부파일은 업로드 아이콘 표시).')}</span>
       <button class="gcol-grp-toggle" title="컬럼 목록 펼치기/접기" onclick="toggleGcolGroup('${c.id}')">${groupCollapsed?'펼치기 ▸':'접기 ▾'}</button>
     </div>`;
     if(!groupCollapsed){
@@ -3071,6 +3075,7 @@ function renderProps(){
               <option value="combo"${ctype==='combo'?' selected':''}>콤보박스</option>
               <option value="date"${ctype==='date'?' selected':''}>날짜</option>
               <option value="check"${ctype==='check'?' selected':''}>체크박스</option>
+              <option value="file"${ctype==='file'?' selected':''}>첨부파일</option>
             </select>
             <button class="ubtn-del" title="삭제" onclick="delGridCol(${gi})">×</button>
           </div>`;
@@ -4874,6 +4879,9 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260806.001', date:'2026년 8월 6일', items:[
+    {t:'그리드 컬럼 유형에 첨부파일 추가', d:'그리드를 선택하면 속성창의 <b>「컬럼」</b> 목록에서 각 컬럼 유형을 텍스트박스·콤보박스·날짜·체크박스 외에 <b>첨부파일</b>로도 지정할 수 있습니다. 지정한 컬럼의 각 행에는 <b>회색 구름 모양의 업로드 아이콘</b>이 표시되며, 클릭 동작 없는 <b>읽기전용</b> 표시로 동작합니다.'}
+  ]},
   {ver:'20260805.001', date:'2026년 8월 5일', items:[
     {t:'그리드 여러 장 캡처 자동 병합', d:'이미지 변환 시 <b>컬럼이 많아 가로 스크롤이 생기는 그리드</b>를 <b>여러 장으로 나눠 캡처</b>해 첨부하면, 이제 <b>하나의 그리드로 자동으로 이어 붙여</b> 줍니다. 캡처할 때 <b>컬럼을 최소 1개씩 겹쳐서</b> 찍으면, 겹친 컬럼은 알아서 한 번만 남기고 순서대로 병합합니다. <b>Thin·Fat 두 모드</b> 모두 지원합니다.'},
     {t:'이미지 변환 창 안내 보강', d:'변환 2단계 안내에 <b>컬럼이 많은 그리드를 겹쳐가며 나눠 찍는 방법</b>을 설명하는 안내를 추가했습니다.'},
@@ -5298,7 +5306,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260805.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260806.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
