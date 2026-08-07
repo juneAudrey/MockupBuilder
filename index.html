@@ -871,7 +871,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260806.002)</span>
+      <span id="verText">by June (ver.20260807.001)</span>
     </div>
   </div>
 
@@ -2330,7 +2330,41 @@ function innerRaw(c,mode){
       // even split with no floor: once "좌우 스크롤 사용" is off, columns always divide evenly and
       // the grid never scrolls, even if that squeezes a column very narrow.
       const gridColsStyle=xs?'':` style="grid-template-columns:repeat(${cols.length},minmax(0,1fr))"`;
-      let h='<div class="gh"'+gridColsStyle+'>'+cols.map(x=>`<span${cellW}>${esc(x.trim())}</span>`).join('')+'</div>';
+      // Merged header groups: c.colGroups[ci] holds an optional group label per column, set
+      // from the property panel. Consecutive columns sharing the same non-empty label merge
+      // into one centered cell spanning them on header row 1 (like 기준정보/재고정보 in the
+      // reference mock); each of those columns still shows its own name on row 2 below. A
+      // column with no group label gets a single cell spanning both rows, so the header stays
+      // a uniform height whether or not any given column belongs to a group. When no column
+      // has a group at all, the header renders exactly as before (single row) - zero visual
+      // change for every grid that isn't using this feature.
+      const colGroups=(c.colGroups||[]).slice(0,cols.length);
+      while(colGroups.length<cols.length)colGroups.push('');
+      const hasGroups=colGroups.some(g=>g&&g.trim());
+      let h;
+      if(hasGroups){
+        // CSS Grid natively supports the 2D (row+column) span placement this needs, so the
+        // header is forced onto display:grid here even in xscroll mode (which normally lays
+        // the header out with flexbox) - an inline style wins over the .xscroll CSS rule.
+        const colTrackStyle=xs?`repeat(${cols.length},${colW}px)`:`repeat(${cols.length},minmax(0,1fr))`;
+        const headParts=[];
+        for(let ci=0;ci<cols.length;ci++){
+          const g=(colGroups[ci]||'').trim();
+          if(g){
+            if(ci===0||(colGroups[ci-1]||'').trim()!==g){
+              let span=1;
+              while(ci+span<cols.length&&(colGroups[ci+span]||'').trim()===g)span++;
+              headParts.push(`<span style="grid-column:${ci+1}/span ${span};grid-row:1;text-align:center;border-bottom:1px solid var(--ax-border);">${esc(g)}</span>`);
+            }
+            headParts.push(`<span style="grid-column:${ci+1};grid-row:2;">${esc(cols[ci].trim())}</span>`);
+          }else{
+            headParts.push(`<span style="grid-column:${ci+1};grid-row:1/span 2;display:flex;align-items:center;">${esc(cols[ci].trim())}</span>`);
+          }
+        }
+        h=`<div class="gh" style="display:grid;grid-template-columns:${colTrackStyle};grid-template-rows:repeat(2,auto);">${headParts.join('')}</div>`;
+      }else{
+        h='<div class="gh"'+gridColsStyle+'>'+cols.map(x=>`<span${cellW}>${esc(x.trim())}</span>`).join('')+'</div>';
+      }
       for(let i=0;i<(c.rows||3);i++){
         const cells=cols.map((x,ci)=>{
           const ctype=(c.colTypes&&c.colTypes[ci])||'input';
@@ -3057,7 +3091,7 @@ function renderProps(){
     const gcols=(c.text||'').split(',').map(s=>s.trim());
     const groupCollapsed=gcolGroupCollapsed.has(String(c.id));
     html+=`<div class="grp"><div class="grp-h gcol-grp-h">
-      <span>컬럼 (${gcols.length})${qh('조회조건 필드처럼 드래그로 순서를 바꾸거나, ×로 삭제할 수 있습니다.<br><br>유형을 텍스트박스·콤보박스·날짜·체크박스·첨부파일 중 하나로 지정하면 내보내기 결과물에서 해당 컴포넌트처럼 동작합니다 (콤보는 클릭 시 목록 펼침, 체크박스는 클릭 시 체크, 첨부파일은 업로드 아이콘 표시).')}</span>
+      <span>컬럼 (${gcols.length})${qh('조회조건 필드처럼 드래그로 순서를 바꾸거나, ×로 삭제할 수 있습니다.<br><br>유형을 텍스트박스·콤보박스·날짜·체크박스·첨부파일 중 하나로 지정하면 내보내기 결과물에서 해당 컴포넌트처럼 동작합니다 (콤보는 클릭 시 목록 펼침, 체크박스는 클릭 시 체크, 첨부파일은 업로드 아이콘 표시).<br><br>각 컬럼의 <b>상위헤더</b> 칸에 같은 이름을 연속으로 입력하면 그 컬럼들이 헤더에서 하나로 병합되어 표시됩니다 (예: 기준정보 아래 품목·품목명).')}</span>
       <button class="gcol-grp-toggle" title="컬럼 목록 펼치기/접기" onclick="toggleGcolGroup('${c.id}')">${groupCollapsed?'펼치기 ▸':'접기 ▾'}</button>
     </div>`;
     if(!groupCollapsed){
@@ -3079,6 +3113,10 @@ function renderProps(){
             </select>
             <button class="ubtn-del" title="삭제" onclick="delGridCol(${gi})">×</button>
           </div>`;
+        {
+          const cgroup=(c.colGroups&&c.colGroups[gi])||'';
+          html+=`<div class="sfield-opts"><input value="${cgroup.replace(/"/g,'&quot;')}" oninput="updGridColGroup(${gi},this.value)" placeholder="상위헤더(그룹명) - 연속 컬럼에 같은 이름을 입력하면 병합"></div>`;
+        }
         if(ctype==='combo'){
           const copts=(c.colOptions&&c.colOptions[gi])||'';
           html+=`<div class="sfield-opts"><input value="${copts.replace(/"/g,'&quot;')}" oninput="updGridColOptions(${gi},this.value)" placeholder="옵션 (쉼표 구분) 예: 옵션1,옵션2"></div>`;
@@ -3435,6 +3473,9 @@ function normGridColArrays(c){
   if(!Array.isArray(c.colOptions))c.colOptions=[];
   while(c.colOptions.length<n)c.colOptions.push('');
   if(c.colOptions.length>n)c.colOptions.length=n;
+  if(!Array.isArray(c.colGroups))c.colGroups=[];
+  while(c.colGroups.length<n)c.colGroups.push('');
+  if(c.colGroups.length>n)c.colGroups.length=n;
 }
 function addGridCol(){
   const c=comps.find(x=>x.id===sel);if(!c)return;
@@ -3445,6 +3486,7 @@ function addGridCol(){
   c.text=cols.join(',');
   c.colTypes.push('input');
   c.colOptions.push('');
+  c.colGroups.push('');
   c._xscrollManual=false;
   render();
 }
@@ -3464,6 +3506,7 @@ function delGridCol(i){
   c.text=cols.join(',');
   c.colTypes.splice(i,1);
   c.colOptions.splice(i,1);
+  c.colGroups.splice(i,1);
   render();
 }
 function updGridColType(i,v){
@@ -3478,6 +3521,16 @@ function updGridColOptions(i,v){
   normGridColArrays(c);
   if(i>=c.colOptions.length)return;
   c.colOptions[i]=v;
+  drawCanvas();
+}
+// Sets/clears the merged-header group label for column i. Consecutive columns that share the
+// exact same (trimmed) label render as one spanning cell above their individual names - see
+// the 'grid' case in innerRaw(). An empty label removes the column from any group.
+function updGridColGroup(i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  if(i>=c.colGroups.length)return;
+  c.colGroups[i]=v;
   drawCanvas();
 }
 // Drag-and-drop reorder: drag a column row's handle and drop it on another row.
@@ -3511,6 +3564,7 @@ function gcDrop(e,i){
   c.text=cols.join(',');
   const [t]=c.colTypes.splice(from,1); c.colTypes.splice(insertAt,0,t);
   const [o]=c.colOptions.splice(from,1); c.colOptions.splice(insertAt,0,o);
+  const [g]=c.colGroups.splice(from,1); c.colGroups.splice(insertAt,0,g);
   render();
 }
 function gcDragEnd(e){
@@ -4237,6 +4291,8 @@ fields는 보이는순서, type=text|combo|date|daterange|search(돋보기)|radi
 {"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","gtitle":"요청내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
 그외버튼="userBtns":[{"label":"품목참조"}]. 필수컬럼="*품목코드". 하단 신규/저장/삭제만 button.
 [다중캡처 병합] 가로스크롤로 여러장 찍힌 동일그리드는 순서대로 컬럼을 좌→우로 이어붙여 grid 1개로. 겹친컬럼명은 뒤장쪽 것을 버리고 1회만. text는 병합된 전체순서로 나열. gtitle등 속성·title/searchbar등 다른컴포넌트도 반복확인돼도 화면기준 1회만 출력.
+[병합헤더] 헤더가 2줄이고 위줄 한 칸이 아래 여러 컬럼을 가로질러 덮으면(예:"기준정보"가 "품목"·"품목명" 위에 걸침) "colGroups":배열을 text와 같은 개수·순서로 추가: 병합된 컬럼들은 같은 그룹명을 반복, 병합 안 된 컬럼은 "". 헤더가 1줄뿐이면 colGroups 자체를 생략.
+예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목,품목명,출고창고,출고방법","colGroups":["기준정보","기준정보","재고정보","재고정보"],"gtitle":"목록","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
 
 [레이아웃 정규화-모든화면]
 원본픽셀 그대로 베끼지말고 폭1060 기준 재배치: 순서는 title→searchbar→입력/카드(chart·grid)→하단버튼. 왼쪽여백x:20통일, 같은줄은 y맞춤. 입력은 한줄4~6개균등(라벨포함h52,컨트롤30). 구획제목은 section, 그아래 입력배치. 폭넘으면 다음줄(겹치지않게). 3D테두리/아이콘/색배경 등 장식은 재현안함.
@@ -4285,6 +4341,8 @@ h=라벨+칸(left/right≈23,top/bottom≈52),w보통234(popup420안팎).없으�
 컬럼이핵심:{"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","rows":8}.필수="*컬럼명".
 -행추가·행취소·행복사·행삭제·저장(그리드CRUD툴바)는고정UI라button/attribute모두생성안함.button은무관한독립버튼만(예:확정,품목참조,폼하단저장)
 -다장캡처동일그리드는컬럼좌→우이어붙여grid1개(중복명뒤것버림1회),다른컴포넌트도1회만.
+-헤더2줄+위칸이여러컬럼걸침(병합헤더,예:"기준정보"가"품목"·"품목명"위)="colGroups":배열을text와동일개수·순서로추가(병합컬럼은동일그룹명반복,미병합컬럼은"").헤더1줄이면colGroups생략.
+예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목,품목명,출고창고,출고방법","colGroups":["기준정보","기준정보","재고정보","재고정보"],"rows":8}
 
 [레이아웃]
 폭1060재배치:
@@ -4424,7 +4482,7 @@ function placeItems(items,scale,clearFirst){
   const fieldTypes=['text','combo','date','daterange','search','radio'];
   // Properties (beyond type/x/y/w/h/text/required) that a JSON item may set directly; copied through as-is.
   const passthroughKeys=['gtitle','userBtns','stdAdd','stdCancel','stdCopy','stdDelete','rows','showToolbar',
-    'options','readonly','ghost','active','collapsed','ctitle','chartType','color','showArrow','selected','selectedLine','showLines',
+    'options','readonly','ghost','active','collapsed','ctitle','chartType','color','showArrow','selected','selectedLine','showLines','colGroups',
     'showLabel','labelText','labelPos','required','checked','style'];
   const idMap={}; // _tempId (author-assigned, only needed for Tab parent/child references) -> real comp id
   const built=[];
@@ -4840,6 +4898,10 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260807.001', date:'2026년 8월 7일', items:[
+    {t:'그리드 헤더 병합(그룹 헤더) 지원', d:'그리드를 선택하면 속성창의 <b>「컬럼」</b> 목록에서 각 컬럼마다 <b>상위헤더(그룹명)</b> 칸이 새로 생겼습니다. 연속된 컬럼에 같은 그룹명을 입력하면 헤더 위쪽에 그 이름이 하나로 병합되어 표시되고, 아래 줄에는 각 컬럼명이 그대로 남습니다. 그룹을 지정하지 않은 컬럼은 예전처럼 헤더 전체 높이를 그대로 차지해, 그룹·비그룹 컬럼이 섞여도 높이가 항상 맞습니다. <b>좌우 스크롤 그리드</b>와 <b>저장(내보내기) 결과물</b>에도 동일하게 반영됩니다.'},
+    {t:'이미지 변환도 병합 헤더 인식', d:'화면 캡처에 기준정보·재고정보처럼 <b>2줄로 병합된 헤더</b>가 있는 그리드가 있으면, 이를 인식해 컬럼별 그룹 정보까지 함께 뽑아내도록 변환 프롬프트를 보강했습니다. Claude의 답을 붙여넣으면 캡처된 병합 헤더 구조가 그대로 재현됩니다. <b>씬모드·팻모드 둘 다</b> 적용했습니다.'}
+  ]},
   {ver:'20260806.002', date:'2026년 8월 6일', items:[
     {t:'이미지 변환에 차트 지원 추가', d:'화면 캡처를 JSON으로 변환할 때(Claude 열기/프롬프트 복사) <b>도넛·막대·꺾은선·영역 차트</b>가 있는 화면도 <b>chart 컴포넌트</b>로 인식해 변환하도록 프롬프트를 보강했습니다. 카드형 대시보드(브레드크럼+카드 여러 개가 나란한 화면)도 카드 위치를 유지한 채 chart/grid로 매핑합니다. <b>씬모드·팻모드 둘 다</b> 반영했습니다.'},
     {t:'이미지 변환 프롬프트 길이 축소', d:'같은 변환 품질을 유지하면서 씬모드·팻모드 프롬프트의 문장을 더 간결하게 다듬어 전체 글자 수를 줄였습니다. Claude에 붙여넣는 텍스트가 짧아져 전송·응답이 더 가벼워집니다.'}
@@ -5271,7 +5333,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260806.002';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260807.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
