@@ -56,10 +56,22 @@
   }
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:"Malgun Gothic","맑은 고딕",-apple-system,sans-serif;font-size:13px;color:#333;background:var(--ax-bg);height:100vh;overflow:hidden;}
-  .app{display:grid;grid-template-columns:180px 1fr 240px;grid-template-rows:44px 1fr;height:100vh;}
+  .app{--props-w:240px;display:grid;grid-template-columns:180px 1fr 6px var(--props-w);grid-template-rows:44px 1fr;height:100vh;}
+  .app>.toolbox{grid-column:1;grid-row:2;}
+  .app>.canvas-wrap{grid-column:2;grid-row:2;}
+  .app>#propsSplit{grid-column:3;grid-row:2;}
+  .app>.props{grid-column:4;grid-row:2;}
+  /* 캔버스와 속성 패널 사이 좌우 크기조절 스플리터 */
+  #propsSplit{background:transparent;cursor:col-resize;position:relative;z-index:60;}
+  #propsSplit::before{content:"";position:absolute;top:0;bottom:0;left:2px;width:1px;background:var(--ax-border);}
+  #propsSplit::after{content:"";position:absolute;top:50%;left:1px;width:3px;height:34px;transform:translateY(-50%);border-radius:2px;background:#cfd6dd;}
+  #propsSplit:hover::after,#propsSplit.dragging::after{background:var(--ax-green);}
+  #propsSplit:hover::before,#propsSplit.dragging::before{background:var(--ax-green);}
+  body.props-resizing{cursor:col-resize;user-select:none;}
+  body.props-resizing iframe{pointer-events:none;}
 
   /* Top bar */
-  .topbar{grid-column:1/4;background-color:#0f9670;background-image:var(--topbar-bg);color:#fff;display:flex;align-items:center;padding:0 16px 0 0;gap:12px;}
+  .topbar{grid-column:1/5;grid-row:1;background-color:#0f9670;background-image:var(--topbar-bg);color:#fff;display:flex;align-items:center;padding:0 16px 0 0;gap:12px;}
   body.skin-classic .topbar{background-color:#245f9c;}
   .topbar .brand{flex:0 0 180px;}
   /* Buttons are grouped by purpose: the topbar's own 12px gap separates the two sets, and a
@@ -871,7 +883,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260807.001)</span>
+      <span id="verText">by June (ver.20260810.002)</span>
     </div>
   </div>
 
@@ -910,6 +922,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Splitter between canvas and properties -->
+  <div id="propsSplit" title="드래그해서 속성 패널 폭 조절 (더블클릭: 기본값)"></div>
 
   <!-- Properties -->
   <div class="props" id="props">
@@ -3783,6 +3798,47 @@ function zoomStep(dir){
   });
   document.addEventListener('mouseup',()=>{if(cdrag){cdrag=null;holder.classList.remove('resizing');}});
 })();
+
+// ---- Property panel width resize by dragging the splitter ----
+(function(){
+  const split=document.getElementById('propsSplit');
+  if(!split)return;
+  const app=document.querySelector('.app');
+  const MINW=180, MAXW=560, DEFW=240;
+  const LS_KEY='mb_props_w';
+  function setW(w){
+    w=Math.max(MINW,Math.min(MAXW,Math.round(w)));
+    app.style.setProperty('--props-w',w+'px');
+    return w;
+  }
+  // 저장해둔 폭 복원
+  try{ const s=parseInt(localStorage.getItem(LS_KEY)); if(s&&s>=MINW&&s<=MAXW) app.style.setProperty('--props-w',s+'px'); }catch(e){}
+  let pdrag=null;
+  split.addEventListener('mousedown',e=>{
+    e.preventDefault();e.stopPropagation();
+    const props=document.getElementById('props');
+    pdrag={sx:e.clientX,ow:props.offsetWidth};
+    split.classList.add('dragging');
+    document.body.classList.add('props-resizing');
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!pdrag)return;
+    // 패널은 오른쪽 고정 - 왼쪽으로 끌면(마우스 X 감소) 넓어진다.
+    setW(pdrag.ow + (pdrag.sx - e.clientX));
+  });
+  document.addEventListener('mouseup',()=>{
+    if(!pdrag)return;
+    pdrag=null;
+    split.classList.remove('dragging');
+    document.body.classList.remove('props-resizing');
+    try{ const cur=parseInt(getComputedStyle(app).getPropertyValue('--props-w')); if(cur) localStorage.setItem(LS_KEY,cur); }catch(e){}
+  });
+  // 더블클릭 시 기본 폭으로 초기화
+  split.addEventListener('dblclick',()=>{
+    setW(DEFW);
+    try{ localStorage.setItem(LS_KEY,DEFW); }catch(e){}
+  });
+})();
 // Keeps the canvas' actual width/height values untouched (e.g. stays 1100x700) and instead
 // scales the ZOOM down so a fresh blank canvas fits the visible area without a scrollbar.
 // Never zooms in past 100%. Runs at initial page load and on 전체 지우기 - not on window resize
@@ -4898,6 +4954,10 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260810.002', date:'2026년 8월 10일', items:[
+    {t:'속성 패널 좌우 폭 조절', d:'컴포넌트를 선택하면 나오는 <b>오른쪽 속성 편집 패널</b>과 캔버스 사이에 <b>드래그 스플리터</b>가 생겼습니다. 경계선을 좌우로 끌면 속성 패널 폭을 <b>180~560px</b> 사이에서 원하는 대로 넓히거나 좁힐 수 있고, 조절한 폭은 <b>자동 저장</b>되어 다음에 열 때도 유지됩니다. 스플리터를 <b>더블클릭</b>하면 기본 폭(240px)으로 돌아갑니다. (PC 모드 전용, 태블릿·모바일 모드에서는 표시되지 않습니다.)'},
+    {t:'필수+읽기전용 동시 지정 처리', d:'한 컴포넌트에 <b>필수 항목</b>과 <b>읽기전용</b>을 함께 켤 수 있게 되었습니다. <b>씬모드</b>에서는 둘을 같이 켜면 <b>필수(*) 표시와 읽기전용(회색·수정 불가)</b>이 함께 적용되고, <b>팻모드</b>에서는 <b>읽기전용만</b> 적용됩니다. 텍스트박스·콤보박스·날짜·팝업·기간 컴포넌트에 동일하게 반영되며, 저장(내보내기) 결과물에도 그대로 적용됩니다.'}
+  ]},
   {ver:'20260807.001', date:'2026년 8월 7일', items:[
     {t:'그리드 헤더 병합(그룹 헤더) 지원', d:'그리드를 선택하면 속성창의 <b>「컬럼」</b> 목록에서 각 컬럼마다 <b>상위헤더(그룹명)</b> 칸이 새로 생겼습니다. 연속된 컬럼에 같은 그룹명을 입력하면 헤더 위쪽에 그 이름이 하나로 병합되어 표시되고, 아래 줄에는 각 컬럼명이 그대로 남습니다. 그룹을 지정하지 않은 컬럼은 예전처럼 헤더 전체 높이를 그대로 차지해, 그룹·비그룹 컬럼이 섞여도 높이가 항상 맞습니다. <b>좌우 스크롤 그리드</b>와 <b>저장(내보내기) 결과물</b>에도 동일하게 반영됩니다.'},
     {t:'이미지 변환도 병합 헤더 인식', d:'화면 캡처에 기준정보·재고정보처럼 <b>2줄로 병합된 헤더</b>가 있는 그리드가 있으면, 이를 인식해 컬럼별 그룹 정보까지 함께 뽑아내도록 변환 프롬프트를 보강했습니다. Claude의 답을 붙여넣으면 캡처된 병합 헤더 구조가 그대로 재현됩니다. <b>씬모드·팻모드 둘 다</b> 적용했습니다.'}
@@ -5333,7 +5393,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260807.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260810.002';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
@@ -5498,6 +5558,7 @@ body.mb-mobile .app, body.mb-tablet .app{
 }
 body.mb-mobile .toolbox, body.mb-tablet .toolbox{position:fixed;left:-9999px;top:0;width:180px;}
 body.mb-mobile .props,   body.mb-tablet .props{position:fixed;left:-9999px;top:0;width:280px;}
+body.mb-mobile #propsSplit, body.mb-tablet #propsSplit{display:none;}
 body.mb-mobile .props.mb-in-sheet, body.mb-tablet .props.mb-in-sheet{
   position:static!important;left:auto!important;top:auto!important;
   width:100%!important;height:auto!important;overflow:visible!important;display:block!important;
