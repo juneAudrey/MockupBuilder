@@ -351,6 +351,14 @@
   .ax-grid .gr .gcell-check.interactive .box.on::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;line-height:1;}
   .ax-grid .gr .gcell-file{width:100%;height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}
   .ax-grid .gr .gcell-file-ic{width:18px;height:18px;flex:none;color:#9aa1a9;}
+  .ax-grid .gpagination{position:relative;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:8px 10px;border-top:1px solid var(--ax-border);background:#fff;flex:none;flex-wrap:wrap;font-size:11px;color:#4b5563;min-height:24px;}
+  .ax-grid .gpagination .gp-nav{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;flex:none;}
+  .ax-grid .gpagination .gp-btn{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;padding:0 6px;border:1px solid var(--ax-border);border-radius:4px;background:#fff;color:#6b7280;font-size:11px;box-sizing:border-box;}
+  .ax-grid .gpagination .gp-btn.on{background:var(--ax-green);border-color:var(--ax-green);color:#fff;font-weight:700;}
+  .ax-grid .gpagination .gp-btn.gp-arrow{color:#9aa1a9;}
+  .ax-grid .gpagination .gp-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .ax-grid .gpagination .gp-item{display:flex;align-items:center;gap:4px;white-space:nowrap;}
+  .ax-grid .gpagination .gp-select,.ax-grid .gpagination .gp-input{display:inline-flex;align-items:center;justify-content:center;height:22px;padding:0 8px;border:1px solid var(--ax-border);border-radius:4px;background:#fff;color:#374151;font-size:11px;box-sizing:border-box;min-width:20px;}
   .ax-title{width:100%;height:100%;display:flex;align-items:center;font-size:18px;font-weight:800;color:var(--ax-navy);gap:8px;}
   body.skin-classic .ax-title{color:#c1610a;}
   /* label + field set */
@@ -883,7 +891,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260814.001)</span>
+      <span id="verText">by June (ver.20260818.002)</span>
     </div>
   </div>
 
@@ -1696,7 +1704,7 @@ const defaults={
   popup:{w:420,h:23,text:"",required:false,readonly:false,showLabel:true,labelText:"항목명",labelPos:"left",style:"code_name"},
   button:{w:80,h:32,text:"버튼",required:false,readonly:false,ghost:false},
   grid:{w:700,h:190,text:"컬럼1,컬럼2,컬럼3,컬럼4",required:false,readonly:false,rows:3,
-    gtitle:"그리드 제목",showToolbar:true,
+    gtitle:"그리드 제목",showToolbar:true,pagination:false,
     stdAdd:true,stdCancel:true,stdCopy:true,stdDelete:true,
     userBtns:[]},
   chart:{w:440,h:260,text:"25,45,30,60,40,55",required:false,readonly:false,
@@ -2393,7 +2401,26 @@ function innerRaw(c,mode){
         }).join('');
         h+='<div class="gr'+(exp?' hoverable':'')+'"'+gridColsStyle+'>'+cells+'</div>';
       }
-      return `<div class="ax-grid">${toolbar}<div class="gbody${xs?' xscroll':''}">${h}</div></div>`;
+      let pagination='';
+      const gridFatSkin=document.body.classList.contains('skin-classic');
+      if(c.pagination&&!gridFatSkin){
+        const rowsCount=c.rows||3;
+        pagination=`<div class="gpagination">
+          <div class="gp-nav">
+            <span class="gp-btn gp-arrow">«</span>
+            <span class="gp-btn gp-arrow">‹</span>
+            <span class="gp-btn on">1</span>
+            <span class="gp-btn gp-arrow">›</span>
+            <span class="gp-btn gp-arrow">»</span>
+          </div>
+          <div class="gp-right">
+            <span class="gp-item">Show rows: <span class="gp-select">${rowsCount}</span></span>
+            <span class="gp-item">Go to: <span class="gp-input">1</span> page</span>
+            <span class="gp-item">전체 <b>${rowsCount}</b>건</span>
+          </div>
+        </div>`;
+      }
+      return `<div class="ax-grid">${toolbar}<div class="gbody${xs?' xscroll':''}">${h}</div>${pagination}</div>`;
     }
     case 'chart':{
       const arrow=c.showArrow!==false?`<span class="arw">›</span>`:'';
@@ -3105,6 +3132,9 @@ function renderProps(){
     if(c.xscroll){
       html+=`<div class="prop"><label>컬럼 폭 (${Math.max(60,+c.colMinW||120)}px)</label>
         <input type="range" min="60" max="300" step="10" value="${Math.max(60,+c.colMinW||120)}" oninput="upd('colMinW',+this.value)"></div>`;
+    }
+    if(!fatMode){
+      html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.pagination?'checked':''} onchange="upd('pagination',this.checked)"> Pagination 사용${qh('그리드 하단에 페이지 이동 UI(페이지 번호·Show rows·Go to·전체 건수)를 표시합니다.<br><br>목업이므로 실제 페이지 이동은 되지 않고 항상 1페이지만 표시되며, 건수는 <b>표시 행 수</b> 값을 그대로 보여줍니다.<br><br>씬모드 전용 기능으로, 팻모드에서는 이 옵션과 하단 UI가 표시되지 않습니다.')}</label></div>`;
     }
     const gcols=(c.text||'').split(',').map(s=>s.trim());
     const groupCollapsed=gcolGroupCollapsed.has(String(c.id));
@@ -4964,6 +4994,12 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260818.002', date:'2026년 8월 18일', items:[
+    {t:'그리드 Pagination 위치 조정 및 씬모드 전용화', d:'Pagination의 <b>«  ‹  1  ›  »</b> 페이지 버튼이 그리드 하단 <b>정가운데</b>에 오도록 위치를 조정했습니다(Show rows·Go to·전체 건수는 그대로 오른쪽에 표시). 또한 Pagination 기능은 <b>씬모드 전용</b>으로 바뀌어, <b>팻모드</b>에서는 속성창의 「Pagination 사용」 옵션 자체와 하단 UI가 모두 표시되지 않습니다.'}
+  ]},
+  {ver:'20260818.001', date:'2026년 8월 18일', items:[
+    {t:'그리드 Pagination(페이지네이션) 지원', d:'그리드를 선택하면 속성창의 <b>「좌우 스크롤 사용」</b> 체크박스 아래에 <b>「Pagination 사용」</b> 옵션이 새로 생겼습니다. 켜면 그리드 하단에 <b>페이지 번호·Show rows·Go to·전체 건수</b>로 구성된 페이지 이동 UI가 표시됩니다. 목업이므로 실제 페이지 이동은 되지 않고 항상 1페이지만 보이며, 건수는 <b>표시 행 수</b> 값을 그대로 보여줍니다. 기본값은 <b>꺼짐</b>이라 기존에 저장해둔 목업에는 영향이 없습니다.'}
+  ]},
   {ver:'20260814.001', date:'2026년 8월 14일', items:[
     {t:'이미지 변환 팝업 높이 축소 (스크롤 제거)', d:'이미지 변환 팝업이 길어서 생기던 세로 스크롤을 줄였습니다. <b>2번 단계</b>의 그리드 여러 장 캡처 안내는 <b>「그리드 컬럼이 많을 때」 접기</b>로 넣어 필요할 때만 펼쳐 보도록 했고, 하단의 라벨 관련 안내 박스는 삭제했습니다. 이제 대부분의 화면에서 <b>하단 버튼까지 스크롤 없이</b> 한눈에 보입니다.'},
     {t:'사용 동의 안내 문구 추가', d:'우측 <b>속성 안내 패널</b>(컴포넌트를 선택하지 않았을 때 보이는 영역) 하단에 <b>「사용 안내」</b> 문구를 추가했습니다. 본 프로그램은 <b>인가된 업무 목적</b>으로만 사용할 수 있으며, <b>목적 외 사용·데이터의 외부 유출 및 무단 배포</b>를 금지합니다. 원활한 운영과 보안을 위해 <b>접속 정보(IP, 사용자명 등)가 기록</b>될 수 있고, 사용에 따른 <b>모든 책임은 사용자 본인</b>에게 있음을 안내합니다.'}
@@ -5415,7 +5451,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260814.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260818.002';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
