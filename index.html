@@ -891,7 +891,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260818.002)</span>
+      <span id="verText">by June (ver.20260819.001)</span>
     </div>
   </div>
 
@@ -4356,8 +4356,7 @@ type:title section label(독립텍스트) input combo date daterange(text="YYYY-
 input/combo/date/daterange/check/radio는항목명을label로빼지말고본체에포함:showLabel:true,labelText,labelPos:top|left|right|bottom,required=별표(*)면true.
 x,y=라벨포함좌상단,h=라벨+입력칸(top/bottom≈52,좌우≈30).라벨없으면showLabel:false(체크박스는text에문구).radio=options쉼표+selected(0부터).combo=펼쳐진목록만options.회색(비활성)=readonly:true.
 ⚠한라벨아래칸2개(예통화/환율+숫자)는분리:왼쪽만라벨,오른쪽showLabel:false·같은y.
-예:{"type":"combo","x":20,"y":100,"w":180,"h":52,"text":"선택","showLabel":true,"labelText":"수주형태","labelPos":"top","required":true}
-예2(칸2개):{"type":"combo","x":20,"y":100,"w":70,"h":52,"text":"KR","showLabel":true,"labelText":"통화/환율","labelPos":"top","required":true},{"type":"input","x":96,"y":122,"w":110,"h":30,"text":"1","showLabel":false,"readonly":true}
+예(칸2개):{"type":"combo","x":20,"y":100,"w":70,"h":52,"text":"KR","showLabel":true,"labelText":"통화/환율","labelPos":"top","required":true},{"type":"input","x":96,"y":122,"w":110,"h":30,"text":"1","showLabel":false,"readonly":true}
 
 [chart]
 카드제목("○○현황›")아래원형/막대/선/영역그래프=chart1개:{"type":"chart","x","y","w","h","ctitle":"제목(›제외)","chartType":"donut|bar|line|area","color":"green|blue|yellow|mixed","text":"값1,값2..","showArrow":제목옆›있으면true}
@@ -4393,11 +4392,11 @@ fields=보이는순서,type=text|combo|date|daterange|search(돋보기)|radio(op
 
 [구형화면]
 촘촘한입력칸+회색3D테두리+작은폰트인옛화면:경로(A>B>C(S)(코드))는마지막이름만title,흩어진조회항목은위치무관모아searchbar1개(좌상→우하순,돋보기/목록아이콘=search,~로이은두날짜=daterange,코드칸+옆회색이름칸=search1개·값은라벨만),표=grid1개(컬럼원본순서,rows대략,버튼없어도showToolbar+stdAdd/Cancel/Copy/Delete추가,제목없으면gtitle지어줌),우측상단단독버튼(회계전표등)=button,하단에저장/확정추가.
-예(경로"재고관리 > 수불관리 > 기타출고등록(S)(코드)",조회칸4개,5컬럼표):
+예(경로"재고관리 > 수불관리 > 기타출고등록(S)(코드)"):
 [{"type":"title","x":20,"y":16,"w":220,"h":34,"text":"기타출고등록"},
 {"type":"button","x":960,"y":18,"w":110,"h":32,"text":"회계전표","ghost":true},
 {"type":"searchbar","x":20,"y":62,"w":1060,"h":110,"collapsed":false,"fields":[{"label":"공장","type":"search","required":true},{"label":"출고일","type":"daterange","required":true},{"label":"창고","type":"search"},{"label":"품목계정","type":"combo"}]},
-{"type":"grid","x":20,"y":186,"w":1060,"h":300,"text":"출고번호,출고일,수불유형,창고,품목명","gtitle":"출고내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true,"userBtns":[{"label":"품목참조"},{"label":"재고현황"}],"rows":8},
+{"type":"grid","x":20,"y":186,"w":1060,"h":300,"text":"출고번호,출고일,수불유형,창고,품목명","gtitle":"출고내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true,"userBtns":[{"label":"품목참조"}],"rows":8},
 {"type":"button","x":880,"y":505,"w":90,"h":34,"text":"저장","ghost":true},
 {"type":"button","x":980,"y":505,"w":90,"h":34,"text":"확정"}]`;
 
@@ -4994,6 +4993,9 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260819.001', date:'2026년 8월 19일', items:[
+    {t:'이미지 변환(씬모드) 프롬프트 길이 추가 축소', d:'변환 품질은 그대로 유지하면서 <b>씬모드</b> 프롬프트에서 다른 예시와 뜻이 겹치던 라벨 예시 1개를 정리하고, 구형화면 예시의 부가 설명을 간결하게 다듬어 글자 수를 더 줄였습니다. Claude에 붙여넣는 텍스트가 짧아져 전송·응답이 더 가벼워집니다.'}
+  ]},
   {ver:'20260818.002', date:'2026년 8월 18일', items:[
     {t:'그리드 Pagination 위치 조정 및 씬모드 전용화', d:'Pagination의 <b>«  ‹  1  ›  »</b> 페이지 버튼이 그리드 하단 <b>정가운데</b>에 오도록 위치를 조정했습니다(Show rows·Go to·전체 건수는 그대로 오른쪽에 표시). 또한 Pagination 기능은 <b>씬모드 전용</b>으로 바뀌어, <b>팻모드</b>에서는 속성창의 「Pagination 사용」 옵션 자체와 하단 UI가 모두 표시되지 않습니다.'}
   ]},
@@ -5451,7 +5453,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260818.002';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260819.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
