@@ -628,6 +628,10 @@
   .cv-btn-claude:hover{background:#c86544;}
   .cv-btn-soft{background:#eef1f4;color:var(--ax-navy);border:1px solid var(--ax-border);padding:8px 13px;border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:background .12s;}
   .cv-btn-soft:hover{background:#e2e6ea;}
+  .cv-btn-copy{background:var(--ax-green);color:#fff;border:none;padding:8px 15px;border-radius:6px;font-size:12.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s,box-shadow .12s;box-shadow:0 0 0 3px rgba(30,158,106,.16);}
+  .cv-btn-copy:hover{background:var(--ax-green-dark);box-shadow:0 0 0 3px rgba(30,158,106,.24);}
+  .cv-btn-badge{background:rgba(255,255,255,.28);padding:1px 6px;border-radius:999px;font-size:9.5px;font-weight:800;letter-spacing:.2px;}
+  .cv-copy-tip{margin-top:8px;padding:7px 11px;background:var(--ax-green-light);border:1px solid #c9e6d8;border-radius:7px;font-size:11.5px;color:var(--ax-green-dark);line-height:1.6;}
   .cv-paste{width:100%;padding:10px 12px;border:1.5px solid var(--ax-border);border-radius:7px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.5;resize:vertical;transition:border-color .15s,box-shadow .15s;}
   .cv-paste:focus{outline:none;border-color:var(--ax-green);box-shadow:0 0 0 2px rgba(30,158,106,.12);}
   .cv-paste.filled{border-color:var(--ax-green);background:#fbfefc;}
@@ -891,7 +895,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260819.001)</span>
+      <span id="verText">by June (ver.20260825.003)</span>
     </div>
   </div>
 
@@ -962,12 +966,13 @@
               <div class="cv-step-desc">아래 버튼을 누르면 새 창에 Claude가 열립니다. (질문은 이미 적혀 있어요 — 그대로 두세요.)</div>
               <div class="cv-step-actions">
                 <button type="button" class="cv-btn-claude" onclick="openInClaude()">🤖 Claude 열기</button>
-                <button type="button" class="cv-btn-soft" onclick="copyPrompt()">📋 질문만 복사</button>
+                <button type="button" class="cv-btn-copy" onclick="copyPrompt()"><span class="cv-btn-badge">권장</span>📋 질문만 복사</button>
               </div>
+              <div class="cv-copy-tip">💡 <b>질문만 복사</b> 후 Claude 채팅창에 직접 붙여넣으면, 더 상세한 요청을 담을 수 있어 <b>변환 품질이 더 좋아요.</b></div>
               <details class="cv-detail">
                 <summary>Claude에 보내는 질문 미리 보기</summary>
                 <div class="cv-detail-body">
-                  이 질문은 화면을 코드로 바꿔 달라는 요청이에요. 손댈 필요 없이 <b>화면 캡처 이미지만 첨부</b>해서 보내면 됩니다.
+                  이 질문은 화면을 코드로 바꿔 달라는 요청이에요(「질문만 복사」 기준). 손댈 필요 없이 <b>화면 캡처 이미지만 첨부</b>해서 보내면 됩니다.
                   <textarea id="jsonPrompt" class="cv-prompt" readonly rows="3"></textarea>
                 </div>
               </details>
@@ -2445,6 +2450,9 @@ function innerRaw(c,mode){
     }
     case 'searchbar':{
       const fields=(c.fields||[]).map((f,fi)=>{
+        if(f.type==='empty'){
+          return `<div class="sfield sfield-empty" style="grid-column:span ${Math.min(4,Math.max(1,f.span||1))};"></div>`;
+        }
         const freq=f.required?'<span class="req">*</span>':'';
         let ctl;
         if(f.type==='combo'){
@@ -3233,14 +3241,14 @@ function renderProps(){
   }
   if(c.type==='searchbar'){
     html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.collapsed?'checked':''} onchange="upd('collapsed',this.checked)"> 접힘 상태(≫) 표시</label></div>`;
-    html+=`<div class="grp"><div class="grp-h">조회 조건 필드</div><div class="sfield-list">`;
+    html+=`<div class="grp"><div class="grp-h">조회 조건 필드${qh('타입을 <b>빈값</b>으로 지정하면 라벨·입력칸 없이 해당 칸을 <b>비워둔 채</b> 그대로 자리만 차지합니다.<br><br>여러 칸짜리 레이아웃에서 특정 칸만 건너뛰고 싶을 때 사용하세요.')}</div><div class="sfield-list">`;
     (c.fields||[]).forEach((f,i)=>{
       html+=`<div class="sfield-row" draggable="true"
         ondragstart="sfDragStart(event,${i})" ondragover="sfDragOver(event)"
         ondragleave="sfDragLeave(event)" ondrop="sfDrop(event,${i})" ondragend="sfDragEnd(event)">
         <div class="sf-row1">
           <span class="sf-handle" title="드래그해서 순서 변경">⠿</span>
-          <input class="sf-label" value="${(f.label||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'label',this.value)" placeholder="라벨">
+          <input class="sf-label" value="${(f.label||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'label',this.value)" placeholder="라벨"${f.type==='empty'?' disabled style="opacity:.5;"':''}>
           <button class="ubtn-del" title="삭제" onclick="delSearchField(${i})">×</button>
         </div>
         <div class="sf-row2">
@@ -3251,6 +3259,7 @@ function renderProps(){
             <option value="daterange"${f.type==='daterange'?' selected':''}>기간</option>
             <option value="search"${f.type==='search'?' selected':''}>검색</option>
             <option value="radio"${f.type==='radio'?' selected':''}>라디오</option>
+            <option value="empty"${f.type==='empty'?' selected':''}>빈값</option>
           </select>
           <select class="sf-span" title="가로 폭 (전체 4칸 중 몇 칸을 차지할지)" onchange="updSearchField(${i},'span',+this.value)">
             <option value="1"${(f.span||1)===1?' selected':''}>1칸</option>
@@ -3258,8 +3267,8 @@ function renderProps(){
             <option value="3"${f.span===3?' selected':''}>3칸</option>
             <option value="4"${f.span===4?' selected':''}>4칸(전체)</option>
           </select>
-          <button class="sf-req${f.required?' on':''}" title="필수" onclick="updSearchField(${i},'required',${!f.required})">*</button>
-          <button class="sf-ro${f.readonly?' on':''}" title="읽기전용 (회색 표시)" onclick="updSearchField(${i},'readonly',${!f.readonly})">🔒</button>
+          ${f.type==='empty'?'':`<button class="sf-req${f.required?' on':''}" title="필수" onclick="updSearchField(${i},'required',${!f.required})">*</button>
+          <button class="sf-ro${f.readonly?' on':''}" title="읽기전용 (회색 표시)" onclick="updSearchField(${i},'readonly',${!f.readonly})">🔒</button>`}
         </div>
       </div>`;
       if(f.type==='radio'||f.type==='combo'){
@@ -4311,7 +4320,7 @@ function exportComp(c){
 // ================= IMAGE CONVERSION =================
 function openConvert(){
   document.getElementById('convBg').classList.add('on');
-  document.getElementById('jsonPrompt').value=currentJsonPrompt();
+  document.getElementById('jsonPrompt').value=currentJsonPrompt('copy');
   cvSetStep(1);
   clearStatus();
   const ta=document.getElementById('jsonIn');
@@ -4346,7 +4355,9 @@ function clearStatus(){const s=document.getElementById('convStatus');s.className
 function runConvert(){ runJSON(); }
 
 // ---- JSON paste (free path, no API key / no direct API call) ----
-const JSON_PROMPT_THIN=`이 화면 캡처를 분석해 UI 컴포넌트 JSON 배열만 출력(설명·코드블록 금지).
+// [씬모드] Claude 「열기」(URL 파라미터)용 — Korean 인코딩 팽창(~3.8배) 때문에 URL 길이 제한에
+// 걸리므로 반드시 짧게 유지한다. 더 상세한 지시가 필요하면 아래 JSON_PROMPT_THIN_COPY를 늘릴 것.
+const JSON_PROMPT_THIN_URL=`이 화면 캡처를 분석해 UI 컴포넌트 JSON 배열만 출력(설명·코드블록 금지).
 형식:{"type","x","y","w","h","text"}·좌표=가로1100px정수·text=보이는값(없으면"")
 type:title section label(독립텍스트) input combo date daterange(text="YYYY-MM-DD ~ YYYY-MM-DD") check radio button grid(text=컬럼헤더,쉼표) chart tree searchbar tabs
 
@@ -4392,7 +4403,61 @@ fields=보이는순서,type=text|combo|date|daterange|search(돋보기)|radio(op
 
 [구형화면]
 촘촘한입력칸+회색3D테두리+작은폰트인옛화면:경로(A>B>C(S)(코드))는마지막이름만title,흩어진조회항목은위치무관모아searchbar1개(좌상→우하순,돋보기/목록아이콘=search,~로이은두날짜=daterange,코드칸+옆회색이름칸=search1개·값은라벨만),표=grid1개(컬럼원본순서,rows대략,버튼없어도showToolbar+stdAdd/Cancel/Copy/Delete추가,제목없으면gtitle지어줌),우측상단단독버튼(회계전표등)=button,하단에저장/확정추가.
-예(경로"재고관리 > 수불관리 > 기타출고등록(S)(코드)"):
+[{"type":"title","x":20,"y":16,"w":220,"h":34,"text":"기타출고등록"},
+{"type":"button","x":960,"y":18,"w":110,"h":32,"text":"회계전표","ghost":true},
+{"type":"searchbar","x":20,"y":62,"w":1060,"h":110,"collapsed":false,"fields":[{"label":"공장","type":"search","required":true},{"label":"출고일","type":"daterange","required":true},{"label":"창고","type":"search"},{"label":"품목계정","type":"combo"}]},
+{"type":"grid","x":20,"y":186,"w":1060,"h":300,"text":"출고번호","gtitle":"출고내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true,"userBtns":[{"label":"품목참조"}],"rows":8}]`;
+
+// [씬모드] 「질문만 복사」(클립보드) 전용 프롬프트 — 클립보드 복사는 URL 길이 제한이 없으므로
+// 여기에 더 상세하고 긴 지시문을 자유롭게 추가해도 된다. 「Claude에 보내는 질문 미리 보기」에도
+// 이 프롬프트가 표시된다. ⚠️ 위 JSON_PROMPT_THIN_URL과 완전히 별개의 텍스트이므로,
+// 이 블록만 수정하면 되고 「Claude 열기」(URL)쪽에는 전혀 영향을 주지 않는다.
+const JSON_PROMPT_THIN_COPY=`이 화면 캡처를 분석해 UI 컴포넌트 JSON 배열만 출력(설명·코드블록 금지).
+형식:{"type","x","y","w","h","text"}·좌표=가로1100px정수·text=보이는값(없으면"")
+type:title section label(독립텍스트) input combo date daterange(text="YYYY-MM-DD ~ YYYY-MM-DD") check radio button grid(text=컬럼헤더,쉼표) chart tree searchbar tabs
+
+[제외요소] 우측상단"조회조건 접기/펼치기"버튼은고정UI라출력안함(searchbar fields에도미포함).
+
+[라벨]
+input/combo/date/daterange/check/radio는항목명을label로빼지말고본체에포함:showLabel:true,labelText,labelPos:top|left|right|bottom,required=별표(*)면true.
+x,y=라벨포함좌상단,h=라벨+입력칸(top/bottom≈52,좌우≈30).라벨없으면showLabel:false(체크박스는text에문구).radio=options쉼표+selected(0부터).combo=펼쳐진목록만options.회색(비활성)=readonly:true.
+⚠한라벨아래칸2개(예통화/환율+숫자)는분리:왼쪽만라벨,오른쪽showLabel:false·같은y.
+예(칸2개):{"type":"combo","x":20,"y":100,"w":70,"h":52,"text":"KR","showLabel":true,"labelText":"통화/환율","labelPos":"top","required":true},{"type":"input","x":96,"y":122,"w":110,"h":30,"text":"1","showLabel":false,"readonly":true}
+
+[chart]
+카드제목("○○현황›")아래원형/막대/선/영역그래프=chart1개:{"type":"chart","x","y","w","h","ctitle":"제목(›제외)","chartType":"donut|bar|line|area","color":"green|blue|yellow|mixed","text":"값1,값2..","showArrow":제목옆›있으면true}
+donut=중앙합계원형,bar=세로막대,line=점선,area=선아래채움.text=보이는순서(도넛은범례순,나머지좌→우)로값만나열(항목명·범례문구는제외,필요시옆에label로보완).color=가장가까운계열1개(여러색섞이면mixed),값도좌→우순1배열로근사(구분·x축생략).
+예:{"type":"chart","x":20,"y":90,"w":560,"h":260,"ctitle":"직급별 인원현황","chartType":"donut","color":"mixed","text":"1,5,5,60,22,59,59","showArrow":true}
+
+[대시보드]
+브레드크럼+우측버튼아래카드나열화면:title=페이지명,우측버튼=button,카드당chart/grid1개,카드실좌표(x,y·동일줄=동일y)유지,테두리/그림자재현안함,카드제목의›=showArrow.
+
+[tree]
+계단식들여쓰기목록(좌측메뉴·조직도)=tree1개.text에줄바꿈(\\n)나열,하위는공백2칸씩.
+예:{"type":"tree","x":20,"y":80,"w":280,"h":300,"text":"본사\\n  경영지원부문\\n    재경팀\\n  영업부문"}
+
+[tabs]
+겉모양이"잔액|원장"같은버튼형세그먼트여도눌러서화면전체가바뀌면button아닌tabs로:{"type":"tabs","_tempId":1,"x","y","w","h","text":"탭명1,탭명2","active":선택탭번호(0부터)}.탭안나머지컴포넌트엔"parent":1(해당tabs의_tempId),"tabIdx":소속탭번호(0부터)추가,좌표는탭콘텐츠영역기준상대(tabs자체좌표는절대).
+[다중캡처-탭별화면] 이미지여러장이고각장이다른탭내용이면(예1번째=잔액탭,2번째=원장탭)tabs는1개만만들고각이미지컴포넌트에해당tabIdx를붙여1개JSON으로합침(title·조회조건등반복공통요소는1회만).
+
+[searchbar]
+라벨+입력필드가로나열+줄끝조회버튼=searchbar1개(조건1개도,button미생성,접기아이콘은[제외요소]참고):{"type":"searchbar","x","y","w","h","collapsed":접힘true,"fields":[{"label","type","required"}]}
+fields=보이는순서,type=text|combo|date|daterange|search(돋보기)|radio(options:"전체,확정,미확정")|empty(빈칸,자리만차지),required=별표면true,라벨없는칸도label:"",회색칸=readonly:true.
+예:{"label":"발주번호","type":"search","required":true},{"label":"","type":"text","readonly":true}
+
+[grid]
+행추가/취소/복사/삭제버튼+"○○내역(0)건"제목=grid에포함(별도button/label금지):{"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","gtitle":"요청내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+그외버튼="userBtns":[{"label":"품목참조"}].필수컬럼="*품목코드".하단신규/저장/삭제만button.
+[다중캡처병합] 가로스크롤로여러장찍힌동일그리드는컬럼을좌→우로이어붙여grid1개(중복컬럼명은뒤것버림1회,text는병합전체순서로나열).gtitle·title·searchbar등다른컴포넌트도반복확인돼도화면기준1회만출력.
+[병합헤더] 헤더가2줄이고위줄한칸이아래여러컬럼을가로질러덮으면(예"기준정보"가"품목"·"품목명"위에걸침)"colGroups":배열을text와같은개수·순서로추가:병합된컬럼은같은그룹명반복,미병합컬럼은"".헤더1줄이면colGroups생략.
+예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목,품목명,출고창고,출고방법","colGroups":["기준정보","기준정보","재고정보","재고정보"],"gtitle":"목록","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+
+[레이아웃]
+원본픽셀그대로베끼지말고폭1060기준재배치:순서title→(tabs)→searchbar→입력/카드(chart·grid)→하단버튼,x:20여백통일,같은줄y맞춤,입력한줄4~6개균등(라벨포함h52,컨트롤30),구획제목=section그아래입력배치,폭넘으면다음줄(겹치지않게),3D테두리/아이콘/색배경등장식재현안함.
+[간격] title/tabs바로아래(8~16px)에다음요소를붙인다-브레드크럼·아이콘·"조회조건 접기"버튼처럼[제외요소]로뺀공간은원본y값그대로베끼지말고좁혀없앤다.searchbar h는조건수·줄바꿈에따라커질수있음(대략줄당52px,줄수=ceil(필드수/4~6))-예상보다커지면그아래모든컴포넌트(tabs·section·chart·grid·button등)y를늘어난만큼반드시내려절대겹치지않게함.
+
+[구형화면]
+촘촘한입력칸+회색3D테두리+작은폰트인옛화면:경로(A>B>C(S)(코드))는마지막이름만title,흩어진조회항목은위치무관모아searchbar1개(좌상→우하순,돋보기/목록아이콘=search,~로이은두날짜=daterange,코드칸+옆회색이름칸=search1개·값은라벨만),표=grid1개(컬럼원본순서,rows대략,버튼없어도showToolbar+stdAdd/Cancel/Copy/Delete추가,제목없으면gtitle지어줌),우측상단단독버튼(회계전표등)=button,하단에저장/확정추가.
 [{"type":"title","x":20,"y":16,"w":220,"h":34,"text":"기타출고등록"},
 {"type":"button","x":960,"y":18,"w":110,"h":32,"text":"회계전표","ghost":true},
 {"type":"searchbar","x":20,"y":62,"w":1060,"h":110,"collapsed":false,"fields":[{"label":"공장","type":"search","required":true},{"label":"출고일","type":"daterange","required":true},{"label":"창고","type":"search"},{"label":"품목계정","type":"combo"}]},
@@ -4403,7 +4468,8 @@ fields=보이는순서,type=text|combo|date|daterange|search(돋보기)|radio(op
 // Fat Mode 전용 변환 프롬프트: 조회조건은 searchbar 대신 panel(그룹박스)+
 // 자식 컴포넌트(부모/자식)로 구성하고, 라벨 기본 위치는 left, 크기는 Fat Mode 기본 크기(가로 1.3배·
 // 세로 2/3배 보정된 값, 예: input/combo/date 234x35)를 기준으로 안내한다.
-const JSON_PROMPT_FAT=`이 화면 캡처를 분석해 UI 컴포넌트 JSON 배열만 출력(설명·코드블록 금지).
+// [팻모드] Claude 「열기」(URL 파라미터)용 — 마찬가지로 URL 길이 제한 때문에 짧게 유지한다.
+const JSON_PROMPT_FAT_URL=`이 화면 캡처를 분석해 UI 컴포넌트 JSON 배열만 출력(설명·코드블록 금지).
 형식:{"type","x","y","w","h","text"}·좌표=가로1100px정수·text=보이는값(없으면"")
 type:title section panel tabs label input combo date daterange(text="YYYY-MM-DD ~ YYYY-MM-DD") check radio popup button grid(text=컬럼헤더,쉼표) chart tree
 
@@ -4447,10 +4513,60 @@ h=라벨+칸(left/right≈23,top/bottom≈52),w보통234(popup420안팎).없으�
 5.장식생략(색상·별표자동적용)
 6.title/tabs바로아래(8~16px)에다음요소(panel등)를붙인다-브레드크럼·아이콘·"조회조건 접기"버튼처럼[필수규칙]로뺀공간은원본y값그대로베끼지말고좁혀없앤다.조회조건panel은항목수·줄바꿈에따라h가커질수있음(예상보다커지면그아래모든컴포넌트-tabs·section·chart·grid·button등-y를늘어난만큼반드시내려절대겹치지않게함)`;
 
-// 지금 켜져 있는 스킨(Thin/Fat)에 맞는 변환 프롬프트를 돌려준다. 이미지 변환 팝업을 열 때,
-// 복사할 때, Claude를 열 때 모두 이 함수를 통해 프롬프트를 가져온다.
-function currentJsonPrompt(){
-  return document.body.classList.contains('skin-classic') ? JSON_PROMPT_FAT : JSON_PROMPT_THIN;
+// [팻모드] 「질문만 복사」(클립보드) 전용 프롬프트 — URL 길이 제한이 없으므로 자유롭게 확장 가능.
+// 「Claude에 보내는 질문 미리 보기」에도 이 프롬프트가 표시된다. ⚠️ 위 JSON_PROMPT_FAT_URL과
+// 완전히 별개의 텍스트이므로, 이 블록만 수정하면 되고 「Claude 열기」(URL)쪽에는 전혀 영향을 주지 않는다.
+const JSON_PROMPT_FAT_COPY=`이 화면 캡처를 분석해 UI 컴포넌트 JSON 배열만 출력(설명·코드블록 금지).
+형식:{"type","x","y","w","h","text"}·좌표=가로1100px정수·text=보이는값(없으면"")
+type:title section panel tabs label input combo date daterange(text="YYYY-MM-DD ~ YYYY-MM-DD") check radio popup button grid(text=컬럼헤더,쉼표) chart tree
+
+[필수규칙]
+-labelPos기본left(세로쌓임만top/bottom)
+-조회조건:searchbar금지,panel+input/combo/date자식(labelPos left).조회버튼·돋보기검색버튼·우측상단"조회조건 접기/펼치기"버튼모두출력안함
+-코드+명칭=popup1개(w380~460,코드만style:"code",w200~300)
+-별표안보임,진한배경=required:true
+-그리드행툴바(행추가등)button생성안함([grid]참고)
+-구형화면:경로마지막만title,조회칸모아panel1개
+예:{"type":"panel","_tempId":1,"x":20,"y":50,"w":1060,"h":90},{"type":"combo","parent":1,"x":30,"y":10,"w":300,"h":23,"text":"동아","showLabel":true,"labelText":"공장","labelPos":"left"}
+
+[입력형]
+input/combo/date/daterange/check/radio는label대신본체:showLabel:true,labelText,labelPos"left",required(색배경true).
+h=라벨+칸(left/right≈23,top/bottom≈52),w보통234(popup420안팎).없으면showLabel:false.radio=options쉼표+selected(0부터).combo=목록만options.색배경=readonly:true.
+⚠코드+숫자분리값만같은y2칸(왼쪽라벨,오른쪽showLabel:false),그외한줄1개씩.
+예:{"type":"combo","x":20,"y":100,"w":70,"h":23,"text":"KR","showLabel":true,"labelText":"환율","labelPos":"left","required":true},{"type":"input","x":96,"y":100,"w":110,"h":23,"text":"1","showLabel":false,"readonly":true}
+
+[chart] 카드그래프=chart1:{"type":"chart","x","y","w","h","ctitle":"제목","chartType":"donut|bar|line|area","color":"green|blue|yellow|mixed","text":"값1,값2..","showArrow":true}.text=순서값만,donut=중앙합계.
+
+[대시보드/Ref] 카드나열:title=페이지명,버튼=button,카드당chart/grid1,실좌표유지,›=showArrow.독립label:우상"~참조"=ref,우하"~조회"=jump.
+
+[tabs/panel] 강조탭2개=tabs(text=이름쉼표,active=번호0부터).겉모양이버튼(예"잔액|원장")이어도눌러서화면전체바뀌면button아닌tabs로처리.가로소구역=panel.컨테이너"_tempId",자식"parent"=값(tabs자식엔"tabIdx"도),좌표는컨테이너기준상대.
+[다중캡처-탭별화면] 이미지여러장=각각다른탭내용(예1번째잔액탭,2번째원장탭)이면tabs는1개만,각이미지컴포넌트에해당tabIdx붙여1개JSON으로합침(title·조회조건등공통요소는1회만).
+
+[tree] 계단목록=tree1,text줄바꿈(\\n)+하위공백2칸.예:{"type":"tree","x":20,"y":80,"w":280,"h":300,"text":"본사\\n  경영지원부문"}
+
+[grid]
+컬럼이핵심:{"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","rows":8}.필수="*컬럼명".
+-행추가·행취소·행복사·행삭제·저장(그리드CRUD툴바)는고정UI라button/attribute모두생성안함.button은무관한독립버튼만(예:확정,품목참조,폼하단저장)
+-다장캡처동일그리드는컬럼좌→우이어붙여grid1개(중복명뒤것버림1회),다른컴포넌트도1회만.
+-헤더2줄+위칸이여러컬럼걸침(병합헤더,예:"기준정보"가"품목"·"품목명"위)="colGroups":배열을text와동일개수·순서로추가(병합컬럼은동일그룹명반복,미병합컬럼은"").헤더1줄이면colGroups생략.
+예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목,품목명,출고창고,출고방법","colGroups":["기준정보","기준정보","재고정보","재고정보"],"rows":8}
+
+[레이아웃]
+폭1060재배치:
+1.순서:title→(tabs)→panel→입력→카드→버튼
+2.좌우2단:컬럼당1줄1필드순서유지(라벨동행금지,예외:[입력형])
+3.panel류가로나열만한줄2~4개
+4.x20여백,구획=section,넘으면줄바꿈
+5.장식생략(색상·별표자동적용)
+6.title/tabs바로아래(8~16px)에다음요소(panel등)를붙인다-브레드크럼·아이콘·"조회조건 접기"버튼처럼[필수규칙]로뺀공간은원본y값그대로베끼지말고좁혀없앤다.조회조건panel은항목수·줄바꿈에따라h가커질수있음(예상보다커지면그아래모든컴포넌트-tabs·section·chart·grid·button등-y를늘어난만큼반드시내려절대겹치지않게함)`;
+
+// 지금 켜져 있는 스킨(Thin/Fat)에 맞는 변환 프롬프트를 돌려준다.
+// kind='url' → Claude 열기(새 창 URL 파라미터, 인코딩 팽창 때문에 짧아야 함)
+// kind='copy' → 질문만 복사 / 미리 보기(클립보드, 길이 제한 없음 — 더 상세하게 작성 가능)
+function currentJsonPrompt(kind){
+  const fat=document.body.classList.contains('skin-classic');
+  if(kind==='copy') return fat?JSON_PROMPT_FAT_COPY:JSON_PROMPT_THIN_COPY;
+  return fat?JSON_PROMPT_FAT_URL:JSON_PROMPT_THIN_URL;
 }
 // When the user pastes/types the answer, advance to step 3 and give a filled cue.
 (function(){
@@ -4466,14 +4582,14 @@ function currentJsonPrompt(){
   ta.addEventListener('paste',()=>setTimeout(onFill,0));
 })();
 function copyPrompt(){
-  navigator.clipboard&&navigator.clipboard.writeText(currentJsonPrompt()).then(
+  navigator.clipboard&&navigator.clipboard.writeText(currentJsonPrompt('copy')).then(
     ()=>{cvSetStep(2);setStatus('📋 질문을 복사했어요. Claude 채팅창에 붙여넣고, <b>화면 캡처 이미지도 함께 첨부</b>해서 보내세요.','ok');},
     ()=>setStatus('복사가 안 됐어요.','err','위 미리 보기 칸의 글자를 직접 드래그해서 복사해 주세요.')
   );
 }
 // Opens claude.ai in a new tab with the prompt already filled in.
 function openInClaude(){
-  const prompt=currentJsonPrompt();
+  const prompt=currentJsonPrompt('url');
   const url='https://claude.ai/new?q='+encodeURIComponent(prompt);
   window.open(url,'_blank','noopener');
   cvSetStep(2);
@@ -4574,7 +4690,7 @@ function placeItems(items,scale,clearFirst){
   pushHistory();
   if(clearFirst) comps=[];
   const known=['title','section','panel','tabs','label','input','combo','date','daterange','check','radio','button','grid','chart','tree','searchbar','popup'];
-  const fieldTypes=['text','combo','date','daterange','search','radio'];
+  const fieldTypes=['text','combo','date','daterange','search','radio','empty'];
   // Properties (beyond type/x/y/w/h/text/required) that a JSON item may set directly; copied through as-is.
   const passthroughKeys=['gtitle','userBtns','stdAdd','stdCancel','stdCopy','stdDelete','rows','showToolbar',
     'options','readonly','ghost','active','collapsed','ctitle','chartType','color','showArrow','selected','selectedLine','showLines','colGroups',
@@ -4993,6 +5109,16 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260825.003', date:'2026년 8월 25일', items:[
+    {t:'「질문만 복사」 프롬프트, 「Claude 열기」와 완전히 독립된 텍스트로 분리', d:'씬모드·팻모드 각각의 <b>「질문만 복사」</b> 프롬프트를 <b>「Claude 열기」(URL)</b> 프롬프트와 별개의 문장으로 만들었습니다. 이제 「질문만 복사」쪽 내용을 아무리 길게 늘려도 「Claude 열기」의 URL 길이에는 <b>전혀 영향을 주지 않습니다.</b>'}
+  ]},
+  {ver:'20260825.002', date:'2026년 8월 25일', items:[
+    {t:'이미지 변환 프롬프트, 「Claude 열기」·「질문만 복사」 분리 (씬모드)', d:'지금까지 하나로 쓰던 변환 프롬프트를 <b>「Claude 열기」(URL 전달)</b>용과 <b>「질문만 복사」</b>(클립보드)용으로 분리했습니다. URL 전달은 한글 인코딩 팽창으로 길이 제한에 걸리기 쉬워 계속 짧게 유지하고, <b>「질문만 복사」</b>는 길이 제한이 없어 앞으로 더 상세한 지시문으로 확장할 수 있습니다. <b>「Claude에 보내는 질문 미리 보기」</b>에는 항상 「질문만 복사」쪽 프롬프트가 표시됩니다.'},
+    {t:'「질문만 복사」 버튼 강조 및 안내 문구 추가', d:'「질문만 복사」 버튼을 <b>초록색 강조 스타일</b>과 <b>「권장」</b> 배지로 눈에 더 잘 띄게 바꿨습니다. 버튼과 질문 미리 보기 사이에는 <b>직접 붙여넣으면 더 상세한 요청이 가능해 결과 품질이 좋아진다</b>는 짧은 안내 문구를 추가했습니다.'}
+  ]},
+  {ver:'20260825.001', date:'2026년 8월 25일', items:[
+    {t:'조회조건 필드 타입에 「빈값」 추가 (씬모드)', d:'조회조건(searchbar) 컴포넌트의 필드 타입 목록에 <b>기간·검색·라디오</b> 다음으로 <b>「빈값」</b>이 추가되었습니다. 필드 타입을 빈값으로 지정하면 라벨과 입력칸 없이 <b>해당 칸이 비워진 채로</b> 자리만 차지해, 여러 칸짜리 레이아웃에서 <b>특정 칸만 건너뛰고</b> 싶을 때 사용할 수 있습니다. 씬모드 전용 기능입니다.'}
+  ]},
   {ver:'20260819.001', date:'2026년 8월 19일', items:[
     {t:'이미지 변환(씬모드) 프롬프트 길이 추가 축소', d:'변환 품질은 그대로 유지하면서 <b>씬모드</b> 프롬프트에서 다른 예시와 뜻이 겹치던 라벨 예시 1개를 정리하고, 구형화면 예시의 부가 설명을 간결하게 다듬어 글자 수를 더 줄였습니다. Claude에 붙여넣는 텍스트가 짧아져 전송·응답이 더 가벼워집니다.'}
   ]},
@@ -5453,7 +5579,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260819.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260825.003';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
