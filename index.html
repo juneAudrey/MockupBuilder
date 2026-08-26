@@ -22,6 +22,12 @@
     --ax-readonly-bg:#f6f7f8; --ax-required-bg:#ffffff;
     --ax-canvas-bg:#ffffff; --ax-label-fg:#374151;
     --ax-grid-line:#f3f5f7;
+    /* 그리드 컬럼/조회조건 필드의 "필수"·"읽기전용" 표시에 공통으로 쓰는 배경색.
+       필수는 은은한 크림색(RGB 255,250,237), 읽기전용은 회색조로 통일한다. */
+    --ax-req-fill: rgb(255,250,237);
+    /* 조회조건 패널의 읽기전용 색(.ax-search .sctl.ro)과 정확히 동일한 값 - 그리드 읽기전용 행도
+       이 색을 그대로 쓴다. */
+    --ax-ro-fill:#f6f7f8;
     /* 상단바(topbar)는 --ax-navy와 별개 변수를 쓴다: --ax-navy는 섹션 헤더·그리드 제목 등
        화면 곳곳의 텍스트 색으로도 쓰이므로, 상단바만 바꾸려면 전용 변수가 필요하다.
        씬모드는 로고·버튼과 같은 계열의 진한 그린, 팻모드는 기존 네이비 그대로. */
@@ -56,7 +62,7 @@
   }
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:"Malgun Gothic","맑은 고딕",-apple-system,sans-serif;font-size:13px;color:#333;background:var(--ax-bg);height:100vh;overflow:hidden;}
-  .app{--props-w:240px;display:grid;grid-template-columns:180px 1fr 6px var(--props-w);grid-template-rows:44px 1fr;height:100vh;}
+  .app{--props-w:324px;display:grid;grid-template-columns:180px 1fr 6px var(--props-w);grid-template-rows:44px 1fr;height:100vh;}
   .app>.toolbox{grid-column:1;grid-row:2;}
   .app>.canvas-wrap{grid-column:2;grid-row:2;}
   .app>#propsSplit{grid-column:3;grid-row:2;}
@@ -351,6 +357,22 @@
   .ax-grid .gr .gcell-check.interactive .box.on::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;line-height:1;}
   .ax-grid .gr .gcell-file{width:100%;height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}
   .ax-grid .gr .gcell-file-ic{width:18px;height:18px;flex:none;color:#9aa1a9;}
+  /* 컬럼 단위 "필수"/"읽기전용" 표시: 헤더는 색이 그대로이고, 데이터 행(바디 셀)만 배경색이
+     바뀐다. 헤더에는 빨간 * 표시만 붙는다. 둘 다 켜져 있으면 읽기전용(회색)이 우선한다 -
+     렌더링 쪽에서 클래스를 배타적으로 부여. */
+  .ax-grid .gh span .col-req-mark{color:var(--ax-req);margin-right:2px;font-weight:700;
+    /* .ax-grid .gh span 규칙은 자손 선택자라 이 안에 중첩된 span에도 배경/패딩/테두리가
+       그대로 상속되어 "*"만 별도 상자처럼 보이는 문제가 있었다 - 여기서 원래 셀 스타일을
+       모두 지워 순수한 인라인 표시로 되돌린다. */
+    display:inline;background:none;padding:0;border-right:0;white-space:nowrap;overflow:visible;text-overflow:clip;}
+  /* Fat Mode에서는 다른 컴포넌트의 필수(*) 표시와 마찬가지로 그리드 헤더의 * 도 쓰지 않는다
+     (line ~275 의 body.skin-classic .req{display:none} 과 동일한 규칙). Thin Mode는 그대로. */
+  body.skin-classic .ax-grid .gh span .col-req-mark{display:none;}
+  .ax-grid .gr span.col-required{background:var(--ax-req-fill);}
+  .ax-grid .gr span.col-readonly{background:var(--ax-ro-fill);color:#9aa4ad;}
+  .ax-grid .gr span.col-readonly .gcell-input{background:transparent;color:#9aa4ad;pointer-events:none;}
+  .ax-grid .gr span.col-readonly .gcell-check{pointer-events:none;opacity:.65;}
+  .ax-grid .gr span.col-readonly .ax-combo{pointer-events:none;opacity:.7;}
   .ax-grid .gpagination{position:relative;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:8px 10px;border-top:1px solid var(--ax-border);background:#fff;flex:none;flex-wrap:wrap;font-size:11px;color:#4b5563;min-height:24px;}
   .ax-grid .gpagination .gp-nav{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;flex:none;}
   .ax-grid .gpagination .gp-btn{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;padding:0 6px;border:1px solid var(--ax-border);border-radius:4px;background:#fff;color:#6b7280;font-size:11px;box-sizing:border-box;}
@@ -530,6 +552,23 @@
   .sfield-row.dragging{opacity:.35;}
   .sfield-row.drag-over{border-top-color:var(--ax-green);}
   .sfield-opts input{width:100%;padding:4px 6px;border:1px dashed var(--ax-border);border-radius:4px;font-size:11px;background:#fafbfc;}
+  /* 그리드 컬럼 행의 상위헤더 입력(2행) - sfield-opts input과 동일한 톤이지만, 같은 행에서
+     필수/읽기전용 버튼과 나란히 놓이도록 flex 아이템으로 쓴다. */
+  .sfield-row .grp-input{flex:1;min-width:0;padding:4px 6px;border:1px dashed var(--ax-border);border-radius:4px;font-size:11px;background:#fafbfc;font-family:inherit;color:#333;}
+  /* 그리드 컬럼의 "헤더 텍스트 정렬" 컨트롤 - 왼쪽/가운데/오른쪽 3버튼 세그먼트 */
+  .align-seg{display:flex;border:1px solid var(--ax-border);border-radius:4px;overflow:hidden;flex:none;}
+  .align-btn{width:20px;height:24px;padding:0;display:flex;align-items:center;justify-content:center;background:#fff;border:0;border-right:1px solid var(--ax-border);cursor:pointer;}
+  .align-btn:last-child{border-right:0;}
+  .align-btn:hover{background:#f3f6f9;}
+  .align-btn.on{background:#e8f0fb;}
+  .align-ic{width:12px;height:10px;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none;}
+  .align-ic i{display:block;height:2px;border-radius:1px;background:#6b7280;}
+  .align-btn.on .align-ic i{background:var(--sel);}
+  .align-ic.l i:nth-child(1){width:100%;} .align-ic.l i:nth-child(2){width:70%;} .align-ic.l i:nth-child(3){width:85%;}
+  .align-ic.c{align-items:center;}
+  .align-ic.c i:nth-child(1){width:100%;} .align-ic.c i:nth-child(2){width:65%;} .align-ic.c i:nth-child(3){width:80%;}
+  .align-ic.r{align-items:flex-end;}
+  .align-ic.r i:nth-child(1){width:100%;} .align-ic.r i:nth-child(2){width:70%;} .align-ic.r i:nth-child(3){width:85%;}
 
   /* Convert modal */
   .modal-bg{position:fixed;inset:0;background:rgba(20,28,38,.55);z-index:1000;display:none;align-items:center;justify-content:center;}
@@ -895,7 +934,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260825.003)</span>
+      <span id="verText">by June (ver.20260826.001)</span>
     </div>
   </div>
 
@@ -2372,6 +2411,18 @@ function innerRaw(c,mode){
       const colGroups=(c.colGroups||[]).slice(0,cols.length);
       while(colGroups.length<cols.length)colGroups.push('');
       const hasGroups=colGroups.some(g=>g&&g.trim());
+      // 헤더 텍스트 정렬 / 필수 / 읽기전용 - 컬럼별로 하나씩, colGroups와 같은 방식으로 길이를 맞춘다.
+      const colAligns=(c.colAligns||[]).slice(0,cols.length);
+      while(colAligns.length<cols.length)colAligns.push('left');
+      const colRequired=(c.colRequired||[]).slice(0,cols.length);
+      while(colRequired.length<cols.length)colRequired.push(false);
+      const colReadonly=(c.colReadonly||[]).slice(0,cols.length);
+      while(colReadonly.length<cols.length)colReadonly.push(false);
+      // 읽기전용·필수가 둘 다 켜진 컬럼은 읽기전용(회색)을 우선한다 - 데이터 행(바디 셀)에만
+      // 적용한다. 헤더는 색이 바뀌지 않고, 필수일 때 빨간 * 표시만 붙는다.
+      const colColorCls=ci=>colReadonly[ci]?'col-readonly':(colRequired[ci]?'col-required':'');
+      const colReqMark=ci=>colRequired[ci]?'<span class="col-req-mark">*</span>':'';
+      const ALIGN_JUSTIFY={left:'flex-start',center:'center',right:'flex-end'};
       let h;
       if(hasGroups){
         // CSS Grid natively supports the 2D (row+column) span placement this needs, so the
@@ -2381,27 +2432,36 @@ function innerRaw(c,mode){
         const headParts=[];
         for(let ci=0;ci<cols.length;ci++){
           const g=(colGroups[ci]||'').trim();
+          const mark=colReqMark(ci);
+          const align=colAligns[ci]||'left';
           if(g){
             if(ci===0||(colGroups[ci-1]||'').trim()!==g){
               let span=1;
               while(ci+span<cols.length&&(colGroups[ci+span]||'').trim()===g)span++;
               headParts.push(`<span style="grid-column:${ci+1}/span ${span};grid-row:1;text-align:center;border-bottom:1px solid var(--ax-border);">${esc(g)}</span>`);
             }
-            headParts.push(`<span style="grid-column:${ci+1};grid-row:2;">${esc(cols[ci].trim())}</span>`);
+            headParts.push(`<span style="grid-column:${ci+1};grid-row:2;text-align:${align};">${mark}${esc(cols[ci].trim())}</span>`);
           }else{
-            headParts.push(`<span style="grid-column:${ci+1};grid-row:1/span 2;display:flex;align-items:center;">${esc(cols[ci].trim())}</span>`);
+            headParts.push(`<span style="grid-column:${ci+1};grid-row:1/span 2;display:flex;align-items:center;justify-content:${ALIGN_JUSTIFY[align]||'flex-start'};">${mark}${esc(cols[ci].trim())}</span>`);
           }
         }
         h=`<div class="gh" style="display:grid;grid-template-columns:${colTrackStyle};grid-template-rows:repeat(2,auto);">${headParts.join('')}</div>`;
       }else{
-        h='<div class="gh"'+gridColsStyle+'>'+cols.map(x=>`<span${cellW}>${esc(x.trim())}</span>`).join('')+'</div>';
+        h='<div class="gh"'+gridColsStyle+'>'+cols.map((x,ci)=>{
+          const align=colAligns[ci]||'left';
+          const wStyle=xs?`width:${colW}px;`:'';
+          return `<span style="${wStyle}text-align:${align};">${colReqMark(ci)}${esc(x.trim())}</span>`;
+        }).join('')+'</div>';
       }
       for(let i=0;i<(c.rows||3);i++){
         const cells=cols.map((x,ci)=>{
           const ctype=(c.colTypes&&c.colTypes[ci])||'input';
           const copts=((c.colOptions&&c.colOptions[ci])||'').split(',').map(s=>s.trim()).filter(Boolean);
           const content=gridCellCtrl(ctype,copts,exp);
-          const cls=ctype==='input'&&exp?' class="gcell-edit"':'';
+          const editCls=ctype==='input'&&exp?'gcell-edit':'';
+          const colorCls=colColorCls(ci);
+          const clsAttr=[editCls,colorCls].filter(Boolean).join(' ');
+          const cls=clsAttr?` class="${clsAttr}"`:'';
           return `<span${cellW}${cls}>${content}</span>`;
         }).join('');
         h+='<div class="gr'+(exp?' hoverable':'')+'"'+gridColsStyle+'>'+cells+'</div>';
@@ -3147,13 +3207,16 @@ function renderProps(){
     const gcols=(c.text||'').split(',').map(s=>s.trim());
     const groupCollapsed=gcolGroupCollapsed.has(String(c.id));
     html+=`<div class="grp"><div class="grp-h gcol-grp-h">
-      <span>컬럼 (${gcols.length})${qh('조회조건 필드처럼 드래그로 순서를 바꾸거나, ×로 삭제할 수 있습니다.<br><br>유형을 텍스트박스·콤보박스·날짜·체크박스·첨부파일 중 하나로 지정하면 내보내기 결과물에서 해당 컴포넌트처럼 동작합니다 (콤보는 클릭 시 목록 펼침, 체크박스는 클릭 시 체크, 첨부파일은 업로드 아이콘 표시).<br><br>각 컬럼의 <b>상위헤더</b> 칸에 같은 이름을 연속으로 입력하면 그 컬럼들이 헤더에서 하나로 병합되어 표시됩니다 (예: 기준정보 아래 품목·품목명).')}</span>
+      <span>컬럼 (${gcols.length})${qh('조회조건 필드처럼 드래그로 순서를 바꾸거나, ×로 삭제할 수 있습니다.<br><br>유형을 텍스트박스·콤보박스·날짜·체크박스·첨부파일 중 하나로 지정하면 내보내기 결과물에서 해당 컴포넌트처럼 동작합니다 (콤보는 클릭 시 목록 펼침, 체크박스는 클릭 시 체크, 첨부파일은 업로드 아이콘 표시).<br><br>정렬 아이콘(≡)으로 헤더 텍스트의 좌/가운데/우 정렬을 고를 수 있고, <b>*</b>(필수)를 켜면 헤더 라벨 앞에 빨간 *가 붙고 데이터 행이 크림색으로, <b>🔒</b>(읽기전용)을 켜면 데이터 행이 회색으로 표시됩니다 (헤더 색은 바뀌지 않습니다).<br><br>각 컬럼의 <b>상위헤더</b> 칸에 같은 이름을 연속으로 입력하면 그 컬럼들이 헤더에서 하나로 병합되어 표시됩니다 (예: 기준정보 아래 품목·품목명).')}</span>
       <button class="gcol-grp-toggle" title="컬럼 목록 펼치기/접기" onclick="toggleGcolGroup('${c.id}')">${groupCollapsed?'펼치기 ▸':'접기 ▾'}</button>
     </div>`;
     if(!groupCollapsed){
       html+=`<div class="sfield-list">`;
       gcols.forEach((colName,gi)=>{
         const ctype=(c.colTypes&&c.colTypes[gi])||'input';
+        const calign=(c.colAligns&&c.colAligns[gi])||'left';
+        const creq=!!(c.colRequired&&c.colRequired[gi]);
+        const cro=!!(c.colReadonly&&c.colReadonly[gi]);
         html+=`<div class="sfield-row" draggable="true"
           ondragstart="gcDragStart(event,${gi})" ondragover="gcDragOver(event)"
           ondragleave="gcDragLeave(event)" ondrop="gcDrop(event,${gi})" ondragend="gcDragEnd(event)">
@@ -3167,11 +3230,20 @@ function renderProps(){
               <option value="check"${ctype==='check'?' selected':''}>체크박스</option>
               <option value="file"${ctype==='file'?' selected':''}>첨부파일</option>
             </select>
+            <div class="align-seg" title="헤더 텍스트 정렬">
+              <button type="button" class="align-btn${calign==='left'?' on':''}" title="왼쪽 정렬" onclick="updGridColAlign(${gi},'left')"><span class="align-ic l"><i></i><i></i><i></i></span></button>
+              <button type="button" class="align-btn${calign==='center'?' on':''}" title="가운데 정렬" onclick="updGridColAlign(${gi},'center')"><span class="align-ic c"><i></i><i></i><i></i></span></button>
+              <button type="button" class="align-btn${calign==='right'?' on':''}" title="오른쪽 정렬" onclick="updGridColAlign(${gi},'right')"><span class="align-ic r"><i></i><i></i><i></i></span></button>
+            </div>
             <button class="ubtn-del" title="삭제" onclick="delGridCol(${gi})">×</button>
           </div>`;
         {
           const cgroup=(c.colGroups&&c.colGroups[gi])||'';
-          html+=`<div class="sfield-opts"><input value="${cgroup.replace(/"/g,'&quot;')}" oninput="updGridColGroup(${gi},this.value)" placeholder="상위헤더(그룹명) - 연속 컬럼에 같은 이름을 입력하면 병합"></div>`;
+          html+=`<div class="sf-row2">
+            <input class="grp-input" value="${cgroup.replace(/"/g,'&quot;')}" oninput="updGridColGroup(${gi},this.value)" placeholder="상위헤더(그룹명)">
+            <button class="sf-req${creq?' on':''}" title="필수 (헤더에 * 표시 + 데이터 행을 크림색으로)" onclick="updGridColRequired(${gi},${!creq})">*</button>
+            <button class="sf-ro${cro?' on':''}" title="읽기전용 (데이터 행을 회색으로 표시)" onclick="updGridColReadonly(${gi},${!cro})">🔒</button>
+          </div>`;
         }
         if(ctype==='combo'){
           const copts=(c.colOptions&&c.colOptions[gi])||'';
@@ -3539,6 +3611,15 @@ function normGridColArrays(c){
   if(!Array.isArray(c.colGroups))c.colGroups=[];
   while(c.colGroups.length<n)c.colGroups.push('');
   if(c.colGroups.length>n)c.colGroups.length=n;
+  if(!Array.isArray(c.colAligns))c.colAligns=[];
+  while(c.colAligns.length<n)c.colAligns.push('left');
+  if(c.colAligns.length>n)c.colAligns.length=n;
+  if(!Array.isArray(c.colRequired))c.colRequired=[];
+  while(c.colRequired.length<n)c.colRequired.push(false);
+  if(c.colRequired.length>n)c.colRequired.length=n;
+  if(!Array.isArray(c.colReadonly))c.colReadonly=[];
+  while(c.colReadonly.length<n)c.colReadonly.push(false);
+  if(c.colReadonly.length>n)c.colReadonly.length=n;
 }
 function addGridCol(){
   const c=comps.find(x=>x.id===sel);if(!c)return;
@@ -3550,6 +3631,9 @@ function addGridCol(){
   c.colTypes.push('input');
   c.colOptions.push('');
   c.colGroups.push('');
+  c.colAligns.push('left');
+  c.colRequired.push(false);
+  c.colReadonly.push(false);
   c._xscrollManual=false;
   render();
 }
@@ -3570,6 +3654,9 @@ function delGridCol(i){
   c.colTypes.splice(i,1);
   c.colOptions.splice(i,1);
   c.colGroups.splice(i,1);
+  c.colAligns.splice(i,1);
+  c.colRequired.splice(i,1);
+  c.colReadonly.splice(i,1);
   render();
 }
 function updGridColType(i,v){
@@ -3595,6 +3682,31 @@ function updGridColGroup(i,v){
   if(i>=c.colGroups.length)return;
   c.colGroups[i]=v;
   drawCanvas();
+}
+// 헤더 텍스트 정렬(left/center/right). 어느 아이콘이 눌려있는지 즉시 반영해야 하므로
+// (다른 토글 버튼들처럼) 속성 패널을 다시 그린다.
+function updGridColAlign(i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  if(i>=c.colAligns.length)return;
+  c.colAligns[i]=v;
+  render();
+}
+// 필수 - 헤더 라벨 앞에 빨간 "*"를 붙이고(헤더 색은 그대로), 데이터 행 배경을 크림색으로 표시한다.
+function updGridColRequired(i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  if(i>=c.colRequired.length)return;
+  c.colRequired[i]=v;
+  render();
+}
+// 읽기전용 - 헤더 색은 그대로 두고, 데이터 행 배경을 회색으로 표시하며 데이터 셀 입력을 잠근다.
+function updGridColReadonly(i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  if(i>=c.colReadonly.length)return;
+  c.colReadonly[i]=v;
+  render();
 }
 // Drag-and-drop reorder: drag a column row's handle and drop it on another row.
 let gcDragIdx=null;
@@ -3628,6 +3740,9 @@ function gcDrop(e,i){
   const [t]=c.colTypes.splice(from,1); c.colTypes.splice(insertAt,0,t);
   const [o]=c.colOptions.splice(from,1); c.colOptions.splice(insertAt,0,o);
   const [g]=c.colGroups.splice(from,1); c.colGroups.splice(insertAt,0,g);
+  const [a]=c.colAligns.splice(from,1); c.colAligns.splice(insertAt,0,a);
+  const [rq]=c.colRequired.splice(from,1); c.colRequired.splice(insertAt,0,rq);
+  const [ro]=c.colReadonly.splice(from,1); c.colReadonly.splice(insertAt,0,ro);
   render();
 }
 function gcDragEnd(e){
@@ -3852,7 +3967,7 @@ function zoomStep(dir){
   const split=document.getElementById('propsSplit');
   if(!split)return;
   const app=document.querySelector('.app');
-  const MINW=180, MAXW=560, DEFW=240;
+  const MINW=180, MAXW=560, DEFW=324;
   const LS_KEY='mb_props_w';
   function setW(w){
     w=Math.max(MINW,Math.min(MAXW,Math.round(w)));
@@ -4447,7 +4562,9 @@ fields=보이는순서,type=text|combo|date|daterange|search(돋보기)|radio(op
 
 [grid]
 행추가/취소/복사/삭제버튼+"○○내역(0)건"제목=grid에포함(별도button/label금지):{"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","gtitle":"요청내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
-그외버튼="userBtns":[{"label":"품목참조"}].필수컬럼="*품목코드".하단신규/저장/삭제만button.
+그외버튼="userBtns":[{"label":"품목참조"}].하단신규/저장/삭제만button.
+[필수컬럼] 헤더텍스트옆에빨간색*가붙은컬럼이있으면(예"품목코드","요청수량"처럼헤더에빨간*표시)해당컬럼명(text)에는*를넣지말고"colRequired":배열을text와같은개수·순서로추가:빨간*가있던컬럼만true,나머지는false.전부false면colGroups처럼생략가능.
+예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목코드,요청수량,단위,필요일","colRequired":[true,true,true,false],"gtitle":"요청내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
 [다중캡처병합] 가로스크롤로여러장찍힌동일그리드는컬럼을좌→우로이어붙여grid1개(중복컬럼명은뒤것버림1회,text는병합전체순서로나열).gtitle·title·searchbar등다른컴포넌트도반복확인돼도화면기준1회만출력.
 [병합헤더] 헤더가2줄이고위줄한칸이아래여러컬럼을가로질러덮으면(예"기준정보"가"품목"·"품목명"위에걸침)"colGroups":배열을text와같은개수·순서로추가:병합된컬럼은같은그룹명반복,미병합컬럼은"".헤더1줄이면colGroups생략.
 예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목,품목명,출고창고,출고방법","colGroups":["기준정보","기준정보","재고정보","재고정보"],"gtitle":"목록","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
@@ -4694,6 +4811,7 @@ function placeItems(items,scale,clearFirst){
   // Properties (beyond type/x/y/w/h/text/required) that a JSON item may set directly; copied through as-is.
   const passthroughKeys=['gtitle','userBtns','stdAdd','stdCancel','stdCopy','stdDelete','rows','showToolbar',
     'options','readonly','ghost','active','collapsed','ctitle','chartType','color','showArrow','selected','selectedLine','showLines','colGroups',
+    'colAligns','colRequired','colReadonly',
     'showLabel','labelText','labelPos','required','checked','style'];
   const idMap={}; // _tempId (author-assigned, only needed for Tab parent/child references) -> real comp id
   const built=[];
@@ -5109,6 +5227,12 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260826.001', date:'2026년 8월 26일', items:[
+    {t:'그리드 컬럼 헤더 텍스트 정렬 기능 추가', d:'그리드를 선택하면 속성창의 <b>「컬럼」</b> 목록 각 행에 정렬 아이콘(왼쪽·가운데·오른쪽)이 새로 생겨, 컬럼별로 헤더 텍스트 정렬을 지정할 수 있습니다.'},
+    {t:'그리드 컬럼 필수 기능 추가', d:'각 컬럼의 <b>*</b> 버튼을 켜면 헤더 라벨 앞에 빨간 <b>*</b>가 표시되고, 해당 컬럼의 데이터 행 전체가 옅은 크림색 배경으로 표시됩니다. 조회조건 패널의 필수 표시와 같은 방식입니다.'},
+    {t:'그리드 컬럼 읽기전용 기능 추가', d:'각 컬럼의 <b>🔒</b> 버튼을 켜면 해당 컬럼의 데이터 행 전체가 회색 배경으로 바뀌고 입력이 잠깁니다. 색상은 <b>조회조건 패널의 읽기전용</b>과 동일하게 통일했습니다. 필수·읽기전용을 동시에 켜면 읽기전용이 우선 적용됩니다.'},
+    {t:'속성 패널 기본 폭 확대', d:'컬럼별 정렬·필수·읽기전용 컨트롤이 늘어난 만큼 속성 패널 기본 폭을 <b>324px</b>로 넓혀 더 여유 있게 표시되도록 했습니다 (드래그로 조절 가능한 범위는 기존과 동일).'}
+  ]},
   {ver:'20260825.003', date:'2026년 8월 25일', items:[
     {t:'「질문만 복사」 프롬프트, 「Claude 열기」와 완전히 독립된 텍스트로 분리', d:'씬모드·팻모드 각각의 <b>「질문만 복사」</b> 프롬프트를 <b>「Claude 열기」(URL)</b> 프롬프트와 별개의 문장으로 만들었습니다. 이제 「질문만 복사」쪽 내용을 아무리 길게 늘려도 「Claude 열기」의 URL 길이에는 <b>전혀 영향을 주지 않습니다.</b>'}
   ]},
@@ -5579,7 +5703,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260825.003';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260826.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
