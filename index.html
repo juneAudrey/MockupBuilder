@@ -4565,6 +4565,8 @@ fields=보이는순서,type=text|combo|date|daterange|search(돋보기)|radio(op
 그외버튼="userBtns":[{"label":"품목참조"}].하단신규/저장/삭제만button.
 [필수컬럼] 헤더텍스트옆에빨간색*가붙은컬럼이있으면(예"품목코드","요청수량"처럼헤더에빨간*표시)해당컬럼명(text)에는*를넣지말고"colRequired":배열을text와같은개수·순서로추가:빨간*가있던컬럼만true,나머지는false.전부false면colGroups처럼생략가능.
 예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목코드,요청수량,단위,필요일","colRequired":[true,true,true,false],"gtitle":"요청내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+[컬럼정렬] 헤더글자가컬럼마다좌측/가운데/우측중다르게배치되어보이면그대로"colAligns":배열을text와같은개수·순서로추가:각값은헤더텍스트정렬과동일하게"left"|"center"|"right"중하나(병합헤더그룹아래하위컬럼도각자헤더정렬대로개별지정).전컬럼이left면colAligns생략가능.
+예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"잔여년차,근태일자,신청기간(To),성명","colAligns":["center","center","center","center"],"colRequired":[false,true,false,true],"gtitle":"휴가/근태 신청상세","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
 [다중캡처병합] 가로스크롤로여러장찍힌동일그리드는컬럼을좌→우로이어붙여grid1개(중복컬럼명은뒤것버림1회,text는병합전체순서로나열).gtitle·title·searchbar등다른컴포넌트도반복확인돼도화면기준1회만출력.
 [병합헤더] 헤더가2줄이고위줄한칸이아래여러컬럼을가로질러덮으면(예"기준정보"가"품목"·"품목명"위에걸침)"colGroups":배열을text와같은개수·순서로추가:병합된컬럼은같은그룹명반복,미병합컬럼은"".헤더1줄이면colGroups생략.
 예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목,품목명,출고창고,출고방법","colGroups":["기준정보","기준정보","재고정보","재고정보"],"gtitle":"목록","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
