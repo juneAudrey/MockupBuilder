@@ -934,7 +934,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260826.001)</span>
+      <span id="verText">by June (ver.20260828.001)</span>
     </div>
   </div>
 
@@ -7260,8 +7260,10 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
    * - 이 페이지는 Electron/Node가 아닌 순수 브라우저 스크립트라서 PC 호스트명(os.hostname())이나
    *   Windows 로그인 계정(os.userInfo())은 얻을 수 없다. 대신 hostname 자리에는 페이지가
    *   서비스되는 도메인(location.hostname, 파일을 직접 열었으면 'local-file')을 넣고,
-   *   os_user는 얻을 방법이 없어 null로 둔다.
-   * - 외부(공인) IP는 ipify로, 앱 버전은 좌측 하단 verText의 "ver.YYYYMMDD.NNN" 문자열을 그대로 사용.
+   *   os_user 자리에는 사람을 특정하는 대신 기기/환경 정보(브라우저 종류·언어·시간대·해상도)를
+   *   한 줄로 묶어서 넣는다(getDeviceEnvInfo).
+   * - 외부(공인) IP·지역(도시,국가코드)은 ipapi.co(실패 시 ipify로 IP만 폴백)로, 앱 버전은 좌측 하단
+   *   verText의 "ver.YYYYMMDD.NNN" 문자열을 그대로 사용.
    * - Supabase REST(mockup_access_log 테이블)로 INSERT 한다. RLS로 INSERT만 허용된 publishable 키 사용.
    * - 전송에 실패해도(사내망 차단 등) 페이지 동작에는 영향을 주지 않으며,
    *   실패 시 브라우저에는 파일 시스템이 없으므로 localStorage에 최근 50건까지 백업 기록한다.
@@ -7281,6 +7283,44 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
     return `${y}-${mo}-${da}T${h}:${mi}:${s}.${ms}+09:00`;
   }
 
+  // "플랫폼" 자리는 OS 종류가 아니라 브라우저 종류(Chrome/Edge/Firefox/Safari 등)를 넣는다.
+  // Chromium 계열은 navigator.userAgentData.brands 가 있으면 그걸 우선 쓰고, 없으면
+  // navigator.userAgent 문자열을 순서대로 검사한다(Edge가 Chrome 문자열도 포함하므로 먼저 체크).
+  function detectBrowserName(){
+    try{
+      if (navigator.userAgentData && Array.isArray(navigator.userAgentData.brands)) {
+        const brands = navigator.userAgentData.brands.map(b => b.brand);
+        if (brands.includes('Microsoft Edge')) return 'Edge';
+        if (brands.includes('Opera')) return 'Opera';
+        if (brands.includes('Google Chrome')) return 'Chrome';
+      }
+      const ua = navigator.userAgent || '';
+      if (/Edg\//.test(ua)) return 'Edge';
+      if (/OPR\//.test(ua) || /Opera/.test(ua)) return 'Opera';
+      if (/Chrome\//.test(ua)) return 'Chrome';
+      if (/Firefox\//.test(ua)) return 'Firefox';
+      if (/Safari\//.test(ua)) return 'Safari';
+      return 'unknown';
+    }catch(_){
+      return 'unknown';
+    }
+  }
+
+  // os_user 자리에는 Windows 로그인 계정을 알 수 없는 대신, 기기/환경 정보(브라우저 종류·언어·시간대·해상도)를
+  // 한 줄로 묶어서 넣는다. 사람을 특정하진 못하지만 어떤 환경에서 접속했는지 파악하는 데는 쓸모 있다.
+  function getDeviceEnvInfo(){
+    try{
+      const platform = detectBrowserName();
+      const language = navigator.language || 'unknown';
+      let timezone = 'unknown';
+      try{ timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown'; }catch(_){}
+      const resolution = (screen && screen.width && screen.height) ? `${screen.width}x${screen.height}` : 'unknown';
+      return `${platform} | ${language} | ${timezone} | ${resolution}`;
+    }catch(_){
+      return null;
+    }
+  }
+
   // 좌측 하단 표기("by June (ver.20260826.001)")에서 "ver.YYYYMMDD.NNN"만 뽑아 앱 버전으로 사용.
   function readAppVersion(){
     try{
@@ -7297,13 +7337,25 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
     return fetch(url, Object.assign({}, opts, { signal: ctrl.signal })).finally(() => clearTimeout(timer));
   }
 
-  async function fetchExternalIp(){
+  // 외부 IP + 지역(도시, 국가코드)을 한 번에 가져온다. ipapi.co가 막히면(사내망 차단·레이트리밋 등)
+  // IP만이라도 얻을 수 있게 ipify로 폴백한다(이때 location은 null).
+  async function fetchIpAndLocation(){
+    try{
+      const r = await fetchWithTimeout('https://ipapi.co/json/', {}, 5000);
+      const j = await r.json();
+      if (j && j.ip && !j.error) {
+        const city = j.city || null;
+        const countryCode = j.country_code || j.country || null;
+        const loc = (city && countryCode) ? `${city}, ${countryCode}` : (countryCode || null);
+        return { ip: j.ip, location: loc };
+      }
+    }catch(_){}
     try{
       const r = await fetchWithTimeout('https://api.ipify.org?format=json', {}, 5000);
       const j = await r.json();
-      return (j && j.ip) ? j.ip : null;
+      return { ip: (j && j.ip) ? j.ip : null, location: null };
     }catch(_){
-      return null;
+      return { ip: null, location: null };
     }
   }
 
@@ -7320,12 +7372,14 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
   }
 
   async function logMockupAccess(){
+    const geo = await fetchIpAndLocation();
     const row = {
       created_at: nowKstIso(), // 명시하지 않으면 테이블의 default now()가 UTC로 채움
-      external_ip: await fetchExternalIp(),
+      external_ip: geo.ip,
       hostname: location.hostname || 'local-file',
-      os_user: null,
-      app_ver: readAppVersion()
+      os_user: getDeviceEnvInfo(),
+      app_ver: readAppVersion(),
+      location: geo.location // "도시, 국가코드" 형태. 조회 실패 시 null
     };
 
     // 키가 아직 채워지지 않았으면 전송하지 않음(로컬에만 남김)
