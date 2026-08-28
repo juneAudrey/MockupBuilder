@@ -2548,7 +2548,7 @@ function innerRaw(c,mode){
         }
         return `<div class="sfield${f.type==='radio'?' radio':''}" style="grid-column:span ${Math.min(4,Math.max(1,f.span||1))};"><span class="slabel">${esc(f.label||'')}${freq}</span>${ctl}</div>`;
       }).join('');
-      const fullInner=`<div class="sfields">${fields}</div><div class="sactions"><span class="sexpand"${exp?' onclick="toggleSearchbarExport(this)"':''}>∧</span><span class="ssearch">🔍 조회</span></div>`;
+      const fullInner=`<div class="sfields">${fields}</div><div class="sactions"><span class="ssearch">🔍 조회</span></div>`;
       if(!exp){
         if(c.collapsed) return `<div class="ax-search collapsed"><span class="scollapsed-msg">🔍 조회조건이 접혀 있습니다 (헤더의 「조회조건 펼치기」로 표시)</span></div>`;
         return `<div class="ax-search">${fullInner}</div>`;
