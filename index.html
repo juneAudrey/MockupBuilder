@@ -258,6 +258,13 @@
   .cmp.selected{outline:2px solid var(--sel);outline-offset:1px;}
   .cmp .handle{position:absolute;width:9px;height:9px;background:#fff;border:1.5px solid var(--sel);border-radius:2px;display:none;z-index:60;}
   .cmp.selected .handle{display:block;}
+  /* Fill-docked split-pane children (.locked) sit flush against their pane's edges, so the
+     outline above would be clipped away by the pane's overflow. Use an inset overlay drawn
+     as the LAST child instead - see renderComp()'s .sel-frame - which paints on top of the
+     component's own content and never needs to extend past the box it's in. */
+  .cmp.locked.selected{outline:none;}
+  .cmp .sel-frame{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 2px var(--sel);display:none;}
+  .cmp.locked.selected .sel-frame{display:block;}
   .handle.se{right:-5px;bottom:-5px;cursor:se-resize;}
   .handle.e{right:-5px;top:50%;transform:translateY(-50%);cursor:e-resize;}
   .handle.s{bottom:-5px;left:50%;transform:translateX(-50%);cursor:s-resize;}
@@ -312,9 +319,13 @@
   .split-divider:hover{background:var(--ax-green);}
   .split-divider-h{cursor:col-resize;}
   .split-divider-v{cursor:row-resize;}
+  /* z-index: must beat any pane child's own z-index (up to 310+299=609, see renderComp) so the
+     tag - the only way to grab/move a split container once its panes are fully covered by
+     dock:'fill' children - is never hidden underneath one. Still well under the overlay
+     z-indexes (guidelines 900, modals 1000). */
   .split-tag{position:absolute;left:2px;top:2px;width:16px;height:16px;line-height:14px;text-align:center;
     font-size:10px;background:#fff;border:1px solid var(--ax-border);border-radius:3px;color:var(--ax-green-dark);
-    cursor:pointer;z-index:20;user-select:none;}
+    cursor:pointer;z-index:650;user-select:none;}
   .split-tag:hover{border-color:var(--ax-green);background:var(--ax-green-light);}
   .cmp.locked{cursor:default;}
   .ax-grid{width:100%;height:100%;border:1px solid var(--ax-border);border-radius:4px;overflow:hidden;background:#fff;display:flex;flex-direction:column;}
@@ -2154,7 +2165,31 @@ function renderComp(c,container,single,locked){
   if(locked){
     // Split-pane children are always auto-fit to their pane, so dragging/resizing is disabled;
     // clicking still selects the component so its properties (and delete) remain reachable.
-    el.addEventListener('mousedown',ev=>{ ev.stopPropagation(); if(!isSel(c.id)){ selectSingle(c.id); render(); } });
+    el.addEventListener('mousedown',ev=>{
+      // Same guard as startMove(): a mousedown that lands on the grid's own horizontal
+      // scrollbar track must not select+render() here, or drawCanvas() would tear down
+      // and rebuild this very element mid-drag and cancel the native scrollbar grab
+      // before it can move - "좌우 스크롤 사용" would then look like it does nothing
+      // for any grid docked into a split pane, since (unlike a free-floating grid,
+      // which goes through startMove() and already has this guard) this is the only
+      // mousedown handler a fill-docked grid gets.
+      const gbody = ev.target.closest && ev.target.closest('.ax-grid .gbody.xscroll');
+      if(gbody){
+        const gb=gbody.getBoundingClientRect();
+        const offY=(ev.clientY - gb.top)/(zoom||1);
+        if(offY > gbody.clientHeight && gbody.scrollWidth>gbody.clientWidth) return;
+      }
+      ev.stopPropagation();
+      if(!isSel(c.id)){ selectSingle(c.id); render(); }
+    });
+    // The normal ".cmp.selected" outline is drawn just OUTSIDE the box and gets clipped away
+    // by the pane's own overflow (the child is sized to exactly fill the pane) - so a fill-docked
+    // child could be selected with no visible sign of it. Add a topmost overlay INSIDE the box
+    // instead (appended last, after the rendered content, so it always paints above it) whose
+    // inset box-shadow can never be clipped since it never extends past the box it's drawn in.
+    const selFrame=document.createElement('div');
+    selFrame.className='sel-frame';
+    el.appendChild(selFrame);
   } else {
     el.addEventListener('mousedown',ev=>startMove(ev,c));
   }
