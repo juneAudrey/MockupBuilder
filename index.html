@@ -437,10 +437,15 @@
   .ax-search .sctl.ro input{background:transparent;color:#9aa4ad;cursor:default;pointer-events:none;}
   .ax-search .sctl.ro::after{opacity:.45;}
   .ax-search .sradio.ro{opacity:.55;cursor:default;pointer-events:none;}
-  .ax-search .sctl.combo,.ax-search .sctl.date,.ax-search .sctl.daterange,.ax-search .sctl.search{justify-content:space-between;}
+  .ax-search .sctl.combo,.ax-search .sctl.date,.ax-search .sctl.daterange{justify-content:space-between;}
   .ax-search .sctl.combo::after{content:"▾";color:var(--ax-gray);font-size:11px;}
   .ax-search .sctl.date::after,.ax-search .sctl.daterange::after{content:"📅";font-size:12px;}
-  .ax-search .sctl.search::after{content:"🔍";font-size:11px;}
+  .ax-search .sctl.search{justify-content:flex-end;gap:8px;}
+  .sctl-search-ic{width:14px;height:14px;flex:none;background-color:#6b7280;
+    -webkit-mask:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+    mask:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");}
+  .ax-search .sctl.ro .sctl-search-ic{opacity:.45;}
+  .ax-search .ssearch .sctl-search-ic{background-color:#fff;}
   .ax-search .sctl.text{color:#111;}
   .ax-search .sradio{display:flex;align-items:center;gap:14px;height:32px;}
   .ax-search .sradio .opt{display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;}
@@ -746,9 +751,8 @@
   .sctl-date-el,.sctl-text-el{width:100%;height:100%;border:none;outline:none;background:transparent;font-size:12px;color:#111;padding:0 8px;font-family:inherit;}
   .ax-search .sctl.daterange-x{padding:0 8px;display:flex;align-items:center;gap:5px;}
   .ax-search .sctl.daterange-x .sctl-date-el{padding:0;flex:1;min-width:0;}
-  .ax-search .sctl.search-x{padding:0;display:flex;align-items:center;gap:4px;}
-  .ax-search .sctl.search-x .sctl-text-el{flex:1;min-width:0;padding:0 0 0 10px;}
-  .ax-search .sctl.search-x .sctl-search-ic{font-size:12px;color:var(--ax-gray);flex:none;padding-right:8px;}
+  .ax-search .sctl.search-x{padding:0 8px;display:flex;align-items:center;gap:8px;}
+  .ax-search .sctl.search-x .sctl-text-el{flex:1;min-width:0;padding:0;}
   .ax-radio-group{display:flex;align-items:center;gap:14px;height:100%;flex-wrap:wrap;}
   .ax-radio-group .opt{display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;}
   .ax-radio-group .opt .dot{width:14px;height:14px;border:1.5px solid var(--ax-green);border-radius:50%;position:relative;flex:none;}
@@ -2526,7 +2530,7 @@ function innerRaw(c,mode){
         }
         else if(f.type==='date')ctl= exp?`<div class="sctl date-x"><input type="date" class="sctl-date-el"></div>`:'<div class="sctl date"></div>';
         else if(f.type==='daterange')ctl= exp?`<div class="sctl daterange-x"><input type="date" class="sctl-date-el"><span class="dr-sep">~</span><input type="date" class="sctl-date-el"></div>`:'<div class="sctl daterange">2026-07-01 ~ 2026-07-15</div>';
-        else if(f.type==='search')ctl= exp?`<div class="sctl search-x"><input type="text" class="sctl-text-el" placeholder="검색어 입력"><span class="sctl-search-ic">🔍</span></div>`:'<div class="sctl search"></div>';
+        else if(f.type==='search')ctl= exp?`<div class="sctl search-x"><input type="text" class="sctl-text-el" placeholder="검색어 입력"><span class="sctl-search-ic"></span></div>`:'<div class="sctl search"><span class="sctl-search-ic"></span></div>';
         else if(f.type==='radio'){
           const opts=(f.options||'전체,확정,미확정').split(',').map((o,i)=>{
             const onCls=i===0?' on':'';
@@ -2548,7 +2552,7 @@ function innerRaw(c,mode){
         }
         return `<div class="sfield${f.type==='radio'?' radio':''}" style="grid-column:span ${Math.min(4,Math.max(1,f.span||1))};"><span class="slabel">${esc(f.label||'')}${freq}</span>${ctl}</div>`;
       }).join('');
-      const fullInner=`<div class="sfields">${fields}</div><div class="sactions"><span class="ssearch">🔍 조회</span></div>`;
+      const fullInner=`<div class="sfields">${fields}</div><div class="sactions"><span class="ssearch"><span class="sctl-search-ic"></span>조회</span></div>`;
       if(!exp){
         if(c.collapsed) return `<div class="ax-search collapsed"><span class="scollapsed-msg">🔍 조회조건이 접혀 있습니다 (헤더의 「조회조건 펼치기」로 표시)</span></div>`;
         return `<div class="ax-search">${fullInner}</div>`;
