@@ -440,6 +440,11 @@
   .ax-search .sfields{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:12px 20px;align-content:start;min-width:0;}
   .ax-search .sfield{display:flex;flex-direction:column;gap:5px;min-width:0;}
   .ax-search .sfield.radio{justify-content:flex-start;}
+  /* ½칸(half-column): 두 개가 연달아 있으면 한 칸을 반반씩 나눠 쓰고(요청조직/구매조직처럼),
+     혼자면 한 칸의 절반만 채우고 나머지 절반은 비워둔다(다음 필드가 그 자리로 밀려오지 않게). */
+  .ax-search .sfield-halfslot{display:flex;gap:10px;min-width:0;}
+  .ax-search .sfield-halfslot .sfield-half{flex:1 1 0;min-width:0;}
+  .ax-search .sfield-halfslot .sfield-half-blank{flex:1 1 0;min-width:0;}
   .ax-search .sfield .slabel{font-size:12px;color:var(--ax-label-fg);font-weight:500;white-space:nowrap;
     min-height:15px;line-height:15px;}
   /* keep an empty label occupying its line so fields with and without a label align */
@@ -955,7 +960,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260828.002)</span>
+      <span id="verText">by June (ver.20260830.002)</span>
     </div>
   </div>
 
@@ -2557,44 +2562,22 @@ function innerRaw(c,mode){
       return `<div class="ax-tree${c.showLines===false?' nolines':''}">${rows}</div>`;
     }
     case 'searchbar':{
-      const fields=(c.fields||[]).map((f,fi)=>{
+      const cells=sbLayoutCells(c.fields||[]);
+      let sfIdx=0;
+      const fields=cells.map(cell=>{
+        if(cell.kind==='halfpair'){
+          const fiA=sfIdx++, fiB=sfIdx++;
+          return `<div class="sfield-halfslot" style="grid-column:span 1;">${sfHalfBox(cell.a,fiA,exp,c.id)}${sfHalfBox(cell.b,fiB,exp,c.id)}</div>`;
+        }
+        if(cell.kind==='halfsolo'){
+          const fi=sfIdx++;
+          return `<div class="sfield-halfslot" style="grid-column:span 1;">${sfHalfBox(cell.f,fi,exp,c.id)}<div class="sfield-half sfield-half-blank"></div></div>`;
+        }
+        const f=cell.f, fi=sfIdx++;
         if(f.type==='empty'){
-          return `<div class="sfield sfield-empty" style="grid-column:span ${Math.min(4,Math.max(1,f.span||1))};"></div>`;
+          return `<div class="sfield sfield-empty" style="grid-column:span ${cell.units};"></div>`;
         }
-        const freq=f.required?'<span class="req">*</span>':'';
-        let ctl;
-        if(f.type==='combo'){
-          const fopts=(f.options||'전체,선택1,선택2').split(',').map(s=>s.trim()).filter(Boolean);
-          if(exp&&fopts.length){
-            const optHtml=fopts.map(o=>`<div class="combo-opt" data-val="${escAttr(o)}" onmousedown="event.stopPropagation();selectComboExport(this)">${esc(o)}</div>`).join('');
-            ctl=`<div class="sctl combo interactive" onclick="toggleComboExport(this)"><span class="combo-val">선택</span><div class="combo-drop">${optHtml}</div></div>`;
-          } else {
-            ctl=`<div class="sctl combo${exp?' interactive':''}"${exp?' onclick="this.classList.toggle(\'open\')"':''}>선택</div>`;
-          }
-        }
-        else if(f.type==='date')ctl= exp?`<div class="sctl date-x"><input type="date" class="sctl-date-el"></div>`:'<div class="sctl date"></div>';
-        else if(f.type==='daterange')ctl= exp?`<div class="sctl daterange-x"><input type="date" class="sctl-date-el"><span class="dr-sep">~</span><input type="date" class="sctl-date-el"></div>`:'<div class="sctl daterange">2026-07-01 ~ 2026-07-15</div>';
-        else if(f.type==='search')ctl= exp?`<div class="sctl search-x"><input type="text" class="sctl-text-el" placeholder="검색어 입력"><span class="sctl-search-ic"></span></div>`:'<div class="sctl search"><span class="sctl-search-ic"></span></div>';
-        else if(f.type==='radio'){
-          const opts=(f.options||'전체,확정,미확정').split(',').map((o,i)=>{
-            const onCls=i===0?' on':'';
-            const interCls=exp?' interactive':'';
-            const attrs=exp?` data-group="sf-${c.id}-${fi}" onclick="selectRadioGroupExport(this)"`:'';
-            return `<span class="opt${onCls}${interCls}"${attrs}><span class="dot"></span>${esc(o.trim())}</span>`;
-          }).join('');
-          ctl=`<div class="sradio">${opts}</div>`;
-        }
-        else ctl= exp?`<div class="sctl text-x"><input type="text" class="sctl-text-el"></div>`:'<div class="sctl text"></div>';
-        if(f.readonly){
-          // grey out the control and, in exports, stop it from being editable
-          ctl=ctl.replace(/^(<div class="[^"]*)/,'$1 ro');
-          if(exp){
-            ctl=ctl.replace(/<input /g,'<input readonly disabled ')
-                   .replace(/ onclick="[^"]*"/g,'')
-                   .replace(/ onmousedown="[^"]*"/g,'');
-          }
-        }
-        return `<div class="sfield${f.type==='radio'?' radio':''}" style="grid-column:span ${Math.min(4,Math.max(1,f.span||1))};"><span class="slabel">${esc(f.label||'')}${freq}</span>${ctl}</div>`;
+        return `<div class="sfield${f.type==='radio'?' radio':''}" style="grid-column:span ${cell.units};">${sfFieldInner(f,fi,exp,c.id)}</div>`;
       }).join('');
       const fullInner=`<div class="sfields">${fields}</div><div class="sactions"><span class="ssearch"><span class="sctl-search-ic"></span>조회</span></div>`;
       if(!exp){
@@ -2612,6 +2595,69 @@ function innerRaw(c,mode){
 }
 function esc(s){return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function escAttr(s){return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// ---- Searchbar ½-column (half-span) layout helpers ----
+// Walks the field list once and groups it into render "cells": normal fields keep
+// their own 1~4 column span, while two consecutive span===0.5 fields are paired into
+// a single 1-column cell that's split 50/50, and a lone (unpaired) span===0.5 field
+// becomes its own 1-column cell with only the left half filled (right half stays blank
+// so a later field can't slide into that space).
+function sbLayoutCells(fields){
+  const arr=fields||[], cells=[];
+  for(let i=0;i<arr.length;i++){
+    const f=arr[i];
+    if(f.span===0.5){
+      const next=arr[i+1];
+      if(next&&next.span===0.5){ cells.push({kind:'halfpair',a:f,b:next}); i++; }
+      else cells.push({kind:'halfsolo',f});
+    } else {
+      cells.push({kind:'field',f,units:Math.min(4,Math.max(1,f.span||1))});
+    }
+  }
+  return cells;
+}
+// Builds the label+control markup for one field (shared by full-width and half-width rendering).
+function sfFieldInner(f,fi,exp,cid){
+  const freq=f.required?'<span class="req">*</span>':'';
+  let ctl;
+  if(f.type==='combo'){
+    const fopts=(f.options||'전체,선택1,선택2').split(',').map(s=>s.trim()).filter(Boolean);
+    if(exp&&fopts.length){
+      const optHtml=fopts.map(o=>`<div class="combo-opt" data-val="${escAttr(o)}" onmousedown="event.stopPropagation();selectComboExport(this)">${esc(o)}</div>`).join('');
+      ctl=`<div class="sctl combo interactive" onclick="toggleComboExport(this)"><span class="combo-val">선택</span><div class="combo-drop">${optHtml}</div></div>`;
+    } else {
+      ctl=`<div class="sctl combo${exp?' interactive':''}"${exp?' onclick="this.classList.toggle(\'open\')"':''}>선택</div>`;
+    }
+  }
+  else if(f.type==='date')ctl= exp?`<div class="sctl date-x"><input type="date" class="sctl-date-el"></div>`:'<div class="sctl date"></div>';
+  else if(f.type==='daterange')ctl= exp?`<div class="sctl daterange-x"><input type="date" class="sctl-date-el"><span class="dr-sep">~</span><input type="date" class="sctl-date-el"></div>`:'<div class="sctl daterange">2026-07-01 ~ 2026-07-15</div>';
+  else if(f.type==='search')ctl= exp?`<div class="sctl search-x"><input type="text" class="sctl-text-el" placeholder="검색어 입력"><span class="sctl-search-ic"></span></div>`:'<div class="sctl search"><span class="sctl-search-ic"></span></div>';
+  else if(f.type==='radio'){
+    const opts=(f.options||'전체,확정,미확정').split(',').map((o,i)=>{
+      const onCls=i===0?' on':'';
+      const interCls=exp?' interactive':'';
+      const attrs=exp?` data-group="sf-${cid}-${fi}" onclick="selectRadioGroupExport(this)"`:'';
+      return `<span class="opt${onCls}${interCls}"${attrs}><span class="dot"></span>${esc(o.trim())}</span>`;
+    }).join('');
+    ctl=`<div class="sradio">${opts}</div>`;
+  }
+  else ctl= exp?`<div class="sctl text-x"><input type="text" class="sctl-text-el"></div>`:'<div class="sctl text"></div>';
+  if(f.readonly){
+    // grey out the control and, in exports, stop it from being editable
+    ctl=ctl.replace(/^(<div class="[^"]*)/,'$1 ro');
+    if(exp){
+      ctl=ctl.replace(/<input /g,'<input readonly disabled ')
+             .replace(/ onclick="[^"]*"/g,'')
+             .replace(/ onmousedown="[^"]*"/g,'');
+    }
+  }
+  return `<span class="slabel">${esc(f.label||'')}${freq}</span>${ctl}`;
+}
+// Renders one half (50%-width) box inside a .sfield-halfslot: a real field's label+control,
+// or (for the empty field type) just a blank half-height placeholder.
+function sfHalfBox(f,fi,exp,cid){
+  if(f.type==='empty') return '<div class="sfield sfield-half sfield-empty"></div>';
+  return `<div class="sfield sfield-half${f.type==='radio'?' radio':''}">${sfFieldInner(f,fi,exp,cid)}</div>`;
+}
 // palette for charts
 const CHART_PAL={
   green:['#a8d5ba','#8bc4a0','#b9dfc9'],
@@ -3362,7 +3408,7 @@ function renderProps(){
   }
   if(c.type==='searchbar'){
     html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.collapsed?'checked':''} onchange="upd('collapsed',this.checked)"> 접힘 상태(≫) 표시</label></div>`;
-    html+=`<div class="grp"><div class="grp-h">조회 조건 필드${qh('타입을 <b>빈값</b>으로 지정하면 라벨·입력칸 없이 해당 칸을 <b>비워둔 채</b> 그대로 자리만 차지합니다.<br><br>여러 칸짜리 레이아웃에서 특정 칸만 건너뛰고 싶을 때 사용하세요.')}</div><div class="sfield-list">`;
+    html+=`<div class="grp"><div class="grp-h">조회 조건 필드${qh('타입을 <b>빈값</b>으로 지정하면 라벨·입력칸 없이 해당 칸을 <b>비워둔 채</b> 그대로 자리만 차지합니다.<br><br>여러 칸짜리 레이아웃에서 특정 칸만 건너뛰고 싶을 때 사용하세요.<br><br>가로 폭을 <b>½칸</b>으로 지정하면, 바로 다음(또는 바로 앞) 필드도 ½칸일 때 두 필드가 한 칸을 <b>반반씩 나눠서</b> 표시됩니다(요청조직/구매조직처럼). 옆에 ½칸이 붙어있지 않으면 그 필드 혼자 한 칸의 <b>절반만</b> 채우고 나머지 절반은 비워둡니다.')}</div><div class="sfield-list">`;
     (c.fields||[]).forEach((f,i)=>{
       html+=`<div class="sfield-row" draggable="true"
         ondragstart="sfDragStart(event,${i})" ondragover="sfDragOver(event)"
@@ -3382,7 +3428,8 @@ function renderProps(){
             <option value="radio"${f.type==='radio'?' selected':''}>라디오</option>
             <option value="empty"${f.type==='empty'?' selected':''}>빈값</option>
           </select>
-          <select class="sf-span" title="가로 폭 (전체 4칸 중 몇 칸을 차지할지)" onchange="updSearchField(${i},'span',+this.value)">
+          <select class="sf-span" title="가로 폭 (전체 4칸 중 몇 칸을 차지할지). ½칸은 바로 옆에 다른 ½칸이 붙으면 한 칸을 반씩 나눠 쓰고, 혼자면 한 칸의 절반만 채웁니다." onchange="updSearchField(${i},'span',+this.value)">
+            <option value="0.5"${f.span===0.5?' selected':''}>½칸</option>
             <option value="1"${(f.span||1)===1?' selected':''}>1칸</option>
             <option value="2"${f.span===2?' selected':''}>2칸</option>
             <option value="3"${f.span===3?' selected':''}>3칸</option>
@@ -3808,8 +3855,8 @@ const SB_COLS=4, SB_ROW_H=52, SB_ROW_GAP=12, SB_PAD=28, SB_MIN_H=84;
 // stays accurate even when some fields span 2-4 of the 4 columns at once.
 function searchbarRowCount(fields){
   let col=0, rows=1;
-  (fields||[]).forEach(f=>{
-    const span=Math.min(SB_COLS,Math.max(1,f.span||1));
+  sbLayoutCells(fields).forEach(cell=>{
+    const span=cell.kind==='field'?cell.units:1; // halfpair/halfsolo always occupy exactly 1 column
     if(col+span>SB_COLS){ rows++; col=0; }
     col+=span;
   });
@@ -4607,6 +4654,9 @@ donut=중앙합계원형,bar=세로막대,line=점선,area=선아래채움.text=
 [searchbar]
 라벨+입력필드가로나열+줄끝조회버튼=searchbar1개(조건1개도,button미생성,접기아이콘은[제외요소]참고):{"type":"searchbar","x","y","w","h","collapsed":접힘true,"fields":[{"label","type","required"}]}
 fields=보이는순서,type=text|combo|date|daterange|search(돋보기)|radio(options:"전체,확정,미확정")|empty(빈칸,자리만차지),required=별표면true,라벨없는칸도label:"",회색칸=readonly:true.
+span=칸너비(기본1,생략가능):1|2|3|4(전체)|0.5(½칸).
+[½칸] 조회조건한칸안에입력컨트롤이2개나란히붙어있으면(라벨이"요청조직 / 구매조직"처럼합쳐서한번만보이거나,"공장""창고"처럼각각보여도)한칸을합쳐쓰지말고그2개를연속된fields2개로쪼개고둘다"span":0.5로지정(순서는왼쪽→오른쪽).라벨이하나로합쳐져있으면"/"나공백기준으로쪼개각field의label에하나씩나눠담고,컨트롤마다라벨이따로있으면그대로각자label사용.한칸에컨트롤이1개뿐이면span은생략(또는1)하고0.5를단독으로쓰지않는다.
+예(한칸에2개-요청조직/구매조직,공장/창고):{"label":"요청조직","type":"combo","span":0.5},{"label":"구매조직","type":"combo","span":0.5}
 예:{"label":"발주번호","type":"search","required":true},{"label":"","type":"text","readonly":true}
 
 [grid]
@@ -4622,7 +4672,9 @@ fields=보이는순서,type=text|combo|date|daterange|search(돋보기)|radio(op
 
 [레이아웃]
 원본픽셀그대로베끼지말고폭1060기준재배치:순서title→(tabs)→searchbar→입력/카드(chart·grid)→하단버튼,x:20여백통일,같은줄y맞춤,입력한줄4~6개균등(라벨포함h52,컨트롤30),구획제목=section그아래입력배치,폭넘으면다음줄(겹치지않게),3D테두리/아이콘/색배경등장식재현안함.
-[간격] title/tabs바로아래(8~16px)에다음요소를붙인다-브레드크럼·아이콘·"조회조건 접기"버튼처럼[제외요소]로뺀공간은원본y값그대로베끼지말고좁혀없앤다.searchbar h는조건수·줄바꿈에따라커질수있음(대략줄당52px,줄수=ceil(필드수/4~6))-예상보다커지면그아래모든컴포넌트(tabs·section·chart·grid·button등)y를늘어난만큼반드시내려절대겹치지않게함.
+[간격] title/tabs바로아래(8~16px)에다음요소를붙인다-브레드크럼·아이콘·"조회조건 접기"버튼처럼[제외요소]로뺀공간은원본y값그대로베끼지말고좁혀없앤다.
+searchbar h는반드시직접계산해서지킬것(대충어림잡지말것):한줄에담긴필드의span합(생략시1,½칸2개가붙어있으면그2개를합쳐1로계산)이4를넘는순간다음줄로넘어감→rows=이렇게나온총줄수,h=28+rows*52+(rows-1)*12(최소84).계산된h가원본이미지에서본높이보다커지더라도반드시그값을그대로사용.
+searchbar바로아래에오는모든컴포넌트(tabs·section·chart·grid·button등)는y를반드시"searchbar의y+계산한h+18"로시작해서배치할것-원본이미지의y값을베끼면겹치므로절대금지,grid가searchbar와겹치는것은잘못된결과임.
 
 [구형화면]
 촘촘한입력칸+회색3D테두리+작은폰트인옛화면:경로(A>B>C(S)(코드))는마지막이름만title,흩어진조회항목은위치무관모아searchbar1개(좌상→우하순,돋보기/목록아이콘=search,~로이은두날짜=daterange,코드칸+옆회색이름칸=search1개·값은라벨만),표=grid1개(컬럼원본순서,rows대략,버튼없어도showToolbar+stdAdd/Cancel/Copy/Delete추가,제목없으면gtitle지어줌),우측상단단독버튼(회계전표등)=button,하단에저장/확정추가.
@@ -4886,7 +4938,7 @@ function placeItems(items,scale,clearFirst){
           const field={label:f.label||'',type:ft,required:!!f.required};
           if(f.readonly) field.readonly=true;
           if(f.options) field.options=String(f.options);
-          if(f.span) field.span=Math.min(4,Math.max(1,parseInt(f.span)||1));
+          if(f.span) field.span=(parseFloat(f.span)===0.5)?0.5:Math.min(4,Math.max(1,parseInt(f.span)||1));
           return field;
         });
       }
@@ -5278,6 +5330,12 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260830.002', date:'2026년 8월 30일', items:[
+    {t:'이미지 변환 「질문만 복사」 프롬프트, ½칸 인식 추가 (씬모드)', d:'씬모드 이미지→JSON 변환의 <b>「질문만 복사」</b> 프롬프트에 조회조건 한 칸 안에 컨트롤 2개가 나란히 붙은 경우(요청조직/구매조직, 공장/창고 등)를 인식해 <b>½칸(span:0.5)</b> 필드 2개로 쪼개 출력하는 규칙을 추가했습니다. 라벨이 하나로 합쳐져 보이면 "/"·공백 기준으로 나눠 각 필드에 담습니다. <b>「Claude 열기」(URL)</b> 프롬프트는 URL 길이 제한 때문에 그대로 유지했습니다.'}
+  ]},
+  {ver:'20260830.001', date:'2026년 8월 30일', items:[
+    {t:'조회조건 필드 가로 폭에 「½칸」 추가 (씬모드)', d:'조회조건(searchbar) 필드의 가로 폭 목록에 <b>½칸</b>이 추가되었습니다. ½칸 필드가 <b>바로 옆에 다른 ½칸 필드와 붙어 있으면</b> 한 칸을 반반씩 나눠 써서 요청조직/구매조직, 공장/창고처럼 한 줄에 나란히 표시되고, <b>붙어 있는 ½칸이 없으면</b> 그 필드 혼자 한 칸의 절반만 채우고 나머지 절반은 빈 채로 남아 뒤 필드가 그 자리로 밀려오지 않습니다.'}
+  ]},
   {ver:'20260828.002', date:'2026년 8월 28일', items:[
     {t:'그리드 컬럼 유형에 「검색」 추가', d:'그리드를 선택하면 속성창의 <b>「컬럼」</b> 목록에서 각 컬럼 유형을 <b>첨부파일</b> 아래 <b>검색</b>으로도 지정할 수 있습니다. 지정한 컬럼은 <b>조회조건 패널의 검색 필드</b>와 동일한 돋보기 아이콘이 입력칸 우측에 표시되며, 읽기전용으로 설정하면 아이콘도 함께 흐리게 표시됩니다. 씬모드·팻모드 공통 기능입니다.'}
   ]},
@@ -5757,7 +5815,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260826.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260830.002';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
