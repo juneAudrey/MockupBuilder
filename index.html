@@ -559,6 +559,8 @@
   .sfield-row:last-of-type{border-bottom:none;margin-bottom:0;padding-bottom:0;}
   .sfield-row .sf-row1,.sfield-row .sf-row2{display:flex;gap:4px;align-items:center;}
   .sfield-row .sf-label{flex:1;min-width:0;padding:4px 6px;border:1px solid var(--ax-border);border-radius:4px;font-size:12px;}
+  .sfield-row .sf-label.sf-label-narrow{flex:0 0 46px;}
+  .sfield-row .sf-value{flex:1 1 0;min-width:0;padding:4px 6px;border:1px solid var(--ax-border);border-radius:4px;font-size:11px;color:#333;}
   .sfield-row .sf-type{padding:4px 4px;border:1px solid var(--ax-border);border-radius:4px;font-size:11px;background:#fff;}
   .sfield-row .sf-span{padding:4px 2px;border:1px solid var(--ax-border);border-radius:4px;font-size:11px;background:#fff;width:56px;flex:none;}
   .sfield-row .sf-req{width:24px;padding:4px;border:1px solid var(--ax-border);background:#fff;border-radius:4px;cursor:pointer;color:#aaa;font-weight:700;font-size:13px;}
@@ -960,7 +962,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260830.005)</span>
+      <span id="verText">by June (ver.20260830.007)</span>
     </div>
   </div>
 
@@ -3416,14 +3418,16 @@ function renderProps(){
   }
   if(c.type==='searchbar'){
     html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.collapsed?'checked':''} onchange="upd('collapsed',this.checked)"> 접힘 상태(≫) 표시</label></div>`;
-    html+=`<div class="grp"><div class="grp-h">조회 조건 필드${qh('타입을 <b>빈값</b>으로 지정하면 라벨·입력칸 없이 해당 칸을 <b>비워둔 채</b> 그대로 자리만 차지합니다.<br><br>여러 칸짜리 레이아웃에서 특정 칸만 건너뛰고 싶을 때 사용하세요.<br><br>가로 폭을 <b>½칸</b>으로 지정하면, 바로 다음(또는 바로 앞) 필드도 ½칸일 때 두 필드가 한 칸을 <b>반반씩 나눠서</b> 표시됩니다(요청조직/구매조직처럼). 옆에 ½칸이 붙어있지 않으면 그 필드 혼자 한 칸의 <b>절반만</b> 채우고 나머지 절반은 비워둡니다.<br><br>타입이 <b>날짜</b>·<b>기간</b>이면 라벨 아래에 나타나는 입력칸에 화면에 보여줄 날짜(기간은 <b>YYYY-MM-DD ~ YYYY-MM-DD</b> 형식)를 직접 적을 수 있습니다. 비워두면 기본값이 표시됩니다.')}</div><div class="sfield-list">`;
+    html+=`<div class="grp"><div class="grp-h">조회 조건 필드${qh('타입을 <b>빈값</b>으로 지정하면 라벨·입력칸 없이 해당 칸을 <b>비워둔 채</b> 그대로 자리만 차지합니다.<br><br>여러 칸짜리 레이아웃에서 특정 칸만 건너뛰고 싶을 때 사용하세요.<br><br>가로 폭을 <b>½칸</b>으로 지정하면, 바로 다음(또는 바로 앞) 필드도 ½칸일 때 두 필드가 한 칸을 <b>반반씩 나눠서</b> 표시됩니다(요청조직/구매조직처럼). 옆에 ½칸이 붙어있지 않으면 그 필드 혼자 한 칸의 <b>절반만</b> 채우고 나머지 절반은 비워둡니다.<br><br>타입이 <b>날짜</b>·<b>기간</b>이면 라벨 옆에 나타나는 입력칸에 화면에 보여줄 날짜(기간은 <b>YYYY-MM-DD ~ YYYY-MM-DD</b> 형식)를 직접 적을 수 있습니다. 비워두면 기본값이 표시됩니다.')}</div><div class="sfield-list">`;
     (c.fields||[]).forEach((f,i)=>{
+      const isDt=f.type==='date'||f.type==='daterange';
       html+=`<div class="sfield-row" draggable="true"
         ondragstart="sfDragStart(event,${i})" ondragover="sfDragOver(event)"
         ondragleave="sfDragLeave(event)" ondrop="sfDrop(event,${i})" ondragend="sfDragEnd(event)">
         <div class="sf-row1">
           <span class="sf-handle" title="드래그해서 순서 변경">⠿</span>
-          <input class="sf-label" value="${(f.label||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'label',this.value)" placeholder="라벨"${f.type==='empty'?' disabled style="opacity:.5;"':''}>
+          <input class="sf-label${isDt?' sf-label-narrow':''}" value="${(f.label||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'label',this.value)" placeholder="라벨"${f.type==='empty'?' disabled style="opacity:.5;"':''}>
+          ${isDt?`<input class="sf-value" value="${(f.text||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'text',this.value)" placeholder="${f.type==='daterange'?'YYYY-MM-DD~YYYY-MM-DD':'YYYY-MM-DD'}" title="화면에 표시할 날짜 값 - 형식: ${f.type==='daterange'?'YYYY-MM-DD ~ YYYY-MM-DD':'YYYY-MM-DD'} (비워두면 기본값 사용)">`:''}
           <button class="ubtn-del" title="삭제" onclick="delSearchField(${i})">×</button>
         </div>
         <div class="sf-row2">
@@ -3450,9 +3454,6 @@ function renderProps(){
       if(f.type==='radio'||f.type==='combo'){
         const optDefault=f.type==='combo'?'전체,선택1,선택2':'전체,확정,미확정';
         html+=`<div class="sfield-opts"><input value="${(f.options||optDefault).replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'options',this.value)" placeholder="옵션 (쉼표 구분)"></div>`;
-      }
-      if(f.type==='date'||f.type==='daterange'){
-        html+=`<div class="sfield-opts"><input value="${(f.text||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'text',this.value)" placeholder="${f.type==='daterange'?'표시할 기간 (YYYY-MM-DD ~ YYYY-MM-DD)':'표시할 날짜 (YYYY-MM-DD)'}" title="화면에 표시할 날짜 값 (비워두면 기본값 사용)"></div>`;
       }
     });
     html+=`</div><button class="ubtn-add" onclick="addSearchField()">＋ 조건 필드 추가</button></div>`;
@@ -5342,6 +5343,12 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260830.007', date:'2026년 8월 30일', items:[
+    {t:'조회조건 필드 삭제버튼, 첫 줄 우측 끝으로 위치 통일', d:'날짜·기간 필드만 삭제(×) 버튼이 2번째 줄에 있어 다른 필드와 위치가 달랐던 것을 다시 첫 줄 맨 오른쪽으로 옮겨 모든 타입이 같은 위치를 쓰도록 통일했습니다.'}
+  ]},
+  {ver:'20260830.006', date:'2026년 8월 30일', items:[
+    {t:'조회조건 날짜·기간 값 입력칸, 다시 2줄 레이아웃으로', d:'날짜·기간 필드가 콤보/라디오처럼 3줄이 되는게 어색해서, 값 입력칸을 다시 라벨 옆 1번째 줄로 되돌렸습니다. 대신 그 줄의 삭제(×) 버튼을 2번째 줄로 옮기고 라벨 칸을 좁혀 값 입력칸이 넓어지도록 해서, 2줄을 유지하면서도 값이 잘리지 않게 했습니다.'}
+  ]},
   {ver:'20260830.005', date:'2026년 8월 30일', items:[
     {t:'조회조건 기간 값 입력칸 잘림 재수정', d:'라벨 옆 칸을 좁히는 방식으로는 여전히 잘려서, 콤보/라디오의 옵션 입력칸처럼 <b>라벨 아래 별도 줄</b>에 전체 폭으로 표시되도록 구조를 바꿨습니다. 이제 "YYYY-MM-DD ~ YYYY-MM-DD"가 잘리지 않고 다 보입니다.'}
   ]},
@@ -5836,7 +5843,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260830.005';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260830.007';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
