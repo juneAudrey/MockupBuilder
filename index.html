@@ -368,6 +368,14 @@
   .ax-grid .gr .gcell-check.interactive .box.on::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;line-height:1;}
   .ax-grid .gr .gcell-file{width:100%;height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}
   .ax-grid .gr .gcell-file-ic{width:18px;height:18px;flex:none;color:#9aa1a9;}
+  /* 그리드 좌측 유틸리티 컬럼: Row Order(순번) / CheckBox - 씬모드 전용 */
+  .ax-grid .gh .grh-icons{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:5px;line-height:0;}
+  .ax-grid .gh .grh-icons svg{width:13px;height:13px;flex:none;color:#6b7280;display:block;}
+  .ax-grid .gr .gcell-roworder-num{width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--ax-navy);font-weight:600;}
+  /* 체크박스 컬럼 헤더 - 기존 .gcell-check/.box 규칙은 데이터 행(.gr) 전용이라, 헤더(.gh)에도
+     동일한 크기·중앙정렬을 별도로 적용해야 체크박스가 보인다. */
+  .ax-grid .gh .gcell-check{width:100%;height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}
+  .ax-grid .gh .gcell-check .box{width:14px;height:14px;flex:none;border:1.5px solid var(--ax-border);border-radius:3px;box-sizing:border-box;}
   /* 그리드 컬럼 유형 "검색": 조회조건 패널의 검색 필드와 동일하게 돋보기를 우측에 배치 */
   .ax-grid .gr .gcell-search{width:100%;height:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 8px;}
   .ax-grid .gr .gcell-search-input{flex:1;min-width:0;border:0;background:transparent;padding:0;font-size:11px;font-family:inherit;color:#1f2937;outline:none;}
@@ -962,7 +970,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260830.007)</span>
+      <span id="verText">by June (ver.20260831.007)</span>
     </div>
   </div>
 
@@ -2418,6 +2426,20 @@ function innerRaw(c,mode){
     case 'button':return `<div class="ax-btn ${c.ghost?'ghost':''}">${esc(c.text)}</div>`;
     case 'grid':{
       const cols=c.text.split(',');
+      const gridFatSkin=document.body.classList.contains('skin-classic');
+      // Row Order(순번)/CheckBox 좌측 유틸리티 컬럼 - 씬모드 전용. 저장된 값이 없는 경우(레거시
+      // 목업 포함)에도 기본값은 켜짐으로 취급한다 - 사람이 명시적으로 꺼야(===false)만 사라진다.
+      const rowOrderOn=!gridFatSkin&&c.rowOrderCol!==false;
+      const checkboxOn=!gridFatSkin&&c.checkboxCol!==false;
+      const extraDefs=[];
+      if(rowOrderOn)extraDefs.push({kind:'roworder',w:48});
+      if(checkboxOn)extraDefs.push({kind:'checkbox',w:40});
+      const ROWORDER_ICON_GEAR=`<svg viewBox="0 0 24 24" title="설정"><g fill="currentColor"><circle cx="12" cy="12" r="6.4"/><circle cx="19.2" cy="12" r="2.6"/><circle cx="15.6" cy="18.24" r="2.6"/><circle cx="8.4" cy="18.24" r="2.6"/><circle cx="4.8" cy="12" r="2.6"/><circle cx="8.4" cy="5.76" r="2.6"/><circle cx="15.6" cy="5.76" r="2.6"/></g><circle cx="12" cy="12" r="3" fill="var(--ax-grid-head)"/></svg>`;
+      const ROWORDER_ICON_FILTER=`<svg viewBox="0 0 24 24" title="필터"><path fill="currentColor" d="M4,4 L20,4 L13,14 L13,19 L11,19 L11,14 Z"/></svg>`;
+      const ROWORDER_ICON_PIN=`<svg viewBox="0 0 24 24" title="고정"><g fill="currentColor" transform="rotate(45 12 12)"><path d="M16,12V4h1V2H7v2h1v8l-2,2v2h5.2v6h1.6v-6H18v-2L16,12z"/></g></svg>`;
+      const extraInnerHTML=d=>d.kind==='roworder'
+        ? `<div class="grh-icons">${ROWORDER_ICON_GEAR}${ROWORDER_ICON_FILTER}${ROWORDER_ICON_PIN}</div>`
+        : `<div class="gcell-check"><span class="box"></span></div>`;
       // If columns can't all fit at their minimum width, suggest turning "좌우 스크롤 사용" on
       // automatically - but only in response to a genuinely new structural change (column added/
       // removed, grid resized). If the person just explicitly unchecked the box, _xscrollManual
@@ -2449,12 +2471,16 @@ function innerRaw(c,mode){
       const xs=!!c.xscroll;
       const colW=Math.max(60,+c.colMinW||120);   // fixed per-column width when scrolling
       const cellW=xs?` style="width:${colW}px"`:'';
+      const extraTrack=extraDefs.map(d=>d.w+'px').join(' ');
       // Non-scroll mode: an explicit grid-template-columns (same string on header and every row)
       // guarantees identical column widths everywhere - unlike independent flex rows, which could
       // drift apart by a pixel or two between the header and body rows. minmax(0,1fr) means a true
       // even split with no floor: once "좌우 스크롤 사용" is off, columns always divide evenly and
-      // the grid never scrolls, even if that squeezes a column very narrow.
-      const gridColsStyle=xs?'':` style="grid-template-columns:repeat(${cols.length},minmax(0,1fr))"`;
+      // the grid never scrolls, even if that squeezes a column very narrow. Row Order/CheckBox
+      // columns get a fixed px track prepended so they stay narrow no matter how many data columns
+      // exist; since they're also placed first in the DOM, grid auto-placement drops them straight
+      // into those leading tracks with no per-cell column index needed.
+      const gridColsStyle=xs?'':` style="grid-template-columns:${extraTrack?extraTrack+' ':''}repeat(${cols.length},minmax(0,1fr))"`;
       // Merged header groups: c.colGroups[ci] holds an optional group label per column, set
       // from the property panel. Consecutive columns sharing the same non-empty label merge
       // into one centered cell spanning them on header row 1 (like 기준정보/재고정보 in the
@@ -2483,8 +2509,14 @@ function innerRaw(c,mode){
         // CSS Grid natively supports the 2D (row+column) span placement this needs, so the
         // header is forced onto display:grid here even in xscroll mode (which normally lays
         // the header out with flexbox) - an inline style wins over the .xscroll CSS rule.
-        const colTrackStyle=xs?`repeat(${cols.length},${colW}px)`:`repeat(${cols.length},minmax(0,1fr))`;
+        // Row Order/CheckBox columns (if on) occupy the leading `off` tracks, so every data
+        // column's explicit grid-column index is shifted right by `off`.
+        const off=extraDefs.length;
+        const colTrackStyle=(extraTrack?extraTrack+' ':'')+(xs?`repeat(${cols.length},${colW}px)`:`repeat(${cols.length},minmax(0,1fr))`);
         const headParts=[];
+        extraDefs.forEach((d,ei)=>{
+          headParts.push(`<span style="grid-column:${ei+1};grid-row:1/span 2;">${extraInnerHTML(d)}</span>`);
+        });
         for(let ci=0;ci<cols.length;ci++){
           const g=(colGroups[ci]||'').trim();
           const mark=colReqMark(ci);
@@ -2493,22 +2525,38 @@ function innerRaw(c,mode){
             if(ci===0||(colGroups[ci-1]||'').trim()!==g){
               let span=1;
               while(ci+span<cols.length&&(colGroups[ci+span]||'').trim()===g)span++;
-              headParts.push(`<span style="grid-column:${ci+1}/span ${span};grid-row:1;text-align:center;border-bottom:1px solid var(--ax-border);">${esc(g)}</span>`);
+              headParts.push(`<span style="grid-column:${ci+1+off}/span ${span};grid-row:1;text-align:center;border-bottom:1px solid var(--ax-border);">${esc(g)}</span>`);
             }
-            headParts.push(`<span style="grid-column:${ci+1};grid-row:2;text-align:${align};">${mark}${esc(cols[ci].trim())}</span>`);
+            headParts.push(`<span style="grid-column:${ci+1+off};grid-row:2;text-align:${align};">${mark}${esc(cols[ci].trim())}</span>`);
           }else{
-            headParts.push(`<span style="grid-column:${ci+1};grid-row:1/span 2;display:flex;align-items:center;justify-content:${ALIGN_JUSTIFY[align]||'flex-start'};">${mark}${esc(cols[ci].trim())}</span>`);
+            headParts.push(`<span style="grid-column:${ci+1+off};grid-row:1/span 2;display:flex;align-items:center;justify-content:${ALIGN_JUSTIFY[align]||'flex-start'};">${mark}${esc(cols[ci].trim())}</span>`);
           }
         }
         h=`<div class="gh" style="display:grid;grid-template-columns:${colTrackStyle};grid-template-rows:repeat(2,auto);">${headParts.join('')}</div>`;
       }else{
-        h='<div class="gh"'+gridColsStyle+'>'+cols.map((x,ci)=>{
+        // No explicit grid-column indices here - the grid auto-places cells in DOM order, so
+        // the extra Row Order/CheckBox header cells just need to come first to land in the
+        // leading fixed-width tracks that gridColsStyle already reserved for them.
+        const extraHeadHtml=extraDefs.map(d=>{
+          const wStyle=xs?` style="width:${d.w}px"`:'';
+          return `<span${wStyle}>${extraInnerHTML(d)}</span>`;
+        }).join('');
+        h='<div class="gh"'+gridColsStyle+'>'+extraHeadHtml+cols.map((x,ci)=>{
           const align=colAligns[ci]||'left';
           const wStyle=xs?`width:${colW}px;`:'';
           return `<span style="${wStyle}text-align:${align};">${colReqMark(ci)}${esc(x.trim())}</span>`;
         }).join('')+'</div>';
       }
       for(let i=0;i<(c.rows||3);i++){
+        // Row Order shows 1..표시 행 수 top to bottom; CheckBox reuses the same check-cell markup
+        // (and click handler, in export mode) as a regular "체크박스" type data column.
+        const extraCellsHtml=extraDefs.map(d=>{
+          const wStyle=xs?` style="width:${d.w}px"`:'';
+          if(d.kind==='roworder') return `<span${wStyle}><div class="gcell-roworder-num">${i+1}</div></span>`;
+          const chkCls='gcell-check'+(exp?' interactive':'');
+          const chkClick=exp?' onclick="toggleCheckExport(this)"':'';
+          return `<span${wStyle}><div class="${chkCls}"${chkClick}><span class="box"></span></div></span>`;
+        }).join('');
         const cells=cols.map((x,ci)=>{
           const ctype=(c.colTypes&&c.colTypes[ci])||'input';
           const copts=((c.colOptions&&c.colOptions[ci])||'').split(',').map(s=>s.trim()).filter(Boolean);
@@ -2519,10 +2567,9 @@ function innerRaw(c,mode){
           const cls=clsAttr?` class="${clsAttr}"`:'';
           return `<span${cellW}${cls}>${content}</span>`;
         }).join('');
-        h+='<div class="gr'+(exp?' hoverable':'')+'"'+gridColsStyle+'>'+cells+'</div>';
+        h+='<div class="gr'+(exp?' hoverable':'')+'"'+gridColsStyle+'>'+extraCellsHtml+cells+'</div>';
       }
       let pagination='';
-      const gridFatSkin=document.body.classList.contains('skin-classic');
       if(c.pagination&&!gridFatSkin){
         const rowsCount=c.rows||3;
         pagination=`<div class="gpagination">
@@ -3307,6 +3354,8 @@ function renderProps(){
     }
     if(!fatMode){
       html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.pagination?'checked':''} onchange="upd('pagination',this.checked)"> Pagination 사용${qh('그리드 하단에 페이지 이동 UI(페이지 번호·Show rows·Go to·전체 건수)를 표시합니다.<br><br>목업이므로 실제 페이지 이동은 되지 않고 항상 1페이지만 표시되며, 건수는 <b>표시 행 수</b> 값을 그대로 보여줍니다.<br><br>씬모드 전용 기능으로, 팻모드에서는 이 옵션과 하단 UI가 표시되지 않습니다.')}</label></div>`;
+      html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.rowOrderCol!==false?'checked':''} onchange="upd('rowOrderCol',this.checked)"> Row Order 사용${qh('그리드 맨 왼쪽에 순번 컬럼을 추가합니다.<br><br>헤더에는 설정·필터·고정 아이콘이 표시되고, 데이터 행에는 <b>표시 행 수</b> 만큼 1부터 차례대로 번호가 매겨집니다.<br><br>씬모드 전용 기능으로, 팻모드에서는 표시되지 않습니다.')}</label></div>`;
+      html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.checkboxCol!==false?'checked':''} onchange="upd('checkboxCol',this.checked)"> CheckBox 사용${qh('그리드 왼쪽(Row Order 다음)에 행 선택용 체크박스 컬럼을 추가합니다.<br><br>헤더와 <b>표시 행 수</b> 만큼의 각 데이터 행에 체크박스가 표시됩니다.<br><br>씬모드 전용 기능으로, 팻모드에서는 표시되지 않습니다.')}</label></div>`;
     }
     const gcols=(c.text||'').split(',').map(s=>s.trim());
     const groupCollapsed=gcolGroupCollapsed.has(String(c.id));
@@ -4672,10 +4721,19 @@ span=칸너비(기본1,생략가능):1|2|3|4(전체)|0.5(½칸).
 예:{"label":"발주번호","type":"search","required":true},{"label":"","type":"text","readonly":true}
 
 [grid]
-행추가/취소/복사/삭제버튼+"○○내역(0)건"제목=grid에포함(별도button/label금지):{"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","gtitle":"요청내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+"○○내역"·"○○정보(0)건"처럼제목이보이는표=grid1개(제목텍스트는gtitle).⚠제목이보이면버튼유무와무관하게반드시"showToolbar":true로설정할것-false로하면제목까지함께사라져원본과달라짐.행추가/취소/복사/삭제버튼이보이면해당std*를true로,버튼이하나도안보이면std*전부false·userBtns생략(그래도showToolbar는true유지,별도button/label금지).
+예(버튼있음):{"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","gtitle":"요청내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+예(제목만있고버튼없음):{"type":"grid","x","y","w","h","text":"제조오더번호,공정,품목,품목명","gtitle":"제조오더정보","showToolbar":true,"stdAdd":false,"stdCancel":false,"stdCopy":false,"stdDelete":false}
 그외버튼="userBtns":[{"label":"품목참조"}].하단신규/저장/삭제만button.
 [필수컬럼] 헤더텍스트옆에빨간색*가붙은컬럼이있으면(예"품목코드","요청수량"처럼헤더에빨간*표시)해당컬럼명(text)에는*를넣지말고"colRequired":배열을text와같은개수·순서로추가:빨간*가있던컬럼만true,나머지는false.전부false면colGroups처럼생략가능.
 예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목코드,요청수량,단위,필요일","colRequired":[true,true,true,false],"gtitle":"요청내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+[Row Order/CheckBox] ⚠모든grid마다"rowOrderCol"·"checkboxCol"두값을예외없이반드시명시(하나라도생략금지-생략시기본값true로나와원본과달라짐).둘은서로독립적으로판단(RowOrder가true라고checkbox도true인건아님).
+1)그리드맨왼쪽컬럼헤더가톱니바퀴·깔때기(필터)·압정3아이콘조합(텍스트없음)이고데이터행이1부터표시행수까지자동순번이면"rowOrderCol":true,그아이콘조합자체가안보이면"rowOrderCol":false.
+2)1)의아이콘컬럼바로오른쪽칸(아이콘컬럼이없으면맨왼쪽칸)을확인:그칸이헤더·데이터행전부빈체크박스뿐이면"checkboxCol":true.그자리에체크박스없이바로"제조오더번호"같은실제컬럼헤더텍스트가시작되면(즉아이콘컬럼바로다음이곧바로첫데이터컬럼이면)"checkboxCol":false.
+이두컬럼(있는경우)은컬럼목록(text·colRequired·colAligns등)에절대넣지말것-그리드기본기능으로자동생성됨.업무데이터인"순번"처럼헤더에텍스트가있는일반컬럼은이규칙과무관하므로그대로text에포함.
+예(RowOrder+CheckBox있음):{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"발주번호,순번,공급처","rowOrderCol":true,"checkboxCol":true,"gtitle":"발주내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+예(RowOrder만있고바로다음칸이체크박스없이제조오더번호로시작:CheckBox없음):{"type":"grid","x":20,"y":100,"w":1060,"h":160,"text":"제조오더번호,공정,품목,품목명","rowOrderCol":true,"checkboxCol":false,"gtitle":"제조오더정보","showToolbar":true,"stdAdd":false,"stdCancel":false,"stdCopy":false,"stdDelete":false}
+예(둘다없음):{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목,품목명,수량","rowOrderCol":false,"checkboxCol":false,"gtitle":"목록","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
 [컬럼정렬] 헤더글자가컬럼마다좌측/가운데/우측중다르게배치되어보이면그대로"colAligns":배열을text와같은개수·순서로추가:각값은헤더텍스트정렬과동일하게"left"|"center"|"right"중하나(병합헤더그룹아래하위컬럼도각자헤더정렬대로개별지정).전컬럼이left면colAligns생략가능.
 예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"잔여년차,근태일자,신청기간(To),성명","colAligns":["center","center","center","center"],"colRequired":[false,true,false,true],"gtitle":"휴가/근태 신청상세","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
 [다중캡처병합] 가로스크롤로여러장찍힌동일그리드는컬럼을좌→우로이어붙여grid1개(중복컬럼명은뒤것버림1회,text는병합전체순서로나열).gtitle·title·searchbar등다른컴포넌트도반복확인돼도화면기준1회만출력.
@@ -4926,7 +4984,7 @@ function placeItems(items,scale,clearFirst){
   // Properties (beyond type/x/y/w/h/text/required) that a JSON item may set directly; copied through as-is.
   const passthroughKeys=['gtitle','userBtns','stdAdd','stdCancel','stdCopy','stdDelete','rows','showToolbar',
     'options','readonly','ghost','active','collapsed','ctitle','chartType','color','showArrow','selected','selectedLine','showLines','colGroups',
-    'colAligns','colRequired','colReadonly',
+    'colAligns','colRequired','colReadonly','rowOrderCol','checkboxCol',
     'showLabel','labelText','labelPos','required','checked','style'];
   const idMap={}; // _tempId (author-assigned, only needed for Tab parent/child references) -> real comp id
   const built=[];
@@ -5343,6 +5401,27 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260831.007', date:'2026년 8월 31일', items:[
+    {t:'Claude 답 붙여넣기, Row Order·CheckBox 값 누락 수정', d:'프롬프트는 「rowOrderCol」·「checkboxCol」을 올바르게 채워 줬는데도, <b>「Claude의 답 붙여넣기」로 화면을 그릴 때 이 두 값이 무시되던 문제</b>를 고쳤습니다. 붙여넣기 처리 시 허용 속성 목록에 두 값이 빠져 있던 게 원인으로, 이제 붙여넣은 JSON의 「rowOrderCol:false」·「checkboxCol:false」가 그대로 반영됩니다.'}
+  ]},
+  {ver:'20260831.006', date:'2026년 8월 31일', items:[
+    {t:'이미지 변환 「질문만 복사」 프롬프트, CheckBox 인식 규칙 강화 (씬모드)', d:'Row Order 아이콘은 있지만 CheckBox가 없는 그리드에서 「checkboxCol」이 여전히 누락되던 문제를 고쳤습니다. <b>「모든 grid마다 rowOrderCol·checkboxCol을 예외 없이 명시」</b>하도록 강제하고, <b>「아이콘 컬럼 바로 오른쪽 칸을 확인해 체크박스가 없으면 곧바로 다음 데이터 컬럼 헤더가 시작된다」</b>는 판단 기준을 단계별로 구체화했습니다. <b>「Claude 열기」(URL)</b> 프롬프트는 이번에도 그대로 유지했습니다.'}
+  ]},
+  {ver:'20260831.005', date:'2026년 8월 31일', items:[
+    {t:'이미지 변환 「질문만 복사」 프롬프트, 버튼 없는 그리드 툴바·CheckBox 인식 보강 (씬모드)', d:'그리드에 <b>제목만 있고 행추가 등 버튼이 하나도 없는 경우</b> 「showToolbar」를 false로 잘못 채워 제목까지 사라지던 문제를 고쳤습니다-이제 버튼이 없어도 제목이 보이면 <b>showToolbar는 true로 유지</b>하고 버튼만 false로 채웁니다. 또한 <b>Row Order는 있지만 CheckBox는 없는</b> 그리드 예시를 추가해 두 옵션을 혼합으로 인식하는 경우도 정확히 채워지도록 보강했습니다. <b>「Claude 열기」(URL)</b> 프롬프트는 이번에도 그대로 유지했습니다.'}
+  ]},
+  {ver:'20260831.004', date:'2026년 8월 31일', items:[
+    {t:'이미지 변환 「질문만 복사」 프롬프트, Row Order·CheckBox 인식 추가 (씬모드)', d:'씬모드 이미지→JSON 변환의 <b>「질문만 복사」</b> 프롬프트에 그리드 왼쪽의 <b>Row Order(설정·필터·고정 아이콘) 컬럼</b>과 <b>CheckBox 컬럼</b>을 인식하는 규칙을 추가했습니다. 캡처 화면에 두 컬럼이 있으면 <b>「rowOrderCol」·「checkboxCol」</b>을 true로, 없으면 false로 채워 원본과 동일한 모습으로 변환됩니다. <b>「Claude 열기」(URL)</b> 프롬프트는 이번에도 그대로 유지했습니다.'}
+  ]},
+  {ver:'20260831.003', date:'2026년 8월 31일', items:[
+    {t:'그리드 Row Order 번호 색상 조정', d:'Row Order 컬럼의 순번 색상이 참조 화면보다 지나치게 밝은 파란색이었던 것을, 화면 제목 등에 쓰이는 <b>진한 네이비 색상</b>으로 바꿔 실제 화면과 동일한 톤이 되도록 했습니다.'}
+  ]},
+  {ver:'20260831.002', date:'2026년 8월 31일', items:[
+    {t:'그리드 Row Order 아이콘·CheckBox 헤더 표시 수정', d:'Row Order 헤더의 설정·필터·고정 아이콘이 일부 환경에서 깨져 보이던 문제를 아이콘 폰트 대신 <b>SVG 아이콘</b>으로 바꿔 고쳤습니다. CheckBox 컬럼의 <b>헤더에 체크박스가 보이지 않던</b> 문제도 함께 고쳤고, Row Order 사용 시 헤더 높이가 두꺼워지던 문제도 해결해 다른 컬럼과 동일한 높이를 유지합니다.'}
+  ]},
+  {ver:'20260831.001', date:'2026년 8월 31일', items:[
+    {t:'그리드 Row Order·CheckBox 컬럼 지원', d:'그리드 속성창의 <b>「Pagination 사용」</b> 아래에 <b>「Row Order 사용」·「CheckBox 사용」</b> 옵션이 새로 생겼습니다(기본값 <b>켜짐</b>). 켜면 그리드 맨 왼쪽에 순번 컬럼(헤더는 설정·필터·고정 아이콘, 데이터 행에는 <b>표시 행 수</b> 만큼 1부터 번호)과 선택용 체크박스 컬럼이 추가됩니다. <b>씬모드 전용</b> 기능으로, 팻모드에서는 이 옵션과 두 컬럼이 표시되지 않습니다.'}
+  ]},
   {ver:'20260830.007', date:'2026년 8월 30일', items:[
     {t:'조회조건 필드 삭제버튼, 첫 줄 우측 끝으로 위치 통일', d:'날짜·기간 필드만 삭제(×) 버튼이 2번째 줄에 있어 다른 필드와 위치가 달랐던 것을 다시 첫 줄 맨 오른쪽으로 옮겨 모든 타입이 같은 위치를 쓰도록 통일했습니다.'}
   ]},
@@ -5843,7 +5922,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260830.007';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260831.007';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
