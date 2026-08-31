@@ -578,6 +578,10 @@
   .sfield-opts{margin:-2px 0 3px 0;padding-left:2px;}
   .sf-handle{cursor:grab;font-size:14px;color:#9aa3ad;padding:0 3px;user-select:none;line-height:1;flex:none;}
   .sf-handle:active{cursor:grabbing;}
+  .sf-pos{width:34px;flex:none;padding:4px 2px;border:1px solid var(--ax-border);border-radius:4px;font-size:11px;text-align:center;background:#fff;}
+  .sf-pos:focus{border-color:var(--ax-green);outline:none;}
+  .sf-pos::-webkit-outer-spin-button,.sf-pos::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  .sf-pos{-moz-appearance:textfield;}
   .sf-move{width:20px;padding:3px 0;border:1px solid var(--ax-border);background:#fff;border-radius:4px;cursor:pointer;font-size:9px;line-height:1;color:#556;flex:none;}
   .sf-move:hover:not(:disabled){background:#eef2f5;}
   .sf-move:disabled{opacity:.3;cursor:default;}
@@ -970,7 +974,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260831.007)</span>
+      <span id="verText">by June (ver.20260831.010)</span>
     </div>
   </div>
 
@@ -3375,6 +3379,7 @@ function renderProps(){
           ondragleave="gcDragLeave(event)" ondrop="gcDrop(event,${gi})" ondragend="gcDragEnd(event)">
           <div class="sf-row1">
             <span class="sf-handle" title="드래그해서 순서 변경">⠿</span>
+            <input type="number" class="sf-pos" title="순서 번호 (직접 입력하면 그 위치로 이동)" min="1" max="${gcols.length}" value="${gi+1}" onchange="gcMoveTo(${gi},this.value)">
             <input class="sf-label" value="${colName.replace(/"/g,'&quot;')}" oninput="updGridColLabel(${gi},this.value)" placeholder="컬럼명">
             <select class="sf-type gcol-type" onchange="updGridColType(${gi},this.value)">
               <option value="input"${ctype==='input'?' selected':''}>텍스트박스</option>
@@ -3384,17 +3389,17 @@ function renderProps(){
               <option value="file"${ctype==='file'?' selected':''}>첨부파일</option>
               <option value="search"${ctype==='search'?' selected':''}>검색</option>
             </select>
-            <div class="align-seg" title="헤더 텍스트 정렬">
-              <button type="button" class="align-btn${calign==='left'?' on':''}" title="왼쪽 정렬" onclick="updGridColAlign(${gi},'left')"><span class="align-ic l"><i></i><i></i><i></i></span></button>
-              <button type="button" class="align-btn${calign==='center'?' on':''}" title="가운데 정렬" onclick="updGridColAlign(${gi},'center')"><span class="align-ic c"><i></i><i></i><i></i></span></button>
-              <button type="button" class="align-btn${calign==='right'?' on':''}" title="오른쪽 정렬" onclick="updGridColAlign(${gi},'right')"><span class="align-ic r"><i></i><i></i><i></i></span></button>
-            </div>
             <button class="ubtn-del" title="삭제" onclick="delGridCol(${gi})">×</button>
           </div>`;
         {
           const cgroup=(c.colGroups&&c.colGroups[gi])||'';
           html+=`<div class="sf-row2">
             <input class="grp-input" value="${cgroup.replace(/"/g,'&quot;')}" oninput="updGridColGroup(${gi},this.value)" placeholder="상위헤더(그룹명)">
+            <div class="align-seg" title="헤더 텍스트 정렬">
+              <button type="button" class="align-btn${calign==='left'?' on':''}" title="왼쪽 정렬" onclick="updGridColAlign(${gi},'left')"><span class="align-ic l"><i></i><i></i><i></i></span></button>
+              <button type="button" class="align-btn${calign==='center'?' on':''}" title="가운데 정렬" onclick="updGridColAlign(${gi},'center')"><span class="align-ic c"><i></i><i></i><i></i></span></button>
+              <button type="button" class="align-btn${calign==='right'?' on':''}" title="오른쪽 정렬" onclick="updGridColAlign(${gi},'right')"><span class="align-ic r"><i></i><i></i><i></i></span></button>
+            </div>
             <button class="sf-req${creq?' on':''}" title="필수 (헤더에 * 표시 + 데이터 행을 크림색으로)" onclick="updGridColRequired(${gi},${!creq})">*</button>
             <button class="sf-ro${cro?' on':''}" title="읽기전용 (데이터 행을 회색으로 표시)" onclick="updGridColReadonly(${gi},${!cro})">🔒</button>
           </div>`;
@@ -3475,6 +3480,7 @@ function renderProps(){
         ondragleave="sfDragLeave(event)" ondrop="sfDrop(event,${i})" ondragend="sfDragEnd(event)">
         <div class="sf-row1">
           <span class="sf-handle" title="드래그해서 순서 변경">⠿</span>
+          <input type="number" class="sf-pos" title="순서 번호 (직접 입력하면 그 위치로 이동)" min="1" max="${(c.fields||[]).length}" value="${i+1}" onchange="sfMoveTo(${i},this.value)">
           <input class="sf-label${isDt?' sf-label-narrow':''}" value="${(f.label||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'label',this.value)" placeholder="라벨"${f.type==='empty'?' disabled style="opacity:.5;"':''}>
           ${isDt?`<input class="sf-value" value="${(f.text||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'text',this.value)" placeholder="${f.type==='daterange'?'YYYY-MM-DD~YYYY-MM-DD':'YYYY-MM-DD'}" title="화면에 표시할 날짜 값 - 형식: ${f.type==='daterange'?'YYYY-MM-DD ~ YYYY-MM-DD':'YYYY-MM-DD'} (비워두면 기본값 사용)">`:''}
           <button class="ubtn-del" title="삭제" onclick="delSearchField(${i})">×</button>
@@ -3872,11 +3878,13 @@ function gcDragStart(e,i){
   e.dataTransfer.effectAllowed='move';
   e.dataTransfer.setData('text/plain',String(i));
   e.currentTarget.classList.add('dragging');
+  startDragAutoScroll();
 }
 function gcDragOver(e){
   e.preventDefault();
   e.dataTransfer.dropEffect='move';
   e.currentTarget.classList.add('drag-over');
+  updateDragScrollY(e);
 }
 function gcDragLeave(e){
   e.currentTarget.classList.remove('drag-over');
@@ -3906,6 +3914,23 @@ function gcDragEnd(e){
   e.currentTarget.classList.remove('dragging');
   document.querySelectorAll('.sfield-row.drag-over').forEach(el=>el.classList.remove('drag-over'));
   gcDragIdx=null;
+  stopDragAutoScroll();
+}
+// 순서 번호 직접 입력: N을 입력하면 그 자리로 이동하고 나머지는 한 칸씩 밀린다(1부터 시작).
+function gcMoveTo(i,valStr){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  const len=gridColsArr(c).length;
+  const v=parseInt(valStr,10);
+  if(!Number.isFinite(v)){render();return;}
+  const to=Math.max(1,Math.min(len,v))-1;
+  if(to===i){render();return;}
+  pushHistory();
+  const cols=gridColsArr(c);
+  const move=arr=>{const [x]=arr.splice(i,1);arr.splice(to,0,x);};
+  move(cols);c.text=cols.join(',');
+  move(c.colTypes);move(c.colOptions);move(c.colGroups);move(c.colAligns);move(c.colRequired);move(c.colReadonly);
+  render();
 }
 
 // ---- Search-bar field editors ----
@@ -3959,11 +3984,13 @@ function sfDragStart(e,i){
   e.dataTransfer.effectAllowed='move';
   e.dataTransfer.setData('text/plain',String(i));
   e.currentTarget.classList.add('dragging');
+  startDragAutoScroll();
 }
 function sfDragOver(e){
   e.preventDefault();
   e.dataTransfer.dropEffect='move';
   e.currentTarget.classList.add('drag-over');
+  updateDragScrollY(e);
 }
 function sfDragLeave(e){
   e.currentTarget.classList.remove('drag-over');
@@ -3985,7 +4012,47 @@ function sfDragEnd(e){
   e.currentTarget.classList.remove('dragging');
   document.querySelectorAll('.sfield-row.drag-over').forEach(el=>el.classList.remove('drag-over'));
   sfDragIdx=null;
+  stopDragAutoScroll();
 }
+// 순서 번호 직접 입력: N을 입력하면 그 자리로 이동하고 나머지는 한 칸씩 밀린다(1부터 시작).
+function sfMoveTo(i,valStr){
+  const c=comps.find(x=>x.id===sel);if(!c||!c.fields)return;
+  const len=c.fields.length;
+  const v=parseInt(valStr,10);
+  if(!Number.isFinite(v)){render();return;}
+  const to=Math.max(1,Math.min(len,v))-1;
+  if(to===i){render();return;}
+  pushHistory();
+  const [item]=c.fields.splice(i,1);
+  c.fields.splice(to,0,item);
+  fitSearchbar(c);
+  render();
+}
+
+// ---- 컬럼/필드 순서 변경: 드래그 중 자동 스크롤 ----
+// 리스트가 속성 패널(#props) 안에서 세로 스크롤될 때, 드래그로 원하는 위치까지 끌고 가기 어려운
+// 문제를 보완한다. dragover가 멈춰도(마우스가 가장자리에 정지) 계속 스크롤되도록 setInterval로
+// 별도 타이머를 둔다.
+let dragScrollY=null, dragScrollTimer=null;
+function startDragAutoScroll(){
+  if(dragScrollTimer)return;
+  dragScrollTimer=setInterval(()=>{
+    if(dragScrollY==null)return;
+    const scroller=document.getElementById('props');
+    if(!scroller)return;
+    const rect=scroller.getBoundingClientRect();
+    const margin=48, maxSpeed=16;
+    let dy=0;
+    if(dragScrollY<rect.top+margin) dy=-maxSpeed*(1-Math.max(0,dragScrollY-rect.top)/margin);
+    else if(dragScrollY>rect.bottom-margin) dy=maxSpeed*(1-Math.max(0,rect.bottom-dragScrollY)/margin);
+    if(dy)scroller.scrollTop+=dy;
+  },30);
+}
+function stopDragAutoScroll(){
+  if(dragScrollTimer){clearInterval(dragScrollTimer);dragScrollTimer=null;}
+  dragScrollY=null;
+}
+function updateDragScrollY(e){dragScrollY=e.clientY;}
 
 // property-edit history: snapshot on focus, commit on blur if changed
 let propEditSnap=null;
@@ -5401,6 +5468,15 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260831.010', date:'2026년 8월 31일', items:[
+    {t:'컬럼 순서 키보드 단축키 제거, 순서 번호칸 화살표 숨김', d:'조회조건 필드·그리드 컬럼의 <b>Ctrl+↑/↓ 키보드 이동 기능</b>을 제거했습니다(드래그와 순서 번호 입력은 그대로 사용 가능). 순서 번호 입력칸의 브라우저 기본 <b>위/아래 스핀 화살표</b>도 숨겨, 자리를 덜 차지하고 칸이 좁아 보이지 않도록 했습니다.'}
+  ]},
+  {ver:'20260831.009', date:'2026년 8월 31일', items:[
+    {t:'컬럼 순서 키보드 단축키 수정, 헤더 정렬 컨트롤 위치 변경', d:'드래그 손잡이(⠿)를 클릭해도 <b>Ctrl+↑/↓</b> 단축키가 반응하지 않던 문제를 고쳤습니다 - 행이 드래그 가능한 상태라 클릭이 드래그 시작으로 인식돼 선택 자체가 되지 않던 게 원인으로, 이제 누르는 즉시(mousedown) 확실하게 선택되고 드래그도 그대로 됩니다. 그리드 컬럼의 <b>헤더 정렬</b> 버튼은 첫 줄에서 <b>「상위헤더(그룹명)」 입력칸 오른쪽</b>(둘째 줄, 필수·읽기전용 버튼 앞)으로 옮겨 첫 줄이 더 간결해졌습니다.'}
+  ]},
+  {ver:'20260831.008', date:'2026년 8월 31일', items:[
+    {t:'조회조건·그리드 컬럼 순서 변경 - 번호 입력·자동 스크롤·단축키 추가', d:'조회조건 필드와 그리드 컬럼 목록에 <b>순서 번호 입력칸</b>이 새로 생겨, 숫자를 바꾸면 그 위치로 바로 이동하고 나머지는 한 칸씩 자동으로 밀립니다. 드래그로 옮길 때도 목록 <b>위/아래 가장자리에 가까이 가면 자동으로 스크롤</b>되어, 컬럼이 많아 스크롤이 생겨도 원하는 위치까지 쉽게 끌 수 있습니다. 또한 드래그 손잡이(⠿)를 클릭해 행을 선택한 뒤 <b>Ctrl+↑/↓</b>로 한 칸씩 이동하는 단축키도 추가했습니다.'}
+  ]},
   {ver:'20260831.007', date:'2026년 8월 31일', items:[
     {t:'Claude 답 붙여넣기, Row Order·CheckBox 값 누락 수정', d:'프롬프트는 「rowOrderCol」·「checkboxCol」을 올바르게 채워 줬는데도, <b>「Claude의 답 붙여넣기」로 화면을 그릴 때 이 두 값이 무시되던 문제</b>를 고쳤습니다. 붙여넣기 처리 시 허용 속성 목록에 두 값이 빠져 있던 게 원인으로, 이제 붙여넣은 JSON의 「rowOrderCol:false」·「checkboxCol:false」가 그대로 반영됩니다.'}
   ]},
@@ -5922,7 +5998,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260831.007';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260831.010';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
