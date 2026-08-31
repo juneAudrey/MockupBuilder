@@ -960,7 +960,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260830.002)</span>
+      <span id="verText">by June (ver.20260830.005)</span>
     </div>
   </div>
 
@@ -2628,8 +2628,16 @@ function sfFieldInner(f,fi,exp,cid){
       ctl=`<div class="sctl combo${exp?' interactive':''}"${exp?' onclick="this.classList.toggle(\'open\')"':''}>선택</div>`;
     }
   }
-  else if(f.type==='date')ctl= exp?`<div class="sctl date-x"><input type="date" class="sctl-date-el"></div>`:'<div class="sctl date"></div>';
-  else if(f.type==='daterange')ctl= exp?`<div class="sctl daterange-x"><input type="date" class="sctl-date-el"><span class="dr-sep">~</span><input type="date" class="sctl-date-el"></div>`:'<div class="sctl daterange">2026-07-01 ~ 2026-07-15</div>';
+  else if(f.type==='date'){
+    const val=(f.text||'').trim();
+    ctl= exp?`<div class="sctl date-x"><input type="date" class="sctl-date-el"${val?` value="${escAttr(val)}"`:''}></div>`:`<div class="sctl date">${esc(val)}</div>`;
+  }
+  else if(f.type==='daterange'){
+    const val=(f.text||'').trim();
+    const parts=val.split('~').map(s=>s.trim());
+    const v1=parts[0]||'', v2=parts[1]||'';
+    ctl= exp?`<div class="sctl daterange-x"><input type="date" class="sctl-date-el"${v1?` value="${escAttr(v1)}"`:''}><span class="dr-sep">~</span><input type="date" class="sctl-date-el"${v2?` value="${escAttr(v2)}"`:''}></div>`:`<div class="sctl daterange">${esc(val||'2026-07-01 ~ 2026-07-15')}</div>`;
+  }
   else if(f.type==='search')ctl= exp?`<div class="sctl search-x"><input type="text" class="sctl-text-el" placeholder="검색어 입력"><span class="sctl-search-ic"></span></div>`:'<div class="sctl search"><span class="sctl-search-ic"></span></div>';
   else if(f.type==='radio'){
     const opts=(f.options||'전체,확정,미확정').split(',').map((o,i)=>{
@@ -3408,7 +3416,7 @@ function renderProps(){
   }
   if(c.type==='searchbar'){
     html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.collapsed?'checked':''} onchange="upd('collapsed',this.checked)"> 접힘 상태(≫) 표시</label></div>`;
-    html+=`<div class="grp"><div class="grp-h">조회 조건 필드${qh('타입을 <b>빈값</b>으로 지정하면 라벨·입력칸 없이 해당 칸을 <b>비워둔 채</b> 그대로 자리만 차지합니다.<br><br>여러 칸짜리 레이아웃에서 특정 칸만 건너뛰고 싶을 때 사용하세요.<br><br>가로 폭을 <b>½칸</b>으로 지정하면, 바로 다음(또는 바로 앞) 필드도 ½칸일 때 두 필드가 한 칸을 <b>반반씩 나눠서</b> 표시됩니다(요청조직/구매조직처럼). 옆에 ½칸이 붙어있지 않으면 그 필드 혼자 한 칸의 <b>절반만</b> 채우고 나머지 절반은 비워둡니다.')}</div><div class="sfield-list">`;
+    html+=`<div class="grp"><div class="grp-h">조회 조건 필드${qh('타입을 <b>빈값</b>으로 지정하면 라벨·입력칸 없이 해당 칸을 <b>비워둔 채</b> 그대로 자리만 차지합니다.<br><br>여러 칸짜리 레이아웃에서 특정 칸만 건너뛰고 싶을 때 사용하세요.<br><br>가로 폭을 <b>½칸</b>으로 지정하면, 바로 다음(또는 바로 앞) 필드도 ½칸일 때 두 필드가 한 칸을 <b>반반씩 나눠서</b> 표시됩니다(요청조직/구매조직처럼). 옆에 ½칸이 붙어있지 않으면 그 필드 혼자 한 칸의 <b>절반만</b> 채우고 나머지 절반은 비워둡니다.<br><br>타입이 <b>날짜</b>·<b>기간</b>이면 라벨 아래에 나타나는 입력칸에 화면에 보여줄 날짜(기간은 <b>YYYY-MM-DD ~ YYYY-MM-DD</b> 형식)를 직접 적을 수 있습니다. 비워두면 기본값이 표시됩니다.')}</div><div class="sfield-list">`;
     (c.fields||[]).forEach((f,i)=>{
       html+=`<div class="sfield-row" draggable="true"
         ondragstart="sfDragStart(event,${i})" ondragover="sfDragOver(event)"
@@ -3442,6 +3450,9 @@ function renderProps(){
       if(f.type==='radio'||f.type==='combo'){
         const optDefault=f.type==='combo'?'전체,선택1,선택2':'전체,확정,미확정';
         html+=`<div class="sfield-opts"><input value="${(f.options||optDefault).replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'options',this.value)" placeholder="옵션 (쉼표 구분)"></div>`;
+      }
+      if(f.type==='date'||f.type==='daterange'){
+        html+=`<div class="sfield-opts"><input value="${(f.text||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'text',this.value)" placeholder="${f.type==='daterange'?'표시할 기간 (YYYY-MM-DD ~ YYYY-MM-DD)':'표시할 날짜 (YYYY-MM-DD)'}" title="화면에 표시할 날짜 값 (비워두면 기본값 사용)"></div>`;
       }
     });
     html+=`</div><button class="ubtn-add" onclick="addSearchField()">＋ 조건 필드 추가</button></div>`;
@@ -4938,6 +4949,7 @@ function placeItems(items,scale,clearFirst){
           const field={label:f.label||'',type:ft,required:!!f.required};
           if(f.readonly) field.readonly=true;
           if(f.options) field.options=String(f.options);
+          if((ft==='date'||ft==='daterange')&&f.text) field.text=String(f.text);
           if(f.span) field.span=(parseFloat(f.span)===0.5)?0.5:Math.min(4,Math.max(1,parseInt(f.span)||1));
           return field;
         });
@@ -5330,6 +5342,15 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260830.005', date:'2026년 8월 30일', items:[
+    {t:'조회조건 기간 값 입력칸 잘림 재수정', d:'라벨 옆 칸을 좁히는 방식으로는 여전히 잘려서, 콤보/라디오의 옵션 입력칸처럼 <b>라벨 아래 별도 줄</b>에 전체 폭으로 표시되도록 구조를 바꿨습니다. 이제 "YYYY-MM-DD ~ YYYY-MM-DD"가 잘리지 않고 다 보입니다.'}
+  ]},
+  {ver:'20260830.004', date:'2026년 8월 30일', items:[
+    {t:'조회조건 기간 값 입력칸 잘림 수정', d:'조회조건 필드가 <b>기간</b>일 때 속성 패널의 날짜 값 입력칸(YYYY-MM-DD ~ YYYY-MM-DD)이 라벨 입력칸에 밀려 잘려 보이던 문제를 고쳤습니다. 라벨 입력칸 폭을 줄이고 값 입력칸 폭을 넓혀 전체 텍스트가 보이도록 했습니다.'}
+  ]},
+  {ver:'20260830.003', date:'2026년 8월 30일', items:[
+    {t:'조회조건 날짜·기간 필드, 화면에 표시할 값을 직접 입력 (씬모드)', d:'조회조건 필드 타입이 <b>날짜</b>·<b>기간</b>일 때 라벨 옆에 값 입력칸이 나타나 화면에 보여줄 날짜(기간은 <b>YYYY-MM-DD ~ YYYY-MM-DD</b> 형식)를 직접 지정할 수 있습니다. 비워두면 기존처럼 기본값이 표시됩니다.'}
+  ]},
   {ver:'20260830.002', date:'2026년 8월 30일', items:[
     {t:'이미지 변환 「질문만 복사」 프롬프트, ½칸 인식 추가 (씬모드)', d:'씬모드 이미지→JSON 변환의 <b>「질문만 복사」</b> 프롬프트에 조회조건 한 칸 안에 컨트롤 2개가 나란히 붙은 경우(요청조직/구매조직, 공장/창고 등)를 인식해 <b>½칸(span:0.5)</b> 필드 2개로 쪼개 출력하는 규칙을 추가했습니다. 라벨이 하나로 합쳐져 보이면 "/"·공백 기준으로 나눠 각 필드에 담습니다. <b>「Claude 열기」(URL)</b> 프롬프트는 URL 길이 제한 때문에 그대로 유지했습니다.'}
   ]},
@@ -5815,7 +5836,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260830.002';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260830.005';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
