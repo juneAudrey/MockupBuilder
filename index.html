@@ -1952,7 +1952,7 @@ function placeNewComponent(type,x,y,centered,snapPos){
   // 기본 생성 크기 보정(가로 1.3배·세로 2/3배)은 defaultSizeFor()가 모드를 보고 처리한다.
   const sz=defaultSizeFor(type);
   d.w=sz.w; d.h=sz.h;
-  if(type==='date') d.text=todayStr();
+  if(type==='date'){ d.text=todayStr(); d.dateSpec='chip:today'; }
   // px,py = where the component's top-left should go (centered on cursor for drag-drop)
   const px = centered ? x-d.w/2 : x;
   const py = centered ? y-d.h/2 : y;
@@ -2348,7 +2348,7 @@ function todayISO(){
   const p=n=>String(n).padStart(2,'0');
   return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
 }
-function gridCellCtrl(ctype,opts,exp,dateVal,dateBlank){
+function gridCellCtrl(ctype,opts,exp,dateVal,dateBlank,dateSpec){
   switch(ctype){
     case 'combo':{
       const list=opts.length?opts:['선택','옵션1','옵션2','옵션3'];
@@ -2359,8 +2359,12 @@ function gridCellCtrl(ctype,opts,exp,dateVal,dateBlank){
       return `<div class="ax-combo"><span>선택</span></div>`;
     }
     case 'date':{
-      const dv=dateBlank?'':((dateVal||'').trim()||todayISO());
-      if(exp) return `<div class="ax-date-x"><input type="date" class="ax-date-el"${dv?` value="${escAttr(dv)}"`:''}></div>`;
+      const dv=dateBlank?'':(qdResolvedText(dateVal,dateSpec)||todayISO());
+      if(exp){
+        const relAttr=(!dateBlank&&dateSpec)?` data-relspec="${escAttr(dateSpec)}"`:'';
+        const blankAttr=dateBlank?' data-blank="1"':'';
+        return `<div class="ax-date-x"><input type="date" class="ax-date-el"${dv?` value="${escAttr(dv)}"`:''}${relAttr}${blankAttr}></div>`;
+      }
       return `<div class="ax-date"><span>${esc(dv)}</span></div>`;
     }
     case 'check':
@@ -2422,20 +2426,28 @@ function innerRaw(c,mode){
       return `<div class="ax-combo${c.readonly?' readonly':''}${c.required?' required':''}"><span>${esc(c.text)}</span>${req}</div>`;
     }
     case 'date':{
+      // spec이 있으면(빠른 날짜 팝업에서 오늘/어제 등으로 고른 값이면) 고정 문자열이 아니라 "지금"
+      // 기준으로 다시 계산한 값을 쓴다. spec이 없으면(빈값, 또는 예전 고정값) 저장된 텍스트 그대로.
+      const resolved=qdResolvedText(c.text,c.dateSpec);
       if(exp){
-        const valid=/^\d{4}-\d{2}-\d{2}$/.test(c.text||'');
-        return `<div class="ax-date-x${c.readonly?' ro':''}${c.required?' required':''}"><input type="date" class="ax-date-el" value="${valid?c.text:''}"${c.readonly?' disabled':''}>${req}</div>`;
+        const valid=/^\d{4}-\d{2}-\d{2}$/.test(resolved||'');
+        const relAttr=c.dateSpec?` data-relspec="${escAttr(c.dateSpec)}"`:'';
+        const blankAttr=c.blank?' data-blank="1"':'';
+        return `<div class="ax-date-x${c.readonly?' ro':''}${c.required?' required':''}"><input type="date" class="ax-date-el" value="${valid?resolved:''}"${relAttr}${blankAttr}${c.readonly?' disabled':''}>${req}</div>`;
       }
-      return `<div class="ax-date${c.readonly?' readonly':''}${c.required?' required':''}"><span>${esc(c.text)}</span>${req}</div>`;
+      return `<div class="ax-date${c.readonly?' readonly':''}${c.required?' required':''}"><span>${esc(resolved)}</span>${req}</div>`;
     }
     case 'daterange':{
       // 날짜1=required/readonly, 날짜2=required2/readonly2 (개별 처리)
       const ro1=!!c.readonly, ro2=!!c.readonly2, rq1=!!c.required, rq2=!!c.required2;
       const drParts=(c.text||'').split('~').map(s=>s.trim());
-      const drV1=c.startBlank?'':(/^\d{4}-\d{2}-\d{2}$/.test(drParts[0]||'')?drParts[0]:''),
-            drV2=c.endBlank?'':(/^\d{4}-\d{2}-\d{2}$/.test(drParts[1]||'')?drParts[1]:'');
+      const r1=qdResolvedText(drParts[0],c.startSpec), r2=qdResolvedText(drParts[1],c.endSpec);
+      const drV1=c.startBlank?'':(/^\d{4}-\d{2}-\d{2}$/.test(r1||'')?r1:''),
+            drV2=c.endBlank?'':(/^\d{4}-\d{2}-\d{2}$/.test(r2||'')?r2:'');
       if(exp){
-        return `<div class="ax-daterange-x"><input type="date" class="ax-date-el${ro1?' ro':''}${rq1?' is-req':''}" value="${drV1}"${ro1?' disabled':''}><span class="dr-sep">~</span><input type="date" class="ax-date-el${ro2?' ro':''}${rq2?' is-req':''}" value="${drV2}"${ro2?' disabled':''}>${req}</div>`;
+        const rel1=c.startSpec?` data-relspec="${escAttr(c.startSpec)}"`:'', rel2=c.endSpec?` data-relspec="${escAttr(c.endSpec)}"`:'';
+        const blank1=c.startBlank?' data-blank="1"':'', blank2=c.endBlank?' data-blank="1"':'';
+        return `<div class="ax-daterange-x"><input type="date" class="ax-date-el${ro1?' ro':''}${rq1?' is-req':''}" value="${drV1}"${rel1}${blank1}${ro1?' disabled':''}><span class="dr-sep">~</span><input type="date" class="ax-date-el${ro2?' ro':''}${rq2?' is-req':''}" value="${drV2}"${rel2}${blank2}${ro2?' disabled':''}>${req}</div>`;
       }
       if(document.body.classList.contains('skin-classic')){
         // 팻모드는 편집 화면에서도 실제처럼 날짜 두 칸+물결(~)로 보여준다(씬모드는 기존 한 칸 표현 유지).
@@ -2598,7 +2610,7 @@ function innerRaw(c,mode){
         const cells=cols.map((x,ci)=>{
           const ctype=(c.colTypes&&c.colTypes[ci])||'input';
           const copts=((c.colOptions&&c.colOptions[ci])||'').split(',').map(s=>s.trim()).filter(Boolean);
-          const content=gridCellCtrl(ctype,copts,exp,(c.colDateVals&&c.colDateVals[ci])||'',!!(c.colDateBlank&&c.colDateBlank[ci]));
+          const content=gridCellCtrl(ctype,copts,exp,(c.colDateVals&&c.colDateVals[ci])||'',!!(c.colDateBlank&&c.colDateBlank[ci]),(c.colDateSpec&&c.colDateSpec[ci])||'');
           const editCls=ctype==='input'&&exp?'gcell-edit':'';
           const colorCls=colColorCls(ci);
           const clsAttr=[editCls,colorCls].filter(Boolean).join(' ');
@@ -2717,15 +2729,20 @@ function sfFieldInner(f,fi,exp,cid){
   }
   else if(f.type==='date'){
     // 값이 비어 있으면(신규/구버전 목업) 오늘 날짜를 기본값으로 보여준다. 단, "빈값"으로 명시적으로
-    // 지정된 경우엔 오늘 날짜로 채우지 않고 정말 빈 채로 둔다.
-    const val=f.blank?'':((f.text||'').trim()||todayStr());
-    ctl= exp?`<div class="sctl date-x"><input type="date" class="sctl-date-el"${val?` value="${escAttr(val)}"`:''}></div>`:`<div class="sctl date">${esc(val)}</div>`;
+    // 지정된 경우엔 오늘 날짜로 채우지 않고 정말 빈 채로 둔다. spec이 있으면(오늘/어제 등 빠른
+    // 날짜 팝업에서 고른 값이면) 고정 문자열이 아니라 "지금" 기준으로 다시 계산한 값을 쓴다.
+    const val=f.blank?'':(qdResolvedText(f.text,f.dateSpec)||todayStr());
+    const relAttr=(!f.blank&&f.dateSpec)?` data-relspec="${escAttr(f.dateSpec)}"`:'';
+    const blankAttr=f.blank?' data-blank="1"':'';
+    ctl= exp?`<div class="sctl date-x"><input type="date" class="sctl-date-el"${val?` value="${escAttr(val)}"`:''}${relAttr}${blankAttr}></div>`:`<div class="sctl date">${esc(val)}</div>`;
   }
   else if(f.type==='daterange'){
-    const val=(f.text||'').trim()||(todayStr()+'~'+todayStr());
-    const parts=val.split('~').map(s=>s.trim());
-    const v1=f.startBlank?'':(parts[0]||todayStr()), v2=f.endBlank?'':(parts[1]||todayStr());
-    ctl= exp?`<div class="sctl daterange-x"><input type="date" class="sctl-date-el"${v1?` value="${escAttr(v1)}"`:''}><span class="dr-sep">~</span><input type="date" class="sctl-date-el"${v2?` value="${escAttr(v2)}"`:''}></div>`:`<div class="sctl daterange">${esc(v1)} ~ ${esc(v2)}</div>`;
+    const raw=(f.text||'').trim()||(todayStr()+'~'+todayStr());
+    const parts=raw.split('~').map(s=>s.trim());
+    const v1=f.startBlank?'':(qdResolvedText(parts[0],f.startSpec)||todayStr()), v2=f.endBlank?'':(qdResolvedText(parts[1],f.endSpec)||todayStr());
+    const rel1=(!f.startBlank&&f.startSpec)?` data-relspec="${escAttr(f.startSpec)}"`:'', rel2=(!f.endBlank&&f.endSpec)?` data-relspec="${escAttr(f.endSpec)}"`:'';
+    const blank1=f.startBlank?' data-blank="1"':'', blank2=f.endBlank?' data-blank="1"':'';
+    ctl= exp?`<div class="sctl daterange-x"><input type="date" class="sctl-date-el"${v1?` value="${escAttr(v1)}"`:''}${rel1}${blank1}><span class="dr-sep">~</span><input type="date" class="sctl-date-el"${v2?` value="${escAttr(v2)}"`:''}${rel2}${blank2}></div>`:`<div class="sctl daterange">${esc(v1)} ~ ${esc(v2)}</div>`;
   }
   else if(f.type==='search')ctl= exp?`<div class="sctl search-x"><input type="text" class="sctl-text-el" placeholder="검색어 입력"><span class="sctl-search-ic"></span></div>`:'<div class="sctl search"><span class="sctl-search-ic"></span></div>';
   else if(f.type==='radio'){
@@ -3318,10 +3335,10 @@ function renderProps(){
         let val;
         if(isDr){
           const drp=(c.text||'').split('~').map(s=>s.trim());
-          const dv1=c.startBlank?'(빈값)':(drp[0]||todayStr()), dv2=c.endBlank?'(빈값)':(drp[1]||todayStr());
+          const dv1=c.startBlank?'(빈값)':(qdResolvedText(drp[0],c.startSpec)||todayStr()), dv2=c.endBlank?'(빈값)':(qdResolvedText(drp[1],c.endSpec)||todayStr());
           val=dv1+' ~ '+dv2;
         }else{
-          val=c.blank?'(빈값)':((c.text||'').trim()||todayStr());
+          val=c.blank?'(빈값)':(qdResolvedText(c.text,c.dateSpec)||todayStr());
         }
         const lbl=isDr?'표시 텍스트':'텍스트';
         const tip=isDr?qh('"YYYY-MM-DD ~ YYYY-MM-DD" 형식으로 저장됩니다. 내보내기 결과물에서 <b>시작일·종료일 두 개의 실제 날짜 입력</b>으로 표시됩니다.'):'';
@@ -3448,7 +3465,7 @@ function renderProps(){
               <option value="file"${ctype==='file'?' selected':''}>첨부파일</option>
               <option value="search"${ctype==='search'?' selected':''}>검색</option>
             </select>
-            ${ctype==='date'?`<button class="sf-datebtn" title="컬럼 기본값 날짜 선택 (현재: ${(c.colDateBlank&&c.colDateBlank[gi])?'빈값':escAttr((c.colDateVals&&c.colDateVals[gi])||todayStr())})" onclick="openQuickDateGridCol(this,${gi})">📅</button>`:''}
+            ${ctype==='date'?`<button class="sf-datebtn" title="컬럼 기본값 날짜 선택 (현재: ${(c.colDateBlank&&c.colDateBlank[gi])?'빈값':escAttr(qdResolvedText((c.colDateVals&&c.colDateVals[gi])||'',(c.colDateSpec&&c.colDateSpec[gi])||'')||todayStr())})" onclick="openQuickDateGridCol(this,${gi})">📅</button>`:''}
             <button class="ubtn-del" title="삭제" onclick="delGridCol(${gi})">×</button>
           </div>`;
         {
@@ -3849,6 +3866,9 @@ function normGridColArrays(c){
   if(!Array.isArray(c.colDateBlank))c.colDateBlank=[];
   while(c.colDateBlank.length<n)c.colDateBlank.push(false);
   if(c.colDateBlank.length>n)c.colDateBlank.length=n;
+  if(!Array.isArray(c.colDateSpec))c.colDateSpec=[];
+  while(c.colDateSpec.length<n)c.colDateSpec.push('');
+  if(c.colDateSpec.length>n)c.colDateSpec.length=n;
 }
 function addGridCol(){
   const c=comps.find(x=>x.id===sel);if(!c)return;
@@ -3865,6 +3885,7 @@ function addGridCol(){
   c.colReadonly.push(false);
   c.colDateVals.push('');
   c.colDateBlank.push(false);
+  c.colDateSpec.push('');
   c._xscrollManual=false;
   render();
 }
@@ -3890,6 +3911,7 @@ function delGridCol(i){
   c.colReadonly.splice(i,1);
   c.colDateVals.splice(i,1);
   c.colDateBlank.splice(i,1);
+  c.colDateSpec.splice(i,1);
   render();
 }
 function updGridColType(i,v){
@@ -3897,9 +3919,11 @@ function updGridColType(i,v){
   normGridColArrays(c);
   if(i>=c.colTypes.length)return;
   c.colTypes[i]=v;
-  // 새로 "날짜" 타입이 됐는데 아직 기본값이 없으면 오늘 날짜로 채운다.
+  // 새로 "날짜" 타입이 됐는데 아직 기본값이 없으면 오늘 날짜로 채운다(다시 열 때마다 재계산되도록
+  // "오늘" spec도 같이 붙여둔다).
   if(v==='date' && !(c.colDateVals[i]||'').trim()){
     c.colDateVals[i]=todayStr();
+    c.colDateSpec[i]='chip:today';
   }
   render();
 }
@@ -4041,9 +4065,12 @@ function addSearchField(){
 function updSearchField(i,k,v){
   const c=comps.find(x=>x.id===sel);if(!c||!c.fields||!c.fields[i])return;
   c.fields[i][k]=v;
-  // 타입을 날짜·기간으로 바꿨는데 아직 값이 없으면(신규 필드 등) 기본값을 오늘 날짜로 채운다.
+  // 타입을 날짜·기간으로 바꿨는데 아직 값이 없으면(신규 필드 등) 기본값을 오늘 날짜로 채운다(다시
+  // 열 때마다 재계산되도록 "오늘" spec도 같이 붙여둔다).
   if(k==='type' && (v==='date'||v==='daterange') && !(c.fields[i].text||'').trim()){
     c.fields[i].text = v==='daterange' ? (todayStr()+'~'+todayStr()) : todayStr();
+    if(v==='daterange'){ c.fields[i].startSpec='chip:today'; c.fields[i].endSpec='chip:today'; }
+    else c.fields[i].dateSpec='chip:today';
   }
   if(k==='span'){ fitSearchbar(c); render(); return; }
   if(k==='required'||k==='type'||k==='readonly')render(); else drawCanvas();
@@ -4055,11 +4082,40 @@ function updSearchField(i,k,v){
 let qd=null; // {kind:'field'|'component'|'gridcol', compId, fi, part:'single'|'start'|'end', current, chip, year, month, day, expanded, anchorRect}
 function qdToday(){ const d=new Date(); d.setHours(0,0,0,0); return d; }
 function qdFmt(d){ const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
-// 필드에 이미 저장돼 있는 값(단일 날짜, 또는 기간의 시작/종료 한쪽)을 문자열로 돌려준다. 비어있으면 오늘.
+// spec 문자열(즐겨찾기 칩 이름, 또는 "직접 조합하기" 연/월/일 축 조합)을 "지금 이 순간의 오늘"을
+// 기준으로 다시 계산해 "YYYY-MM-DD" 문자열로 돌려준다. spec이 없거나 알아볼 수 없으면 null.
+// 내보내기 결과물(저장되는 mockup html)의 인터랙션 스크립트 안에도 이와 똑같은 로직이 그대로
+// 복제돼 있다(buildExportHTML 안의 resolveSpec) - 그래야 그 파일을 나중에 다른 날 열어도 "어제"가
+// 그 날짜 기준 어제로 다시 계산되어 표시된다. 두 로직은 항상 같이 맞춰야 한다.
+function qdResolveSpec(spec){
+  if(!spec) return null;
+  if(spec.indexOf('chip:')===0){
+    const mode=spec.slice(5);
+    if(['today','yesterday','thisMonth1','thisYear0101'].indexOf(mode)===-1) return null;
+    return qdFmt(qdComputeChip(mode));
+  }
+  if(spec.indexOf('axis:')===0){
+    const nums=spec.slice(5).split(',').map(Number);
+    if(nums.length!==3 || nums.some(isNaN)) return null;
+    const d=qdToday();
+    d.setFullYear(d.getFullYear()+nums[0]);
+    d.setMonth(d.getMonth()+nums[1]);
+    d.setDate(d.getDate()+nums[2]);
+    return qdFmt(d);
+  }
+  return null;
+}
+// 저장된 원문 텍스트와 spec을 함께 받아, spec이 유효하면 "오늘" 기준으로 새로 계산한 값을 우선 쓰고,
+// 없으면(빈값 spec, 또는 예전에 만들어져 spec 없이 고정 문자열만 있는 값) 저장된 텍스트를 그대로 쓴다.
+function qdResolvedText(text,spec){
+  return qdResolveSpec(spec) || (text||'').trim();
+}
+// 필드에 이미 저장돼 있는 값(단일 날짜, 또는 기간의 시작/종료 한쪽)을 문자열로 돌려준다. spec이 있으면
+// 오늘 기준으로 다시 계산하고, 없으면(비어있거나 옛 고정값) 저장된 텍스트 또는 오늘을 쓴다.
 function sfDateCurrent(f,part){
-  if(part==='single') return (f.text||'').trim()||todayStr();
+  if(part==='single') return qdResolvedText(f.text,f.dateSpec)||todayStr();
   const parts=(f.text||'').split('~').map(s=>s.trim());
-  return part==='start' ? (parts[0]||todayStr()) : (parts[1]||todayStr());
+  return part==='start' ? (qdResolvedText(parts[0],f.startSpec)||todayStr()) : (qdResolvedText(parts[1],f.endSpec)||todayStr());
 }
 // 해당 part가 지금 "빈값"으로 저장돼 있는지(사용자가 명시적으로 비워둔 상태인지) 읽는다.
 function sfDateBlank(obj,part){
@@ -4145,7 +4201,7 @@ function openQuickDateComp(btn,compId,part){
 function openQuickDateGridCol(btn,ci){
   const c=comps.find(x=>x.id===sel); if(!c)return;
   normGridColArrays(c);
-  const current=(c.colDateVals[ci]||'').trim()||todayStr();
+  const current=qdResolvedText(c.colDateVals[ci], c.colDateSpec[ci])||todayStr();
   qd=qdBuildState('gridcol', c.id, ci, 'single', current, !!(c.colDateBlank&&c.colDateBlank[ci]));
   renderQuickDate(btn);
 }
@@ -4196,25 +4252,45 @@ function qdSetBlankFlag(obj,part,isBlank){
   else if(part==='start') obj.startBlank=isBlank;
   else obj.endBlank=isBlank;
 }
+// part에 맞는 spec 필드명(dateSpec / startSpec / endSpec)을 obj에 기록한다. spec이 없으면(빈값을
+// 골랐거나, 즐겨찾기 칩·직접조합 축 어느 것과도 안 맞는 임의의 값이면) 아예 필드를 지워서 예전처럼
+// 고정 문자열(text)만 쓰는 값으로 남긴다.
+function qdSetSpecFlag(obj,part,spec){
+  const key = part==='single' ? 'dateSpec' : (part==='start' ? 'startSpec' : 'endSpec');
+  if(spec) obj[key]=spec; else delete obj[key];
+}
+// 지금 qd 상태가 즐겨찾기 칩이나 "직접 조합하기" 축과 정확히 일치하면 그 selection을 나중에 다시
+// 계산할 수 있는 spec 문자열로 인코딩해 돌려준다. 빈값이거나(qd.blank) 어느 쪽과도 안 맞는 임의의
+// 값이면 null - 이 경우 예전처럼 그 순간에 계산된 고정 날짜 문자열로만 저장된다.
+function qdCurrentSpec(){
+  if(!qd || qd.blank) return null;
+  if(qd.chip) return 'chip:'+qd.chip;
+  if(qd.expanded) return 'axis:'+qd.year+','+qd.month+','+qd.day;
+  return null;
+}
 function qdApply(){
   if(!qd)return;
   const isBlank=!!qd.blank;
   const val=isBlank?'':qdFmt(qdPreviewDate());
+  const spec=qdCurrentSpec();
   pushHistory();
   if(qd.kind==='component'){
     const c=comps.find(x=>x.id===qd.compId); if(!c){closeQuickDate();return;}
     c.text=qdMergeText(c.text, qd.part, val);
     qdSetBlankFlag(c, qd.part, isBlank);
+    qdSetSpecFlag(c, qd.part, spec);
   }else if(qd.kind==='gridcol'){
     const c=comps.find(x=>x.id===qd.compId); if(!c){closeQuickDate();return;}
     normGridColArrays(c);
     c.colDateVals[qd.fi]=val;
     c.colDateBlank[qd.fi]=isBlank;
+    c.colDateSpec[qd.fi]=spec||'';
   }else{
     const c=comps.find(x=>x.id===qd.compId); if(!c||!c.fields||!c.fields[qd.fi]){closeQuickDate();return;}
     const f=c.fields[qd.fi];
     f.text=qdMergeText(f.text, qd.part, val);
     qdSetBlankFlag(f, qd.part, isBlank);
+    qdSetSpecFlag(f, qd.part, spec);
   }
   closeQuickDate();
   render();
@@ -4877,10 +4953,43 @@ function startSplitDragExport(e){
   document.addEventListener('mouseup',up);
 }
 (function(){
+  // 이 목업 html을 여는 "그 순간"의 실제 오늘 날짜를 기준으로 날짜 입력칸을 채운다.
+  // - data-relspec이 있는 칸(빠른 날짜 팝업에서 오늘/어제/이번달1일/올해1월1일이나 "직접 조합하기"
+  //   축으로 고른 값)은 저장 당시에 계산해 둔 고정 값을 무시하고, 지금 이 순간을 기준으로 다시
+  //   계산한다 - 그래야 오늘 "어제"를 고르고 저장한 파일을 내일 열면 그 날짜 기준 "어제"로 보인다.
+  // - data-blank가 있는 칸(빈값으로 명시적으로 비워둔 값)은 절대 건드리지 않는다.
+  // - 둘 다 없는, 값이 비어 있는 칸(옛 버전 목업 등)만 예전처럼 오늘 날짜로 채운다.
   function pad(n){return String(n).padStart(2,'0');}
-  var d=new Date();
-  var todayStr=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
-  document.querySelectorAll('.sctl-date-el').forEach(function(el){ if(!el.value) el.value=todayStr; });
+  function fmt(dt){return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());}
+  function today(){ var t=new Date(); t.setHours(0,0,0,0); return t; }
+  function resolveSpec(spec){
+    if(!spec) return null;
+    if(spec.indexOf('chip:')===0){
+      var mode=spec.slice(5), t=today();
+      if(mode==='yesterday'){ var y=new Date(t); y.setDate(y.getDate()-1); return fmt(y); }
+      if(mode==='thisMonth1') return fmt(new Date(t.getFullYear(), t.getMonth(), 1));
+      if(mode==='thisYear0101') return fmt(new Date(t.getFullYear(), 0, 1));
+      if(mode==='today') return fmt(t);
+      return null;
+    }
+    if(spec.indexOf('axis:')===0){
+      var nums=spec.slice(5).split(',').map(Number);
+      if(nums.length!==3||nums.some(isNaN)) return null;
+      var dt=today();
+      dt.setFullYear(dt.getFullYear()+nums[0]);
+      dt.setMonth(dt.getMonth()+nums[1]);
+      dt.setDate(dt.getDate()+nums[2]);
+      return fmt(dt);
+    }
+    return null;
+  }
+  var todayStr=fmt(today());
+  document.querySelectorAll('.sctl-date-el, .ax-date-el').forEach(function(el){
+    var spec=el.getAttribute('data-relspec');
+    if(spec){ var v=resolveSpec(spec); if(v) el.value=v; return; }
+    if(el.hasAttribute('data-blank')) return;
+    if(!el.value) el.value=todayStr;
+  });
 })();
 <\/script>`;
   const t=screenTitle();
