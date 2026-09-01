@@ -567,7 +567,6 @@
   .sfield-row:last-of-type{border-bottom:none;margin-bottom:0;padding-bottom:0;}
   .sfield-row .sf-row1,.sfield-row .sf-row2{display:flex;gap:4px;align-items:center;}
   .sfield-row .sf-label{flex:1;min-width:0;padding:4px 6px;border:1px solid var(--ax-border);border-radius:4px;font-size:12px;}
-  .sfield-row .sf-label.sf-label-narrow{flex:0 0 46px;}
   .sfield-row .sf-value{flex:1 1 0;min-width:0;padding:4px 6px;border:1px solid var(--ax-border);border-radius:4px;font-size:11px;color:#333;}
   .sfield-row .sf-type{padding:4px 4px;border:1px solid var(--ax-border);border-radius:4px;font-size:11px;background:#fff;}
   .sfield-row .sf-span{padding:4px 2px;border:1px solid var(--ax-border);border-radius:4px;font-size:11px;background:#fff;width:56px;flex:none;}
@@ -575,7 +574,41 @@
   .sfield-row .sf-req.on{background:#fdecec;color:var(--ax-req);border-color:#e5c2c4;}
   .sfield-row .sf-ro{width:26px;padding:4px 2px;border:1px solid var(--ax-border);background:#fff;border-radius:4px;cursor:pointer;font-size:11px;filter:grayscale(1);opacity:.45;}
   .sfield-row .sf-ro.on{background:#eef1f4;border-color:#b9c2cb;filter:none;opacity:1;}
+  /* 조회조건 필드의 날짜/기간 값: 예전엔 YYYY-MM-DD 텍스트칸이었으나, 아이콘을 눌러 빠른 날짜 팝업(#qdPopup)을
+     여는 방식으로 바뀌었다. 버튼은 필수(*)·읽기전용(🔒)·삭제(×) 아이콘과 같은 줄(row1)에 나란히 놓인다. */
+  .sfield-row .sf-datebtn{width:22px;height:24px;flex:none;padding:0;border:1px solid var(--ax-border);background:#fff;border-radius:4px;cursor:pointer;font-size:12px;color:var(--ax-green-dark);}
+  .sfield-row .sf-datebtn:hover{border-color:var(--ax-green);background:var(--ax-green-light);}
+  .sfield-row .sf-datebtn.on{background:var(--ax-green-light);border-color:var(--ax-green);}
+  /* 캔버스에 단독으로 놓인 날짜·기간 컴포넌트: 속성 패널의 값 입력칸은 읽기전용(회색)으로 두고,
+     그 아래에 실제 값을 정하는 버튼(qd-open-btn)을 배치한다. */
+  .prop input:disabled{background:#f6f7f8;color:#6b7280;cursor:not-allowed;}
+  .qd-open-btn{width:100%;padding:7px 10px;margin-top:6px;border:1px solid var(--ax-border);background:var(--ax-green-light);color:var(--ax-green-dark);border-radius:5px;cursor:pointer;font-size:12px;font-weight:600;}
+  .qd-open-btn:hover{background:#dcf0e6;border-color:var(--ax-green);}
+  .qd-open-row{display:flex;gap:6px;margin-top:6px;}
+  .qd-open-row .qd-open-btn{margin-top:0;flex:1;}
+  .sfield-row .sf-tilde{color:#aaa;font-size:11px;flex:none;padding:0 1px;}
   .sfield-opts{margin:-2px 0 3px 0;padding-left:2px;}
+  /* 빠른 날짜 선택 팝업(qdPopup): 아이콘을 클릭한 위치 기준으로 뜨는 고정(fixed) 위치 팝업.
+     화면 가장자리에서는 openQuickDate/qdPosition()이 좌우·상하로 뒤집어 잘리지 않게 한다. */
+  .qd-popup{position:fixed;z-index:9999;background:#fff;border:1px solid var(--ax-border);border-radius:8px;box-shadow:0 8px 24px rgba(20,30,40,.18);padding:10px;width:236px;font-family:inherit;}
+  .qd-title{font-size:11px;font-weight:700;color:var(--ax-navy);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;}
+  .qd-title .qd-close{cursor:pointer;color:#aaa;font-size:14px;line-height:1;}
+  .qd-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;}
+  .qd-chip{padding:6px 3px;border:1px solid var(--ax-border);background:#fff;border-radius:5px;font-size:11px;color:#333;cursor:pointer;text-align:center;}
+  .qd-chip:hover{border-color:var(--ax-green);}
+  .qd-chip.sel{background:var(--ax-green-light);border-color:var(--ax-green);color:var(--ax-green-dark);font-weight:700;}
+  .qd-chip-blank{grid-column:1 / -1;}
+  .qd-expand-toggle{text-align:center;font-size:11px;color:var(--ax-green-dark);font-weight:700;margin:9px 0 7px;cursor:pointer;user-select:none;}
+  .qd-axis{margin-bottom:9px;}
+  .qd-axis:last-of-type{margin-bottom:0;}
+  .qd-axis-label{font-size:10px;font-weight:700;color:#9aa3ad;margin-bottom:4px;}
+  .qd-seg{display:flex;border:1px solid var(--ax-border);border-radius:6px;overflow:hidden;}
+  .qd-seg button{flex:1;padding:6px 2px;border:none;background:#fff;font-size:11px;cursor:pointer;color:#444;border-right:1px solid var(--ax-border);}
+  .qd-seg button:last-child{border-right:none;}
+  .qd-seg button.sel{background:var(--ax-green);color:#fff;font-weight:700;}
+  .qd-actions{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid #f0f0f0;}
+  .qd-preview{flex:1;min-width:0;font-size:11px;color:var(--ax-navy);font-weight:700;background:#f4f6f8;border-radius:4px;padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .qd-btn{padding:5px 12px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--ax-border);background:var(--ax-green);border-color:var(--ax-green);color:#fff;}
   .sf-handle{cursor:grab;font-size:14px;color:#9aa3ad;padding:0 3px;user-select:none;line-height:1;flex:none;}
   .sf-handle:active{cursor:grabbing;}
   .sf-pos{width:34px;flex:none;padding:4px 2px;border:1px solid var(--ax-border);border-radius:4px;font-size:11px;text-align:center;background:#fff;}
@@ -974,7 +1007,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260831.010)</span>
+      <span id="verText">by June (ver.20260901.007)</span>
     </div>
   </div>
 
@@ -2315,7 +2348,7 @@ function todayISO(){
   const p=n=>String(n).padStart(2,'0');
   return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
 }
-function gridCellCtrl(ctype,opts,exp){
+function gridCellCtrl(ctype,opts,exp,dateVal,dateBlank){
   switch(ctype){
     case 'combo':{
       const list=opts.length?opts:['선택','옵션1','옵션2','옵션3'];
@@ -2325,9 +2358,11 @@ function gridCellCtrl(ctype,opts,exp){
       }
       return `<div class="ax-combo"><span>선택</span></div>`;
     }
-    case 'date':
-      if(exp) return `<div class="ax-date-x"><input type="date" class="ax-date-el" value="${todayISO()}"></div>`;
-      return `<div class="ax-date"><span>YYYY-MM-DD</span></div>`;
+    case 'date':{
+      const dv=dateBlank?'':((dateVal||'').trim()||todayISO());
+      if(exp) return `<div class="ax-date-x"><input type="date" class="ax-date-el"${dv?` value="${escAttr(dv)}"`:''}></div>`;
+      return `<div class="ax-date"><span>${esc(dv)}</span></div>`;
+    }
     case 'check':
       if(exp) return `<div class="gcell-check interactive" onclick="toggleCheckExport(this)"><span class="box"></span></div>`;
       return `<div class="gcell-check"><span class="box"></span></div>`;
@@ -2396,18 +2431,17 @@ function innerRaw(c,mode){
     case 'daterange':{
       // 날짜1=required/readonly, 날짜2=required2/readonly2 (개별 처리)
       const ro1=!!c.readonly, ro2=!!c.readonly2, rq1=!!c.required, rq2=!!c.required2;
+      const drParts=(c.text||'').split('~').map(s=>s.trim());
+      const drV1=c.startBlank?'':(/^\d{4}-\d{2}-\d{2}$/.test(drParts[0]||'')?drParts[0]:''),
+            drV2=c.endBlank?'':(/^\d{4}-\d{2}-\d{2}$/.test(drParts[1]||'')?drParts[1]:'');
       if(exp){
-        const m=(c.text||'').match(/^(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})$/);
-        const sVal=m?m[1]:'', eVal=m?m[2]:'';
-        return `<div class="ax-daterange-x"><input type="date" class="ax-date-el${ro1?' ro':''}${rq1?' is-req':''}" value="${sVal}"${ro1?' disabled':''}><span class="dr-sep">~</span><input type="date" class="ax-date-el${ro2?' ro':''}${rq2?' is-req':''}" value="${eVal}"${ro2?' disabled':''}>${req}</div>`;
+        return `<div class="ax-daterange-x"><input type="date" class="ax-date-el${ro1?' ro':''}${rq1?' is-req':''}" value="${drV1}"${ro1?' disabled':''}><span class="dr-sep">~</span><input type="date" class="ax-date-el${ro2?' ro':''}${rq2?' is-req':''}" value="${drV2}"${ro2?' disabled':''}>${req}</div>`;
       }
       if(document.body.classList.contains('skin-classic')){
         // 팻모드는 편집 화면에서도 실제처럼 날짜 두 칸+물결(~)로 보여준다(씬모드는 기존 한 칸 표현 유지).
-        const m2=(c.text||'').split('~');
-        const sTxt=(m2[0]||'').trim(), eTxt=(m2[1]||'').trim();
-        return `<div class="ax-daterange"><span class="ax-date-part${ro1?' ro':''}${rq1?' is-req':''}">${esc(sTxt)}</span><span class="dr-sep">~</span><span class="ax-date-part${ro2?' ro':''}${rq2?' is-req':''}">${esc(eTxt)}</span>${req}</div>`;
+        return `<div class="ax-daterange"><span class="ax-date-part${ro1?' ro':''}${rq1?' is-req':''}">${esc(drV1)}</span><span class="dr-sep">~</span><span class="ax-date-part${ro2?' ro':''}${rq2?' is-req':''}">${esc(drV2)}</span>${req}</div>`;
       }
-      return `<div class="ax-date${c.readonly?' readonly':''}${c.required?' required':''}"><span>${esc(c.text)}</span>${req}</div>`;
+      return `<div class="ax-date${c.readonly?' readonly':''}${c.required?' required':''}"><span>${esc(drV1)} ~ ${esc(drV2)}</span>${req}</div>`;
     }
     case 'check':
       if(exp) return `<div class="ax-check interactive" onclick="toggleCheckExport(this)"><span class="box"></span>${esc(c.text)}${req}</div>`;
@@ -2564,7 +2598,7 @@ function innerRaw(c,mode){
         const cells=cols.map((x,ci)=>{
           const ctype=(c.colTypes&&c.colTypes[ci])||'input';
           const copts=((c.colOptions&&c.colOptions[ci])||'').split(',').map(s=>s.trim()).filter(Boolean);
-          const content=gridCellCtrl(ctype,copts,exp);
+          const content=gridCellCtrl(ctype,copts,exp,(c.colDateVals&&c.colDateVals[ci])||'',!!(c.colDateBlank&&c.colDateBlank[ci]));
           const editCls=ctype==='input'&&exp?'gcell-edit':'';
           const colorCls=colColorCls(ci);
           const clsAttr=[editCls,colorCls].filter(Boolean).join(' ');
@@ -2682,14 +2716,16 @@ function sfFieldInner(f,fi,exp,cid){
     }
   }
   else if(f.type==='date'){
-    const val=(f.text||'').trim();
+    // 값이 비어 있으면(신규/구버전 목업) 오늘 날짜를 기본값으로 보여준다. 단, "빈값"으로 명시적으로
+    // 지정된 경우엔 오늘 날짜로 채우지 않고 정말 빈 채로 둔다.
+    const val=f.blank?'':((f.text||'').trim()||todayStr());
     ctl= exp?`<div class="sctl date-x"><input type="date" class="sctl-date-el"${val?` value="${escAttr(val)}"`:''}></div>`:`<div class="sctl date">${esc(val)}</div>`;
   }
   else if(f.type==='daterange'){
-    const val=(f.text||'').trim();
+    const val=(f.text||'').trim()||(todayStr()+'~'+todayStr());
     const parts=val.split('~').map(s=>s.trim());
-    const v1=parts[0]||'', v2=parts[1]||'';
-    ctl= exp?`<div class="sctl daterange-x"><input type="date" class="sctl-date-el"${v1?` value="${escAttr(v1)}"`:''}><span class="dr-sep">~</span><input type="date" class="sctl-date-el"${v2?` value="${escAttr(v2)}"`:''}></div>`:`<div class="sctl daterange">${esc(val||'2026-07-01 ~ 2026-07-15')}</div>`;
+    const v1=f.startBlank?'':(parts[0]||todayStr()), v2=f.endBlank?'':(parts[1]||todayStr());
+    ctl= exp?`<div class="sctl daterange-x"><input type="date" class="sctl-date-el"${v1?` value="${escAttr(v1)}"`:''}><span class="dr-sep">~</span><input type="date" class="sctl-date-el"${v2?` value="${escAttr(v2)}"`:''}></div>`:`<div class="sctl daterange">${esc(v1)} ~ ${esc(v2)}</div>`;
   }
   else if(f.type==='search')ctl= exp?`<div class="sctl search-x"><input type="text" class="sctl-text-el" placeholder="검색어 입력"><span class="sctl-search-ic"></span></div>`:'<div class="sctl search"><span class="sctl-search-ic"></span></div>';
   else if(f.type==='radio'){
@@ -3275,6 +3311,29 @@ function renderProps(){
         html+=drStyleRadios(0,c.required,c.readonly);
         html+=`<div class="prop"><label>날짜2</label><input value="${(parts[1]||'').replace(/"/g,'&quot;')}" oninput="updDateRangePart(1,this.value)"></div>`;
         html+=drStyleRadios(1,c.required2,c.readonly2);
+      } else if(c.type==='date' || c.type==='daterange'){
+        // 날짜·기간 컴포넌트는 더 이상 텍스트를 직접 입력하지 않는다 - 값은 아래 달력 아이콘의
+        // 빠른 날짜 팝업으로만 정하고, 이 입력칸은 그 결과를 보여주는 읽기전용 표시로만 쓴다.
+        const isDr=c.type==='daterange';
+        let val;
+        if(isDr){
+          const drp=(c.text||'').split('~').map(s=>s.trim());
+          const dv1=c.startBlank?'(빈값)':(drp[0]||todayStr()), dv2=c.endBlank?'(빈값)':(drp[1]||todayStr());
+          val=dv1+' ~ '+dv2;
+        }else{
+          val=c.blank?'(빈값)':((c.text||'').trim()||todayStr());
+        }
+        const lbl=isDr?'표시 텍스트':'텍스트';
+        const tip=isDr?qh('"YYYY-MM-DD ~ YYYY-MM-DD" 형식으로 저장됩니다. 내보내기 결과물에서 <b>시작일·종료일 두 개의 실제 날짜 입력</b>으로 표시됩니다.'):'';
+        html+=`<div class="prop"><label>${lbl}${tip}</label><input value="${escAttr(val)}" disabled title="아래 달력 아이콘으로 값을 선택하세요"></div>`;
+        if(isDr){
+          html+=`<div class="qd-open-row">
+            <button class="qd-open-btn" onclick="openQuickDateComp(this,${c.id},'start')">📅 시작일</button>
+            <button class="qd-open-btn" onclick="openQuickDateComp(this,${c.id},'end')">📅 종료일</button>
+          </div>`;
+        }else{
+          html+=`<button class="qd-open-btn" onclick="openQuickDateComp(this,${c.id},'single')">📅 날짜 선택</button>`;
+        }
       } else {
         const lbl=(c.type==='daterange'?'표시 텍스트':'텍스트');
         const tip=c.type==='daterange'?qh('"YYYY-MM-DD ~ YYYY-MM-DD" 형식으로 입력하면 내보내기 결과물에서 <b>시작일·종료일 두 개의 실제 날짜 입력</b>으로 표시됩니다.'):'';
@@ -3389,6 +3448,7 @@ function renderProps(){
               <option value="file"${ctype==='file'?' selected':''}>첨부파일</option>
               <option value="search"${ctype==='search'?' selected':''}>검색</option>
             </select>
+            ${ctype==='date'?`<button class="sf-datebtn" title="컬럼 기본값 날짜 선택 (현재: ${(c.colDateBlank&&c.colDateBlank[gi])?'빈값':escAttr((c.colDateVals&&c.colDateVals[gi])||todayStr())})" onclick="openQuickDateGridCol(this,${gi})">📅</button>`:''}
             <button class="ubtn-del" title="삭제" onclick="delGridCol(${gi})">×</button>
           </div>`;
         {
@@ -3472,17 +3532,17 @@ function renderProps(){
   }
   if(c.type==='searchbar'){
     html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.collapsed?'checked':''} onchange="upd('collapsed',this.checked)"> 접힘 상태(≫) 표시</label></div>`;
-    html+=`<div class="grp"><div class="grp-h">조회 조건 필드${qh('타입을 <b>빈값</b>으로 지정하면 라벨·입력칸 없이 해당 칸을 <b>비워둔 채</b> 그대로 자리만 차지합니다.<br><br>여러 칸짜리 레이아웃에서 특정 칸만 건너뛰고 싶을 때 사용하세요.<br><br>가로 폭을 <b>½칸</b>으로 지정하면, 바로 다음(또는 바로 앞) 필드도 ½칸일 때 두 필드가 한 칸을 <b>반반씩 나눠서</b> 표시됩니다(요청조직/구매조직처럼). 옆에 ½칸이 붙어있지 않으면 그 필드 혼자 한 칸의 <b>절반만</b> 채우고 나머지 절반은 비워둡니다.<br><br>타입이 <b>날짜</b>·<b>기간</b>이면 라벨 옆에 나타나는 입력칸에 화면에 보여줄 날짜(기간은 <b>YYYY-MM-DD ~ YYYY-MM-DD</b> 형식)를 직접 적을 수 있습니다. 비워두면 기본값이 표시됩니다.')}</div><div class="sfield-list">`;
+    html+=`<div class="grp"><div class="grp-h">조회 조건 필드${qh('타입을 <b>빈값</b>으로 지정하면 라벨·입력칸 없이 해당 칸을 <b>비워둔 채</b> 그대로 자리만 차지합니다.<br><br>여러 칸짜리 레이아웃에서 특정 칸만 건너뛰고 싶을 때 사용하세요.<br><br>가로 폭을 <b>½칸</b>으로 지정하면, 바로 다음(또는 바로 앞) 필드도 ½칸일 때 두 필드가 한 칸을 <b>반반씩 나눠서</b> 표시됩니다(요청조직/구매조직처럼). 옆에 ½칸이 붙어있지 않으면 그 필드 혼자 한 칸의 <b>절반만</b> 채우고 나머지 절반은 비워둡니다.<br><br>타입이 <b>날짜</b>·<b>기간</b>이면 라벨 옆에 📅 아이콘이 나타나며, 클릭하면 뜨는 팝업에서 화면에 보여줄 날짜를 고를 수 있습니다(오늘/어제 등 원클릭 또는 연·월·일 조합). 비워두면 기본값(오늘 날짜)이 표시됩니다.')}</div><div class="sfield-list">`;
     (c.fields||[]).forEach((f,i)=>{
-      const isDt=f.type==='date'||f.type==='daterange';
       html+=`<div class="sfield-row" draggable="true"
         ondragstart="sfDragStart(event,${i})" ondragover="sfDragOver(event)"
         ondragleave="sfDragLeave(event)" ondrop="sfDrop(event,${i})" ondragend="sfDragEnd(event)">
         <div class="sf-row1">
           <span class="sf-handle" title="드래그해서 순서 변경">⠿</span>
           <input type="number" class="sf-pos" title="순서 번호 (직접 입력하면 그 위치로 이동)" min="1" max="${(c.fields||[]).length}" value="${i+1}" onchange="sfMoveTo(${i},this.value)">
-          <input class="sf-label${isDt?' sf-label-narrow':''}" value="${(f.label||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'label',this.value)" placeholder="라벨"${f.type==='empty'?' disabled style="opacity:.5;"':''}>
-          ${isDt?`<input class="sf-value" value="${(f.text||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'text',this.value)" placeholder="${f.type==='daterange'?'YYYY-MM-DD~YYYY-MM-DD':'YYYY-MM-DD'}" title="화면에 표시할 날짜 값 - 형식: ${f.type==='daterange'?'YYYY-MM-DD ~ YYYY-MM-DD':'YYYY-MM-DD'} (비워두면 기본값 사용)">`:''}
+          <input class="sf-label" value="${(f.label||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'label',this.value)" placeholder="라벨"${f.type==='empty'?' disabled style="opacity:.5;"':''}>
+          ${f.type==='date'?`<button class="sf-datebtn" title="빠른 날짜 선택 (현재: ${f.blank?'빈값':sfDateCurrent(f,'single')})" onclick="openQuickDate(this,${i},'single')">📅</button>`:''}
+          ${f.type==='daterange'?`<button class="sf-datebtn" title="시작일 빠른 선택 (현재: ${f.startBlank?'빈값':sfDateCurrent(f,'start')})" onclick="openQuickDate(this,${i},'start')">📅</button><span class="sf-tilde">~</span><button class="sf-datebtn" title="종료일 빠른 선택 (현재: ${f.endBlank?'빈값':sfDateCurrent(f,'end')})" onclick="openQuickDate(this,${i},'end')">📅</button>`:''}
           <button class="ubtn-del" title="삭제" onclick="delSearchField(${i})">×</button>
         </div>
         <div class="sf-row2">
@@ -3783,6 +3843,12 @@ function normGridColArrays(c){
   if(!Array.isArray(c.colReadonly))c.colReadonly=[];
   while(c.colReadonly.length<n)c.colReadonly.push(false);
   if(c.colReadonly.length>n)c.colReadonly.length=n;
+  if(!Array.isArray(c.colDateVals))c.colDateVals=[];
+  while(c.colDateVals.length<n)c.colDateVals.push('');
+  if(c.colDateVals.length>n)c.colDateVals.length=n;
+  if(!Array.isArray(c.colDateBlank))c.colDateBlank=[];
+  while(c.colDateBlank.length<n)c.colDateBlank.push(false);
+  if(c.colDateBlank.length>n)c.colDateBlank.length=n;
 }
 function addGridCol(){
   const c=comps.find(x=>x.id===sel);if(!c)return;
@@ -3797,6 +3863,8 @@ function addGridCol(){
   c.colAligns.push('left');
   c.colRequired.push(false);
   c.colReadonly.push(false);
+  c.colDateVals.push('');
+  c.colDateBlank.push(false);
   c._xscrollManual=false;
   render();
 }
@@ -3820,6 +3888,8 @@ function delGridCol(i){
   c.colAligns.splice(i,1);
   c.colRequired.splice(i,1);
   c.colReadonly.splice(i,1);
+  c.colDateVals.splice(i,1);
+  c.colDateBlank.splice(i,1);
   render();
 }
 function updGridColType(i,v){
@@ -3827,6 +3897,10 @@ function updGridColType(i,v){
   normGridColArrays(c);
   if(i>=c.colTypes.length)return;
   c.colTypes[i]=v;
+  // 새로 "날짜" 타입이 됐는데 아직 기본값이 없으면 오늘 날짜로 채운다.
+  if(v==='date' && !(c.colDateVals[i]||'').trim()){
+    c.colDateVals[i]=todayStr();
+  }
   render();
 }
 function updGridColOptions(i,v){
@@ -3967,8 +4041,228 @@ function addSearchField(){
 function updSearchField(i,k,v){
   const c=comps.find(x=>x.id===sel);if(!c||!c.fields||!c.fields[i])return;
   c.fields[i][k]=v;
+  // 타입을 날짜·기간으로 바꿨는데 아직 값이 없으면(신규 필드 등) 기본값을 오늘 날짜로 채운다.
+  if(k==='type' && (v==='date'||v==='daterange') && !(c.fields[i].text||'').trim()){
+    c.fields[i].text = v==='daterange' ? (todayStr()+'~'+todayStr()) : todayStr();
+  }
   if(k==='span'){ fitSearchbar(c); render(); return; }
   if(k==='required'||k==='type'||k==='readonly')render(); else drawCanvas();
+}
+// ---- 조회조건 날짜·기간 필드: 빠른 날짜 선택 팝업(qdPopup) ----
+// 아이콘(📅)을 누르면 해당 아이콘 바로 아래에 뜨는 고정(fixed) 위치 팝업으로, 즐겨찾는 값(오늘/어제/
+// 이번달1일/올해1월1일)을 원클릭으로 쓰거나, "직접 조합하기"에서 연도·월·일 축을 조합해 상대 날짜를
+// 만들 수 있다. qd는 팝업이 열려 있는 동안의 임시 상태(어떤 필드의 어느 값을 고르는 중인지)를 담는다.
+let qd=null; // {kind:'field'|'component'|'gridcol', compId, fi, part:'single'|'start'|'end', current, chip, year, month, day, expanded, anchorRect}
+function qdToday(){ const d=new Date(); d.setHours(0,0,0,0); return d; }
+function qdFmt(d){ const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+// 필드에 이미 저장돼 있는 값(단일 날짜, 또는 기간의 시작/종료 한쪽)을 문자열로 돌려준다. 비어있으면 오늘.
+function sfDateCurrent(f,part){
+  if(part==='single') return (f.text||'').trim()||todayStr();
+  const parts=(f.text||'').split('~').map(s=>s.trim());
+  return part==='start' ? (parts[0]||todayStr()) : (parts[1]||todayStr());
+}
+// 해당 part가 지금 "빈값"으로 저장돼 있는지(사용자가 명시적으로 비워둔 상태인지) 읽는다.
+function sfDateBlank(obj,part){
+  if(part==='single') return !!obj.blank;
+  return part==='start' ? !!obj.startBlank : !!obj.endBlank;
+}
+function qdComputeAxis(){
+  const d=qdToday();
+  d.setFullYear(d.getFullYear()+qd.year);
+  d.setMonth(d.getMonth()+qd.month);
+  d.setDate(d.getDate()+qd.day);
+  return d;
+}
+function qdComputeChip(mode){
+  const t=qdToday();
+  if(mode==='yesterday'){ const d=new Date(t); d.setDate(d.getDate()-1); return d; }
+  if(mode==='thisMonth1') return new Date(t.getFullYear(), t.getMonth(), 1);
+  if(mode==='thisYear0101') return new Date(t.getFullYear(), 0, 1);
+  return t; // 'today'
+}
+// 저장된 값이 즐겨찾기 칩(오늘/어제/이번달1일/올해1월1일) 중 하나와 정확히 같으면 그 칩 이름을 돌려준다.
+// 팝업을 다시 열었을 때 "지금 뭐가 선택돼 있는지" 칩이 초록색으로 바로 보이게 하기 위함.
+function qdMatchChip(dateStr){
+  const cands=['today','yesterday','thisMonth1','thisYear0101'];
+  for(const mode of cands){ if(qdFmt(qdComputeChip(mode))===dateStr) return mode; }
+  return null;
+}
+// 칩과 일치하지 않는 값이라면, "직접 조합하기" 축(연도×월×일)의 모든 조합을 대입해봐서 정확히 같은
+// 값을 만드는 조합을 찾는다. 찾으면 팝업을 다시 열었을 때 그 조합 그대로 펼쳐서 보여줄 수 있다.
+function qdMatchAxis(dateStr){
+  for(const year of [-1,0,1]){
+    for(const month of [-1,0,1]){
+      for(const day of [-7,-1,0,1]){
+        const d=qdToday();
+        d.setFullYear(d.getFullYear()+year);
+        d.setMonth(d.getMonth()+month);
+        d.setDate(d.getDate()+day);
+        if(qdFmt(d)===dateStr) return {year,month,day};
+      }
+    }
+  }
+  return null;
+}
+function qdPreviewDate(){
+  if(!qd) return qdToday();
+  if(qd.chip) return qdComputeChip(qd.chip);
+  if(qd.expanded) return qdComputeAxis();
+  // 칩·축 중 아무것도 선택/일치하지 않았다면(예: 가져오기 등으로 들어온 값) 필드에 이미 저장된 값을 그대로 보여준다.
+  const d=new Date((qd.current||todayStr())+'T00:00:00');
+  return isNaN(d.getTime()) ? qdToday() : d;
+}
+// 하단 미리보기 칸에 실제로 표시할 문구. "빈값" 토글이 켜져 있으면 날짜 대신 그 사실을 보여준다.
+function qdPreviewLabel(){
+  if(qd && qd.blank) return '빈값 (선택 안 함)';
+  return qdFmt(qdPreviewDate());
+}
+// qd 상태를 한 곳에서 조립한다. kind로 어떤 대상(조회조건 필드/단일 컴포넌트/그리드 컬럼)인지 구분하고,
+// fi는 kind에 따라 필드 인덱스 또는 그리드 컬럼 인덱스로 재사용한다(단일 컴포넌트는 null).
+function qdBuildState(kind,compId,fi,part,current,blankFlag){
+  const chipMatch=qdMatchChip(current);
+  const axisMatch=chipMatch?null:qdMatchAxis(current);
+  return {kind, compId, fi, part, current, chip:chipMatch,
+    year:axisMatch?axisMatch.year:0, month:axisMatch?axisMatch.month:0, day:axisMatch?axisMatch.day:0,
+    expanded:!!axisMatch, blank:!!blankFlag};
+}
+// 조회조건 패널의 날짜·기간 필드용 (기존).
+function openQuickDate(btn,fi,part){
+  const c=comps.find(x=>x.id===sel); if(!c||!c.fields||!c.fields[fi])return;
+  const f=c.fields[fi];
+  const current=sfDateCurrent(f,part);
+  qd=qdBuildState('field', c.id, fi, part, current, sfDateBlank(f,part));
+  renderQuickDate(btn);
+}
+// 캔버스에 단독으로 놓인 날짜·기간 입력 컴포넌트용 - 속성 패널의 값(텍스트)이 읽기전용으로 바뀌고
+// 이 팝업으로만 값을 바꿀 수 있다.
+function openQuickDateComp(btn,compId,part){
+  const c=comps.find(x=>x.id===compId); if(!c)return;
+  const current=sfDateCurrent(c,part);
+  qd=qdBuildState('component', compId, null, part, current, sfDateBlank(c,part));
+  renderQuickDate(btn);
+}
+// 그리드 컬럼이 "날짜" 타입일 때, 디자인 화면/내보내기에 보일 기본 날짜 값을 정하는 팝업.
+function openQuickDateGridCol(btn,ci){
+  const c=comps.find(x=>x.id===sel); if(!c)return;
+  normGridColArrays(c);
+  const current=(c.colDateVals[ci]||'').trim()||todayStr();
+  qd=qdBuildState('gridcol', c.id, ci, 'single', current, !!(c.colDateBlank&&c.colDateBlank[ci]));
+  renderQuickDate(btn);
+}
+function qdOutsideClick(e){
+  const el=document.getElementById('qdPopup');
+  if(el && !el.contains(e.target) && e.target.closest('.sf-datebtn')===null) closeQuickDate();
+}
+function closeQuickDate(){
+  const el=document.getElementById('qdPopup');
+  if(el) el.remove();
+  qd=null;
+  document.removeEventListener('mousedown', qdOutsideClick, true);
+}
+function qdSelectChip(mode){
+  if(!qd)return;
+  qd.chip=mode; qd.expanded=false; qd.blank=false;
+  renderQuickDate();
+}
+function qdSelectAxis(axis,val){
+  if(!qd)return;
+  qd[axis]=val; qd.expanded=true; qd.chip=null; qd.blank=false;
+  renderQuickDate();
+}
+function qdToggleExpand(){
+  if(!qd)return;
+  qd.expanded=!qd.expanded;
+  renderQuickDate();
+}
+// "빈값" 칩: 오늘/어제 등과 동일하게 원클릭으로 고르는 선택지 중 하나. 고르면 날짜를 아예 선택하지
+// 않고 비워두는 상태가 되어 미리보기가 "빈값"으로 바뀌고, 이후 다른 칩·축을 고르면 그쪽으로 다시 바뀐다.
+function qdSelectBlank(){
+  if(!qd)return;
+  qd.blank=true; qd.chip=null; qd.expanded=false;
+  renderQuickDate();
+}
+// part가 'single'이면 val을 그대로, 'start'/'end'면 기존 텍스트를 '~'로 나눠 해당 절반만 바꿔 합친다.
+function qdMergeText(existingText,part,val){
+  if(part==='single') return val;
+  const parts=(existingText||'').split('~').map(s=>s.trim());
+  let v1=parts[0]||todayStr(), v2=parts[1]||todayStr();
+  if(part==='start')v1=val; else v2=val;
+  return v1+'~'+v2;
+}
+// part에 맞는 blank 플래그(blank / startBlank / endBlank)를 obj에 기록한다. obj는 조회조건 필드
+// 객체(f)이거나 단독 컴포넌트 객체(c) - 둘 다 같은 방식으로 쓴다.
+function qdSetBlankFlag(obj,part,isBlank){
+  if(part==='single') obj.blank=isBlank;
+  else if(part==='start') obj.startBlank=isBlank;
+  else obj.endBlank=isBlank;
+}
+function qdApply(){
+  if(!qd)return;
+  const isBlank=!!qd.blank;
+  const val=isBlank?'':qdFmt(qdPreviewDate());
+  pushHistory();
+  if(qd.kind==='component'){
+    const c=comps.find(x=>x.id===qd.compId); if(!c){closeQuickDate();return;}
+    c.text=qdMergeText(c.text, qd.part, val);
+    qdSetBlankFlag(c, qd.part, isBlank);
+  }else if(qd.kind==='gridcol'){
+    const c=comps.find(x=>x.id===qd.compId); if(!c){closeQuickDate();return;}
+    normGridColArrays(c);
+    c.colDateVals[qd.fi]=val;
+    c.colDateBlank[qd.fi]=isBlank;
+  }else{
+    const c=comps.find(x=>x.id===qd.compId); if(!c||!c.fields||!c.fields[qd.fi]){closeQuickDate();return;}
+    const f=c.fields[qd.fi];
+    f.text=qdMergeText(f.text, qd.part, val);
+    qdSetBlankFlag(f, qd.part, isBlank);
+  }
+  closeQuickDate();
+  render();
+}
+function renderQuickDate(anchorBtn){
+  if(!qd)return;
+  let el=document.getElementById('qdPopup');
+  if(!el){
+    el=document.createElement('div');
+    el.id='qdPopup';
+    el.className='qd-popup';
+    document.body.appendChild(el);
+    document.addEventListener('mousedown', qdOutsideClick, true);
+  }
+  const title = qd.kind==='gridcol'
+    ? '컬럼 기본값 날짜 선택'
+    : (qd.part==='end' ? '종료일 빠른 선택' : (qd.part==='start' ? '시작일 빠른 선택' : '날짜 빠른 선택'));
+  const chip=(mode,label)=>`<button class="qd-chip${(!qd.expanded&&!qd.blank&&qd.chip===mode)?' sel':''}" onclick="qdSelectChip('${mode}')">${label}</button>`;
+  const seg=(axis,val,label)=>`<button class="${(qd.expanded&&!qd.blank&&qd[axis]===val)?'sel':''}" onclick="qdSelectAxis('${axis}',${val})">${label}</button>`;
+  el.innerHTML=`
+    <div class="qd-title"><span>${title}</span><span class="qd-close" onclick="closeQuickDate()">×</span></div>
+    <div class="qd-chips">
+      ${chip('today','오늘')}${chip('yesterday','어제')}${chip('thisMonth1','이번달1일')}${chip('thisYear0101','올해1월1일')}
+      <button class="qd-chip qd-chip-blank${qd.blank?' sel':''}" onclick="qdSelectBlank()">빈값</button>
+    </div>
+    <div class="qd-expand-toggle" onclick="qdToggleExpand()">${qd.expanded?'간단히 ▴':'직접 조합하기 ▾'}</div>
+    ${qd.expanded?`
+    <div class="qd-axis"><div class="qd-axis-label">연도</div><div class="qd-seg">${seg('year',-1,'작년')}${seg('year',0,'올해')}${seg('year',1,'내년')}</div></div>
+    <div class="qd-axis"><div class="qd-axis-label">월</div><div class="qd-seg">${seg('month',-1,'전달')}${seg('month',0,'이번달')}${seg('month',1,'다음달')}</div></div>
+    <div class="qd-axis"><div class="qd-axis-label">일</div><div class="qd-seg">${seg('day',-7,'-7일')}${seg('day',-1,'어제')}${seg('day',0,'오늘')}${seg('day',1,'내일')}</div></div>
+    `:''}
+    <div class="qd-actions"><span class="qd-preview">${qdPreviewLabel()}</span><button class="qd-btn" onclick="qdApply()">적용</button></div>
+  `;
+  if(anchorBtn) qd.anchorRect=anchorBtn.getBoundingClientRect();
+  qdPosition(el);
+}
+// 팝업을 아이콘 바로 아래(기본)에 붙이되, 화면 오른쪽/아래 가장자리에 가까우면 왼쪽/위쪽으로 뒤집어
+// 잘리지 않게 한다.
+function qdPosition(el){
+  if(!qd || !qd.anchorRect)return;
+  const r=qd.anchorRect;
+  const vw=window.innerWidth, vh=window.innerHeight;
+  const pw=el.offsetWidth||236, ph=el.offsetHeight||300;
+  let left=r.left, top=r.bottom+6;
+  if(left+pw>vw-8) left=Math.max(8, vw-8-pw);
+  if(top+ph>vh-8) top=Math.max(8, r.top-ph-6);
+  el.style.left=left+'px';
+  el.style.top=top+'px';
 }
 function delSearchField(i){
   const c=comps.find(x=>x.id===sel);if(!c||!c.fields)return;
@@ -5468,6 +5762,29 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260901.007', date:'2026년 9월 1일', items:[
+    {t:'빠른 날짜 팝업에 "빈값" 토글 추가', d:'적용 버튼 왼쪽에 <b>빈값</b> 토글을 추가했습니다. 켜고 적용하면 날짜를 아예 선택하지 않고 비워둔 상태로 저장되며(즐겨찾기 칩·연월일 조합은 비활성화됨), 조회조건 필드·단독 날짜/기간 컴포넌트·그리드 날짜 컬럼 모두 동일하게 동작합니다. 팝업을 다시 열면 빈값이었는지도 토글이 켜진 채로 그대로 복원됩니다. 기간(날짜1)만 비우고 나머지(날짜2)는 값을 유지하는 것도 각각 독립적으로 가능합니다.'}
+  ]},
+  {ver:'20260901.006', date:'2026년 9월 1일', items:[
+    {t:'입력 컴포넌트(날짜·기간)에도 빠른 날짜 팝업 적용', d:'캔버스에 단독으로 놓는 <b>날짜·기간</b> 입력 컴포넌트도 조회조건 필드와 동일한 달력 아이콘·빠른 날짜 팝업을 쓰도록 바꿨습니다. 속성 패널의 텍스트 입력칸은 <b>선택된 값을 보여주는 읽기전용 표시</b>로 바뀌었고, 그 아래에 배치된 📅 버튼(기간은 시작일·종료일 버튼 2개)을 눌러야 값을 바꿀 수 있습니다.'},
+    {t:'그리드 컬럼(날짜 타입)에도 기본값 날짜 팝업 추가', d:'그리드 컬럼을 <b>날짜</b> 타입으로 지정하면 삭제(×) 버튼 왼쪽에 📅 아이콘이 나타나며, 클릭하면 같은 빠른 날짜 팝업으로 그 컬럼의 디자인 화면·내보내기 기본값을 정할 수 있습니다. 값을 정하지 않은 날짜 컬럼은 이전처럼 오늘 날짜가 기본으로 채워집니다.'}
+  ]},
+  {ver:'20260901.005', date:'2026년 9월 1일', items:[
+    {t:'빠른 날짜 팝업 "현재 값" 문구 제거, 대신 토글 자체를 이전 선택 상태로 복원', d:'팝업 상단에 텍스트로 표시하던 <b>현재 값</b> 줄을 없앴습니다. 대신 즐겨찾기 칩과 일치하지 않는 값(예: 연도·월·일 조합으로 만든 날짜)도 저장된 값을 역산해서, 다시 열면 <b>연도·월·일 토글이 그때 고른 상태 그대로</b> 펼쳐져서 초록색으로 표시됩니다.'}
+  ]},
+  {ver:'20260901.004', date:'2026년 9월 1일', items:[
+    {t:'빠른 날짜 팝업, 다시 열면 이전에 고른 값을 보여주도록 수정', d:'날짜·기간 아이콘을 눌렀을 때 항상 "오늘"부터 다시 시작하던 문제를 고쳤습니다. 이제 팝업을 다시 열면 상단에 <b>현재 값</b>이 그대로 표시되고, 그 값이 즐겨찾기 칩(오늘/어제/이번달1일/올해1월1일)과 같으면 해당 칩이 초록색으로 선택 표시됩니다. 아이콘에 마우스를 올렸을 때도 툴팁으로 현재 값을 바로 확인할 수 있습니다.'}
+  ]},
+  {ver:'20260901.003', date:'2026년 9월 1일', items:[
+    {t:'조회조건 조건명 입력칸, 날짜·기간 타입도 폭 꽉 차게 수정', d:'날짜·기간 타입일 때 조건명(라벨) 입력칸이 예전 텍스트 입력칸 자리에 맞춰 46px로 좁게 고정되어 있던 걸 없앴습니다. 이제 다른 타입과 똑같이 남는 공간을 모두 채우고, 날짜 아이콘·삭제(×) 버튼은 오른쪽에 고정폭으로 붙어 줄 전체가 꽉 차게 보입니다.'}
+  ]},
+  {ver:'20260901.002', date:'2026년 9월 1일', items:[
+    {t:'조회조건 필수·읽기전용 버튼 위치 원복', d:'날짜 아이콘 도입 과정에서 1번째 줄로 옮겼던 <b>필수(*)·읽기전용(🔒)</b> 버튼을 기존과 동일하게 <b>2번째 줄 우측</b>(타입·칸수 선택 옆)으로 되돌렸습니다. 1번째 줄에는 순서·라벨·날짜 아이콘·삭제(×)만 남습니다.'}
+  ]},
+  {ver:'20260901.001', date:'2026년 9월 1일', items:[
+    {t:'조회조건 날짜·기간 필드, 빠른 날짜 선택 팝업으로 개편', d:'속성 패널에서 <b>YYYY-MM-DD 텍스트 직접입력</b>을 없애고, 📅 아이콘을 눌러 뜨는 <b>빠른 날짜 선택 팝업</b>으로 바꿨습니다. 팝업 상단엔 자주 쓰는 <b>오늘·어제·이번달1일·올해1월1일</b>을 원클릭 칩으로 두고, <b>「직접 조합하기」</b>를 펼치면 연도(작년/올해/내년)·월(전달/이번달/다음달)·일(-7일/어제/오늘/내일) 축을 조합해 원하는 상대 날짜를 만들 수 있습니다. 팝업은 클릭한 아이콘 바로 아래에 붙고, 화면 가장자리에 가까우면 자동으로 위·왼쪽으로 뒤집혀 잘리지 않습니다. <b>기간</b> 타입은 시작일·종료일 아이콘이 각각 있어 따로 선택합니다. 필수(*)·읽기전용(🔒)·삭제(×) 아이콘도 이 줄로 모아 첫 줄만 봐도 한눈에 파악되게 했습니다.'},
+    {t:'조회조건 날짜·기간 기본값, 오늘 날짜로 통일', d:'조회조건 필드 타입을 <b>날짜·기간</b>으로 바꾸거나 값을 비워두면, 예전의 예시 텍스트(YYYY-MM-DD, 2026-07-01~2026-07-15) 대신 <b>오늘 날짜</b>가 기본으로 표시됩니다. 목업빌더 캔버스와 내보내기(저장) 결과물 HTML 양쪽 모두 동일하게 적용되며, 팝업에서 고른 날짜도 캔버스·내보내기 결과물에 바로 반영됩니다.'}
+  ]},
   {ver:'20260831.010', date:'2026년 8월 31일', items:[
     {t:'컬럼 순서 키보드 단축키 제거, 순서 번호칸 화살표 숨김', d:'조회조건 필드·그리드 컬럼의 <b>Ctrl+↑/↓ 키보드 이동 기능</b>을 제거했습니다(드래그와 순서 번호 입력은 그대로 사용 가능). 순서 번호 입력칸의 브라우저 기본 <b>위/아래 스핀 화살표</b>도 숨겨, 자리를 덜 차지하고 칸이 좁아 보이지 않도록 했습니다.'}
   ]},
@@ -5998,7 +6315,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260831.010';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260901.007';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
