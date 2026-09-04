@@ -4052,10 +4052,10 @@
       '.dz-root{padding:4px}',
       '.dz-form{padding:8px 0}',
       '.dz-search{border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:12px;background:#fafcff}',
-      '.dz-row{display:flex;flex-wrap:wrap;gap:14px;margin:6px 0;align-items:flex-end}',
+      '.dz-row{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0;align-items:flex-end}',
       '.dz-row.dz-border{border-top:1px solid #e8edf3;padding-top:12px;margin-top:4px}',
-      '.dz-col{flex:1 1 0;min-width:120px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}',
-      '.dz-container{display:flex;flex-wrap:wrap;gap:10px;width:100%}',
+      '.dz-col{flex:1 1 0;min-width:96px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}',
+      '.dz-container{display:flex;flex-wrap:wrap;gap:8px;width:100%}',
       // ===== 서브탭 네비게이션(신청대상/상신내역/미신청 등, JSON tabContainer) =====
       // 클릭 전환은 구현하지 않고(다른 dz-* 섹션과 동일 방침) 모든 탭 내용을 펼쳐서 보여주되,
       // 탭 이름/아이콘 자체는 실제 화면처럼 가로 스트립으로 명확히 보이게 한다. white-space:nowrap +
@@ -4068,7 +4068,7 @@
       '.dz-tab-active{color:#0f9d58;border-bottom-color:#0f9d58}',
       '.dz-tab-panel{margin-bottom:14px;padding:10px;border:1px solid #eef2f7;border-radius:8px;background:#fbfdff}',
       '.dz-tab-panel-head{font-weight:700;font-size:12.5px;color:#334155;margin-bottom:8px;display:flex;align-items:center;gap:5px}',
-      '.dz-field{display:flex;flex-direction:column;gap:3px;flex:1 1 auto;min-width:110px}',
+      '.dz-field{display:flex;flex-direction:column;gap:3px;flex:1 1 auto;min-width:88px}',
       '.dz-field label{font-size:12px;font-weight:600;color:#334155;white-space:nowrap}',
       '.dz-field .req{color:#ef4444;margin-left:2px}',
       '.req{color:#ef4444;margin-left:2px}',

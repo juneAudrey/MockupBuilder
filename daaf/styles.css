@@ -519,7 +519,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .chip.c-maj{background:#eef2ff;color:#4338ca;border-color:#c7d2fe}
 .chip.c-min{background:#f0fdf4;color:#15803d;border-color:#bbf7d0}
 /* 코드/디자인 뷰어 */
-.viewer-box{width:90vw;max-width:1100px;height:85vh;min-width:420px;min-height:300px;display:flex;flex-direction:column;position:relative}
+.viewer-box{width:90vw;max-width:1500px;height:85vh;min-width:420px;min-height:300px;display:flex;flex-direction:column;position:relative}
 /* 제목 표시줄 드래그로 창 이동: 드래그 시작 시 절대좌표로 고정 */
 .viewer-box.dragged{position:absolute;margin:0}
 .viewer-box .modal-head{cursor:move;user-select:none}
