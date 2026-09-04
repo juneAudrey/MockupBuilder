@@ -1,0 +1,568 @@
+@charset "EUC-KR";
+
+
+:root {
+	--grid-border-color    : #E9E9E9;
+	--grid-readonly-cell-bg: #F9F9F9;
+	--grid-required-cell-bg: #FFFAED;
+	--grid-min-height      : 100px;
+	--grid-header-bg       : #F6F6F6;
+	--grid-header-color    : #454545;
+	--grid-cell-min-height : 40px;
+	--grid-cfcell-color    : #E7F7F3;
+/* 	--grid-header-cell-min-height : 40px; */
+}
+
+body.sirius .wj-flexgrid {
+	border-top : 1px solid var(--grid-border-color) !important;
+	border-bottom : 1px solid var(--grid-border-color) !important;
+	margin-top: var(--grid-margin-top, 10px);
+}
+
+body.sirius .tab-pane > .table-responsive:first-child {
+	margin-top: 0px; /*Tab이 padding top이 이미 있음*/
+}
+
+body.sirius .table-responsive {
+	margin-top: var(--container-section-gap);
+}
+body.sirius form + div.table-responsive {
+	margin-top: 0px;
+}
+/*
+body.sirius form + .row > .col > .table-responsive {
+	margin-top: var(--container-section-gap);
+}
+*/
+
+body.sirius .row > .col > .table-responsive{
+	margin-top:0px;
+}
+
+body.sirius .table-responsive .table, .table-responsive .pivot-penel {
+   /* margin-top: 16px; *//*commented by dh.lee 2025/05/13*/
+    display: block;
+    font-size : var(--font-size, 14px);
+}
+
+body.sirius .table-responsive .grid-toolbar .tit-grid {
+    margin-bottom: 0px;
+    font-weight: 700;
+    font-size: var(--grid-title-size, 20px);
+    line-height: 34px;
+    letter-spacing: 0.3px;
+    padding-bottom: 0px;
+}
+
+body.sirius .wj-flexgrid > div:first-child {
+	min-height : var(--grid-min-height);
+}
+
+
+/* grid font */
+body.sirius .wj-flexgrid .wj-cell.wj-header {
+	font-size : var(--font-size, 14px);
+/* 	line-height : 26px; */
+	font-weight : 600;
+	letter-spacing : 0.3px;
+}
+
+body.sirius .wj-flexgrid .wj-cell{
+	padding: var(--grid-cell-padding, 7px 12px);
+	min-height : var(--grid-cell-min-height) !important;
+	font-size : var(--font-size, 14px);
+	letter-spacing : 0.3px;
+ 	line-height : var(--grid-line-height, 26px);
+	font-weight : 400;
+	color : var(--grid-cell-color);
+
+	& i.di.di-cloud-fileupload {
+		height : 20px;
+		width : 20px;
+	}
+
+	& i.di.di-office-excel {
+		height : 20px;
+		width : 20px;
+	}
+
+	&:has(input[type='checkbox']){
+		display : flex;
+		justify-content : center;
+		align-items : center;
+	}
+}
+
+body.sirius .wj-cells .wj-cell.wj-state-selected:not(.cell-button) {
+	color : var(--grid-cell-color);
+	color : #111111;
+}
+/*
+body.sirius .wj-flexgrid .wj-cell.wj-header{
+	min-height : var(--grid-header-cell-min-height) !important;
+} */
+
+body.sirius .wj-flexgrid div[wj-part="ch"] .wj-header,
+body.sirius .wj-flexgrid div[wj-part="tl"] .wj-header{
+	background : var(--grid-header-bg);
+	color : var(--grid-header-color);
+	font-weight : 600;
+	min-height : var(--grid-cell-min-height);
+}
+
+body.sirius .wj-cell.wj-frozen-col {
+    border-right: 1px solid #a2a2a2!important;
+}
+
+body.sirius .wj-flexgrid .wj-topleft .wj-cell{
+    padding: 10px 6px;
+}
+
+body.sirius .wj-flexgrid .wj-topleft .wj-cell .v-center{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.sirius .wj-listbox .wj-listbox-item>label{
+    align-items: center;
+    gap : 2px;
+}
+
+
+body.sirius .wj-cell:not(.wj-header){
+	border-bottom : 1px solid var(--grid-border-color);
+}
+
+body.sirius .wj-header:has([type="checkbox"]){
+	display : flex;
+	align-items : center;
+	justify-content: center;
+	padding : 0px;
+}
+body.sirius .wj-header,
+body.sirius .wj-header >div {
+	white-space: pre;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+body.sirius .wj-topleft > .wj-row > .wj-cell.wj-header,
+body.sirius .wj-rowheaders > .wj-row > .wj-cell.wj-header{
+	border-right : none;
+	border-bottom : 1px solid var(--grid-border-color);
+	font-size : var(--font-size, 14px);
+	font-weight : 400;
+}
+body.sirius .wj-colheaders > .wj-row > .wj-cell.wj-header {
+	border-left : 1px solid var(--grid-border-color);
+	border-bottom : 1px solid var(--grid-border-color);
+}
+
+
+body.sirius .wj-cell.wj-alt{
+	background : #FFFFFF;	/* #1813 */
+}
+
+body.sirius .wj-flexgrid .wj-cell.cell-required{
+	background : var(--grid-required-cell-bg);
+}
+
+body.sirius .wj-cells .wj-cell.cell-required.wj-state-invalid:not(.wj-header) {
+    border: none;
+    /* 빨간색 line 너무 보기싫음
+    border-bottom: red 1px solid;
+    border-top: red 1px solid;
+    */
+    border-top: unset;
+    border-bottom: 1px solid rgb(229 11 11 / 29%);
+	background : var(--grid-required-cell-bg) !important;
+}
+
+body.sirius .wj-cells .wj-cell.wj-state-selected.wj-state-invalid:not(.cell-button){
+	background : #F4FCFA !important;
+	/* border-top: 1px solid #009b71 !important; */
+	border-bottom: 1px solid #009b71 !important;
+}
+
+body.sirius .wj-cells .wj-cell.wj-state-selected:not(.cell-button),
+body.sirius .wj-cells .wj-cell.wj-state-multi-selected,
+body.sirius .wj-cell.cell-editable[aria-selected="true"]:has(input.wj-grid-editor) /* edit mode도 적용 */ {
+	background : #F4FCFA !important;
+	border-top : 1px solid #009b71;
+	border-bottom : 1px solid #009b71;
+}
+
+body.sirius .wj-cell.cell-editable[aria-selected="true"]:has(input.wj-grid-editor){
+	background : #feffff !important;
+	border-top : 1px solid #08dba2;
+	border-bottom : 1px solid #08dba2;
+}
+body.sirius .wj-flexgrid .wj-cell.uni-combo-arrow-col:not(.wj-header):not(.cell-readonly)::before {
+    content: '';
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    width: 20px;
+    height: 20px;
+    transform: translateY(-50%);
+    background-color: #757575;
+    -webkit-mask: url(../../icon/daafIcons/di-angle-down.svg) no-repeat center / contain;
+    mask: url(../../icon/daafIcons/di-angle-down.svg) no-repeat center / contain;
+    cursor: pointer;
+}
+body.sirius .wj-flexgrid .wj-cell.uni-combo-arrow-col:not(.wj-header):not(.cell-readonly) {
+    padding-right: 20px;
+}
+body.sirius .wj-cell.wj-state-invalid:not(.wj-header):after {
+    position: absolute;
+    content: '';
+    width: 0;
+    right: 0;
+    top: -6px;
+    border: 6px solid transparent;
+    border-right-color: #eb712a;
+}
+body.sirius .uni-grid-ac-dropdown table.dropdown-line { table-layout: fixed; }
+body.sirius .uni-grid-ac-dropdown table.dropdown-line td > div {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+body.sirius .uni-grid-ac-dropdown {
+    border-radius: 8px;
+}
+body.sirius .uni-grid-ac-dropdown::-webkit-scrollbar {
+    width: 8px;
+}
+body.sirius .uni-grid-ac-dropdown::-webkit-scrollbar-track {
+    background-color: #F6F6F6; /* 그리드 자체 스크롤바(330번째 줄 부근)와 동일 색상 */
+    border-radius: 0 8px 8px 0; /* 트랙 자체가 사각형으로 그려져서 컨테이너 모서리를 안 따라가므로 직접 지정 */
+}
+body.sirius .uni-grid-ac-dropdown::-webkit-scrollbar-thumb {
+    background-color: #E1E1E1; /* 그리드 자체 스크롤바와 동일 색상 */
+    background-clip: initial; /* 전역 규칙(theme.css)의 padding-box 상속 차단 */
+    border: none;             /* 전역 규칙의 4px 투명 테두리 상속 차단 — 8px 폭에서 border 4px씩 빼면 안 보임 */
+    border-radius: 8px;
+}
+body.sirius .uni-grid-ac-dropdown .wj-listbox-item.dropdown-item-header {
+    pointer-events: auto !important;
+}
+body.sirius .uni-grid-ac-dropdown .wj-listbox-item.dropdown-item-header:hover {
+    background: transparent !important;
+}
+
+body.sirius .uni-grid-ac-dropdown .dropdown-item-header-col.uni-dd-sort-col {
+    position: relative;
+    cursor: pointer;
+    padding-right: 20px !important;
+}
+body.sirius .uni-grid-ac-dropdown .dropdown-item-header-col.uni-dd-sort-col::after {
+    content: '';
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    transform: translateY(-50%);
+    background-color: #C7C7C7; /* 미정렬 상태: 옅은 회색 */
+    -webkit-mask: url(../../icon/daafIcons/di-angle-down.svg) no-repeat center / contain;
+    mask: url(../../icon/daafIcons/di-angle-down.svg) no-repeat center / contain;
+}
+body.sirius .uni-grid-ac-dropdown .dropdown-item-header-col.uni-dd-sort-asc::after,
+body.sirius .uni-grid-ac-dropdown .dropdown-item-header-col.uni-dd-sort-desc::after {
+    background-color: #068965; /* 정렬 중: 브랜드 accent 색상(그리드 툴바 버튼과 동일 톤) */
+}
+body.sirius .uni-grid-ac-dropdown .dropdown-item-header-col.uni-dd-sort-asc::after {
+    -webkit-mask: url(../../icon/daafIcons/di-angle-up.svg) no-repeat center / contain;
+    mask: url(../../icon/daafIcons/di-angle-up.svg) no-repeat center / contain;
+}
+body.sirius .uni-grid-ac-dropdown .dropdown-item-header-col.uni-dd-sort-desc::after {
+    -webkit-mask: url(../../icon/daafIcons/di-angle-down.svg) no-repeat center / contain;
+    mask: url(../../icon/daafIcons/di-angle-down.svg) no-repeat center / contain;
+}
+
+body.sirius .wj-flexgrid .wj-cell.uni-date-icon-col:not(.wj-header):not(.cell-readonly)::before {
+    content: '';
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    transform: translateY(-50%);
+    background-color: #757575;
+    -webkit-mask: url(../../icon/daafIcons/di-calendar.svg) no-repeat center / contain;
+    mask: url(../../icon/daafIcons/di-calendar.svg) no-repeat center / contain;
+    cursor: pointer;
+}
+
+body.sirius .wj-flexgrid .wj-cell > .custom-popup-btn-grid {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 2px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+    z-index: 3;
+}
+body.sirius .wj-flexgrid .wj-cell > .custom-popup-btn-grid > .wj-btn {
+    padding: 0 4px;
+    background: transparent;
+    border: none;
+    color: #989898;
+    cursor: pointer;
+}
+
+
+/* 겹치는 테두리 방지를 위한 추가 코드 */
+body.sirius .wj-cells .wj-row:has(.wj-state-selected, .wj-state-multi-selected) + .wj-row .wj-cell:is(.wj-state-selected, .wj-state-multi-selected):not(.cell-button) {
+    border-top: none !important;
+}
+
+body.sirius .wj-flexgrid div[wj-part="cfcells"] .wj-header{
+	background :var(--grid-cfcell-color) !important;
+}
+body.sirius .wj-flexgrid .header-merge .wj-row:not(:first-child) .wj-header {
+	border-top : 1px solid var(--grid-border-color);
+}
+body.sirius .wj-flexgrid .header-merge .wj-row .wj-header:first-child {
+	border-left : 1px solid var(--grid-border-color);
+}
+body.sirius div.wj-colheaders.header-merge div.wj-row .wj-header:not(.wj-frozen-col):not(:last-child) ,
+body.sirius div.wj-colheaders.header-merge div.wj-row:not(:first-child) .wj-header:not(.wj-frozen-col):last-child {
+	border-right: 1px solid var(--grid-border-color);
+}
+body.sirius .wj-colfooters .wj-cell,
+body.sirius .wj-bottomleft .wj-cell ,
+body.sirius .wj-colfooters > .grid-empty-message{
+	background : var(--grid-cfcell-color) !important;
+}
+
+body.sirius [wj-part="sz"] + .grid-empty-message {
+  margin-bottom: 16px;
+}
+
+body.sirius .wj-colfooters .wj-cell.wj-header,
+body.sirius .wj-bottomleft .wj-cell.wj-header {
+	border-top : none;
+}
+
+body.sirius .wj-flexgrid .wj-cell .wj-grid-editor{
+	border : none;
+	padding : 0;
+	font-size : var(--font-size, 14px);
+}
+
+body.sirius div:not([grid-edit-type="D"])>.wj-flexgrid:not(.display-disabled) .wj-cell[aria-readonly="true"]{
+	background : var(--grid-readonly-cell-bg);
+}
+
+body.sirius div:not([grid-edit-type="D"])>.wj-flexgrid:not(.display-disabled) .wj-cell[aria-readonly="true"].wj-state-multi-selected,
+body.sirius div:not([grid-edit-type="D"])>.wj-flexgrid:not(.display-disabled) .wj-cell[aria-readonly="true"].wj-state-selected {
+	background : var(--grid-cfcell-color) !important;
+}
+
+
+body.sirius .wj-cell .v-center:has([type="checkbox"]) {
+	top: 0;
+    transform: none;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+}
+
+body.sirius .wj-flexgrid .wj-cell input.wj-column-selector.wj-column-selector-group {
+	transform : none;
+}
+
+body.sirius .wj-flexgrid .wj-cell.cell-button:not(.wj-header) {
+	padding : 6px 6px 6px 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+body.sirius .wj-flexgrid .wj-cell.cell-button.wj-align-center:not(.wj-header) {
+    justify-content: center;
+}
+body.sirius .wj-flexgrid .wj-cell.cell-button.wj-align-right:not(.wj-header) {
+    justify-content: flex-end;
+}
+body.sirius .wj-flexgrid .wj-cell.cell-button.wj-align-left:not(.wj-header) {
+    justify-content: flex-start;
+}
+body.sirius .wj-flexgrid .wj-cell.cell-button button {
+	height :28px;
+	width : auto;
+	min-width : 25px;
+}
+
+
+div.wj-colheaders:not(.header-merge) div.wj-row .wj-header:not(.wj-frozen-col):not(:last-child):after {
+	background : none;
+}
+.wj-flexgrid .wj-colheaders .wj-header.wj-big-header:after {
+	border-right : none;
+}
+
+body.sirius .wj-flexgrid >div ::-webkit-scrollbar-track {
+    background-color: #F6F6F6;
+    width : 16px;
+}
+body.sirius .wj-flexgrid >div ::-webkit-scrollbar-thumb {
+    border-radius : 8px;
+    width : 6px;
+    color : #E1E1E1;
+}
+
+body.sirius .wj-flexgrid >div ::-webkit-scrollbar-corner {
+	background: #F6F6F6;
+}
+
+body.sirius .wj-cells.cell-merge div.wj-row .wj-cell:not(.wj-frozen-col):not(:last-child) {
+	border-right : 1px solid var(--grid-border-color);
+}
+
+
+/* tooltip */
+body.sirius .wj-tooltip.wj-error-tip{
+	border : #D9D9D9;
+	background : #FFFFFF;
+	color : #111111;
+	font-size : 12px;
+	line-height : 20px;
+	font-weight : 600;
+}
+
+
+/*toolbar buttons*/
+body.sirius .grid-toolbar .toolbar-buttons .btn-group >a{
+	height : var(--button-height, 38px);
+	border-radius : 8px;
+	border : 1px solid #DFDFDF;
+	color : #747474;
+	margin-left : var(--grid-toolbar-left-margin, 12px)!important;
+	padding : var(--grid-toolbar-btn-padding, 6px 14px 6px 14px);
+	font-size : var(--font-size, 14px);
+	line-height : var(--line-height, 20px);
+	letter-spacing : 0.3px;
+	gap : var(--button-inner-gap, 5px);
+	font-weight: 500;
+	background : #E7F7F3;
+	color : #068965;
+	border : none;
+}
+
+body.sirius .grid-toolbar .toolbar-buttons .btn-group >a >i{
+	color : #068965;
+}
+
+body.sirius .grid-toolbar{
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    min-height : 0px;
+}
+
+body.sirius .wj-flexgrid .wj-row .wj-cell .btn-group {
+	top : 0px;
+}
+
+body.sirius .wj-flexgrid .wj-cell .wj-btn.wj-btn-glyph {
+	padding : 3px;
+	opacity : 1;
+	color : #626262;
+}
+
+body.sirius .wj-flexgrid .wj-cell .wj-btn.wj-btn-glyph:has(.wj-glyph-down) {
+	/* position: absolute; */
+    right: 6px;
+    background: #909090 !important;
+    height: var(--select-combo-icon-size, 24px);
+    min-height: var(--select-combo-icon-size, 24px);
+    width: var(--select-combo-icon-size, 24px);
+    margin-top: calc((var(--grid-line-height, 26px) - var(--select-combo-icon-size, 24px)) / 2);
+}
+
+
+body.sirius .grid-toolbar .grid-excel-down-parentheses{
+	font-size: var(--grid-excel-font-size, 16px);
+	font-weight: 600;
+	color: #909090;
+}
+
+body.sirius .grid-toolbar .grid-excel-down-font{
+	font-size: var(--grid-excel-font-size, 16px);
+	font-weight: 600;
+	color: #009b71;
+}
+
+body.sirius .grid-toolbar .grid-title{
+	display: flex;
+	gap: 4.5px;
+	align-items: baseline;
+    /* min-height: 38px; added by dh.lee */
+}
+
+
+body.sirius .wj-flexgrid .wj-cell.color-theme.cell-editable.add-row:not(.cell-readonly):not(.wj-state-selected) {
+	background : #FFFAED
+}
+
+body.sirius .wj-cell.wj-state-invalid {
+	border : none;
+	border-bottom : 1px solid var(--grid-border-color);
+}
+
+body.sirius .wj-cell.wj-state-invalid.wj-header {
+	background : #FFFFFF;
+}
+
+body.sirius .wj-grouppanel {
+    height: 38px;
+    padding: 4px;
+}
+body.sirius .wj-grouppanel div[wj-part="div-ph"]{
+    padding: 4px;
+}
+
+body.sirius .wj-grouppanel .wj-groupmarker {
+	padding: 5px 8px;
+	border-radius: var(--input-radius, 8px);
+    line-height: normal;
+}
+body.sirius .wj-rowheaders>.wj-row>.wj-cell.wj-header>.row-header-add,
+body.sirius .wj-rowheaders>.wj-row>.wj-cell.wj-header>.row-header-edit,
+body.sirius .wj-rowheaders>.wj-row>.wj-cell.wj-header>.row-header-delete {
+    padding-left: 4px;
+    padding-top: 2px;
+}
+body.sirius .wj-rowheaders > .wj-row > .wj-cell.wj-header > .row-header-add {
+    color: #a4a4ff;
+}
+body.sirius .wj-rowheaders > .wj-row > .wj-cell.wj-header > .row-header-edit {
+    color: #009b71;
+}
+body.sirius .wj-rowheaders > .wj-row > .wj-cell.wj-header > .row-header-delete {
+    color: #dd8787;
+}
+
+/*---------------------------------------------- tree grid ----------------------------------------------*/
+
+body.sirius .wj-cell.tree-grid-group-row:not(.wj-state-multi-selected):not(.wj-state-selected) {
+	background : #FFFFFF;
+}
+
+body.sirius .wj-cell.wj-group {
+	background : #F9F9F9;
+}
+
+body.sirius .wj-cell.wj-group.wj-state-multi-selected,
+body.sirius .wj-cells .wj-cell.wj-group.wj-state-selected {
+	background : var(--grid-cfcell-color) !important;
+}
+
+body.sirius .wj-cell.tree-grid-group-row.wj-state-multi-selected,
+body.sirius .wj-cells .wj-cell.tree-grid-group-row.wj-state-selected {
+		background : #F4FCFA !important;
+}

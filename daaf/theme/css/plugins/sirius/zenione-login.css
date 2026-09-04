@@ -1,0 +1,312 @@
+/*
+ * 로그인 페이지 빌더에서 css 를 넣지않고 해당 css 파일로 넣기로함 2025.04.21
+ * 이미지 가져올때 url이 문제 되기때문
+ */
+
+@charset "utf-8";
+
+
+ .login_wrap {
+     min-width: 1920px;
+ }    
+ 
+ .form-login {
+     width:100%;
+     height: 100vh;
+     padding: 200px 290px 290px 290px;
+     background: #fff;      
+ }
+ 
+ .logo-row {
+     margin-bottom: 30px;
+     margin-left:24px;
+ }
+   
+ .login-row {        
+     padding: 0 12px 24px;
+ }
+ 
+ .login-row label{
+     font-family: Pretendard !important;
+     font-size: 16px !important;
+     font-style: normal !important;
+     font-weight: 600 !important;
+     line-height: 26px !important; 
+     letter-spacing: -0.048px !important;
+     padding: 0 12px !important;
+ }
+ 
+ .login-row .company-combo{
+     border-radius: 8px;
+ }
+ 
+ .form-login .form-menu .chk-login label {    
+     font-family: Pretendard !important;
+     font-size: 14px !important;
+     font-style: normal !important;
+     font-weight: 400 !important;
+     line-height: 26px !important;
+     letter-spacing: -0.042px !important;
+     color: var(--Grayscale-Black, #111) !important;
+     padding-left: 15px !important; 
+     padding-right: 0px !important;
+ }
+  
+ .form-login .form-menu .chk-login .checkbox-icon:has(input:checked)::before{
+     background-color: #143E82 !important;
+     border: #143E82 !important;    
+ }
+ 
+ .form-login .form-menu .pass-col{
+ 	text-align:right;
+ }
+ 
+ .form-login .form-menu .text-control {
+     color: var(--Grayscale-Gray_600, #7E7E7E);
+     /* Body/B2/Regular */
+     font-family: Pretendard;
+     font-size: 14px;
+     font-style: normal;
+     font-weight: 400;
+     line-height: 37px; 
+     letter-spacing: -0.042px;
+     text-decoration-line: underline;
+     text-decoration-style: solid;
+     text-decoration-skip-ink: auto;
+     text-decoration-thickness: auto;
+     text-underline-offset: auto;
+     text-underline-position: from-font;
+     width:110px;
+     display:inline-block;
+     cursor:pointer;
+ }
+ 
+ .form-login .form-menu .text-control.chk-lable {
+     color: var(--Grayscale-Black, #111) !important;
+     text-decoration-line: unset;
+     cursor:auto;
+ }
+ 
+ .form-login .btn-submit {
+     display: block;
+     width: 500px;
+     height: 50px;
+     background: #143E82;
+     border-radius: 5px;
+     color: #fff;
+     font-size: 16px;
+     font-weight: 500;
+     line-height: 26px;
+     text-align: center;
+     border: 0px;
+ }  
+
+ .form-login .search-group .form-group {        
+      margin-bottom: 0px !important;         
+ }
+ 
+ .form-login .login-row-btn-submit {        
+     padding-left: 24px;     
+ }
+
+ ::-webkit-scrollbar {
+     width: 11px;
+     scrollbar-width: 11px;
+     /*스크롤바의 너비*/
+ }
+ 
+ ::-webkit-scrollbar-thumb {
+     background-color: #ececec;
+     background-clip: padding-box;
+     border: 2px solid transparent;
+     border-radius: 10px;
+ }
+ 
+ ::-webkit-scrollbar-track {
+     background-color: transparent;
+ }
+
+ .login-body-logo {
+     width: 41.6%;
+     height: 100vh;
+     display: flex;
+     box-shadow: -20px 0px 20px 0px rgba(0, 0, 0, 0.05) inset;
+     flex-direction: row;
+     min-width: 800px;
+     background: #F5F7F9;
+     min-height: 900px;
+ }
+ .left-con-view {
+     margin: 0 auto;
+     display: flex;
+     width: 800px;
+     background: url(../../../images/plugins/sirius/common/login-bg.png) no-repeat 141px 293px;
+ }
+ .login-body-logo .left-con-view h2{
+     padding: 100px 0 0 120px;
+     color: var(--Grayscale-Gray_900, #2C2C2C);
+     font-family: Pretendard;
+     font-size: 30px;
+     font-style: normal;
+     font-weight: 600;
+     line-height: 150%;
+     letter-spacing: -0.6px;
+     text-transform: capitalize;
+ }
+ 
+ 
+ /*2025.04.30 반응형 css 추가*/
+ .form-login {
+    width: 100%;
+    height: 100vh;
+    padding: 0;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@media (max-width: 1920px) {
+.login_wrap{
+       min-width:1440px; 
+    }
+.login-body-logo {
+    width: 41.6%;
+    min-width: 500px;
+}
+.form-login {
+    width: 100%;
+    height: 100vh;
+    padding: 0;
+}
+ .left-con-view {
+    background-position: 70px 208px;
+    background-size: 80%;
+}
+    .login-body-logo .left-con-view h2 {
+    padding: 100px 0 0 80px;
+    }
+}
+@media (max-width: 1440px) {
+    div#loginOutContainer{
+        width:60%;
+    }
+    .login_wrap{
+       min-width:1280px; 
+    }
+    .login-body-logo {
+    width: 38%;
+    min-width: 500px;
+}
+    .form-login {
+    width: 100%;
+    height: 100vh;
+    padding: 0;
+}
+    .left-con-view {
+    background-position: 90px 293px;
+    background-size: 70%;
+}
+    .login-body-logo .left-con-view h2 {
+    padding: 100px 0 0 60px;
+    }
+}
+
+div#loginOutContainer {
+    background: #fff;
+}
+
+/* 회사 콤보때문에 일단 주석처리함
+body > div {
+    min-width: 1350px;
+} 
+*/
+
+@media (max-width: 900px) {
+	body > div{
+	   min-width: 800px;
+	   width: 100%;
+	}
+
+    .login_wrap {
+        max-width: 900px;
+        min-width: 500px;
+    }
+
+    
+
+    .login-body-logo{
+        display:none;
+        width: 0;
+    }
+
+    .form-login{
+        width:100%;
+        margin: 0px;
+        display: flex;
+        padding: 0;
+        justify-content: center;
+        max-width: 900px;
+    }
+
+    div#loginOutContainer {
+        max-width: 900px;
+    }
+}
+
+/*개인정보처리 */
+
+.mem-rule {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    color: #626262;
+    font-family: Pretendard;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 150%;
+    letter-spacing: -0.28px;
+    text-transform: capitalize;
+}
+
+.mem-rule li:first-child:after {
+    content: "";
+    height: 18px;
+    width: 1px;
+    background: #D9D9D9;
+    display: block;
+    position: absolute;
+    right: -12px;
+    top: 1px;
+}
+
+.mem-rule ul {
+    display: flex;
+    gap: 22px;
+    font-weight: 600;
+    position: relative;
+    margin: 0 !important;
+    padding-inline-start: 0;
+}
+
+.mem-rule ul li {
+    position: relative;
+    list-style: none;
+}
+
+.mem-rule span {
+    margin-top: 4px;
+}
+
+.mem-rule .zeniOneTextLogo {
+	width: 90px;
+	height: 30px;
+	flex-shrink: 0;
+	aspect-ratio: 3/1;	
+	background: url(../../../images/plugins/sirius/common/Zenione_textlogo1.svg) no-repeat;
+}

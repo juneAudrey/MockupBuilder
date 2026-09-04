@@ -1,0 +1,890 @@
+/*!
+ *   home.css v.1.0
+ *
+ *   ZenyOne Home 용 css
+ *
+ *   반드시 body.sirius 를 넣어주세요.
+ *
+ *   Author: 
+ */
+
+@charset "utf-8";
+
+body.sirius nav {
+    background: #009b71;
+}
+body.sirius header > .home-go > .home-btn-open:hover{
+  background: #143e82;
+}
+
+body.sirius header > .home-go > .home-btn-open:hover .ic-home {
+    background: url("../../../images/plugins/sirius/common/home-go-on.png") no-repeat center center;
+}
+body.sirius header > .home-go > .home-btn-open > .ic-home {
+    background: url("../../../images/plugins/sirius/common/home-go.png") no-repeat center center;
+}
+
+body.sirius .top-area .profile:hover ,
+body.sirius .top-area .profile:has(.layer-mypage.active) {
+	color: #fff;	
+}
+
+body.sirius .main-top h2 {
+    color: #202020;
+    height: 62px;
+}
+
+body.sirius header > .home-go {
+    height: calc(var(--main-header-height) - 1px);
+}
+/*zenione log height가 좀 작음 */
+body.sirius .top{
+    padding: 16px 0px 0px 24px;
+    margin-left: 20px;
+}
+
+@media screen and (max-width: 991px) {
+    .logo {
+        margin-left: 0px;
+    }
+}
+
+body.sirius header {
+    min-width: 1390px;
+}
+
+body.sirius .main-top h2 span {
+    font-size: 30px;
+    font-weight: 600;
+    line-height: 62px;
+    display: inline-block;
+    vertical-align: middle;
+    padding-left: 80px;
+}
+body.sirius .main-body {
+    padding: 0 0 24px;
+}
+
+body.sirius .main-body > h3 {
+    font-size: 24px;
+    color: #202020;
+    font-weight: 400;
+}
+
+body.sirius .main-body > h3 b {
+    font-weight: 600;
+}
+
+body.sirius .main-body .service-wrap {
+    display: flex;
+    margin-top: 24px;
+    gap: 20px;
+    margin-bottom:40px;
+}
+
+body.sirius .main-body .service-box {
+    position: relative;
+    /* width: 33%; */
+    height: 240px;
+    border-radius: 12px;
+    color: #fff;
+    padding: 24px 24px;
+    background-size: cover;
+    cursor: pointer;
+}
+body.sirius .main-body .service-box h4 {
+    font-size: 30px;
+    font-weight: 800;
+    color: #fff;
+}
+
+body.sirius .main-body .service-box p {
+    padding-top: 8px;
+    font-size: 14px;
+    line-height: 26px;
+    font-weight: 500;
+}
+body.sirius .menu-baro {
+    position: absolute;
+    left: 24px;
+    bottom: 24px;
+}
+
+body.sirius .menu-baro .colum-area {
+    position: relative;
+}
+body.sirius .menu-view {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+}
+body.sirius .menu-view span {
+    display: block;
+    width: 32px;
+    height: 32px;
+    margin: 0 auto;
+    font-size: 0;
+    background: url("../../../images/plugins/sirius/main/icon-gogo.svg") no-repeat center;
+    background-size: 32px 32px;
+}
+
+body.sirius .menu-unfold {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 5px 20px;
+    border-radius: 200px;
+    visibility: visible;
+    display: none;
+    transition: 0.3s;
+    cursor: pointer;
+}
+body.sirius .me-flex {
+    display: flex;
+    padding: 0 8px;
+    gap: 6px;
+}
+body.sirius .me-flex .se-menu {
+    width: 40px;
+    margin: 0 auto;
+    text-align: center;
+    height: 100%;
+    cursor: pointer;
+}
+body.sirius .se-menu span.icon.home {
+    background: url("../../../images/plugins/sirius/main/icon-home.svg") no-repeat center;
+}
+body.sirius .se-menu span.icon.mail {
+    background: url(../../../images/plugins/sirius/main/icon-mail.svg) no-repeat center;
+}
+body.sirius .se-menu span.icon.pay {
+    background: url(../../../images/plugins/sirius/main/icon-pay.svg) no-repeat center;
+}
+body.sirius .se-menu span.icon.schedule {
+    background: url(../../../images/plugins/sirius/main/icon-schedule.svg) no-repeat center;
+}
+body.sirius .se-menu span.icon {
+    margin: 0 auto;
+    width: 32px;
+    height: 32px;
+}
+body.sirius .se-menu span {
+    display: block;
+    color: #fff;
+    text-align: center;
+}
+body.sirius .se-menu span.tit {
+    font-size: 11px;
+    font-weight: 500;
+}
+
+body.sirius header .home-go a {
+    outline: none;
+    display: block;
+}
+body.sirius header .home-go .sidenav .closebtn {
+    position: absolute;
+    top: 5px;
+    right: 20px;
+    font-size: 36px;
+}
+
+body.sirius .job-area {
+    position: relative;
+    margin: 24px 0 0;
+    width: 100%;
+    background: #fff;
+    padding: 24px 24px;
+    border-radius: 16px;
+}
+
+body.sirius .top-head {
+    width: 100%;
+    position: relative;
+}
+
+body.sirius .divide-min-content {
+    margin-top: 24px;
+}
+
+body.sirius .t-right {
+    position: absolute;
+    top: 0;
+    right: 0;
+}
+
+body.sirius .total-search-box.input {
+    width: 380px;
+}
+
+body.sirius .total-search-box.input .search-input-box input {
+    width: 92%;
+}
+
+body.sirius .search-input-box::after {
+    content: "";
+    width: 1px;
+    height: 22px;
+    background: #dfdfdf;
+    display: inline-block;
+    position: absolute;
+    top: 8px;
+    right: 0;
+}
+
+body.sirius .search-input-box {
+    padding: 5px 0;
+    width: calc(100% - 120px);
+    display: inline-block;
+    position: relative;
+    border-radius: 8px;
+}
+
+body.sirius .total-search-box.input .select-wrap {
+    display: inline-block;
+    vertical-align: top;
+    width: 112px;
+    height: 36px;
+    border: none;
+}
+
+body.sirius .select-wrap {
+    width: 100%;
+    height: 38px;
+    padding: 6px 0 6px 0;
+    border: 1px solid #dfdfdf;
+    border-radius: 8px;
+    background: url("../../../images/plugins/sirius/common/arr-select.svg") no-repeat 95% center;
+}
+
+body.sirius .select-wrap select {
+    width: 100%;
+    height: 100%;
+    padding: 0 28px 0 12px;
+    font-size: 14px;
+    border: 0;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    background: transparent;
+}
+
+body.sirius .select-wrap select option {
+    padding: 0;
+    font-size: 14px;
+    color: #202020;
+}
+
+body.sirius .divide-button-area {
+    display: inline-block;
+}
+
+body.sirius .divide-button-area.darkblue .btn-tab-active {
+    background: #143E82;
+    border-color: #143E82;
+}
+
+body.sirius .btn-tab-active {
+    color: #fff !important;
+    background-color: #2793e9 !important;
+    border-color: #2793e9 !important;
+}
+
+body.sirius .btn-tab-top {
+    height: 38px;
+    padding: 10px 16px;
+    border-radius: 24px;
+    border: 1px solid #dfdfdf;
+    background-color: #fff;
+    color: #747474;
+    margin-right: 8px;
+    cursor: pointer;
+}
+
+body.sirius .ex-table {
+    width: 100%;
+}
+
+body.sirius .ex-table table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+body.sirius .ex-table thead {
+    border-radius: 8px;
+    background: #ebf0f2;
+}
+
+body.sirius .ex-table thead th:first-child {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+body.sirius .ex-table thead th {
+    padding: 10px 16px;
+    color: #747474;
+    font-size: 12px;
+    text-align: left;
+}
+
+body.sirius .ex-table td {
+    padding: 11px 16px 10px;
+    background: #fff;
+    color: #202020;
+    font-size: 14px;
+    border-bottom: 1px solid #efefef;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+    text-align: left;
+}
+
+
+body.sirius .icon-type.office {
+    background: url(../../../images/plugins/sirius/main/icon-office.svg) no-repeat center;
+}
+body.sirius .icon-type.erp {
+    background: url(../../../images/plugins/sirius/main/icon-erp.svg) no-repeat center;
+}
+body.sirius .icon-type.bi {
+    background: url(../../../images/plugins/sirius/main/icon-bi.svg) no-repeat center;
+}
+
+body.sirius .icon-type {
+    display: inline-block;
+    width: 30px;
+    height: 30px;
+}
+
+body.sirius .worker {
+    display: inline-block;
+}
+
+body.sirius .worker .po-profile {
+    width: 20px;
+    height: 20px;
+    display: inline-block;
+}
+
+body.sirius .worker > span {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+body.sirius .worker .name {
+    padding-left: 6px;
+}
+
+body.sirius .badge.darkblue {
+    background-color: #F3F5FB;
+    color: #2E59A4;
+}
+
+body.sirius .badge {
+    display: inline-block;
+    border-radius: 4px;
+    background: #F5F5F5;
+    color: #747474;
+    font-size: 12px;
+    font-weight: 500;
+    min-width: 60px;
+    height: 24px;
+    line-height: 1.714rem;
+    padding: 0 8px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+body.sirius .search-input-box input {
+    width: 83%;
+    height: 26px;
+    border: none;
+    color: #202020;
+    margin-left: 8px;
+    text-align: left !important;
+}
+
+body.sirius .total-search-box {
+    width: 100%;
+    height: 38px;
+    border: 1px solid #dfdfdf;
+    border-radius: 8px;
+    display: inline-block;
+    position: relative;
+    background-color: #fff;
+}
+
+body.sirius .worker .po-profile {
+    width: 20px;
+    height: 20px;
+    display: inline-block;
+}
+
+body.sirius .worker > span {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+body.sirius .worker .po-profile img {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+}
+
+body.sirius .btn-list-add {
+    background: url(../../../images/plugins/sirius/office/common_line.svg) no-repeat center;
+    background-size: 24px 24px;
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    font-size: 0;
+    vertical-align: middle;
+    border: none;
+}
+
+body.sirius .badge.green {
+    background-color: #E7F7F3;
+    color: #28CA89;
+}
+
+body.sirius .badge.blue {
+    background: #e3f1fc;
+    color: #2793e9 !important;
+}
+
+body.sirius .wj-cells .wj-cell.wj-state-selected:not(.cell-button){
+    background: unset !important;
+    border-top: none;
+    border-bottom: 1px solid #e9e9e9;
+}
+body.sirius .notice-area .wj-cells .wj-cell.wj-state-multi-selected {
+    background: unset !important;
+    border-top: none;
+    border-bottom: 1px solid #e9e9e9;
+}
+
+body.sirius .notice-area .wj-row:hover .wj-cell.wj-state-selected:not(.cell-button){
+   background: #f9f9f9 !important;
+    cursor: pointer;
+    width: 100%;
+}
+body.sirius .notice-area .wj-row:hover .wj-cells .wj-cell.wj-state-multi-selected {
+    background: #f9f9f9 !important;
+    cursor: pointer;
+    width: 100%;
+}
+
+
+body.sirius .notice-area .wj-row:hover .wj-cell{
+    background: #f9f9f9;
+    cursor: pointer;
+    width: 100%;
+}
+
+body.sirius .notice-area .wj-row:hover .wj-cell.wj-alt{
+    background: #f9f9f9;
+    cursor: pointer;
+    width: 100%;
+}
+
+body.sirius .notice-area .page-btn.selected {
+    background: #0079FB;
+}
+
+body.sirius header .object-footer .change-buttons {
+    display: flex;
+    gap: 2px;
+    justify-content: space-between;
+}
+
+body.sirius header .object-footer .change-buttons button {
+    padding-right: 10px;
+    padding-left: 4px;
+    font-size: 13px;
+}
+
+/* scroll */
+::-webkit-scrollbar {
+    width: 11px;
+    scrollbar-width: 11px;
+    /*스크롤바의 너비*/
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: #ececec;
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background-color: transparent;
+}
+/* scroll end */
+
+/*skeleton*/
+body.sirius .skeleton.is-loading {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+    min-height: 30px;
+}
+
+/*상단 프로필 박스 수정*/
+.profile .mybox img {
+    display: none;
+}
+
+body.sirius .top-area  .profile .mybox span {
+    margin: 0;
+}
+
+body.sirius .top-area .profile {
+    padding: 0 16px;
+}
+
+body.sirius .top-area .profile:hover,body.sirius .top-area .profile:has(.layer-mypage.active) {
+    background: var(--Grayscale-Gray_100, #ECECEC);
+}
+body.sirius .top-area .profile:hover span, body.sirius .top-area .profile:has(.layer-mypage.active) span {
+    color: var(--Typography-Black-900, #202020);
+    font-family: Pretendard;
+    font-size: 17px;
+    font-style: normal;
+    font-weight: 400;
+    letter-spacing: -0.048px;
+}
+
+
+body.sirius header .profile .layer-mypage {
+    width: 160px;
+}
+
+body.sirius header .object-cover {
+    padding: 10px 0;
+}
+
+.object-cover .object-top {
+    display: none;
+}
+
+body.sirius header .object-body {
+    display: none;
+}
+
+body.sirius header .object-footer ul li {
+    padding: 0;
+}
+
+body.sirius header .object-footer .change-buttons {
+    flex-direction: column;
+}
+body.sirius header .object-footer .change-buttons button {
+     border: none;
+    text-align: left;
+    padding-left: 16px !important;
+    color: var(--Grayscale-Black, #111) !important;
+    font-family: Pretendard !important;
+    font-size: 14px !important;
+    font-style: normal !important;
+    font-weight: 400 !important;
+}
+/*개인정보변경*/
+body.sirius header .object-footer .change-buttons button#mainChangeUserInfo:before{
+    content: "";
+    width: 20px;
+    height: 20px;
+    background: url(../../../images/plugins/sirius/common/mybox-member.svg) no-repeat;
+    display:inline-block;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+/*비밀번호변경*/
+body.sirius header .object-footer .change-buttons button#mainChangePwd:before{
+    content: "";
+    width: 20px;
+    height: 20px;
+    background: url(../../../images/plugins/sirius/common/mybox-pass.svg) no-repeat;
+    display:inline-block;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+/*로그아웃*/
+body.sirius header .object-footer ul li:last-child button:before {
+    content: "";
+    width: 20px;
+    height: 20px;
+    background: url(../../../images/plugins/sirius/common/mybox-logout.svg) no-repeat;
+    display:inline-block;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+body.sirius header .object-footer ul li:last-child:hover {
+    background: #efefef;
+}
+body.sirius header .object-footer li:last-child button span.di.di-logout {
+    line-height: 38px !important;
+    margin-left: 0px;
+}
+body.sirius header .object-footer li:last-child button
+ {
+    padding-left: 16px !important;
+}
+body.sirius header .object-footer .change-buttons div:hover {background: #efefef;}
+body.sirius header .object-footer button span {
+    color: var(--Grayscale-Black, #111) !important;
+    font-family: Pretendard  !important;
+    font-size: 14px  !important;
+    font-style: normal  !important;
+    font-weight: 400  !important;
+    line-height: 26px  !important; /* 185.714% */
+    letter-spacing: -0.042px;
+}
+body.sirius header .object-footer button {
+    border: none;
+    text-align: left;
+    padding-left: 36px !important;
+}
+body.sirius header .profile .layer-mypage {
+    left: -45px;
+}
+body.sirius .top-area .profile:hover span, body.sirius .top-area .profile:has(.layer-mypage.active) span {
+    line-height: 58px !important;
+}
+
+body.sirius .logo{
+	display: flex !important;
+	align-items: center;
+	gap: 10px;
+	width:100% !important;
+}
+
+body.sirius .logo .logoTitle{
+	color: #3394FC;	
+	/* Heading (Eng)/H1 */
+	font-family: Poppins;
+	font-size: 24px;
+	font-style: normal;
+	font-weight: 700;
+	line-height: 36px; /* 150% */
+	letter-spacing: -0.48px;
+}
+
+/*상단 side nav 관련 css*/
+
+body.sirius .sidenav {
+    height: 300px;
+    position: absolute;
+    z-index: 90;
+    top: 82px;
+    left: 30px;
+    border-radius: 12px;
+    background-color: #ffffff;
+    overflow-x: hidden;
+    transition: 0.05s;
+    visibility: visible;
+    box-shadow: 0px 4px 20px 0px rgba(0, 0, 0, 0.25);
+}
+
+body.sirius .sidenav ul {
+    padding: 15px 32px 32px 32px;
+    text-align: left;
+}
+
+body.sirius .erp-main-nav-title {
+    padding-top: 10px;
+    color: var(--Grayscale-Gray_900, #2C2C2C);
+    font-family: Pretendard;
+    font-size: 20px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 34px;
+    letter-spacing: -0.02px;
+}
+
+body.sirius ul.erp-main-solution {
+    padding: 16px 0;
+    display: flex;
+    gap: 0.5rem;
+}
+
+body.sirius .erp-btn-home-go {
+    width: 100%;
+    padding: 9px 16px;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 26px;
+    color: #292929;
+    height: 44px;
+    border-radius: 8px;
+    background: #E8E8EC;
+}
+
+body.sirius .erp-main-solution li {
+    text-align:center;
+}
+
+/* scroll */
+::-webkit-scrollbar {
+    width: 11px;
+    scrollbar-width: 11px;
+    /*스크롤바의 너비*/
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: #ececec;
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background-color: transparent;
+}
+/* scroll end */
+
+/**************************테마 CSS **********************************/
+body.sirius nav {
+    background: #0079FB;
+}
+body.sirius header > .home-go > .home-btn-open:hover{
+  background: #0079FB;
+}
+
+body.sirius button.expand-btn {
+	background: linear-gradient(135deg, #799b0f, #a8da14);
+}
+body.sirius .global-nav-bar ul li .menu-item:hover .icon:before,
+body.sirius .global-nav-bar ul li .menu-item.active .icon:before{
+	background-color: #0079FB; /* 기본 아이콘 색상 */
+}
+
+body.sirius .main-nav-tabs.nav-tabs .nav-link.active{
+	background-color: #0079FB;
+	color: #ffffff;
+	border: 1px solid #0079FB;
+	/* box-shadow: 0 8px 12px rgba(162, 217, 26, 0.4); */
+}
+
+/* home 과 1level만 유효 */
+body.sirius .menu-home > ul > li.on::before,
+body.sirius .menu-items > ul.lnb > li > ul.snb-lnb > li.on:not(.has-submenu)::before ,
+body.sirius .menu-items > ul.lnb > li > ul.snb-lnb > li > ul.snb-lnb > li.on:not(.has-submenu)::before {
+	background: #0079FB;
+}
+body.sirius .grid-toolbar .toolbar-buttons .btn-group >a {
+    color: #686868;
+}
+body.sirius .nav-item.nav-link.active.nav-sub-item.active > a {
+    color: #0079FB;
+}
+body.sirius .nav-item.nav-link.active.nav-sub-item.active {
+    border-bottom: 3px solid #0079FB;
+}
+
+body.sirius .btn-search,
+body.sirius[data-product="bc"] .modal .btn-search{
+	background: #0079FB !important;
+	color: #FFFFFF !important;
+	border : none !important;
+}
+
+body.sirius .btn-search:hover,
+body.sirius[data-product="bc"] .modal .btn-search {
+	background: #0079FB !important;
+}
+
+body.sirius .menu-items .snb-lnb>li.on:not(.has-submenu)>a {
+    font-weight: 700;
+    color: #0079FB;
+}
+
+body.sirius .wj-cells .wj-cell.wj-state-selected:not(.cell-button) {    
+    border-top: 1px solid #0079FB;
+    border-bottom: 1px solid #0079FB;
+}
+
+body.sirius .grid-toolbar .grid-excel-down-font {
+    font-size: 16px;
+    font-weight: 600;
+    color: #0079FB;
+}
+
+body.sirius .menu-scroll-arrow {
+	background-color:#006de6;
+}
+
+body.sirius .btn-form {
+    background: #0079FB !important;
+    color: white !important;
+    border: none !important;
+}
+body.sirius main .content.daaf-home.main-display .main-history-tab .tab-toggle-btn {
+    background-color: #0079FB;
+    color: white;
+    border: none;
+    padding: 2px 20px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 5px;
+    transition: background-color 0.3s;
+}
+
+body.sirius .builder-base .search-wrap .col .search_collapse_btn {
+    width: 38px;
+    height: 38px;
+    top: unset;
+    left: unset;
+    border-radius: 8px;
+    position: inherit;
+    padding: unset;
+    margin-bottom: 12px;
+    color: #0079FB;
+    border: 1px solid #0079FB;
+}
+
+body.sirius .tagsinput .tag {
+    padding: 5px 12px;
+    margin: 2px;
+    border-radius: 8px;
+    border: 1px solid #8e8deb;
+    background-color: #E7F7F3 !important;
+    color: #454545 !important;
+    cursor: pointer;
+    display: inline-block;
+}
+
+body.sirius .menu-home > ul > li.on, body.sirius .menu-items .snb-lnb>li.on:not(.has-submenu) {
+    font-size: 14px;
+    font-weight: 700;
+    background: #f2f8ff;
+    border-radius: 6px;
+    color: #3394fc;
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+}
+
+body.sirius .btn-form:hover {
+    background: #6cb3ff !important;
+    color: white !important;
+    border: none !important;
+}
+
+body.sirius .menu-items .lnb>li>a:hover,
+body.sirius .menu-items .lnb>li>.snb-lnb>li>a:hover,
+body.sirius .menu-items .lnb>li>ul.snb-lnb li.has-submenu .snb-lnb>li>a:hover {
+    color: #0079FB;
+ }
+ 
+ body.sirius .btn.btn-blue-dark, body.sirius .btn-footer-standard {
+    border: 1px solid #0079FB;
+    background: #fff;
+    color: #0079FB;
+}
+
+/**************************테마 CSS**********************************/

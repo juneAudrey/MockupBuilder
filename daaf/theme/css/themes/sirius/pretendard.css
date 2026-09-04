@@ -1,0 +1,40 @@
+/*
+Copyright (c) 2021 Kil Hyung-jin, with Reserved Font Name Pretendard.
+https://github.com/orioncactus/pretendard
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+참고: 앱 용량 절감을 위해 실제 미리보기에서 자주 쓰이는 4가지 굵기(400/500/600/700, woff2)만
+포함했습니다. 900/800/300/200/100 굵기가 필요하면 아래 @font-face 블록과 동일한 패턴으로
+pretendard/woff2/ 에 해당 파일을 추가하고 규칙을 더 넣어주세요.
+*/
+
+@font-face {
+	font-family: 'Pretendard';
+	font-weight: 700;
+	font-display: swap;
+	src: url('pretendard/woff2/Pretendard-Bold.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Pretendard';
+	font-weight: 600;
+	font-display: swap;
+	src: url('pretendard/woff2/Pretendard-SemiBold.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Pretendard';
+	font-weight: 500;
+	font-display: swap;
+	src: url('pretendard/woff2/Pretendard-Medium.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Pretendard';
+	font-weight: 400;
+	font-display: swap;
+	src: url('pretendard/woff2/Pretendard-Regular.woff2') format('woff2');
+}

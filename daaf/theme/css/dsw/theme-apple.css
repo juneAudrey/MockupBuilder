@@ -1,0 +1,568 @@
+/*!
+ * DSW Apple theme
+ * Keeps the existing DSW CSS intact and overrides it only when
+ * body.dsw-theme-apple is present.
+ */
+
+@charset "utf-8";
+
+body.dsw-theme-apple {
+  --dsw-action-blue: #0066cc;
+  --dsw-action-blue-hover: #0071e3;
+  --dsw-action-blue-dark: #2997ff;
+  --dsw-ink: #1d1d1f;
+  --dsw-ink-soft: #333333;
+  --dsw-muted: #7a7a7a;
+  --dsw-muted-on-dark: #cccccc;
+  --dsw-canvas: #ffffff;
+  --dsw-parchment: #f5f5f7;
+  --dsw-pearl: #fafafc;
+  --dsw-dark: #000000;
+  --dsw-tile: #272729;
+  --dsw-tile-2: #2a2a2c;
+  --dsw-hairline: #e0e0e0;
+  --dsw-soft-line: rgba(0, 0, 0, 0.08);
+  --dsw-danger: #d70015;
+  --dsw-success: #15803d;
+  --dsw-warning: #b45309;
+  margin: 0;
+  background: var(--dsw-parchment);
+  color: var(--dsw-ink);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+  font-size: 14px;
+}
+
+body.dsw-theme-apple * {
+  box-sizing: border-box;
+}
+
+body.dsw-theme-apple .header {
+  height: 44px;
+  min-height: 44px;
+  padding: 0 28px;
+  background: var(--dsw-dark);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1;
+  box-shadow: none;
+}
+
+body.dsw-theme-apple .header-brand {
+  gap: 11px;
+}
+
+body.dsw-theme-apple .header-logo {
+  width: 22px;
+  height: 22px;
+  margin-right: 0;
+  border-radius: 5px;
+}
+
+body.dsw-theme-apple .header-language {
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+body.dsw-theme-apple .header-language label {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+body.dsw-theme-apple .header-language select,
+body.dsw-theme-apple select.custom-select {
+  height: 32px;
+  min-height: 32px;
+  border: 1px solid var(--dsw-hairline);
+  border-radius: 999px;
+  background-color: var(--dsw-canvas);
+  background-image: url('data:image/svg+xml;utf8,<svg fill="%236e6e73" height="18" viewBox="0 0 24 24" width="18" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>');
+  background-position: right 14px center;
+  background-repeat: no-repeat;
+  background-size: 18px 18px;
+  color: var(--dsw-ink);
+  font-size: 13px;
+  box-shadow: none;
+  padding: 0 42px 0 14px;
+}
+
+body.dsw-theme-apple select.custom-select option {
+  background: var(--dsw-canvas);
+  color: var(--dsw-ink);
+  font-size: 13px;
+}
+
+body.dsw-theme-apple .main-container {
+  background: var(--dsw-parchment);
+}
+
+body.dsw-theme-apple .sidebar {
+  width: 260px;
+  padding: 24px 14px;
+  background: var(--dsw-tile);
+  color: #fff;
+}
+
+body.dsw-theme-apple .sidebar h2 {
+  margin: 0 10px 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+body.dsw-theme-apple .sidebar > ul > li {
+  min-height: 42px;
+  margin: 0 0 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 400;
+  transition: background-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+body.dsw-theme-apple .sidebar > ul > li:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+body.dsw-theme-apple .sidebar > ul > li.active {
+  background: #fff;
+  color: var(--dsw-ink);
+}
+
+body.dsw-theme-apple .sidebar > ul > li:active {
+  transform: scale(0.98);
+}
+
+body.dsw-theme-apple .step-number {
+  display: inline;
+  width: auto;
+  height: auto;
+  min-width: 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: none;
+}
+
+body.dsw-theme-apple .sidebar > ul > li.active .step-number {
+  background: transparent;
+  color: var(--dsw-action-blue);
+}
+
+body.dsw-theme-apple .checkmark {
+  width: 18px;
+  height: 18px;
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  box-shadow: none;
+}
+
+body.dsw-theme-apple .sidebar > ul > li.active .checkmark.visible {
+  border-color: var(--dsw-action-blue);
+  background: var(--dsw-action-blue);
+}
+
+body.dsw-theme-apple .content {
+  margin: 18px;
+  padding: 0;
+  border: 1px solid var(--dsw-hairline);
+  border-radius: 18px;
+  background: var(--dsw-canvas);
+  box-shadow: none;
+}
+
+body.dsw-theme-apple #stepContents {
+  padding: 28px 34px 24px;
+  margin-right: 0;
+  scrollbar-color: #d2d2d7 transparent;
+}
+
+body.dsw-theme-apple #stepContents::-webkit-scrollbar-thumb {
+  background: #d2d2d7;
+}
+
+body.dsw-theme-apple .content h3 {
+  margin: 0 0 22px;
+  color: var(--dsw-ink);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.16;
+}
+
+body.dsw-theme-apple .content h4,
+body.dsw-theme-apple fieldset legend {
+  color: var(--dsw-ink);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.24;
+}
+
+body.dsw-theme-apple .footer-nav {
+  min-height: 64px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--dsw-hairline);
+  background: rgba(245, 245, 247, 0.82);
+  backdrop-filter: saturate(180%) blur(18px);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+}
+
+body.dsw-theme-apple button.primary,
+body.dsw-theme-apple .license-section .license-container .lic-check-btn,
+body.dsw-theme-apple button.primary.mail-test-button {
+  width: auto;
+  min-width: 92px;
+  height: 38px;
+  padding: 0 18px;
+  border: 1px solid var(--dsw-action-blue);
+  border-radius: 999px;
+  background: var(--dsw-action-blue);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 400;
+  box-shadow: none;
+  transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+
+body.dsw-theme-apple button.primary:hover:not(:disabled),
+body.dsw-theme-apple .license-section .license-container .lic-check-btn:hover,
+body.dsw-theme-apple button.primary.mail-test-button:hover {
+  border-color: var(--dsw-action-blue-hover);
+  background: var(--dsw-action-blue-hover);
+}
+
+body.dsw-theme-apple button.primary:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+body.dsw-theme-apple button[disabled] {
+  opacity: 0.42;
+}
+
+body.dsw-theme-apple .system-env-copy-btn,
+body.dsw-theme-apple .system-env-delete-btn,
+body.dsw-theme-apple button.system-env-add-btn,
+body.dsw-theme-apple .license-section .license-file-control button.primary,
+body.dsw-theme-apple .file-picker-control button.primary {
+  width: auto;
+  min-width: 0;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 400;
+  box-shadow: none;
+}
+
+body.dsw-theme-apple .system-env-copy-btn,
+body.dsw-theme-apple button.system-env-add-btn,
+body.dsw-theme-apple .license-section .license-file-control button.primary,
+body.dsw-theme-apple .file-picker-control button.primary {
+  border: 1px solid var(--dsw-action-blue);
+  background: transparent;
+  color: var(--dsw-action-blue);
+}
+
+body.dsw-theme-apple .license-section .license-file-control button.primary {
+  flex: 0 0 auto;
+}
+
+body.dsw-theme-apple button.system-env-add-btn {
+  height: 30px;
+  padding: 0 12px;
+  align-self: center;
+}
+
+body.dsw-theme-apple .system-env-copy-btn:hover:not(:disabled),
+body.dsw-theme-apple button.system-env-add-btn:hover:not(:disabled),
+body.dsw-theme-apple .license-section .license-file-control button.primary:hover:not(:disabled),
+body.dsw-theme-apple .file-picker-control button.primary:hover:not(:disabled) {
+  border-color: var(--dsw-action-blue-hover);
+  background: rgba(0, 102, 204, 0.06);
+  color: var(--dsw-action-blue-hover);
+}
+
+body.dsw-theme-apple button.system-env-add-btn:active:not(:disabled),
+body.dsw-theme-apple .license-section .license-file-control button.primary:active:not(:disabled),
+body.dsw-theme-apple .file-picker-control button.primary:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+body.dsw-theme-apple .system-env-delete-btn {
+  border-color: #ffb3ba;
+  background: transparent;
+  color: var(--dsw-danger);
+}
+
+body.dsw-theme-apple fieldset {
+  border: 1px solid var(--dsw-hairline);
+  border-radius: 18px;
+  background: var(--dsw-pearl);
+  padding: 18px 22px 22px;
+}
+
+body.dsw-theme-apple fieldset.section {
+  margin-top: 22px;
+}
+
+body.dsw-theme-apple fieldset legend {
+  padding: 0 8px;
+  background: transparent;
+}
+
+body.dsw-theme-apple .form-group label,
+body.dsw-theme-apple .license-section .license-field label {
+  margin-bottom: 6px;
+  color: var(--dsw-ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+body.dsw-theme-apple .form-group input[type="text"],
+body.dsw-theme-apple .form-group input[type="tel"],
+body.dsw-theme-apple .form-group textarea,
+body.dsw-theme-apple .license-section .license-field input[type="text"],
+body.dsw-theme-apple .license-section input {
+  min-height: 38px;
+  border: 1px solid var(--dsw-hairline);
+  border-radius: 11px;
+  background: var(--dsw-canvas);
+  color: var(--dsw-ink);
+  font-size: 14px;
+  box-shadow: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+}
+
+body.dsw-theme-apple .form-group input[type="text"]:focus,
+body.dsw-theme-apple .form-group input[type="tel"]:focus,
+body.dsw-theme-apple .form-group textarea:focus,
+body.dsw-theme-apple .license-section input:focus,
+body.dsw-theme-apple select.custom-select:focus {
+  border-color: var(--dsw-action-blue-hover);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.14);
+  outline: none;
+}
+
+body.dsw-theme-apple .form-group input[type="text"][readonly],
+body.dsw-theme-apple .readonly,
+body.dsw-theme-apple input:disabled,
+body.dsw-theme-apple select:disabled {
+  background: var(--dsw-parchment);
+  color: var(--dsw-muted);
+}
+
+body.dsw-theme-apple .setup-field-notice {
+  color: var(--dsw-warning);
+  font-size: 12px;
+}
+
+body.dsw-theme-apple .setup-field-notice a,
+body.dsw-theme-apple a,
+body.dsw-theme-apple .report-section-head a {
+  color: var(--dsw-action-blue);
+  text-decoration: none;
+}
+
+body.dsw-theme-apple .main-page-list-panel,
+body.dsw-theme-apple .main-page-detail-panel,
+body.dsw-theme-apple .system-env-list-panel,
+body.dsw-theme-apple .system-env-detail-panel,
+body.dsw-theme-apple .system-env-card,
+body.dsw-theme-apple .business-db-card,
+body.dsw-theme-apple .product-card,
+body.dsw-theme-apple .report-section,
+body.dsw-theme-apple .report-card,
+body.dsw-theme-apple .report-status-card,
+body.dsw-theme-apple .report-env-card,
+body.dsw-theme-apple .finish-plugin-card,
+body.dsw-theme-apple .plugin-card,
+body.dsw-theme-apple .license-section .product-container .product-list .product-info {
+  border: 1px solid var(--dsw-hairline);
+  border-radius: 18px;
+  background: var(--dsw-canvas);
+  box-shadow: none;
+}
+
+body.dsw-theme-apple .main-page-list-panel,
+body.dsw-theme-apple .system-env-list-panel {
+  background: var(--dsw-pearl);
+}
+
+body.dsw-theme-apple .main-page-list-item,
+body.dsw-theme-apple .system-env-list-item {
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: var(--dsw-canvas);
+  color: var(--dsw-ink);
+  box-shadow: none;
+}
+
+body.dsw-theme-apple .main-page-list-item:hover,
+body.dsw-theme-apple .system-env-list-item:hover,
+body.dsw-theme-apple .report-status-card:hover,
+body.dsw-theme-apple .plugin-card:hover,
+body.dsw-theme-apple .finish-plugin-card:hover {
+  border-color: rgba(0, 102, 204, 0.42);
+  background: var(--dsw-canvas);
+  box-shadow: none;
+}
+
+body.dsw-theme-apple .main-page-list-item.is-active,
+body.dsw-theme-apple .system-env-list-item.is-active {
+  border-color: var(--dsw-action-blue-hover);
+  background: #f5fbff;
+  box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.12);
+}
+
+body.dsw-theme-apple .main-page-list-title,
+body.dsw-theme-apple .system-env-list-title,
+body.dsw-theme-apple .main-page-detail-header strong,
+body.dsw-theme-apple .system-env-detail-header strong,
+body.dsw-theme-apple .report-section-head h4,
+body.dsw-theme-apple .report-status-card strong,
+body.dsw-theme-apple .report-kv strong,
+body.dsw-theme-apple .report-mini strong,
+body.dsw-theme-apple .product-card h4,
+body.dsw-theme-apple .license-section .product-container-title,
+body.dsw-theme-apple .license-section .product-container .product-name {
+  color: var(--dsw-ink);
+}
+
+body.dsw-theme-apple .main-page-list-meta,
+body.dsw-theme-apple .system-env-sub,
+body.dsw-theme-apple .report-status-title,
+body.dsw-theme-apple .report-status-card em,
+body.dsw-theme-apple .report-kv span,
+body.dsw-theme-apple .report-mini span,
+body.dsw-theme-apple .license-section .product-container .product-empty-state {
+  color: var(--dsw-muted);
+}
+
+body.dsw-theme-apple .system-env-block-title {
+  color: var(--dsw-action-blue);
+}
+
+body.dsw-theme-apple .system-env-card-block,
+body.dsw-theme-apple .main-page-detail-header,
+body.dsw-theme-apple .system-env-detail-header,
+body.dsw-theme-apple .report-section-head {
+  border-color: var(--dsw-hairline);
+}
+
+body.dsw-theme-apple .main-page-config-card.is-disabled,
+body.dsw-theme-apple .system-env-card.is-disabled,
+body.dsw-theme-apple .business-db-card.is-disabled,
+body.dsw-theme-apple .product-card.is-disabled {
+  background: var(--dsw-parchment);
+  opacity: 0.62;
+}
+
+body.dsw-theme-apple .report-status-card {
+  border-left-width: 1px;
+}
+
+body.dsw-theme-apple .report-status-card.is-ready,
+body.dsw-theme-apple .report-env-card.is-ready {
+  border-color: rgba(21, 128, 61, 0.32);
+}
+
+body.dsw-theme-apple .report-status-card.is-missing,
+body.dsw-theme-apple .report-env-card.is-missing {
+  border-color: rgba(215, 0, 21, 0.28);
+}
+
+body.dsw-theme-apple .report-kv.is-ok strong {
+  color: var(--dsw-success);
+}
+
+body.dsw-theme-apple .report-kv.is-warn strong,
+body.dsw-theme-apple .report-missing {
+  color: var(--dsw-warning);
+}
+
+body.dsw-theme-apple .plugins.card-view {
+  gap: 16px;
+}
+
+body.dsw-theme-apple .plugin-card {
+  padding: 18px;
+}
+
+body.dsw-theme-apple .setup-data-loading-panel {
+  background: rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+body.dsw-theme-apple .setup-data-loading-dialog {
+  border: 1px solid var(--dsw-hairline);
+  border-radius: 18px;
+  background: var(--dsw-canvas);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.18);
+}
+
+body.dsw-theme-apple .setup-data-loading-title {
+  color: var(--dsw-ink);
+}
+
+body.dsw-theme-apple .setup-data-loading-message {
+  color: var(--dsw-muted);
+}
+
+body.dsw-theme-apple .setup-data-loading-track {
+  height: 6px;
+  background: var(--dsw-parchment);
+}
+
+body.dsw-theme-apple .setup-data-loading-bar {
+  background: var(--dsw-action-blue);
+}
+
+body.dsw-theme-apple .setup-data-loading-result {
+  border: 1px solid var(--dsw-hairline);
+  border-radius: 11px;
+  background: var(--dsw-pearl);
+  color: var(--dsw-ink);
+}
+
+body.dsw-theme-apple .install-progress-steps li {
+  border-radius: 11px;
+}
+
+body.dsw-theme-apple .install-progress-steps li::before {
+  box-shadow: none;
+}
+
+body.dsw-theme-apple .toggle .slider {
+  background-color: #d2d2d7;
+}
+
+body.dsw-theme-apple .toggle input:checked + .slider {
+  background-color: var(--dsw-action-blue);
+}
+
+@media (max-width: 980px) {
+  body.dsw-theme-apple .sidebar {
+    width: 220px;
+  }
+
+  body.dsw-theme-apple .content {
+    margin: 12px;
+  }
+
+  body.dsw-theme-apple #stepContents {
+    padding: 22px;
+  }
+}

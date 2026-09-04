@@ -1,0 +1,232 @@
+@charset "UTF-8";
+/*!
+ *  dashboard 전용 icon
+ *
+ *   dashboard-icons.css v.1.0
+ *   Author: Bizentro
+ */
+ 
+:root {
+	--icon-quick-mnu-approval: url("mnuIcons/quick-mnu-approval.svg");
+	--icon-quick-mnu-attendance: url("mnuIcons/quick-mnu-attendance.svg");
+	--icon-quick-mnu-budget: url("mnuIcons/quick-mnu-budget.svg");
+	--icon-quick-mnu-calendar: url("mnuIcons/quick-mnu-calendar.svg");
+	--icon-quick-mnu-certificates: url("mnuIcons/quick-mnu-certificates.svg");
+	--icon-quick-mnu-company-docs: url("mnuIcons/quick-mnu-company-docs.svg");
+	--icon-quick-mnu-contacts: url("mnuIcons/quick-mnu-contacts.svg");
+	--icon-quick-mnu-corp-card: url("mnuIcons/quick-mnu-corp-card.svg");
+	--icon-quick-mnu-cost: url("mnuIcons/quick-mnu-cost.svg");
+	--icon-quick-mnu-dashboard: url("mnuIcons/quick-mnu-dashboard.svg");
+	--icon-quick-mnu-etax: url("mnuIcons/quick-mnu-etax.svg");
+	--icon-quick-mnu-expense: url("mnuIcons/quick-mnu-expense.svg");
+	--icon-quick-mnu-finance: url("mnuIcons/quick-mnu-finance.svg");
+	--icon-quick-mnu-home: url("mnuIcons/quick-mnu-home.svg");
+	--icon-quick-mnu-hr-info: url("mnuIcons/quick-mnu-hr-info.svg");
+	--icon-quick-mnu-inventory: url("mnuIcons/quick-mnu-inventory.svg");
+	--icon-quick-mnu-mail: url("mnuIcons/quick-mnu-mail.svg");
+	--icon-quick-mnu-mydocs: url("mnuIcons/quick-mnu-mydocs.svg");
+	--icon-quick-mnu-payroll: url("mnuIcons/quick-mnu-payroll.svg");
+	--icon-quick-mnu-post: url("mnuIcons/quick-mnu-post.svg");
+	--icon-quick-mnu-production: url("mnuIcons/quick-mnu-production.svg");
+	--icon-quick-mnu-project-manage: url("mnuIcons/quick-mnu-project-manage.svg");
+	--icon-quick-mnu-project-manage2: url("mnuIcons/quick-mnu-project-manage2.svg");
+	--icon-quick-mnu-purchase: url("mnuIcons/quick-mnu-purchase.svg");
+	--icon-quick-mnu-resources: url("mnuIcons/quick-mnu-resources.svg");
+	--icon-quick-mnu-sales: url("mnuIcons/quick-mnu-sales.svg");
+	--icon-quick-mnu-settings: url("mnuIcons/quick-mnu-settings.svg");
+	--icon-quick-mnu-vote: url("mnuIcons/quick-mnu-vote.svg");
+	
+	--icon-quick-delete-menu: url("mnuIcons/quick-delete-menu.svg");
+	--icon-quick-added-menu: url("mnuIcons/quick-added-menu.svg");
+}
+
+.qmi {
+    display: inline-block;
+    width: 22px;
+    height: 22px;
+    -webkit-mask: no-repeat center / contain;
+    mask: no-repeat center / contain;
+    background-color: currentColor;
+    font-size: 0;
+}
+
+.qmi.qmi-approval{
+	--icon: var(--icon-quick-mnu-approval);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-attendance{
+	--icon: var(--icon-quick-mnu-attendance);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-budget{
+	--icon: var(--icon-quick-mnu-budget);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-calendar{
+	--icon: var(--icon-quick-mnu-calendar);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-certificates{
+	--icon: var(--icon-quick-mnu-certificates);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-company-docs{
+	--icon: var(--icon-quick-mnu-company-docs);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-contacts{
+	--icon: var(--icon-quick-mnu-contacts);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-corp-card{
+	--icon: var(--icon-quick-mnu-corp-card);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-cost{
+	--icon: var(--icon-quick-mnu-cost);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-dashboard{
+	--icon: var(--icon-quick-mnu-dashboard);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-etax{
+	--icon: var(--icon-quick-mnu-etax);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-expense{
+	--icon: var(--icon-quick-mnu-expense);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-finance{
+	--icon: var(--icon-quick-mnu-finance);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-home{
+	--icon: var(--icon-quick-mnu-home);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-hr-info{
+	--icon: var(--icon-quick-mnu-hr-info);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-inventory{
+	--icon: var(--icon-quick-mnu-inventory);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-mail{
+	--icon: var(--icon-quick-mnu-mail);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-mydocs{
+	--icon: var(--icon-quick-mnu-mydocs);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-payroll{
+	--icon: var(--icon-quick-mnu-payroll);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-post{
+	--icon: var(--icon-quick-mnu-post);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-production{
+	--icon: var(--icon-quick-mnu-production);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-project-manage{
+	--icon: var(--icon-quick-mnu-project-manage);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-project-manage2{
+	--icon: var(--icon-quick-mnu-project-manage2);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-purchase{
+	--icon: var(--icon-quick-mnu-purchase);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-resources{
+	--icon: var(--icon-quick-mnu-resources);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-sales{
+	--icon: var(--icon-quick-mnu-sales);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-settings{
+	--icon: var(--icon-quick-mnu-settings);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-vote{
+	--icon: var(--icon-quick-mnu-vote);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-delete-menu{
+	--icon: var(--icon-quick-delete-menu);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+.qmi.qmi-added-menu{
+	--icon: var(--icon-quick-added-menu);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+

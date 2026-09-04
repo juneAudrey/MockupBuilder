@@ -1,0 +1,966 @@
+/*!
+ *   theme-plugin.css v.1.0
+ *
+ *   sirius theme for plugin
+ *
+ */
+
+@charset "utf-8";
+
+/* ========================================
+   플러그인 통합 CSS (plugin- 접두사) - body.sirius 네임스페이스
+   ======================================== */
+
+/* CSS 변수 정의 */
+:root {
+    --plugin-primary: #007bff;
+    --plugin-secondary: #6c757d;
+    --plugin-dark: #343a40;
+    --plugin-indigo: #6610f2;
+    --plugin-danger: #dc3545;
+    --plugin-warning: #FFBB55;
+    --plugin-info: #4680B3;
+}
+
+/* ========================================
+   공통 컴포넌트 스타일
+   ======================================== */
+body.sirius .plugin-card {
+    background: white;
+    width: 100%;
+}
+
+/* 공통 아이콘 스타일 */
+body.sirius .plugin-icon {
+    grid-column: 1;
+    flex-shrink: 0;
+    width: 64px;
+    height: 64px;
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 20px;
+    position: relative;
+    box-shadow: 0 2px 4px rgba(70, 70, 229, 0.25);
+}
+
+body.sirius .plugin-icon::before {
+    content: attr(data-initial);
+    font-weight: 700;
+    color: white;
+    font-size: 30px;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    position: absolute;
+}
+
+body.sirius .plugin-icon .plugin-icon-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 12px;
+    background: white;
+}
+
+body.sirius .plugin-icon:has(.plugin-icon-image) {
+    background: white;
+}
+
+body.sirius .plugin-icon:has(.plugin-icon-image)::before {
+    display: none;
+}
+
+/* 공통 뱃지 스타일 */
+body.sirius .plugin-badge {
+    color: white;
+    font-size: 12px;
+    /* font-weight: 600; */
+    padding: 2px 12px;
+    border-radius: 10px;
+    /* box-shadow: 0 2px 6px rgba(245, 158, 11, 0.3); */
+    /* text-shadow: 0 1px 2px rgba(0,0,0,0.1); */
+    flex-shrink: 0;
+    white-space: nowrap;
+    text-align: center;
+    min-width: 80px;
+}
+
+body.sirius .plugin-badge.RELEASE {
+    background-color: var(--plugin-warning);
+}
+
+body.sirius .plugin-badge.SNAPSHOT {
+    background-color: var(--plugin-info);
+}
+
+/* 공통 태그 스타일 */
+body.sirius .plugin-tag {
+    cursor: default;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+    font-weight: 500;
+    padding: 4px 14px;
+    border-radius: 10px;
+    transition: all 0.2s ease;
+}
+
+body.sirius .plugin-tag:hover {
+    background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e0 100%);
+    color: #475569;
+    border-color: #cbd5e0;
+    transform: translateY(-1px);
+}
+
+body.sirius .plugin-tag-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 7px;
+}
+
+/* 공통 버튼 액션 스타일 */
+body.sirius .plugin-action-btn {
+    height: auto;
+    padding: 6px 12px;
+    border-radius: 8px;
+    text-align: center;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: white;
+}
+
+body.sirius .plugin-action-btn i {
+    font-size: 12px;
+}
+
+/* 버튼 색상 변형 - 중복 제거 및 통합 */
+body.sirius .plugin-btn-primary {
+    color: var(--plugin-primary);
+    border-color: var(--plugin-primary);
+}
+
+body.sirius .plugin-btn-secondary {
+    color: var(--plugin-secondary);
+    border-color: var(--plugin-secondary);
+}
+
+body.sirius .plugin-btn-dark {
+    color: var(--plugin-dark);
+    border-color: var(--plugin-dark);
+}
+
+body.sirius .plugin-btn-indigo {
+    color: var(--plugin-indigo);
+    border-color: var(--plugin-indigo);
+}
+
+body.sirius .plugin-btn-yellow {
+    color: var(--plugin-warning);
+    border-color: var(--plugin-warning);
+}
+
+body.sirius .plugin-btn-red {
+    color: var(--plugin-danger);
+    border-color: var(--plugin-danger);
+}
+
+body.sirius .plugin-btn-primary:hover {
+    background: var(--plugin-primary);
+    color: white;
+}
+
+body.sirius .plugin-btn-secondary:hover {
+    background: var(--plugin-secondary);
+    color: white;
+}
+
+body.sirius .plugin-btn-dark:hover {
+    background: var(--plugin-dark);
+    color: white;
+}
+
+body.sirius .plugin-btn-indigo:hover {
+    background: var(--plugin-indigo);
+    color: white;
+}
+
+body.sirius .plugin-btn-yellow:hover {
+    background: var(--plugin-warning);
+    color: white;
+}
+
+body.sirius .plugin-btn-red:hover {
+    background: var(--plugin-danger);
+    color: white;
+}
+
+/* 모든 버튼 hover 시 공통 효과 */
+body.sirius .plugin-action-btn:hover {
+    transform: translateY(-1px);
+}
+
+body.sirius .plugin-action-btn.disabled {
+    border: none;
+    background: #e0e0e0;
+    color: #999;
+    pointer-events: none;
+}
+
+/* 공통 텍스트 스타일 */
+body.sirius .plugin-title {
+    color: #1f2937;
+    margin: 0;
+    letter-spacing: -0.025em;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.sirius .plugin-company-info {
+    color: #6b7280;
+    font-size: 14px;
+    margin: 8px 0;
+    font-weight: 500;
+    flex-shrink: 0;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-left: 15px;
+    max-width: 400px;
+}
+
+body.sirius .plugin-description {
+    color: #374151;
+    margin: 4px 0 10px 0;
+    max-height: 3em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+}
+
+/* ========================================
+   플러그인 리스트 스타일
+   ======================================== */
+body.sirius .plugins.list-view {
+    display: block;
+    border-top: 1px solid #e2e8f0;
+}
+
+body.sirius .plugins.list-view .plugin-card {
+    border-bottom: 1px solid #e2e8f0;
+    padding: 13px 20px;
+    margin: 0 auto;
+}
+
+body.sirius .plugins.list-view .plugin-row {
+    display: grid;
+    align-items: start;
+    grid-template-columns: 84px minmax(0,1fr);
+}
+
+body.sirius .plugins.list-view .plugin-icon {
+    grid-row: 1 / span 2;
+}
+
+body.sirius .plugins.list-view .plugin-content {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+}
+
+body.sirius .plugins.list-view .plugin-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+body.sirius .plugins.list-view .plugin-company-info {
+    margin-left: 0;
+    text-align: right;
+}
+
+body.sirius .plugins.list-view .plugin-actions {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: start;
+    justify-self: end;
+    display: flex;
+    gap: 8px;
+    min-height: 0;
+    flex-direction: column;
+    margin-left: 20px;
+    height: 100%;
+    justify-content: space-evenly;
+}
+
+/* ========================================
+   플러그인 카드 스타일
+   ======================================== */
+body.sirius .plugins.card-view {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+    gap: 15px;
+}
+
+body.sirius .plugins.card-view .plugin-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 33px;
+    margin: 0 auto;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+body.sirius .plugins.card-view .plugin-card:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    transform: translateY(-2px);
+}
+
+body.sirius .plugins.card-view .plugin-row {
+    display: grid !important;
+    grid-template-columns: 84px 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 16px;
+    align-items: flex-start;
+}
+
+body.sirius .plugins.card-view .plugin-icon {
+    grid-row: 1;
+}
+
+body.sirius .plugins.card-view .plugin-content {
+    grid-column: 1 / -1;
+    grid-row: 1;
+}
+
+body.sirius .plugins.card-view .plugin-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    padding-left: 84px;
+}
+
+body.sirius .plugins.card-view .plugin-company-info {
+    flex: 0 0 100%;
+    margin: 4px 0 0;
+    text-align: left;
+    min-width: auto;
+    max-width: none;
+}
+
+body.sirius .plugins.card-view .plugin-actions {
+    position: static !important;
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+    display: flex;
+    gap: 8px;
+    width: auto;
+    min-height: 0;
+}
+
+/* ========================================
+   플러그인 상세 페이지 스타일
+   ======================================== */
+
+body.sirius .plugin-dtl-header {
+    padding-left: 12px;
+}
+
+body.sirius .plugin-text-area {
+    flex: 1;
+    min-width: 0;
+    margin-right: 15px;
+}
+
+body.sirius .plugin-title-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+body.sirius .plugin-dtl-title {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: 15px;
+    color: #1f2937;
+    letter-spacing: -0.025em;
+}
+
+body.sirius .DISABLED .plugin-dtl-title,
+body.sirius .DISABLED .plugin-title {
+    color: #999;
+    font-style: italic;
+    text-decoration: line-through;
+    opacity: 0.6;
+}
+
+body.sirius .plugin-manager-info {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #6b7280;
+    font-size: 14px;
+    margin: 0;
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+/* ========================================
+   캐러셀/갤러리 스타일
+   ======================================== */
+body.sirius .plugin-slide-card {
+    justify-content: center;
+    align-items: center;
+    border: none;
+    /* box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); */
+    /* border-radius: 1px; */
+    overflow: hidden;
+    /* margin-bottom: 20px; */
+    /* aspect-ratio: 37 / 10; */
+    padding: 0 0.4rem;
+}
+
+body.sirius .plugin-slide-image {
+	width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+    border: 1px solid #DFDFDF;
+}
+
+body.sirius .plugin-slide-image:hover {
+    transform: scale(1.02);
+}
+
+/* 캐러셀 컨트롤 */
+body.sirius .plugin-carousel .carousel-control-prev,
+body.sirius .plugin-carousel .carousel-control-next {
+    width: 40px;
+    height: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0,0,0,0.5);
+    border-radius: 50%;
+    opacity: 0.8;
+}
+
+body.sirius .plugin-carousel .carousel-control-prev {
+    left: 10px;
+}
+
+body.sirius .plugin-carousel .carousel-control-next {
+    right: 10px;
+}
+
+/* 모달 스타일 */
+body.sirius .plugin-modal-image {
+    max-width: 100%;
+    max-height: 80vh;
+    object-fit: contain;
+}
+
+/* ========================================
+   반응형 스타일
+   ======================================== */
+
+@media (max-width: 768px) {
+    body.sirius .plugin-slide-card {
+        aspect-ratio: 4/3;
+    }
+
+    body.sirius .plugin-card {
+        padding: 15px;
+    }
+
+    body.sirius .plugin-icon {
+        width: 56px;
+        height: 56px;
+        margin-right: 15px;
+    }
+
+    body.sirius .plugin-icon::before {
+        font-size: 26px;
+    }
+
+    body.sirius .plugins.list-view .plugin-row {
+        grid-template-columns: 64px 1fr;
+        grid-template-rows: auto auto auto;
+    }
+}
+
+@media (max-width: 576px) {
+    body.sirius .plugin-slide-card {
+        aspect-ratio: 16/9;
+    }
+
+    body.sirius .plugin-card {
+        padding: 12px;
+    }
+
+    body.sirius .plugin-icon {
+        width: 48px;
+        height: 48px;
+        margin-right: 12px;
+    }
+
+    body.sirius .plugin-icon::before {
+        font-size: 22px;
+    }
+
+    body.sirius .plugin-company-info {
+        min-width: 150px;
+        max-width: 150px;
+        font-size: 12px;
+    }
+
+    body.sirius .plugin-action-btn {
+        font-size: 12px;
+        padding: 6px 10px;
+    }
+}
+
+/* ========================================
+   유틸리티 클래스
+   ======================================== */
+
+body.sirius .plugin-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ========================================
+   Plugin installer
+   ======================================== */
+body.sirius .plugin-progress-overlay {
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    padding: 30px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    z-index: 9999;
+    border: 1px solid rgba(102, 126, 234, 0.2);
+}
+
+/* 위치별 스타일 */
+body.sirius .plugin-progress-overlay.position-left {
+    top: 0;
+    left: 100%;
+    margin-left: 20px;
+}
+
+body.sirius .plugin-progress-overlay.position-center {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+body.sirius .plugin-progress-overlay.position-right {
+    top: 0;
+    right: 100%;
+    margin-right: 20px;
+}
+
+/* 반응형: 작은 화면에서는 모두 중앙 */
+@media (max-width: 768px) {
+    body.sirius .plugin-progress-overlay.position-left,
+    body.sirius .plugin-progress-overlay.position-right {
+        top: 50%;
+        left: 50%;
+        right: auto;
+        margin: 0;
+        transform: translate(-50%, -50%);
+    }
+}
+
+/* 진행 상태 헤더 */
+body.sirius .plugin-progress-overlay .plugin-progress-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+body.sirius .plugin-progress-overlay .plugin-progress-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 20px;
+}
+
+body.sirius .plugin-progress-overlay .plugin-progress-title {
+    flex: 1;
+}
+
+body.sirius .plugin-progress-overlay .plugin-progress-title h4 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 2px;
+}
+
+body.sirius .plugin-progress-overlay .plugin-progress-title p {
+    font-size: 13px;
+    color: #718096;
+    margin: 0;
+}
+
+/* 진행 단계 */
+body.sirius .plugin-progress-overlay .plugin-progress-stages {
+    margin-bottom: 20px;
+}
+
+body.sirius .plugin-progress-overlay .progress-stage-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+body.sirius .plugin-progress-overlay .progress-stage-item:last-child {
+    border-bottom: none;
+}
+
+body.sirius .plugin-progress-overlay .progress-stage-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+body.sirius .plugin-progress-overlay .progress-stage-icon.pending {
+    background: #e2e8f0;
+    color: #a0aec0;
+}
+
+@keyframes falling-sand {
+    0%   { content: "⏳"; }   /* 모래 위에 가득 */
+    25%  { content: "⏳"; }   /* 유지 */
+    50%  { content: "⌛"; }   /* 뒤집힌 모양 (모래 떨어지는 중) */
+    75%  { content: "⌛"; }   /* 유지 */
+    100% { content: "⏳"; }   /* 다시 원래 모양 */
+}
+
+body.sirius .plugin-progress-overlay .progress-stage-icon.pending::before {
+    content: "⏳";
+    animation: falling-sand 1.2s infinite steps(1);
+}
+
+
+body.sirius .plugin-progress-overlay .progress-stage-icon.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    animation: progress-pulse 2s infinite;
+}
+
+body.sirius .plugin-progress-overlay .progress-stage-icon.completed {
+    background: #48bb78;
+    color: white;
+}
+
+body.sirius .plugin-progress-overlay .progress-stage-info {
+    flex: 1;
+}
+
+body.sirius .plugin-progress-overlay .progress-stage-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: #2d3748;
+    margin-bottom: 2px;
+}
+
+body.sirius .plugin-progress-overlay .progress-stage-detail {
+    font-size: 12px;
+    color: #718096;
+}
+
+/* 진행바 */
+body.sirius .plugin-progress-overlay .plugin-progress-bar-container {
+    margin-bottom: 15px;
+}
+
+body.sirius .plugin-progress-overlay .plugin-progress-bar-wrapper {
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+body.sirius .plugin-progress-overlay .plugin-progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+body.sirius .plugin-progress-overlay .plugin-progress-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    animation: progress-shimmer 2s infinite;
+}
+
+body.sirius .plugin-progress-overlay .plugin-progress-percentage {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+body.sirius .plugin-progress-overlay .plugin-progress-text {
+    font-size: 13px;
+    font-weight: 600;
+    color: #667eea;
+}
+
+body.sirius .plugin-progress-overlay .plugin-progress-time {
+    font-size: 12px;
+    color: #a0aec0;
+}
+
+/* 애니메이션 */
+@keyframes progress-pulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.05);
+        opacity: 0.8;
+    }
+}
+
+@keyframes progress-shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+@keyframes progress-fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+body.sirius .plugin-progress-overlay {
+    animation: progress-fadeIn 0.3s ease;
+}
+
+/* 성공/실패 상태 */
+body.sirius .plugin-progress-overlay .progress-status-message {
+    padding: 6px;
+    border-radius: 8px;
+    margin-top: 8px;
+    text-align: center;
+    align-items: center;
+    overflow-wrap: anywhere;
+ }
+
+body.sirius .plugin-progress-overlay .progress-status-message.success {
+    background: #c6f6d5;
+    color: #22543d;
+    border: 1px solid #9ae6b4;
+}
+
+body.sirius .plugin-progress-overlay .progress-status-message.error {
+    background: #fed7d7;
+    color: #742a2a;
+    border: 1px solid #fc8181;
+
+}
+
+body.sirius .plugin-progress-overlay button {
+    padding: 6px;
+    background: #ffffff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+body.sirius .plugin-progress-overlay button:hover {
+    background: #dbdbfd;
+}
+
+body.sirius .plugin-progress-overlay .progress-status-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 8px;
+}
+
+/* 단계별 상태 색상 */
+body.sirius .plugin-progress-overlay .progress-stage-waiting {
+    color: #a0aec0; /* 회색 */
+}
+
+body.sirius .plugin-progress-overlay .progress-stage-active {
+    color: #667eea; /* 파란색 */
+    font-weight: 600;
+}
+
+body.sirius .plugin-progress-overlay .progress-stage-completed {
+    color: #48bb78; /* 초록색 */
+}
+.plugin-error-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;  /* 배경 투명 */
+    display: none;
+    z-index: 10000;
+}
+
+.plugin-error-modal {
+    position: fixed;  /* JS에서 제어 */
+    background: #fff;
+    border-radius: 8px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* 모달 헤더 */
+body.sirius .plugin-error-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+}
+
+body.sirius .plugin-error-modal-header h4 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #dc3545;
+}
+
+body.sirius .plugin-error-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+    padding: 0;
+    line-height: 1;
+}
+
+body.sirius .plugin-error-modal-close:hover {
+    color: #333;
+}
+
+/* 모달 본문 */
+body.sirius .plugin-error-modal-body {
+    padding: 16px 20px;
+    overflow-y: auto;
+    flex: 1;
+    max-height: 50vh;
+}
+
+body.sirius .plugin-error-trace {
+    margin: 0;
+    padding: 12px;
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    color: #333;
+    overflow-x: auto;
+}
+
+/* 모달 푸터 */
+body.sirius .plugin-error-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 20px;
+    border-top: 1px solid #e0e0e0;
+    background: #f8f9fa;
+    border-radius: 0 0 8px 8px;
+}
+
+body.sirius .plugin-error-modal-copy,
+body.sirius .plugin-error-modal-close-btn {
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+body.sirius .plugin-error-modal-copy {
+    background: #007bff;
+    color: #fff;
+    border: none;
+}
+
+body.sirius .plugin-error-modal-copy:hover {
+    background: #0056b3;
+}
+
+body.sirius .plugin-error-modal-close-btn {
+    background: #6c757d;
+    color: #fff;
+    border: none;
+}
+
+body.sirius .plugin-error-modal-close-btn:hover {
+    background: #545b62;
+}

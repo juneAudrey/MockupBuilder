@@ -1,0 +1,437 @@
+@charset "UTF-8";
+/*!
+ *  Portal widget 전용
+ *
+ *   portal-widget.css v.1.0
+ *   Author: Bizentro
+ */
+
+@import url('dashboard-icons.css');
+
+/* widget 내부 */
+.dashboard-container .grid-stack-item-content {
+	border-radius: 12px;
+	border: 1px solid var(--Grayscale-Gray_300, #D9D9D9);
+	background: #FFF;
+}
+
+.dashboard-container .grid-stack-item-content .widget-close-btn,
+.dashboard-container .grid-stack-item-content .widget-reload-btn,
+.dashboard-container .grid-stack-item-content .widget-backdrop {
+	display: none;
+}
+
+.dashboard-container .grid-stack-item-content .widget-wrapper {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	overflow-y: hidden;
+	/* padding: 20px; */
+}
+
+
+.dashboard-container .grid-stack-item-content:has(.widget-auth-overlay) {
+	border: none;
+}
+
+.dashboard-container .grid-stack-item-content.image-mirror-widget {
+	background: rgba(255, 255, 255, 0.08);  /* 투명도 */
+	backdrop-filter: blur(20px);            /* 블러 */
+	-webkit-backdrop-filter: blur(20px);    /* 사파리 대응 */
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 16px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+	color: #fff !important;
+}
+
+.dashboard-container .grid-stack-item-content.image-mirror-widget .widget-title,
+.dashboard-container .grid-stack-item-content.image-mirror-widget .calendar-container:has(.calendar-grid) .calendar-title{
+	color : #fff;
+}
+
+.dashboard-container .grid-stack-item-content.image-mirror-widget .sun-editor-editable{
+	background-color : unset;	
+}
+
+.dashboard-container .grid-stack-item-content.image-mirror-widget .calendar-container:has(.calendar-grid) .date-cell .date-text{
+	color : #efefef;
+}
+
+.dashboard-container .grid-stack-item-content::-webkit-scrollbar {
+	display: none;
+}
+
+body.edit-mode .dashboard-container .grid-stack-item-content:has(.widget-close-btn) {
+	overflow-y: hidden;
+	border: none;
+}
+
+body.edit-mode .dashboard-container.grid-stack {
+	overflow-x: clip;
+}
+
+@supports not (overflow: clip) {
+	body.edit-mode .dashboard-container.grid-stack {
+		overflow-x: hidden;
+	}
+}
+
+body.edit-mode .dashboard-container .grid-stack-item-content:has(.widget-close-btn):active {
+	box-shadow: 0 0 15px 0 rgba(0, 0, 0, 0.25);
+}
+
+body.edit-mode .dashboard-container .widget-backdrop {
+	display: block;
+	height: 100%;
+	width: 100%;
+	position: absolute;
+	left: 0;
+	top: 0;
+	border-radius: 12px;
+	background: rgba(0, 0, 0, 0.20);
+	border: 1px solid var(--Grayscale-Gray_300, #D9D9D9);
+}
+
+body.edit-mode .dashboard-container .widget-backdrop:active {
+	border-radius: 12px;
+	border: 1px dashed var(--Grayscale-Gray_600, #7E7E7E);
+}
+
+body.edit-mode .dashboard-container .widget-close-btn {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	position: absolute;
+	right: 10px;
+	top: 10px;
+	z-index: 5;
+
+	border-radius: 50px;
+	border: 2px solid var(--Grayscale-Gray_300, #D9D9D9);
+	background: var(--Grayscale-White, #FFF);
+	backdrop-filter: blur(4px);
+	height: 40px;
+	width: 40px;
+}
+
+body .dashboard-container .widget-reload-btn {
+	justify-content: center;
+	align-items: center;
+	position: absolute;
+	right: 8px;
+	top: 8px;
+	z-index: 6;
+
+	border-radius: 6px;
+	border: 1px solid var(--Grayscale-Gray_300, #D9D9D9);
+	background: var(--Grayscale-White, #FFF);
+	backdrop-filter: blur(4px);
+	height: 24px;
+	width: 24px;
+	padding: 0;
+	color: var(--Grayscale-Gray_700, #626262);
+	cursor: pointer;
+}
+
+body .dashboard-container .widget-reload-btn i{
+	height : 20px;
+	width : 20px;
+}
+
+body:not(.edit-mode) .dashboard-container .grid-stack-item-content:hover .widget-reload-btn {
+	display: flex;
+}
+
+.dashboard-container .widget-reload-btn:hover {
+	color: var(--ZeniOne-900, #0079FB);
+}
+
+body .dashboard-container .grid-stack-item.unauthorized-widget .grid-stack-item-content .widget-auth-overlay {
+	position: absolute;
+	left: 0;
+	top: 0;
+	background: #fff;
+	opacity: 0.8;
+	height: 100%;
+	width: 100%;
+}
+
+body .dashboard-container .grid-stack-item.unauthorized-widget .grid-stack-item-content .widget-auth-content {
+	position: absolute;
+	left: 0;
+	top: 0;
+	height: 100%;
+	width: 100%;
+	align-items: center;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	border: 1px solid #D9D9D9;
+	border-radius: 12px;
+}
+
+
+body .dashboard-container .grid-stack-item.unauthorized-widget .grid-stack-item-content .widget-auth-title {
+	color: #000;
+	text-align: center;
+
+	/* Title/T2/Semibold */
+	font-family: Pretendard;
+	font-size: 16px;
+	font-style: normal;
+	font-weight: 600;
+	line-height: 26px; /* 162.5% */
+	letter-spacing: -0.048px;
+}
+
+body .dashboard-container .grid-stack-item.unauthorized-widget .grid-stack-item-content .widget-auth-subtext {
+	color: var(--status-option-notification-important, #FF5A5C);
+
+	/* Body/B2/Semibold */
+	font-family: Pretendard;
+	font-size: 14px;
+	font-style: normal;
+	font-weight: 600;
+	line-height: 26px;
+	letter-spacing: -0.042px;
+}
+
+body .dashboard-container .grid-stack-item.unauthorized-widget .grid-stack-item-content .btn-widget-delete {
+	color: #FFF;
+	font-family: Pretendard;
+	font-size: 14px;
+	font-style: normal;
+	font-weight: 600;
+	line-height: 26px; /* 185.714% */
+	letter-spacing: -0.042px;
+	border-radius: 8px;
+	background: var(--Grayscale-Gray_900, #2C2C2C);
+	border: none;
+	display: inline-flex;
+	min-width: 120px;
+	max-width: 400px;
+	padding: 6px 16px;
+	justify-content: center;
+	align-items: center;
+	margin-top: 8px;
+}
+
+body main .content .dashboard-container .dashboard-widget {
+	border-radius: 12px;
+	border: 1px solid var(--Grayscale-Gray_300, #D9D9D9);
+	background: #FFF;
+	backdrop-filter: blur(9.5px);
+	padding: 24px;
+}
+
+body main .grid-stack-item .ui-resizable-handle {
+	background-image: none;
+}
+
+/* custom -- 기존 sirius 디자인 막는 용도 */
+body .dashboard-modal form[data-form-type="S"] .form-group:has(>*:not([style*="display:none"])) {
+	padding: 0;
+	margin: 0;
+}
+
+body .search-group .form-group {
+	padding: 0;
+}
+
+body .search-group .search-tit {
+	padding: 0;
+}
+
+
+/*!------------------------------------------------------
+ * zeni-widget css
+ -------------------------------------------------------*/
+zeni-widget::-webkit-scrollbar {
+	display: none;
+}
+zeni-widget .widget-header {
+    border-bottom: none !important;
+}
+zeni-widget .widget-header .widget-title {
+	display: inline-block;
+	font-size: 20px;
+	font-weight: bold;
+	margin: 0;
+	line-height: 1;
+	display: flex;
+	align-items: center;
+	color : #202020;
+}
+zeni-widget .widget-header .widget-title[data-widget-link] {
+	cursor: pointer;
+}
+
+zeni-widget .widget-header .widget-title > i{
+    --icon: var(--icon-dsi-angle-right);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+    font-size: 14px;
+    font-weight: bold;
+    padding-left: 4px;
+    
+    height : 24px;
+    width : 24px;
+    display : inline-block;
+    background-color: currentColor;
+}
+
+zeni-widget .widget-header .widget-title > i.fa-chevron-right:before{
+	content : unset;
+}
+
+zeni-widget .widget-body {
+    padding-left: 6px;
+    padding-right: 6px;
+}
+zeni-widget .widget-box .widget-header+.widget-body{
+	padding-top: 0!important;;
+    height: calc(100% - 43px);
+    display: flex;
+    flex-direction: column;
+    overflow : auto;
+}
+
+zeni-widget .widget-box .widget-header+.widget-body::-webkit-scrollbar {
+  display: none;
+}
+
+
+zeni-widget .widget-body .list-container-empty{
+    padding-top: 16px;
+    padding-left: 6px;
+}
+
+/*!------------------------------------------------------
+ * zeni-widget skeleton — root 박스 (fetch 동안 표시)
+ *  - widget HTML 삽입 전까지 회색 박스 1개로 영역 점유
+ *  - HTML 삽입 후 view-component.js 가 [data-loaded] 부여 → ::before 사라짐
+ *  - 그 시점에 안의 정밀 skeleton(data-skeleton-target) 이 자연스럽게 드러남
+ -------------------------------------------------------*/
+zeni-widget {
+	display: block;
+	position: relative;
+	min-height: 80px;
+	height : 100%;
+}
+zeni-widget .widget-container{
+	height : 100%;
+}
+zeni-widget .widget-container >.col{
+	height : 100%;
+}
+/* fetch 동안 header 자리(title placeholder)만 표시 — widget 본문 영역은 비워둠.
+   widget HTML 도착 후 [data-loaded] 부여 → 사라지고 본문 영역에 정밀 skeleton(data-skeleton-target) 이 자연스럽게 표시됨. */
+zeni-widget:not([data-loaded])::before {
+	content: '';
+	position: absolute;
+	top: 12px;
+	left: 12px;
+	width: 40%;
+	height: 20px;
+	background: #e0e0e0;
+	border-radius: 4px;
+	animation: zeni-widget-skeleton-pulse 1.5s ease-in-out infinite;
+	pointer-events: none;
+}
+@keyframes zeni-widget-skeleton-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.5; }
+}
+
+/*!------------------------------------------------------
+ * widget content 영역별 skeleton (data-skeleton-target)
+ *  - widget HTML 안에 data-skeleton-target 속성을 두고
+ *  - view-component.js 가 로딩 동안 data-skeleton-state="loading" 부여
+ *  - widget JS 가 데이터 바인딩 후 releaseSkeleton() 으로 해제
+ -------------------------------------------------------*/
+zeni-widget [data-skeleton-target][data-skeleton-state="loading"] {
+	position: relative;
+	overflow: hidden;
+}
+zeni-widget [data-skeleton-target][data-skeleton-state="loading"] > * {
+	visibility: hidden;
+}
+zeni-widget [data-skeleton-target][data-skeleton-state="loading"]::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background: #e0e0e0;
+	border-radius: 8px;
+	animation: zeni-widget-skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+/* 데이터 바인딩 인라인 element ([data-id]) — '_' 깜빡임 ("완성을 기다리는" 느낌)
+   - Ajax.skeleton 이 loading 시 textContent 를 '_' 로 교체
+   - callback 이 실제 값을 set 하면 '_' 가 자동으로 덮어써짐
+   - element 자체는 회색 + 깜빡임 (cursor blink 패턴) */
+zeni-widget [data-skeleton-target][data-skeleton-state="loading"][data-id] {
+	color: #aaa;
+	animation: zeni-widget-blink 1s ease-in-out infinite;
+}
+zeni-widget [data-skeleton-target][data-skeleton-state="loading"][data-id]::after {
+	content: none;
+}
+@keyframes zeni-widget-blink {
+	0%, 100% { opacity: 1; }
+	50%      { opacity: 0.2; }
+}
+
+/*!------------------------------------------------------
+ * skeleton — 컴포넌트별 보강
+ *  - DataContainer fallback : 큰 박스
+ *  - row > column (KPI 셀) : 작은 박스 (박스 간 여백 확보용 inset)
+ *  - listContainer : 줄무늬 (일관된 row 패턴)
+ -------------------------------------------------------*/
+zeni-widget [data-comp-id^="DataContainer" i][data-skeleton-target][data-skeleton-state="loading"] {
+	min-height: 100px;
+}
+zeni-widget [data-comp-id^="DataContainer" i][data-skeleton-target][data-skeleton-state="loading"]::after {
+	inset: 8px;
+}
+zeni-widget [data-comp-id^="row-" i] > [data-comp-id^="column-" i][data-skeleton-target][data-skeleton-state="loading"] {
+	min-height: 60px;
+}
+/* column 박스 사이 여백 확보 — column 영역보다 안쪽으로 6px 들이기 (column 간 12px 여백) */
+zeni-widget [data-comp-id^="row-" i] > [data-comp-id^="column-" i][data-skeleton-target][data-skeleton-state="loading"]::after {
+	inset: 6px;
+	border-radius: 6px;
+}
+zeni-widget [data-comp-id^="listContainer" i][data-skeleton-target][data-skeleton-state="loading"] {
+	/* view-component.js 가 widget-wrapper 가용 높이를 측정하여 --skeleton-min-height 를 부여한다.
+	   부여 실패 시 fallback 으로 140px 사용. skeleton 해제 시 룰 자체가 매치 안 되어 원래 높이로 복귀. */
+	min-height: var(--skeleton-min-height, 140px);
+	overflow: hidden;            /* 영역 넘는 box-shadow 자동 잘림 */
+}
+zeni-widget [data-comp-id^="listContainer" i][data-skeleton-target][data-skeleton-state="loading"]::after {
+	/* 각 row 는 둥근 사각형 — box-shadow 로 N 개 row 복제 (영역 초과 시 overflow 로 자동 잘림)
+	   - 첫 row : ::after 의 box (둥근 사각형, border-radius 6px)
+	   - 이후 row : box-shadow 0 N*40px 0 #e0e0e0 (40px 간격으로 동일 box 복제)
+	   - opacity 애니메이션이 element 전체에 적용되므로 box-shadow 들도 같이 깜빡임 */
+	inset: auto;
+	left: 12px;
+	right: 12px;
+	top: 12px;
+	height: 28px;
+	background: #e0e0e0;
+	border-radius: 6px;
+	box-shadow:
+		0  40px 0 #e0e0e0,
+		0  80px 0 #e0e0e0,
+		0 120px 0 #e0e0e0,
+		0 160px 0 #e0e0e0,
+		0 200px 0 #e0e0e0,
+		0 240px 0 #e0e0e0,
+		0 280px 0 #e0e0e0,
+		0 320px 0 #e0e0e0,
+		0 360px 0 #e0e0e0,
+		0 400px 0 #e0e0e0,
+		0 440px 0 #e0e0e0,
+		0 480px 0 #e0e0e0,
+		0 520px 0 #e0e0e0,
+		0 560px 0 #e0e0e0;
+}

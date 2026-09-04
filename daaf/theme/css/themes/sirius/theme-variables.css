@@ -1,0 +1,116 @@
+/*!
+ *   theme-variables.css v.1.0
+ *
+ *   sirius theme에서 사용되는 css variable 정의
+ *
+ *   Author: donghoon.lee
+ */
+
+@charset "utf-8";
+
+:root {
+	/* base font */
+	--base-font-color: #2c2c2c;  /*  #3e3e3e; */
+	--base-font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Noto Sans KR", sans-serif;
+	--base-font-size : 14px;
+	--base-font-weight : 400;
+
+    --base-content-background: #f6f9fa;
+	--base-background: #009b71;
+	--base-background-rgb : 0, 155, 113;
+
+	/* base nav */
+	--nav-base-font: #fff;
+	--nav-background: #009b71;
+	--nav-scrollbar-background : #077859; /*gnb가 많을 경우 생기는 하단 bar bg*/
+
+	/* gnb, lnb 영역 */
+	--main-header-height : 58px; /* header top height */ /*70->58 , 2025/02/28 changed by donghoon.lee*/
+	--gnb-item-margin-bottom : 16px; /*GNB 각 메뉴의 bottom margin*/
+	--gnb-top-margin : 26px; /* GNB top margin */
+	--gnb-width : 86px; /* GNB width */ /* 80->100 , 2025/02/28 changed by donghoon.lee*/
+	--lnb-width : 220px; /* only LNB width */
+	--left-side-width  : calc(var(--gnb-width) + var(--lnb-width)); /* left side 전체 width */
+
+	/* 최상위 contents 영역*/
+	--content-padding-top  : 6px;
+	--content-padding-left  : 6px;
+	--content-padding-right  : 6px;
+	--content-padding-bottom  : 6px;
+	--menu-tab-height : 32px; /*menu tab 버튼 영역 높이*/
+
+	/*Tab 최상위 영역*/
+	--tab-cont-padding-top : 6px;
+
+	/*Tab panel 영역 height*/
+	--tab-cont-panel-height  : calc(100vh - var(--main-header-height) - var(--menu-tab-height) - var(--content-padding-top) - var(--content-padding-bottom) - var(--tab-cont-padding-top));
+
+	/*Tab Content 개별 page*/
+	--tab-page-padding-top : 16px;
+	--tab-page-padding-right : 12px; /* content-wrapper padding right에 12px 추가*/
+	--tab-page-padding-left : 24px;
+	--tab-page-padding-bottom : 16px;
+	--tab-page-radius : 12px;
+
+	--tab-page-content-padding-right : 12px; /* content-wrapper padding right에 12px 추가*/
+
+	/*Tab Content Title 영역 */
+	--page-title-height : 39px;
+
+	/* page 내부 container별 간격*/
+	--container-section-gap : 20px;
+
+	--image-home: url('../../../images/sirius/home-go.png');
+	--image-home-on: url('../../../images/sirius/home-go-on.png');
+	--image-logout: url('../../../images/sirius/ico-logout.png');
+	--image-home-bg: url('../../../images/sirius/home-bg.png');
+	--ico-star-svg : url('../../../images/sirius/di-star-blue-fill.svg');
+	--menu-board : url('../../../images/sirius/di-menu-board.svg');
+	--menu-date : url('../../../images/sirius/di-menu-date.svg');
+
+	/*plugins으로 이동*/
+	--ico-home-svg: url('../../../images/plugins/sirius/erp/ico-home.svg');
+    --ico-gnb-comm: url('../../../images/plugins/sirius/erp/ico-gnb-comm.svg');
+    --ico-gnb-fi: url('../../../images/plugins/sirius/erp/ico-gnb-fi.svg');
+    --ico-gnb-co: url('../../../images/plugins/sirius/erp/ico-gnb-co.svg');
+    --ico-gnb-sd: url('../../../images/plugins/sirius/erp/ico-gnb-sd.svg');
+    --ico-gnb-mm: url('../../../images/plugins/sirius/erp/ico-gnb-mm.svg');
+    --ico-gnb-im: url('../../../images/plugins/sirius/erp/ico-gnb-im.svg');
+    --ico-gnb-esg: url('../../../images/plugins/sirius/erp/ico-gnb-esg.svg');
+    --ico-gnb-hr: url('../../../images/plugins/sirius/erp/ico-gnb-hr.svg');
+    --ico-gnb-zm: url('../../../images/plugins/sirius/erp/ico-gnb-zm.svg');
+    --ico-gnb-pp: url('../../../images/plugins/sirius/erp/ico-gnb-pp.svg');
+    --ico-gnb-crm: url('../../../images/plugins/sirius/erp/ico-gnb-crm.svg');
+    --ico-gnb-tax: url('../../../images/plugins/sirius/erp/ico-gnb-tax.svg');
+    --ico-menu-date: url('../../../images/plugins/sirius/office/menu-date.svg');
+    --ico-menu-date-over: url('../../../images/plugins/sirius/office/menu-date-over.svg');
+    --ico-menu-board: url('../../../images/plugins/sirius/office/menu-board.svg');
+    --ico-menu-board-over: url('../../../images/plugins/sirius/office/menu-board-over.svg');
+    --ico-dollar-sign: url('../../../images/plugins/sirius/erp/ico-dollar-sign.svg');
+
+    /*ess 추가*/
+    --ico-gnb-att: url('../../../images/plugins/sirius/ess/ico-gnb-att.svg'); /*attendance*/
+    --ico-gnb-benefits: url('../../../images/plugins/sirius/ess/ico-gnb-benefits.svg');
+    --ico-gnb-dept-att: url('../../../images/plugins/sirius/ess/ico-gnb-dept-att.svg');
+    --ico-gnb-edu: url('../../../images/plugins/sirius/ess/ico-gnb-edu.svg');
+    --ico-gnb-eval: url('../../../images/plugins/sirius/ess/ico-gnb-eval.svg');
+    --ico-gnb-org: url('../../../images/plugins/sirius/ess/ico-gnb-org.svg');
+    --ico-gnb-notice: url('../../../images/plugins/sirius/ess/ico-gnb-notice.svg');
+    --ico-gnb-payroll: url('../../../images/plugins/sirius/ess/ico-gnb-payroll.svg');
+    --ico-gnb-recruit: url('../../../images/plugins/sirius/ess/ico-gnb-recruit.svg');
+
+
+    /* Footer 영역 */
+    --page-footer-height : 74px;
+
+	/* widget list ui 용*/
+    --widget-gs-item-margin-top: 5px;
+    --widget-gs-item-margin-bottom: 5px;
+    --widget-gs-item-margin-right: 5px;
+    --widget-gs-item-margin-left: 5px;
+    --widget-gs-column-width: 8.333333333333334%;
+    --widget-gs-cell-height: 144.5px;
+
+    /* 버튼 키보드 포커스(:focus-visible) outline 색상 — ERP-500/600 라인의 더 진한 초록 */
+    --button-focus-outline-color: #009B71;
+}

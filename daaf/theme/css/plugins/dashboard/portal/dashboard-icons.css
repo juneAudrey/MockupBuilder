@@ -1,0 +1,215 @@
+@charset "UTF-8";
+/*!
+ *  dashboard 전용 icon
+ *
+ *   dashboard-icons.css v.1.0
+ *   Author: Bizentro
+ */
+ 
+:root {
+	--icon-dsi-add-dashboard : url("icons/dsi-add-dashboard.svg");
+	--icon-dsi-add-widget : url("icons/dsi-add-widget.svg");
+	--icon-dsi-edit : url("icons/dsi-edit.svg");
+	--icon-dsi-group : url("icons/dsi-group.svg");
+	--icon-dsi-save : url("icons/dsi-save.svg");
+	--icon-dsi-widget-close : url("icons/dsi-widget-close.svg");
+	--icon-dsi-collapse-bar : url("icons/dsi-collapse-bar.svg");
+	--icon-dsi-expand-bar : url("icons/dsi-expand-bar.svg");
+	--icon-dsi-check-circle : url("icons/dsi-check-circle.svg");
+	--icon-dsi-collapse-top : url("icons/dsi-collapse-top.svg");
+	--icon-dsi-collapse-bottom : url("icons/dsi-collapse-bottom.svg");
+	--icon-dsi-widget-search : url("icons/dsi-widget-search.svg");
+	--icon-dsi-widget-search : url("icons/dsi-widget-search.svg");
+	--icon-dsi-edit-pencil : url("icons/dsi-edit-pencil.svg");
+	--icon-dsi-sort-up : url("icons/dsi-sort-up.svg");
+	--icon-dsi-sort-down : url("icons/dsi-sort-down.svg");
+	--icon-dsi-trash-can : url("icons/dsi-trash-can.svg");
+	--icon-dsi-trash-can-long : url("icons/dsi-trash-can-long.svg");
+	--icon-dsi-edit-dashboard-pencil : url("icons/dsi-edit-dashboard-pencil.svg");
+	--icon-dsi-setting-outline : url("icons/dsi-setting-outline.svg");
+	--icon-dsi-quick-mnu-icon : url("icons/dsi-quick-mnu-icon.svg");
+	--icon-dsi-quick-menu-edit : url("icons/dsi-quick-menu-edit.svg");
+	--icon-dsi-angle-right : url("icons/dsi-angle-right.svg");
+	--icon-dsi-angle-down : url("icons/dsi-angle-down.svg");
+	--icon-dsi-menu-down : url("icons/dsi-menu-down.svg");
+	--icon-dsi-menu-up : url("icons/dsi-menu-up.svg");
+	--icon-dsi-eye-close : url("icons/dsi-eye-close.svg");
+	--icon-dsi-eye-filled : url("icons/dsi-eye-filled.svg");
+	--icon-dsi-image-filled : url("icons/dsi-image-filled.svg");
+	--icon-dsi-widget-reload : url("icons/dsi-widget-reload.svg");
+	--icon-dsi-fullscreen : url("icons/dsi-fullscreen.svg");
+}
+
+.dsi {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    -webkit-mask: no-repeat center / contain;
+    mask: no-repeat center / contain;
+    background-color: currentColor;
+    font-size: 0;
+}
+.widget {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    -webkit-mask: no-repeat center / contain;
+    mask: no-repeat center / contain;
+    background-color: currentColor;
+    font-size: 0;
+}
+
+.dsi.dsi-add-dashboard{
+	--icon: var(--icon-dsi-add-dashboard);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.dsi.dsi-add-widget{
+	--icon: var(--icon-dsi-add-widget);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.dsi.dsi-edit{
+	--icon: var(--icon-dsi-edit);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.dsi.dsi-group{
+	--icon: var(--icon-dsi-group);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.dsi.dsi-save{
+	--icon: var(--icon-dsi-save);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-widget-close{
+	--icon: var(--icon-dsi-widget-close);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-collapse-bar{
+	--icon: var(--icon-dsi-collapse-bar);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-expand-bar{
+	--icon: var(--icon-dsi-expand-bar);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-check-circle{
+	--icon: var(--icon-dsi-check-circle);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-collapse-top{
+	--icon: var(--icon-dsi-collapse-top);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-collapse-bottom{
+	--icon: var(--icon-dsi-collapse-bottom);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-widget-search{
+	--icon: var(--icon-dsi-widget-search);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-edit-pencil{
+	--icon: var(--icon-dsi-edit-pencil);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-sort-up{
+	--icon: var(--icon-dsi-sort-up);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-sort-down{
+	--icon: var(--icon-dsi-sort-down);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-trash-can{
+	--icon: var(--icon-dsi-trash-can);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-trash-can-long{
+	--icon: var(--icon-dsi-trash-can-long);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-edit-dashboard-pencil{
+	--icon: var(--icon-dsi-edit-dashboard-pencil);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-setting-outline{
+	--icon: var(--icon-dsi-setting-outline);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-quick-mnu-icon{
+	--icon: var(--icon-dsi-quick-mnu-icon);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-quick-menu-edit{
+	--icon: var(--icon-dsi-quick-menu-edit);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-angle-right{
+	--icon: var(--icon-dsi-angle-right);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-angle-down{
+	--icon: var(--icon-dsi-angle-down);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-menu-down{
+	--icon: var(--icon-dsi-menu-down);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-menu-up{
+	--icon: var(--icon-dsi-menu-up);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-eye-close{
+	--icon: var(--icon-dsi-eye-close);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-eye-filled{
+	--icon: var(--icon-dsi-eye-filled);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-image-filled{
+	--icon: var(--icon-dsi-image-filled);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-widget-reload{
+	--icon: var(--icon-dsi-widget-reload);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.dsi.dsi-fullscreen{
+	--icon: var(--icon-dsi-fullscreen);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}

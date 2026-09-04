@@ -1,0 +1,820 @@
+/*!
+ *  daaf-jsgantt.css  —  JSGantt Modern Skin  v5
+ *
+ *  역할 분담:
+ *   - CSS → 테두리 / 폰트 / border-radius 등 구조적 스타일만 담당
+ *   -  JS  → Row Height / 막대 높이 / 수직 중앙 / 색상 (inline style 직접 주입)
+ *
+ *  ★ Builder와 Runtime과 동일한 css를 사용합니다. 수정시 동시에 반영해주세요.
+ *
+ *   Author: donghoon.lee
+ */
+
+
+/* ─── 전체 컨테이너 ──────────────────────────────────────── */
+.daaf-jsgantt {
+  font-family: 'Inter', 'Pretendard', -apple-system, sans-serif !important;
+  font-size: var(--jsgantt-font-size, 13px) !important;
+  border: 1px solid #ebeff2;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+  width: 100%;
+  min-width: 720px; /* 좌측 grid 최소 + 우측 chart 최소 영역 확보 */
+}
+
+
+/* ─── 좌측 상단 toolbar (전체 접기, 전체화면) ─────────────────── */
+.daaf-jsgantt .gselector {
+  display: flex;
+  align-items: center;
+}
+.daaf-jsgantt .gselector .daaf-toolbar {
+  margin-left: auto;
+  margin-right: 10px;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.daaf-jsgantt .daaf-toolbar-btn {
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.daaf-jsgantt .daaf-toolbar-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+  color: #1f2937;
+}
+
+/* debug 모드 검증 경고 버튼 + popover — level별 색상 */
+.daaf-jsgantt .daaf-toolbar-btn.daaf-toolbar-warn {
+  color: #b45309;
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+.daaf-jsgantt .daaf-toolbar-btn.daaf-toolbar-warn.daaf-warn-error {
+  color: #b91c1c;
+  border-color: #ef4444;
+  background: #fef2f2;
+}
+.daaf-jsgantt .daaf-toolbar-btn.daaf-toolbar-warn.daaf-warn-info {
+  color: #1d4ed8;
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+.daaf-jsgantt .daaf-toolbar-btn.daaf-toolbar-warn:hover {
+  filter: brightness(0.95);
+}
+
+.daaf-warn-error { color: #b91c1c; }
+.daaf-warn-warn  { color: #b45309; }
+.daaf-warn-info  { color: #1d4ed8; }
+/* warn popover — portal로 body 직속 배치 가능 */
+.daaf-toolbar-warn-menu {
+  width: 600px !important;
+  max-width: calc(100vw - 16px) !important;
+  min-width: 0 !important;
+  max-height: 60vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 14px !important;
+  background: #fff !important;
+  border: 1px solid #f59e0b !important;
+  border-radius: 6px !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15) !important;
+  z-index: 100000 !important;
+  font-family: 'Inter', 'Pretendard', system-ui, -apple-system, sans-serif;
+}
+.daaf-toolbar-warn-menu::before,
+.daaf-toolbar-warn-menu::after {
+  content: '';
+  position: absolute;
+  left: var(--daaf-arrow-left, 50%);
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+}
+.daaf-toolbar-warn-menu::before {
+  top: -8px;
+  border-bottom: 8px solid #f59e0b;
+}
+.daaf-toolbar-warn-menu::after {
+  top: -7px;
+  border-bottom: 8px solid #fff;
+}
+.daaf-toolbar-warn-title {
+  font-weight: 600;
+  color: #92400e;
+  font-size: 13px;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid #f59e0b;
+}
+.daaf-toolbar-warn-item {
+  padding: 6px 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #374151;
+  border-bottom: 1px dashed #e5e7eb;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+.daaf-toolbar-warn-item:last-child {
+  border-bottom: none;
+}
+
+/* toolbar separator */
+.daaf-jsgantt .daaf-toolbar-separator {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: #d1d5db;
+  margin: 0 4px;
+}
+
+/* download dropdown */
+.daaf-jsgantt .daaf-toolbar-dropdown {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.daaf-jsgantt .daaf-toolbar-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 140px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  z-index: 10000;
+  padding: 4px 0;
+}
+.daaf-jsgantt .daaf-toolbar-dropdown.gantt_open .daaf-toolbar-menu {
+  display: block;
+}
+.daaf-jsgantt .daaf-toolbar-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #374151;
+  text-decoration: none;
+  cursor: pointer;
+}
+.daaf-jsgantt .daaf-toolbar-menu-item:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+.daaf-jsgantt .daaf-toolbar-menu-item > i {
+  width: 14px;
+  text-align: center;
+  color: #6b7280;
+}
+
+/* Print: 인쇄 시 차트만 출력 (visibility 방식 — 깊은 DOM도 동작) */
+@media print {
+  body.daaf-jsgantt-printing * {
+    visibility: hidden !important;
+  }
+  body.daaf-jsgantt-printing .daaf-jsgantt-print-target,
+  body.daaf-jsgantt-printing .daaf-jsgantt-print-target * {
+    visibility: visible !important;
+  }
+  body.daaf-jsgantt-printing .daaf-jsgantt-print-target {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  body.daaf-jsgantt-printing .daaf-jsgantt-print-target .daaf-toolbar,
+  body.daaf-jsgantt-printing .daaf-jsgantt-print-target .daaf-chart-resize-handle,
+  body.daaf-jsgantt-printing .daaf-jsgantt-print-target .daaf-col-resize-handle {
+    visibility: hidden !important;
+  }
+  /* 우측 chart body 스크롤 영역 — 인쇄에서는 전체 펼침 */
+  body.daaf-jsgantt-printing .daaf-jsgantt-print-target .gchartgrid,
+  body.daaf-jsgantt-printing .daaf-jsgantt-print-target .gtasktableouterwrapper {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+}
+
+@keyframes daaf-fs-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.daaf-jsgantt-fs-close:hover {
+  background: #e5e7eb !important;
+}
+
+.daaf-jsgantt .gCurDate {
+  border-color: #2bd407;
+}
+
+.daaf-jsgantt .gDepFS,
+.daaf-jsgantt .gDepSS,
+.daaf-jsgantt .gDepSF,
+.daaf-jsgantt .gDepFF {
+  border-color: #7985db;
+  border-style: solid;
+  border-width: 1px;
+}
+.daaf-jsgantt .gDepFSArw,
+.daaf-jsgantt .gDepSSArw {
+  border-left-color: #7985db !important;
+}
+.daaf-jsgantt .gDepFFArw,
+.daaf-jsgantt .gDepSFArw {
+  border-right-color: #7985db !important;
+}
+
+.daaf-jsgantt th,
+.daaf-jsgantt td,
+.daaf-jsgantt div {
+  font-size: inherit !important;
+  line-height: 1;
+}
+
+.daaf-jsgantt .gtasknolist-label {
+  padding: 2px 50px;
+}
+
+/* ─── 막대 wrapper div 높이 ─────────────────────────────────
+   JSGantt는 .gtaskcelldiv 높이를 지정하지 않아 auto(콘텐츠 크기)가 됨.
+   height:100% 로 부모 td를 꽉 채워야 막대 centering·화살표 좌표가 정확해짐. */
+.daaf-jsgantt .gtaskcell.gtaskcellcolorbar>.gtaskcelldiv,
+.daaf-jsgantt .gtaskcell.gtaskcellbar>.gtaskcelldiv {
+  height: 100%;
+}
+
+/* ─── 테이블 공통 ────────────────────────────────────────── */
+.daaf-jsgantt table {
+  border-collapse: collapse !important;
+}
+
+/* ─── 헤더 ───────────────────────────────────────────────── */
+.daaf-jsgantt th {
+  background-color: #f8f9fa !important;
+  color: #4b5563 !important;
+  font-weight: 600 !important;
+  padding: 8px 10px !important;
+  border-bottom: 2px solid #e5e7eb !important;
+  border-right: 1px solid #ebeff2 !important;
+  white-space: nowrap;
+}
+
+
+
+/* 우측 타임라인 셀 테두리 — height는 건드리지 않음 */
+.daaf-jsgantt .gchartgrid td {
+  border-bottom: 1px solid #f3f4f6 !important;
+  border-right: 1px dashed #e5e7eb !important;
+  padding: 0 !important;
+}
+
+/* ─── 막대 컨테이너 ────────────────────────────────────────
+   [핵심 설계 원칙]
+   1. display:flex 절대 금지 → float:left/right endpoint 화살표가 무효화됨
+   2. top:0 강제 → JSGantt가 container를 임의 위치에 놓으면
+      margin-top 중앙 정렬 공식 (rowH-barH)/2 이 어긋남.
+      top:0 으로 항상 td 상단 기준으로 통일.
+   3. height = rowH → float endpoint가 bar 아래에 배치될 공간 확보
+   4. overflow:visible → bar 아래로 나오는 endpoint 삼각형 표시
+   ──────────────────────────────────────────────────────── */
+.daaf-jsgantt .gtaskbarcontainer {
+  top: 0 !important;
+  height: var(--jsgantt-row-height, 30px) !important;
+  overflow: visible !important;
+}
+
+/* ─── 막대(Bar) 공통 기반 ────────────────────────────────── */
+/* 실제 막대 클래스: .gtaskblue/.gtaskgreen/.gtaskred/.ggroupblack 등
+   높이는 JS inline style(setProperty important)로 주입.
+   여기서는 모양(border-radius, overflow 등)만 담당 */
+.daaf-jsgantt .gtaskblue,
+.daaf-jsgantt .gtaskgreen,
+.daaf-jsgantt .gtaskred,
+.daaf-jsgantt .gtaskyellow,
+.daaf-jsgantt .gtaskpurple,
+.daaf-jsgantt .gtaskpink,
+.daaf-jsgantt .ggroupblack,
+.daaf-jsgantt .ggroupblackendpoint {
+  border: none !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+  background-image: none !important;
+  overflow: hidden !important;
+  position: relative !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+/* ─── 진행률(complete) ───────────────────────────────────── */
+/* 실제 클래스: .gtaskbluecomplete/.gtaskgreencomplete 등
+   부모 bar 색상을 상속 + brightness(0.75)로 25% 어둡게 표시 */
+.daaf-jsgantt [class$="complete"] {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background-color: inherit !important;
+  background-image: none !important;
+  filter: brightness(0.75) !important;
+  opacity: 1 !important;
+  z-index: 1 !important;
+}
+
+/* ─── 막대 옆 캡션 숨김 ──────────────────────────────────── */
+.daaf-jsgantt .gcaptiontext,
+.daaf-jsgantt .gtaskcell caption,
+.daaf-jsgantt .gtaskbar+td div,
+.daaf-jsgantt .gtaskbar+span,
+.daaf-jsgantt .gcharttable td span {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* ─── 뷰 모드 셀렉터 (구분: 일 주 월 분기) ────────────────── */
+.daaf-jsgantt .gselector {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  max-width: unset;
+  width: 100%;
+}
+
+.daaf-jsgantt .gformlabel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.daaf-jsgantt .gformlabel:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.daaf-jsgantt .gformlabel.gselected {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.daaf-jsgantt .gformlabel.gselected:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+/* ─── 트리 토글 ─────────────────────────────────────────── */
+.daaf-jsgantt .gfoldercollapse {
+  color: #6b7280;
+  text-decoration: none;
+  font-weight: bold;
+  margin-right: 5px;
+  cursor: pointer;
+  font-size: 20px;
+}
+
+/* ─── 태스크 데이터 행 높이 ─────────────────────────────────
+   JSGantt 내장 CSS: .gcharttable tr { height: 22px !important }
+   이를 더 높은 명시도 + !important로 override.
+   id="childrow_XXX" 패턴이 JSGantt의 모든 태스크 데이터 행에 붙음.
+   → Draw() 이전부터 적용되므로 화살표 좌표 계산도 rowHeight 기준으로 맞아떨어짐.
+   ──────────────────────────────────────────────────────── */
+.daaf-jsgantt div.gchartgrid>table.gcharttable>tbody>tr,
+.daaf-jsgantt div.gchartgrid>table.gcharttable>tbody>tr>td,
+.daaf-jsgantt tr.footerdays,
+.daaf-jsgantt tr.footerdays>td {
+  height: var(--jsgantt-row-height, 30px) !important;
+  max-height: var(--jsgantt-row-height, 30px) !important;
+}
+
+/* ─── 좌측 body 스크롤바 숨김 (스크롤은 우측과 동기화) ───────── */
+.daaf-jsgantt .gtasktableouterwrapper::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
+/* ─── 좌측 grid cell 텍스트 overflow 처리 ─────────────────────
+   컬럼 너비를 초과하는 텍스트는 ellipsis로 자르고 호버 시 title 제공. */
+.daaf-jsgantt .glistlbl td,
+.daaf-jsgantt .gtasktable td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.daaf-jsgantt .glistlbl td > div,
+.daaf-jsgantt .gtasktable td > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── 우측 하단 resize 핸들 제거 ──────────────────────────────
+   JSGantt가 .gmainleft / .gmainright 에 inline resize:horizontal 을 부여함.
+   우리는 자체 column resize 핸들을 사용하므로 모두 비활성화. */
+.daaf-jsgantt .gmainleft,
+.daaf-jsgantt .gmainright,
+.daaf-jsgantt,
+.daaf-jsgantt .gchartgrid,
+.daaf-jsgantt .gtasktableouterwrapper,
+.daaf-jsgantt .gtasktablewrapper {
+  resize: none !important;
+}
+
+/* ─── JSGantt 우측 스크롤바 보정 padding 제거 ──────────────────
+   .rhscrpad는 JSGantt가 헤더와 차트 body 양쪽에 동일한 너비로
+   추가하는 placeholder div. 가로 스크롤 동기화 계산에 사용됨.
+   display:none 대신 width:0 으로 두 영역 모두 0폭 유지하여
+   헤더-body 너비 동기화를 깨지 않으면서 가로 스크롤만 제거. */
+.daaf-jsgantt .rhscrpad {
+  width: 0 !important;
+  min-width: 0 !important;
+}
+
+/* ─── 좌측 grid 컬럼 리사이즈 핸들 ────────────────────────────
+   각 cell 우측 가장자리 5px 영역. 평소엔 투명, hover 시 col-resize 커서만. */
+.daaf-jsgantt .daaf-col-resize-handle {
+  position: absolute !important;
+  top: 0 !important;
+  right: 0 !important;
+  left: auto !important;
+  width: 5px !important;
+  min-width: 5px !important;
+  max-width: 5px !important;
+  height: 100% !important;
+  cursor: col-resize !important;
+  user-select: none !important;
+  z-index: 10 !important;
+  box-sizing: border-box !important;
+  background: transparent;
+}
+
+/* 컬럼 리사이즈 드래그 시 따라오는 세로 가이드라인 */
+.daaf-jsgantt .daaf-col-resize-guideline {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: #0d6efd;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+
+/* ─── Milestone — 파란 마름모(채워진), 위치는 jsgantt 원본 유지 ─── */
+.daaf-jsgantt .gmilestone {
+  font-size: 0 !important;
+  color: transparent !important;
+  width: 12px !important;
+  height: 12px !important;
+  margin-top: 2px;
+  background: #2563eb !important;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+/* group expand/collapse +/- 텍스트는 visible하게 두되 보이지 않게 */
+.daaf-jsgantt .gfoldercollapse {
+  display: inline-block;
+  position: relative;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  margin-right: 4px;
+  color: transparent !important;
+  font-size: 0 !important;
+  cursor: pointer;
+  vertical-align: middle;
+}
+/* JS가 추가한 i.fa로 chevron 표시 */
+.daaf-jsgantt .gfoldercollapse > i.fa {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #4b5563;
+  pointer-events: none;
+}
+
+/* footer 제거*/
+.daaf-jsgantt tfoot {
+  display: none !important;
+}
+
+/* 우측 chart header font weight 정상화 */
+.daaf-jsgantt .gcharttableh,
+.daaf-jsgantt .gcharttableh th,
+.daaf-jsgantt .gcharttableh td {
+  font-weight: normal !important;
+}
+
+.daaf-jsgantt .daaf-chart-resize-handle {
+  position: absolute !important;
+  top: 0 !important;
+  right: 0 !important;
+  left: auto !important;
+  width: 12px !important;
+  min-width: 12px !important;
+  max-width: 12px !important;
+  height: 100% !important;
+  cursor: col-resize !important;
+  user-select: none !important;
+  z-index: 10 !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #adb5bd;
+  background: transparent;
+  transition: color 0.15s ease;
+}
+.daaf-jsgantt .daaf-chart-resize-handle > i {
+  font-size: 11px;
+  pointer-events: none;
+}
+.daaf-jsgantt .daaf-chart-resize-handle:hover {
+  color: #495057 !important;
+}
+
+/* ─── Fullscreen overlay & modal ────────────────────────────── */
+.daaf-jsgantt-fs-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #fff;
+  z-index: 99998;
+  animation: daaf-fs-fade-in 0.15s ease-out;
+}
+.daaf-jsgantt-fs-modal {
+  background: #fff;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+.daaf-jsgantt-fs-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 99999;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: #f3f4f6;
+  color: #374151;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+/* ─── 좌측 grid 셀 선택 ────────────────────────────────────────
+   엑셀처럼 클릭한 셀에 파란 테두리 표시. Ctrl+C로 텍스트 복사.
+   box-shadow inset 사용 — outline의 1px 어긋남 회피. */
+.daaf-jsgantt .gtasktable td.daaf-cell-selected {
+  box-shadow: inset 0 0 0 1px #bac7ea !important;
+  background-color: rgba(37, 99, 235, 0.08) !important;
+  position: relative;
+  z-index: 5;
+}
+
+/* ─── 좌측 grid 셀 드래그 범위 선택 ────────────────────────────
+   엑셀처럼 마우스 드래그로 사각 영역을 선택. */
+.daaf-jsgantt .gtasktable td.daaf-cell-range {
+  background-color: rgba(37, 99, 235, 0.12) !important;
+  position: relative;
+  z-index: 5;
+}
+
+/* ─── Row 선택 (인디케이터 클릭 시) ─────────────────────────────
+   td에 inset box-shadow로 top/bottom 라인 표시.
+   z-index를 충분히 높여 인접 row의 border 위에 그려지도록. */
+.daaf-jsgantt .gtasktable tr.daaf-row-selected td {
+  background-color: rgba(37, 99, 235, 0.12) !important;
+  position: relative;
+  z-index: 10;
+  box-shadow:
+    inset 0  1px 0 0 #bac7ea,
+    inset 0 -1px 0 0 #bac7ea !important;
+}
+.daaf-jsgantt .gtasktable tr.daaf-row-selected td:first-child {
+  box-shadow:
+    inset  1px  1px 0 0 #bac7ea,
+    inset  0   -1px 0 0 #bac7ea !important;
+}
+.daaf-jsgantt .gtasktable tr.daaf-row-selected td:last-child {
+  box-shadow:
+    inset -1px  1px 0 0 #bac7ea,
+    inset  0   -1px 0 0 #bac7ea !important;
+}
+
+/* ─── 인디케이터 (gtasklist 셀) ────────────────────────────────
+   각 row 좌측에 있는 작은 spacer cell. line no / status icon 표시. */
+.daaf-jsgantt .gtasklist.daaf-indicator {
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  text-align: center;
+  font-size: 11px;
+  color: #6b7280;
+  background-color: #f8f9fa;
+  border-right: 1px solid #e5e7eb !important;
+  cursor: pointer;
+  user-select: none;
+}
+.daaf-jsgantt .gtasklist.daaf-indicator .daaf-indicator-content {
+  display: inline-block;
+  line-height: 1;
+}
+.daaf-jsgantt .gtasklist.daaf-indicator-active {
+  background-color: rgba(37, 99, 235, 0.15) !important;
+  color: #1e40af !important;
+  font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Tooltip Themes (set on body via UJsGantt: daaf-tooltip-{theme})
+   - dark   : Dark glassmorphism (default recommended)
+   - light  : Light minimal (Notion 스타일)
+   - accent : Soft blue accent
+   ═══════════════════════════════════════════════════════════ */
+
+/* 공통 — 모든 테마에 적용 */
+body[class*="daaf-tooltip-"] .JSGanttToolTip .gTaskInfo {
+  width: auto !important;
+  min-width: 280px;
+  max-width: 420px;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  font-family: 'Inter', 'Pretendard', system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+}
+body[class*="daaf-tooltip-"] .JSGanttToolTip .gTaskInfo .gTtTitle {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  margin: 0 0 8px 0 !important;
+  padding-bottom: 6px;
+}
+body[class*="daaf-tooltip-"] .JSGanttToolTip .gTaskInfo .gTaskLabel {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  margin: 2px 0 !important;
+}
+body[class*="daaf-tooltip-"] .JSGanttToolTip .gTaskInfo .gTaskText {
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  padding-top: 0 !important;
+}
+
+/* ── A. Dark glassmorphism ── */
+body.daaf-tooltip-dark .JSGanttToolTip .gTaskInfo {
+  background: rgba(17, 24, 39, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3) !important;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: #f3f4f6 !important;
+}
+body.daaf-tooltip-dark .JSGanttToolTip .gTaskInfo .gTtTitle {
+  color: #f9fafb !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+body.daaf-tooltip-dark .JSGanttToolTip .gTaskInfo .gTaskLabel {
+  color: #94a3b8 !important;
+}
+body.daaf-tooltip-dark .JSGanttToolTip .gTaskInfo .gTaskText {
+  color: #f1f5f9 !important;
+}
+
+/* ── B. Light minimal ── */
+body.daaf-tooltip-light .JSGanttToolTip .gTaskInfo {
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+  color: #1f2937 !important;
+}
+body.daaf-tooltip-light .JSGanttToolTip .gTaskInfo .gTtTitle {
+  color: #111827 !important;
+  border-bottom: 1px solid #f1f5f9;
+}
+body.daaf-tooltip-light .JSGanttToolTip .gTaskInfo .gTaskLabel {
+  color: #6b7280 !important;
+}
+body.daaf-tooltip-light .JSGanttToolTip .gTaskInfo .gTaskText {
+  color: #111827 !important;
+}
+
+/* ── C. Soft accent (blue) ── */
+body.daaf-tooltip-accent .JSGanttToolTip .gTaskInfo {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1) !important;
+  color: #334155 !important;
+}
+body.daaf-tooltip-accent .JSGanttToolTip .gTaskInfo .gTtTitle {
+  color: #1e40af !important;
+  border-bottom: 1px solid #dbeafe;
+}
+body.daaf-tooltip-accent .JSGanttToolTip .gTaskInfo .gTaskLabel {
+  color: #64748b !important;
+}
+body.daaf-tooltip-accent .JSGanttToolTip .gTaskInfo .gTaskText {
+  color: #0f172a !important;
+}
+
+.JSGanttToolTip .gTaskInfo {
+    background: #dbecff;
+    width: 400px;
+    border: #656565 1px solid;
+    border-radius: 10px;
+    padding: 4px 6px 4px 6px;
+    float: left;
+}
+
+.JSGanttToolTip .gTaskInfo .gTtTitle {
+    font-size: 12px;
+    font-weight: bold;
+    color: #404040;
+    margin-left: 4px;
+    margin-bottom: 1em;
+}
+
+.JSGanttToolTip .gTaskInfo .gTaskLabel {
+    font-size: 12px;
+    font-weight: bold;
+    color: #656565;
+    margin-left: 4px;
+}
+.JSGanttToolTip .gTaskInfo .gTaskText {
+    position: absolute;
+    left: 90px;
+    padding-top: 1px;
+    font-size: 12px;
+    font-weight: normal;
+    color: #656565;
+}
+.daaf-jsgantt .text-left,
+.daaf-jsgantt .text-left > * {
+	text-align: left !important;
+}
+.daaf-jsgantt .text-center,
+.daaf-jsgantt .text-center > * {
+	text-align: center !important;
+}
+.daaf-jsgantt .text-right,
+.daaf-jsgantt .text-right > * {
+	text-align: right !important;
+}
+
+.daaf-jsgantt .text-left {
+	padding-left : 4px;
+}
+.daaf-jsgantt .text-right{
+	padding-right : 4px;
+}
+.daaf-jsgantt .gstartdate > div{
+	width : 100%;
+    min-width: unset;
+    max-width: unset;
+}
+

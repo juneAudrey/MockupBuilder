@@ -1,0 +1,475 @@
+
+
+
+@charset "utf-8";
+
+:root {
+	--icon-mi-address-pin: url('mobileIcons/mi-address-pin.svg');
+	--icon-mi-alarm-bell: url('mobileIcons/mi-alarm-bell.svg');
+	--icon-mi-attachment-file: url('mobileIcons/mi-attachment-file.svg');
+	--icon-mi-bookmark-outline: url('mobileIcons/mi-bookmark-outline.svg');
+	--icon-mi-bookmark: url('mobileIcons/mi-bookmark.svg');
+	--icon-mi-calendar-outline: url('mobileIcons/mi-calendar-outline.svg');
+	--icon-mi-calendar: url('mobileIcons/mi-calendar.svg');
+	--icon-mi-card-outline: url('mobileIcons/mi-card-outline.svg');
+	--icon-mi-card: url('mobileIcons/mi-card.svg');
+	--icon-mi-chart-outline: url('mobileIcons/mi-chart-outline.svg');
+	--icon-mi-chart: url('mobileIcons/mi-chart.svg');
+	--icon-mi-circle-check-outline: url('mobileIcons/mi-circle-check-outline.svg');
+	--icon-mi-circle-check: url('mobileIcons/mi-circle-check.svg');
+	--icon-mi-clip: url('mobileIcons/mi-clip.svg');
+	--icon-mi-clipboard-outline: url('mobileIcons/mi-clipboard-outline.svg');
+	--icon-mi-clipboard: url('mobileIcons/mi-clipboard.svg');
+	--icon-mi-clock-outline: url('mobileIcons/mi-clock-outline.svg');
+	--icon-mi-clock: url('mobileIcons/mi-clock.svg');
+	--icon-mi-close: url('mobileIcons/mi-close.svg');
+	--icon-mi-close-circle: url('mobileIcons/mi-close-circle.svg');
+	--icon-mi-collapse-expand: url('mobileIcons/mi-collapse-expand.svg');
+	--icon-mi-collapse-fold: url('mobileIcons/mi-collapse-fold.svg');
+	--icon-mi-company-outline: url('mobileIcons/mi-company-outline.svg');
+	--icon-mi-company: url('mobileIcons/mi-company.svg');
+	--icon-mi-cooperation-outline: url('mobileIcons/mi-cooperation-outline.svg');
+	--icon-mi-cooperation: url('mobileIcons/mi-cooperation.svg');
+	--icon-mi-document: url('mobileIcons/mi-document.svg');
+	--icon-mi-documnet-outline: url('mobileIcons/mi-documnet-outline.svg');
+	--icon-mi-edit: url('mobileIcons/mi-edit.svg');
+	--icon-mi-exit: url('mobileIcons/mi-exit.svg');
+	--icon-mi-exchange: url('mobileIcons/mi-exchange.svg');
+	--icon-mi-favorite-star-off: url('mobileIcons/mi-favorite-star-off.svg');
+	--icon-mi-favorite-star: url('mobileIcons/mi-favorite-star.svg');
+	--icon-mi-file-down: url('mobileIcons/mi-file-down.svg');
+	--icon-mi-filter-outline: url('mobileIcons/mi-filter-outline.svg');
+	--icon-mi-filter-setting: url('mobileIcons/mi-filter-setting.svg');
+	--icon-mi-filter: url('mobileIcons/mi-filter.svg');
+	--icon-mi-home-outline: url('mobileIcons/mi-home-outline.svg');
+	--icon-mi-home: url('mobileIcons/mi-home.svg');
+	--icon-mi-mail-closed-outline: url('mobileIcons/mi-mail-closed-outline.svg');
+	--icon-mi-mail-closed: url('mobileIcons/mi-mail-closed.svg');
+	--icon-mi-mail-open-outline: url('mobileIcons/mi-mail-open-outline.svg');
+	--icon-mi-mail-open: url('mobileIcons/mi-mail-open.svg');
+	--icon-mi-menu-more-outline: url('mobileIcons/mi-menu-more-outline.svg');
+	--icon-mi-menu-more: url('mobileIcons/mi-menu-more.svg');
+	--icon-mi-minus-delete: url('mobileIcons/mi-minus-delete.svg');
+	--icon-mi-pinned: url('mobileIcons/mi-pinned.svg');
+	--icon-mi-plus-add: url('mobileIcons/mi-plus-add.svg');
+	--icon-mi-question-circle-outline: url('mobileIcons/mi-question-circle-outline.svg');
+	--icon-mi-resources-outline: url('mobileIcons/mi-resources-outline.svg');
+	--icon-mi-resources: url('mobileIcons/mi-resources.svg');
+	--icon-mi-save: url('mobileIcons/mi-save.svg');
+	--icon-mi-search: url('mobileIcons/mi-search.svg');
+	--icon-mi-send: url('mobileIcons/mi-send.svg');
+	--icon-mi-settings-outline: url('mobileIcons/mi-settings-outline.svg');
+	--icon-mi-settings: url('mobileIcons/mi-settings.svg');
+	--icon-mi-stamp-outline: url('mobileIcons/mi-stamp-outline.svg');
+	--icon-mi-stamp: url('mobileIcons/mi-stamp.svg');
+	--icon-mi-time-clock: url('mobileIcons/mi-time-clock.svg');
+	--icon-mi-trash-can: url('mobileIcons/mi-trash-can.svg');
+	--icon-mi-user-info-outline: url('mobileIcons/mi-user-info-outline.svg');
+	--icon-mi-user-info: url('mobileIcons/mi-user-info.svg');
+	--icon-mi-world-language-outline: url('mobileIcons/mi-world-language-outline.svg');
+	--icon-mi-world-language: url('mobileIcons/mi-world-language.svg');
+	--icon-mi-logout : url("mobileIcons/mi-logout.svg")
+}
+
+.mi {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    -webkit-mask: no-repeat center / contain;
+    mask: no-repeat center / contain;
+    background-color: currentColor;
+    font-size: 0;
+}
+
+.mi.mi-address-pin {
+    --icon: url('mobileIcons/mi-address-pin.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-alarm-bell {
+    --icon: url('mobileIcons/mi-alarm-bell.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-attachment-file {
+    --icon: url('mobileIcons/mi-attachment-file.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-bookmark-outline {
+    --icon: url('mobileIcons/mi-bookmark-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-bookmark {
+    --icon: url('mobileIcons/mi-bookmark.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-calendar-outline {
+    --icon: url('mobileIcons/mi-calendar-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-calendar {
+    --icon: url('mobileIcons/mi-calendar.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-card-outline {
+    --icon: url('mobileIcons/mi-card-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-card {
+    --icon: url('mobileIcons/mi-card.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-chart-outline {
+    --icon: url('mobileIcons/mi-chart-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-chart {
+    --icon: url('mobileIcons/mi-chart.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-circle-check-outline {
+    --icon: url('mobileIcons/mi-circle-check-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-circle-check {
+    --icon: url('mobileIcons/mi-circle-check.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-clip {
+    --icon: url('mobileIcons/mi-clip.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-clipboard-outline {
+    --icon: url('mobileIcons/mi-clipboard-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-clipboard {
+    --icon: url('mobileIcons/mi-clipboard.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-clock-outline {
+    --icon: url('mobileIcons/mi-clock-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-clock {
+    --icon: url('mobileIcons/mi-clock.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-close {
+    --icon: url('mobileIcons/mi-close.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-close-circle {
+    --icon: url('mobileIcons/mi-close-circle.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-collapse-expand {
+    --icon: url('mobileIcons/mi-collapse-expand.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-collapse-fold {
+    --icon: url('mobileIcons/mi-collapse-fold.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-company-outline {
+    --icon: url('mobileIcons/mi-company-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-company {
+    --icon: url('mobileIcons/mi-company.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-cooperation-outline {
+    --icon: url('mobileIcons/mi-cooperation-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-cooperation {
+    --icon: url('mobileIcons/mi-cooperation.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-document {
+    --icon: url('mobileIcons/mi-document.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-documnet-outline {
+    --icon: url('mobileIcons/mi-documnet-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-edit {
+    --icon: url('mobileIcons/mi-edit.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-exit {
+    --icon: url('mobileIcons/mi-exit.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-exchange {
+    --icon: url('mobileIcons/mi-exchange.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-favorite-star-off {
+    --icon: url('mobileIcons/mi-favorite-star-off.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-favorite-star {
+    --icon: url('mobileIcons/mi-favorite-star.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-file-down {
+    --icon: url('mobileIcons/mi-file-down.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-filter-outline {
+    --icon: url('mobileIcons/mi-filter-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-filter-setting {
+    --icon: url('mobileIcons/mi-filter-setting.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-filter {
+    --icon: url('mobileIcons/mi-filter.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-home-outline {
+    --icon: url('mobileIcons/mi-home-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-home {
+    --icon: url('mobileIcons/mi-home.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+/* li.on .mi.mi-home {
+    background-color: #068965;
+} */
+
+.mi.mi-mail-closed-outline {
+    --icon: url('mobileIcons/mi-mail-closed-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-mail-closed {
+    --icon: url('mobileIcons/mi-mail-closed.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-mail-open-outline {
+    --icon: url('mobileIcons/mi-mail-open-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-mail-open {
+    --icon: url('mobileIcons/mi-mail-open.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-menu-more-outline {
+    --icon: url('mobileIcons/mi-menu-more-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-menu-more {
+    --icon: url('mobileIcons/mi-menu-more.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-minus-delete {
+    --icon: url('mobileIcons/mi-minus-delete.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-pinned {
+    --icon: url('mobileIcons/mi-pinned.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-plus-add {
+    --icon: url('mobileIcons/mi-plus-add.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-question-circle-outline {
+    --icon: url('mobileIcons/mi-question-circle-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-resources-outline {
+    --icon: url('mobileIcons/mi-resources-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-resources {
+    --icon: url('mobileIcons/mi-resources.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-save {
+    --icon: url('mobileIcons/mi-save.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-search {
+    --icon: url('mobileIcons/mi-search.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-send {
+    --icon: url('mobileIcons/mi-send.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-settings-outline {
+    --icon: url('mobileIcons/mi-settings-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-settings {
+    --icon: url('mobileIcons/mi-settings.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-stamp-outline {
+    --icon: url('mobileIcons/mi-stamp-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-stamp {
+    --icon: url('mobileIcons/mi-stamp.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-time-clock {
+    --icon: url('mobileIcons/mi-time-clock.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-trash-can {
+    --icon: url('mobileIcons/mi-trash-can.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-user-info-outline {
+    --icon: url('mobileIcons/mi-user-info-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-user-info {
+    --icon: url('mobileIcons/mi-user-info.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-world-language-outline {
+    --icon: url('mobileIcons/mi-world-language-outline.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.mi.mi-world-language {
+    --icon: url('mobileIcons/mi-world-language.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.mi.mi-logout {
+    --icon: url('mobileIcons/mi-logout.svg');
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}

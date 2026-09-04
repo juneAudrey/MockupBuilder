@@ -1,0 +1,72 @@
+{
+  "id": "2336536",
+  "name": "HR_MAIN",
+  "font_family": "iconfont",
+  "css_prefix_text": "icon-",
+  "description": "",
+  "glyphs": [
+    {
+      "icon_id": "1842121",
+      "name": "menu",
+      "font_class": "menu",
+      "unicode": "e601",
+      "unicode_decimal": 58881
+    },
+    {
+      "icon_id": "380367",
+      "name": "plus",
+      "font_class": "plus",
+      "unicode": "e661",
+      "unicode_decimal": 58977
+    },
+    {
+      "icon_id": "722172",
+      "name": "arrow-right",
+      "font_class": "arrow-right",
+      "unicode": "e75c",
+      "unicode_decimal": 59228
+    },
+    {
+      "icon_id": "11741016",
+      "name": "arrow_down",
+      "font_class": "arrow-down",
+      "unicode": "e684",
+      "unicode_decimal": 59012
+    },
+    {
+      "icon_id": "133257",
+      "name": "exit",
+      "font_class": "exit",
+      "unicode": "e904",
+      "unicode_decimal": 59652
+    },
+    {
+      "icon_id": "432461",
+      "name": "file",
+      "font_class": "file",
+      "unicode": "e600",
+      "unicode_decimal": 58880
+    },
+    {
+      "icon_id": "564079",
+      "name": "talk1",
+      "font_class": "msg",
+      "unicode": "e636",
+      "unicode_decimal": 58934
+    },
+    {
+      "icon_id": "8879771",
+      "name": "home",
+      "font_class": "home",
+      "unicode": "e609",
+      "unicode_decimal": 58889
+    },
+    {
+      "icon_id": "11993413",
+      "name": "star",
+      "font_class": "star",
+      "unicode": "e77c",
+      "unicode_decimal": 59260
+    }
+  ]
+}

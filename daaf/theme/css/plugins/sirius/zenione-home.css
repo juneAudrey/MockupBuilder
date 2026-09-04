@@ -1,0 +1,722 @@
+/*!
+ *   home.css v.1.0
+ *
+ *   ZenyOne Home 용 css
+ *
+ *   반드시 body.sirius .zenione를 넣어주세요.
+ *
+ *   Author: donghoon.lee
+ */
+
+@charset "utf-8";
+
+body.sirius .zenione nav {
+    background: #009b71;
+}
+body.sirius .zenione header > .home-go > .home-btn-open:hover{
+  background: #143e82;
+}
+
+body.sirius .zenione header > .home-go > .home-btn-open:hover .ic-home {
+    background: url("../../../images/plugins/sirius/common/home-go-on.png") no-repeat center center;
+}
+body.sirius .zenione header > .home-go > .home-btn-open > .ic-home {
+    background: url("../../../images/plugins/sirius/common/home-go.png") no-repeat center center;
+}
+
+body.sirius .zenione .top-area .profile:hover ,
+body.sirius .zenione .top-area .profile:has(.layer-mypage.active) {
+	color: #fff;	
+}
+
+body.sirius .zenione .main-top h2 {
+    color: #202020;
+    height: 62px;
+}
+
+body.sirius .zenione header > .home-go {
+    height: calc(var(--main-header-height) - 1px);
+}
+/*zenione log height가 좀 작음 */
+body.sirius .zenione .top{
+    padding: 16px 0px 0px 24px;
+    margin-left: 20px;
+}
+
+@media screen and (max-width: 991px) {
+    .logo {
+        margin-left: 0px;
+    }
+}
+
+body.sirius header {
+    min-width: 1390px;
+}
+
+body.sirius .zenione .main-top h2 span {
+    font-size: 30px;
+    font-weight: 600;
+    line-height: 62px;
+    display: inline-block;
+    vertical-align: middle;
+    padding-left: 80px;
+}
+body.sirius .zenione .main-body {
+    padding: 0 0 24px;
+}
+
+body.sirius .zenione .main-body > h3 {
+    font-size: 24px;
+    color: #202020;
+    font-weight: 400;
+}
+
+body.sirius .zenione .main-body > h3 b {
+    font-weight: 800;
+}
+
+body.sirius .zenione .main-body .service-wrap {
+    display: flex;
+    margin-top: 24px;
+    gap: 20px;
+    margin-bottom:40px;
+}
+
+body.sirius .zenione .main-body .service-box {
+    position: relative;
+    /* width: 33%; */
+    height: 240px;
+    border-radius: 12px;
+    color: #fff;
+    padding: 24px 24px;
+    background-size: cover;
+    cursor: pointer;
+}
+body.sirius .zenione .main-body .service-box h4 {
+    font-size: 30px;
+    font-weight: 800;
+    color: #fff;
+}
+
+body.sirius .zenione .main-body .service-box p {
+    padding-top: 8px;
+    color: rgba(255, 255, 255, 0.90);
+    font-family: Pretendard;
+    font-size: 16px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 26px;
+    letter-spacing: -0.048px;
+}
+body.sirius .zenione .menu-baro {
+    position: absolute;
+    left: 24px;
+    bottom: 24px;
+}
+
+body.sirius .zenione .menu-baro .colum-area {
+    position: relative;
+}
+body.sirius .zenione .menu-view {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+}
+body.sirius .zenione .menu-view span {
+    display: block;
+    width: 32px;
+    height: 32px;
+    margin: 0 auto;
+    font-size: 0;
+    background: url("../../../images/plugins/sirius/main/icon-gogo.svg") no-repeat center;
+    background-size: 32px 32px;
+}
+
+body.sirius .zenione .menu-unfold {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 5px 20px;
+    border-radius: 200px;
+    visibility: visible;
+    display: none;
+    transition: 0.3s;
+    cursor: pointer;
+}
+body.sirius .zenione .me-flex {
+    display: flex;
+    padding: 0 8px;
+    gap: 6px;
+}
+body.sirius .zenione .me-flex .se-menu {
+    width: 40px;
+    margin: 0 auto;
+    text-align: center;
+    height: 100%;
+    cursor: pointer;
+}
+body.sirius .zenione .se-menu span.icon.home {
+    background: url("../../../images/plugins/sirius/main/icon-home.svg") no-repeat center;
+}
+body.sirius .zenione .se-menu span.icon.mail {
+    background: url(../../../images/plugins/sirius/main/icon-mail.svg) no-repeat center;
+}
+body.sirius .zenione .se-menu span.icon.pay {
+    background: url(../../../images/plugins/sirius/main/icon-pay.svg) no-repeat center;
+}
+body.sirius .zenione .se-menu span.icon.schedule {
+    background: url(../../../images/plugins/sirius/main/icon-schedule.svg) no-repeat center;
+}
+body.sirius .zenione .se-menu span.icon {
+    margin: 0 auto;
+    width: 32px;
+    height: 32px;
+}
+body.sirius .zenione .se-menu span {
+    display: block;
+    color: #fff;
+    text-align: center;
+}
+body.sirius .zenione .se-menu span.tit {
+    font-size: 11px;
+    font-weight: 500;
+}
+
+body.sirius .zenione header .home-go .sidenav {
+    height: 494px;
+    width: 336px;
+    position: absolute;
+    z-index: 90;
+    top: 75px;
+    left: 0;
+    border-radius: 12px;
+    background-color: #ffffff;
+    overflow-x: hidden;
+    transition: 0.05s;
+    visibility: visible;
+}
+
+body.sirius .zenione header .home-go a {
+    outline: none;
+    display: block;
+}
+body.sirius .zenione header .home-go .sidenav .closebtn {
+    position: absolute;
+    top: 5px;
+    right: 20px;
+    font-size: 36px;
+}
+body.sirius .zenione header .home-go .sidenav a {
+    padding: 8px 8px 8px 32px;
+    text-decoration: none;
+    font-size: 25px;
+    color: #cdcdcd;
+    display: block;
+    transition: 0.02s;
+}
+
+body.sirius .zenione .job-area {
+    position: relative;
+    margin: 24px 0 0;
+    width: 100%;
+    background: #fff;
+    padding: 24px 24px;
+    border-radius: 16px;
+}
+
+body.sirius .zenione .top-head {
+    width: 100%;
+    position: relative;
+}
+
+body.sirius .zenione .divide-min-content {
+    margin-top: 24px;
+}
+
+body.sirius .zenione .t-right {
+    position: absolute;
+    top: 0;
+    right: 0;
+}
+
+body.sirius .zenione .total-search-box.input {
+    width: 380px;
+}
+
+body.sirius .zenione .total-search-box.input .search-input-box input {
+    width: 92%;
+}
+
+body.sirius .zenione .search-input-box::after {
+    content: "";
+    width: 1px;
+    height: 22px;
+    background: #dfdfdf;
+    display: inline-block;
+    position: absolute;
+    top: 8px;
+    right: 0;
+}
+
+body.sirius .zenione .search-input-box {
+    padding: 5px 0;
+    width: calc(100% - 120px);
+    display: inline-block;
+    position: relative;
+    border-radius: 8px;
+}
+
+body.sirius .zenione .total-search-box.input .select-wrap {
+    display: inline-block;
+    vertical-align: top;
+    width: 112px;
+    height: 36px;
+    border: none;
+}
+
+body.sirius .zenione .select-wrap {
+    width: 100%;
+    height: 38px;
+    padding: 6px 0 6px 0;
+    border: 1px solid #dfdfdf;
+    border-radius: 8px;
+    background: url("../../../images/plugins/sirius/common/arr-select.svg") no-repeat 95% center;
+}
+
+body.sirius .zenione .select-wrap select {
+    width: 100%;
+    height: 100%;
+    padding: 0 28px 0 12px;
+    font-size: 14px;
+    border: 0;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    background: transparent;
+}
+
+body.sirius .zenione .select-wrap select option {
+    padding: 0;
+    font-size: 14px;
+    color: #202020;
+}
+
+body.sirius .zenione .divide-button-area {
+    display: inline-block;
+}
+
+body.sirius .zenione .divide-button-area.darkblue .btn-tab-active {
+    background: #143E82;
+    border-color: #143E82;
+}
+
+body.sirius .zenione .btn-tab-active {
+    color: #fff !important;
+    background-color: #2793e9 !important;
+    border-color: #2793e9 !important;
+}
+
+body.sirius .zenione .btn-tab-top {
+    height: 38px;
+    padding: 10px 16px;
+    border-radius: 24px;
+    border: 1px solid #dfdfdf;
+    background-color: #fff;
+    color: #747474;
+    margin-right: 8px;
+    cursor: pointer;
+}
+
+body.sirius .zenione .ex-table {
+    width: 100%;
+}
+
+body.sirius .zenione .ex-table table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+body.sirius .zenione .ex-table thead {
+    border-radius: 8px;
+    background: #ebf0f2;
+}
+
+body.sirius .zenione .ex-table thead th:first-child {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+body.sirius .zenione .ex-table thead th {
+    padding: 10px 16px;
+    color: #747474;
+    font-size: 12px;
+    text-align: left;
+}
+
+body.sirius .zenione .ex-table td {
+    padding: 11px 16px 10px;
+    background: #fff;
+    color: #202020;
+    font-size: 14px;
+    border-bottom: 1px solid #efefef;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+    text-align: left;
+}
+
+
+body.sirius .zenione .icon-type.office {
+    background: url(../../../images/plugins/sirius/main/icon-office.svg) no-repeat center;
+}
+body.sirius .zenione .icon-type.erp {
+    background: url(../../../images/plugins/sirius/main/icon-erp.svg) no-repeat center;
+}
+body.sirius .zenione .icon-type.bi {
+    background: url(../../../images/plugins/sirius/main/icon-bi.svg) no-repeat center;
+}
+
+body.sirius .zenione .icon-type {
+    display: inline-block;
+    width: 30px;
+    height: 30px;
+}
+
+body.sirius .zenione .worker {
+    display: inline-block;
+}
+
+body.sirius .zenione .worker .po-profile {
+    width: 20px;
+    height: 20px;
+    display: inline-block;
+}
+
+body.sirius .zenione .worker > span {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+body.sirius .zenione .worker .name {
+    padding-left: 6px;
+}
+
+body.sirius .zenione .badge.darkblue {
+    background-color: #F3F5FB;
+    color: #2E59A4;
+}
+
+body.sirius .zenione .badge {
+    display: inline-block;
+    border-radius: 4px;
+    background: #F5F5F5;
+    color: #747474;
+    font-size: 12px;
+    font-weight: 500;
+    min-width: 60px;
+    height: 24px;
+    line-height: 1.714rem;
+    padding: 0 8px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+body.sirius .zenione .search-input-box input {
+    width: 83%;
+    height: 26px;
+    border: none;
+    color: #202020;
+    margin-left: 8px;
+    text-align: left !important;
+}
+
+body.sirius .zenione .total-search-box {
+    width: 100%;
+    height: 38px;
+    border: 1px solid #dfdfdf;
+    border-radius: 8px;
+    display: inline-block;
+    position: relative;
+    background-color: #fff;
+}
+
+body.sirius .zenione .worker .po-profile {
+    width: 20px;
+    height: 20px;
+    display: inline-block;
+}
+
+body.sirius .zenione .worker > span {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+body.sirius .zenione .worker .po-profile img {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+}
+
+body.sirius .zenione .btn-list-add {
+    background: url(../../../images/plugins/sirius/office/common_line.svg) no-repeat center;
+    background-size: 24px 24px;
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    font-size: 0;
+    vertical-align: middle;
+    border: none;
+}
+
+body.sirius .zenione .badge.green {
+    background-color: #E7F7F3;
+    color: #28CA89;
+}
+
+body.sirius .zenione .badge.blue {
+    background: #e3f1fc;
+    color: #2793e9 !important;
+}
+
+body.sirius .zenione .content.main-display{
+	padding: 24px 40px;
+}
+
+body.sirius .zenione .wj-cells .wj-cell.wj-state-selected:not(.cell-button){
+    background: unset !important;
+    border-top: none;
+    border-bottom: 1px solid #e9e9e9;    
+}
+body.sirius .zenione .notice-area .wj-cells .wj-cell.wj-state-multi-selected {
+    background: unset !important;
+    border-top: none;
+    border-bottom: 1px solid #e9e9e9;
+}
+
+body.sirius .zenione .notice-area .wj-row:hover .wj-cell.wj-state-selected:not(.cell-button){
+   background: #f9f9f9 !important;
+    cursor: pointer;
+    width: 100%;
+}
+body.sirius .zenione .notice-area .wj-row:hover .wj-cells .wj-cell.wj-state-multi-selected {
+    background: #f9f9f9 !important;
+    cursor: pointer;
+    width: 100%;
+}
+
+
+body.sirius .zenione .notice-area .wj-row:hover .wj-cell{
+    background: #f9f9f9;
+    cursor: pointer;
+    width: 100%;
+}
+
+body.sirius .zenione .notice-area .wj-row:hover .wj-cell.wj-alt{
+    background: #f9f9f9;
+    cursor: pointer;
+    width: 100%;
+}
+
+body.sirius .zenione .notice-area .page-btn.selected {
+    background: #0079FB;
+}
+
+body.sirius .zenione header .object-footer .change-buttons {
+    display: flex;
+    gap: 2px;
+    justify-content: space-between;
+}
+
+body.sirius .zenione header .object-footer .change-buttons button {
+    padding-right: 10px;
+    padding-left: 4px;
+    font-size: 13px;
+}
+
+/* scroll */
+::-webkit-scrollbar {
+    width: 11px;
+    scrollbar-width: 11px;
+    /*스크롤바의 너비*/
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: #ececec;
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background-color: transparent;
+}
+/* scroll end */
+
+/*skeleton*/
+body.sirius .skeleton.is-loading {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+    min-height: 30px;
+}
+
+/*상단 프로필 박스 수정*/
+.profile .mybox img {
+    display: none;
+}
+
+body.sirius .top-area  .profile .mybox span {
+    margin: 0;
+}
+
+body.sirius .top-area .profile {
+    padding: 0 16px;
+}
+
+body.sirius .top-area .profile:hover,body.sirius .top-area .profile:has(.layer-mypage.active) {
+    background: var(--Grayscale-Gray_100, #ECECEC);
+}
+body.sirius .top-area .profile:hover span, body.sirius .top-area .profile:has(.layer-mypage.active) span {
+    color: var(--Typography-Black-900, #202020);
+    font-family: Pretendard;
+    font-size: 17px;
+    font-style: normal;
+    font-weight: 400;
+    letter-spacing: -0.048px;
+}
+
+
+body.sirius header .profile .layer-mypage {
+    width: 160px;
+}
+
+body.sirius header .object-cover {
+    padding: 10px 0;
+}
+
+.object-cover .object-top {
+    display: none;
+}
+
+body.sirius header .object-body {
+    display: none;
+}
+
+body.sirius header .object-footer ul li {
+    padding: 0;
+}
+
+body.sirius header .object-footer .change-buttons {
+    flex-direction: column;
+}
+body.sirius header .object-footer .change-buttons button {
+     border: none;
+    text-align: left;
+    padding-left: 16px !important;
+    color: var(--Grayscale-Black, #111) !important;
+    font-family: Pretendard !important;
+    font-size: 14px !important;
+    font-style: normal !important;
+    font-weight: 400 !important;
+}
+/*개인정보변경*/
+body.sirius header .object-footer .change-buttons button#mainChangeUserInfo:before{
+    content: "";
+    width: 20px;
+    height: 20px;
+    background: url(../../../images/plugins/sirius/common/mybox-member.svg) no-repeat;
+    display:inline-block;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+/*비밀번호변경*/
+body.sirius header .object-footer .change-buttons button#mainChangePwd:before{
+    content: "";
+    width: 20px;
+    height: 20px;
+    background: url(../../../images/plugins/sirius/common/mybox-pass.svg) no-repeat;
+    display:inline-block;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+/*로그아웃*/
+body.sirius header .object-footer ul li:last-child button:before {
+    content: "";
+    width: 20px;
+    height: 20px;
+    background: url(../../../images/plugins/sirius/common/mybox-logout.svg) no-repeat;
+    display:inline-block;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+body.sirius header .object-footer ul li:last-child:hover {
+    background: #efefef;
+}
+body.sirius header .object-footer li:last-child button span.di.di-logout {
+    line-height: 38px !important;
+    margin-left: 0px;
+}
+body.sirius header .object-footer li:last-child button
+ {
+    padding-left: 16px !important;
+}
+body.sirius header .object-footer .change-buttons div:hover {background: #efefef;}
+body.sirius header .object-footer button span {
+    color: var(--Grayscale-Black, #111) !important;
+    font-family: Pretendard  !important;
+    font-size: 14px  !important;
+    font-style: normal  !important;
+    font-weight: 400  !important;
+    line-height: 26px  !important; /* 185.714% */
+    letter-spacing: -0.042px;
+}
+body.sirius header .object-footer button {
+    border: none;
+    text-align: left;
+    padding-left: 36px !important;
+}
+body.sirius header .profile .layer-mypage {
+    left: -20px;
+}
+body.sirius .top-area .profile:hover span, body.sirius .top-area .profile:has(.layer-mypage.active) span {
+    line-height: 58px !important;
+}
+
+body.sirius .widget-body .table-responsive {
+    display: flex;
+    padding: 24px;
+    flex-direction: column;    
+    gap: 10px;
+    align-self: stretch;
+    border-radius: 16px;
+    background: var(--Grayscale-White, #FFF);
+} 
+
+body.sirius .widget-body .table-responsive .row.grid-toolbar {
+    display: none;
+}
+
+body.sirius .wj-colheaders > .wj-row > .wj-cell.wj-header {
+    border: none;
+    overflow: hidden;
+    color: var(--Grayscale-Gray_700, #626262);
+    text-overflow: ellipsis;
+    font-family: Pretendard;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 20px; /* 142.857% */
+    letter-spacing: 0.42px;
+    line-height: 25px;
+}
+
+body.sirius .wj-flexgrid {
+    border: none!important;
+}
+
+body.sirius .wj-flexgrid .wj-cell {
+    padding-left: 16px;
+    align-content: center;
+}

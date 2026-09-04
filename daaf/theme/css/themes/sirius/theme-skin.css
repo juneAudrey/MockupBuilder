@@ -1,0 +1,395 @@
+/*!
+ * theme-skin.css v.2.0 (Optimized)
+ *
+ * sirius skin 정의
+ * - bright-blue, lime-green, vivid-orange, royal-violet, soft-rose, warm-umber, deep-navy
+ *
+ * 최적화 내용:
+ * 1. body.sirius:has(> .wapper.[스킨]) 형태로 팝업/모달 전역 스킨 적용
+ * 2. CSS 변수(Variables)를 활용하여 스킨별 중복 코드(약 80% 이상) 제거
+ */
+
+@charset "utf-8";
+
+/* ========================================
+   1. 스킨별 변수 정의 (Root Level)
+   ======================================== */
+
+/* Bright Blue & BC */
+body.sirius:has(> .wapper.bright-blue),
+body.sirius:has(> .wapper.bc) {
+    --base-background: #0079FB;
+    --base-background-rgb: 0, 121, 251;
+    --expand-btn-grad-start: #799b0f;
+    --expand-btn-grad-end: #a8da14;
+    --icon-bg-active: #0079FB;
+    --menu-active-bg: #f2f8ff;
+    --menu-active-color: #3394fc;
+    --btn-search-hover: #0079FB;
+    --scroll-arrow-bg: #006de6;
+    --btn-form-hover: #6cb3ff;
+    --tag-border: #8e8deb;
+    --tag-bg: #E7F7F3;
+    --icheck-bg-img: url(../../../js/lib/iCheck/flat/blue.png);
+}
+
+/* Lime Green */
+body.sirius:has(> .wapper.lime-green) {
+    --base-background: #95C312;
+    --base-background-rgb: 149, 195, 18;
+    --expand-btn-grad-start: #799b0f;
+    --expand-btn-grad-end: #a8da14;
+    --icon-bg-active: #ADDA2F;
+    --menu-active-bg: #EAF1CB;
+    --menu-active-color: #95C312;
+    --btn-search-hover: #89B313;
+    --scroll-arrow-bg: #89B313;
+    --btn-form-hover: #ADDA2F;
+    --tag-border: #bcd854;
+    --tag-bg: #F4F9E3;
+    --icheck-bg-img: url(../../../js/lib/iCheck/flat/orange.png);
+}
+
+/* Vivid Orange */
+body.sirius:has(> .wapper.vivid-orange) {
+    --base-background: #ff8000;
+    --base-background-rgb: 255, 128, 0;
+    --expand-btn-grad-start: #cc6600;
+    --expand-btn-grad-end: #ff9a33;
+    --icon-bg-active: #ffb84d;
+    --menu-active-bg: #fff4e6;
+    --menu-active-color: #ff8000;
+    --btn-search-hover: #e67300;
+    --scroll-arrow-bg: #d45f00;
+    --btn-form-hover: #e67300;
+    --tag-border: #eab66a;
+    --tag-bg: #fff4e6;
+    --icheck-bg-img: url(../../../js/lib/iCheck/flat/orange.png);
+}
+
+/* Royal Violet */
+body.sirius:has(> .wapper.royal-violet) {
+    --base-background: #7369A3;
+    --base-background-rgb: 115, 105, 163;
+    --expand-btn-grad-start: #5f5686;
+    --expand-btn-grad-end: #8a7fc0;
+    --icon-bg-active: #a59dd0;
+    --menu-active-bg: #eae7f7;
+    --menu-active-color: #7369A3;
+    --btn-search-hover: #5f5686;
+    --scroll-arrow-bg: #584f7e;
+    --btn-form-hover: #5f5686;
+    --tag-border: #c5c0e4;
+    --tag-bg: #eae7f7;
+    --icheck-bg-img: url(../../../js/lib/iCheck/flat/purple.png);
+}
+
+/* Soft Rose */
+body.sirius:has(> .wapper.soft-rose) {
+    --base-background: #D96C75;
+    --base-background-rgb: 217, 108, 117;
+    --expand-btn-grad-start: #b55a62;
+    --expand-btn-grad-end: #ec8e96;
+    --icon-bg-active: #e69ea4;
+    --menu-active-bg: #f9e8e9;
+    --menu-active-color: #D96C75;
+    --btn-search-hover: #b55a62;
+    --scroll-arrow-bg: #b55a62;
+    --btn-form-hover: #b55a62;
+    --tag-border: #e69ea4;
+    --tag-bg: #f9e8e9;
+    --icheck-bg-img: url(../../../js/lib/iCheck/flat/pink.png);
+}
+
+/* Warm Umber */
+body.sirius:has(> .wapper.warm-umber) {
+    --base-background: #A36A5B;
+    --base-background-rgb: 163, 106, 91;
+    --expand-btn-grad-start: #87574a;
+    --expand-btn-grad-end: #c48b7d;
+    --icon-bg-active: #c48b7d;
+    --menu-active-bg: #f1e9e7;
+    --menu-active-color: #A36A5B;
+    --btn-search-hover: #87574a;
+    --scroll-arrow-bg: #87574a;
+    --btn-form-hover: #87574a;
+    --tag-border: #c48b7d;
+    --tag-bg: #f1e9e7;
+    --icheck-bg-img: url(../../../js/lib/iCheck/flat/red.png);
+}
+
+/* Deep Navy */
+body.sirius:has(> .wapper.deep-navy) {
+    --base-background: #1A237E;
+    --base-background-rgb: 26, 35, 126;
+    --expand-btn-grad-start: #111756;
+    --expand-btn-grad-end: #283593;
+    --icon-bg-active: #3949ab;
+    --menu-active-bg: #e6eefb;
+    --menu-active-color: #1A237E;
+    --btn-search-hover: #111756;
+    --scroll-arrow-bg: #0d125a;
+    --btn-form-hover: #111756;
+    --tag-border: #3949ab;
+    --tag-bg: #e6eefb;
+    --icheck-bg-img: url(../../../js/lib/iCheck/flat/blue.png);
+}
+
+/* 키보드 포커스 outline 색을 각 skin 의 메인 색(--base-background) 으로 매핑
+ *  - 모든 skin 이 --base-background 를 정의하므로 1줄로 전 skin 자동 반영
+ *  - theme.css 의 :focus-visible 규칙에서 var(--button-focus-outline-color) 로 사용
+ */
+body.sirius:has(> .wapper[class*="-"]),
+body.sirius:has(> .wapper.bc) {
+    --button-focus-outline-color: var(--base-background);
+}
+
+
+/* ========================================
+   2. 공통 스킨 스타일 (Selector Optimization)
+   ======================================== */
+
+/* 네비게이션 및 헤더 공통 배경색 */
+body.sirius:has(> .wapper[class*="-"]),
+body.sirius:has(> .wapper.bc) {
+    /* 이 블록 내부의 규칙들은 지정된 스킨들이 렌더링될 때만 전역적으로 적용됩니다. */
+}
+
+body.sirius:has(> .wapper[class*="-"]) nav,
+body.sirius:has(> .wapper.bc) nav {
+    background: var(--base-background);
+}
+
+body.sirius:has(> .wapper[class*="-"]) header > .home-go > .home-btn-open:hover,
+body.sirius:has(> .wapper.bc) header > .home-go > .home-btn-open:hover {
+    background: var(--base-background);
+}
+
+/* 확장 버튼 그라데이션 */
+body.sirius:has(> .wapper[class*="-"]) button.expand-btn,
+body.sirius:has(> .wapper.bc) button.expand-btn {
+    background: linear-gradient(135deg, var(--expand-btn-grad-start), var(--expand-btn-grad-end));
+}
+
+/* 메뉴 아이콘 호버 / 액티브 */
+body.sirius:has(> .wapper[class*="-"]) .global-nav-bar ul li .menu-item:hover .icon:before,
+body.sirius:has(> .wapper[class*="-"]) .global-nav-bar ul li .menu-item.active .icon:before,
+body.sirius:has(> .wapper.bc) .global-nav-bar ul li .menu-item:hover .icon:before,
+body.sirius:has(> .wapper.bc) .global-nav-bar ul li .menu-item.active .icon:before {
+    background-color: var(--icon-bg-active);
+}
+
+/* 메인 탭 활성화 상태 */
+body.sirius:has(> .wapper[class*="-"]) .main-nav-tabs.nav-tabs .nav-link.active,
+body.sirius:has(> .wapper.bc) .main-nav-tabs.nav-tabs .nav-link.active {
+    background-color: var(--base-background);
+    color: #ffffff;
+    border: 1px solid var(--base-background);
+}
+
+/* 메뉴 포인터 표시 */
+body.sirius:has(> .wapper[class*="-"]) .menu-home > ul > li.on::before,
+body.sirius:has(> .wapper[class*="-"]) .menu-items > ul.lnb > li > ul.snb-lnb > li.on:not(.has-submenu)::before,
+body.sirius:has(> .wapper[class*="-"]) .menu-items > ul.lnb > li > ul.snb-lnb > li > ul.snb-lnb > li.on:not(.has-submenu)::before,
+body.sirius:has(> .wapper.bc) .menu-home > ul > li.on::before,
+body.sirius:has(> .wapper.bc) .menu-items > ul.lnb > li > ul.snb-lnb > li.on:not(.has-submenu)::before,
+body.sirius:has(> .wapper.bc) .menu-items > ul.lnb > li > ul.snb-lnb > li > ul.snb-lnb > li.on:not(.has-submenu)::before {
+    background: var(--icon-bg-active);
+}
+
+/* 툴바 기본 텍스트 및 서브 네비 색상 */
+body.sirius:has(> .wapper[class*="-"]) .grid-toolbar .toolbar-buttons .btn-group > a,
+body.sirius:has(> .wapper.bc) .grid-toolbar .toolbar-buttons .btn-group > a {
+    color: #686868;
+}
+
+body.sirius:has(> .wapper[class*="-"]) .nav-item.nav-link.active.nav-sub-item.active > a,
+body.sirius:has(> .wapper.bc) .nav-item.nav-link.active.nav-sub-item.active > a {
+    color: var(--base-background);
+}
+
+
+body.sirius:has(> .wapper[class*="-"]) .wj-rowheaders > .wj-row > .wj-cell.wj-header > .row-header-edit ,
+body.sirius:has(> .wapper.bc) .wj-rowheaders > .wj-row > .wj-cell.wj-header > .row-header-edit {
+    color: var(--base-background);
+}
+
+body.sirius:has(> .wapper[class*="-"]) .nav-item.nav-link.active.nav-sub-item.active,
+body.sirius:has(> .wapper.bc) .nav-item.nav-link.active.nav-sub-item.active {
+    border-bottom: 3px solid var(--base-background);
+}
+
+/* 검색 버튼 */
+body.sirius:has(> .wapper[class*="-"]) .btn-search,
+body.sirius:has(> .wapper.bc) .btn-search {
+    background: var(--base-background) !important;
+    color: #FFFFFF !important;
+    border: none !important;
+}
+
+body.sirius:has(> .wapper[class*="-"]) .btn-search:hover,
+body.sirius:has(> .wapper.bc) .btn-search:hover {
+    background: var(--btn-search-hover) !important;
+}
+
+/* 메뉴 아이템 텍스트 강조 */
+body.sirius:has(> .wapper[class*="-"]) .menu-items .snb-lnb>li.on:not(.has-submenu)>a,
+body.sirius:has(> .wapper.bc) .menu-items .snb-lnb>li.on:not(.has-submenu)>a {
+    font-weight: 700;
+    color: var(--base-background);
+}
+
+/* 테이블 그리드(WJ) 셀 보더 */
+body.sirius:has(> .wapper[class*="-"]) .wj-cells .wj-cell.wj-state-selected:not(.cell-button),
+body.sirius:has(> .wapper.bc) .wj-cells .wj-cell.wj-state-selected:not(.cell-button) {
+    border-top: 1px solid var(--base-background);
+    border-bottom: 1px solid var(--base-background);
+}
+
+/* 엑셀 다운로드 아이콘 */
+body.sirius:has(> .wapper[class*="-"]) .grid-toolbar .grid-excel-down-font,
+body.sirius:has(> .wapper.bc) .grid-toolbar .grid-excel-down-font {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--base-background);
+}
+
+/* 스크롤 화살표 */
+body.sirius:has(> .wapper[class*="-"]) .menu-scroll-arrow,
+body.sirius:has(> .wapper.bc) .menu-scroll-arrow {
+    background-color: var(--scroll-arrow-bg);
+}
+
+/* 폼 버튼 / 탭 토글 버튼 / 기타 Base Background 버튼류 */
+body.sirius:has(> .wapper[class*="-"]) .btn-form,
+body.sirius:has(> .wapper.bc) .btn-form,
+body.sirius:has(> .wapper[class*="-"]) main .content.daaf-home.main-display .main-history-tab .tab-toggle-btn,
+body.sirius:has(> .wapper.bc) main .content.daaf-home.main-display .main-history-tab .tab-toggle-btn {
+    background: var(--base-background) !important;
+    color: white !important;
+    border: none !important;
+}
+
+body.sirius:has(> .wapper[class*="-"]) .btn-form:hover,
+body.sirius:has(> .wapper.bc) .btn-form:hover {
+    background: var(--btn-form-hover) !important;
+    color: white !important;
+}
+
+body.sirius:has(> .wapper[class*="-"]) main .content.daaf-home.main-display .main-history-tab .tab-toggle-btn,
+body.sirius:has(> .wapper.bc) main .content.daaf-home.main-display .main-history-tab .tab-toggle-btn {
+    padding: 2px 20px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 5px;
+    transition: background-color 0.3s;
+}
+
+/* 검색 접기 버튼 */
+body.sirius:has(> .wapper[class*="-"]) .builder-base .search-wrap .col .search_collapse_btn,
+body.sirius:has(> .wapper.bc) .builder-base .search-wrap .col .search_collapse_btn {
+    color: var(--base-background);
+    border: 1px solid var(--base-background);
+    width: 38px;
+    height: 38px;
+    top: unset;
+    left: unset;
+    border-radius: 8px;
+    position: inherit;
+    padding: unset;
+    margin-bottom: 12px;
+}
+
+/* 태그 입력 인풋 (Tagsinput) */
+body.sirius:has(> .wapper[class*="-"]) .tagsinput .tag,
+body.sirius:has(> .wapper.bc) .tagsinput .tag {
+    border: 1px solid var(--tag-border);
+    background-color: var(--tag-bg) !important;
+    color: #454545 !important;
+    padding: 5px 12px;
+    margin: 2px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: inline-block;
+}
+
+/* 메뉴 활성화 표시 영역 */
+body.sirius:has(> .wapper[class*="-"]) .menu-home > ul > li.on,
+body.sirius:has(> .wapper[class*="-"]) .menu-items .snb-lnb>li.on:not(.has-submenu),
+body.sirius:has(> .wapper.bc) .menu-home > ul > li.on,
+body.sirius:has(> .wapper.bc) .menu-items .snb-lnb>li.on:not(.has-submenu) {
+    background: var(--menu-active-bg);
+    color: var(--menu-active-color);
+    font-size: 14px;
+    font-weight: 700;
+    border-radius: 6px;
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+}
+
+/* 메뉴 링크 Hover 상태 */
+body.sirius:has(> .wapper[class*="-"]) .menu-items .lnb>li>a:hover,
+body.sirius:has(> .wapper[class*="-"]) .menu-items .lnb>li>.snb-lnb>li>a:hover,
+body.sirius:has(> .wapper[class*="-"]) .menu-items .lnb>li>ul.snb-lnb li.has-submenu .snb-lnb>li>a:hover,
+body.sirius:has(> .wapper.bc) .menu-items .lnb>li>a:hover,
+body.sirius:has(> .wapper.bc) .menu-items .lnb>li>.snb-lnb>li>a:hover,
+body.sirius:has(> .wapper.bc) .menu-items .lnb>li>ul.snb-lnb li.has-submenu .snb-lnb>li>a:hover {
+    color: var(--base-background);
+}
+
+/* Outline / 테두리 강조 버튼 */
+body.sirius:has(> .wapper[class*="-"]) .btn.btn-blue-dark,
+body.sirius:has(> .wapper[class*="-"]) .btn-footer-standard,
+body.sirius:has(> .wapper.bc) .btn.btn-blue-dark,
+body.sirius:has(> .wapper.bc) .btn-footer-standard {
+    border: 1px solid var(--base-background);
+    background: #fff;
+    color: var(--base-background);
+}
+
+/* Toggle 버튼 활성 상태 */
+body.sirius:has(> .wapper[class*="-"]) .btn.toggle.zeni-toggle .toggle-group .toggle-on,
+body.sirius:has(> .wapper[class*="-"]) .btn.toggle.zeni-toggle .toggle-group .toggle-on.btn-primary:hover,
+body.sirius:has(> .wapper[class*="-"]) .btn.toggle.zeni-toggle .toggle-group .toggle-on.btn-primary:focus,
+body.sirius:has(> .wapper[class*="-"]) .btn.toggle.zeni-toggle .toggle-group .toggle-on.btn-primary:active,
+body.sirius:has(> .wapper.bc) .btn.toggle.zeni-toggle .toggle-group .toggle-on,
+body.sirius:has(> .wapper.bc) .btn.toggle.zeni-toggle .toggle-group .toggle-on.btn-primary:hover,
+body.sirius:has(> .wapper.bc) .btn.toggle.zeni-toggle .toggle-group .toggle-on.btn-primary:focus,
+body.sirius:has(> .wapper.bc) .btn.toggle.zeni-toggle .toggle-group .toggle-on.btn-primary:active {
+    background-color: var(--base-background) !important;
+    border-color: var(--base-background) !important;
+}
+/* ========================================
+   theme-skin.css 에 추가
+   iCheck 체크 전(Unchecked) 상태만 하얀색 테두리 박스로 변경
+   ======================================== */
+/* iCheck (Radio / Checkbox) 아이콘 적용 (기존 유지) */
+body.sirius:has(> .wapper[class*="-"]) .icheckbox_flat,
+body.sirius:has(> .wapper[class*="-"]) .iradio_flat,
+body.sirius:has(> .wapper.bc) .icheckbox_flat,
+body.sirius:has(> .wapper.bc) .iradio_flat {
+    background: var(--icheck-bg-img) no-repeat 0 0;
+}
+
+/* 1. 체크 전 부모 상태: 기본 회색 이미지 숨김 */
+body.sirius:has(> .wapper[class*="-"]) .icheckbox_flat:not(.checked):not(.disabled),
+body.sirius:has(> .wapper[class*="-"]) .iradio_flat:not(.checked):not(.disabled),
+body.sirius:has(> .wapper.bc) .icheckbox_flat:not(.checked):not(.disabled),
+body.sirius:has(> .wapper.bc) .iradio_flat:not(.checked):not(.disabled) {
+    background-image: none !important;
+}
+
+/* 2. 핵심: ins 태그에 직접 하얀 바탕 + 테두리 적용 (공통 CSS의 라운드 속성 활용) */
+body.sirius:has(> .wapper[class*="-"]) .icheckbox_flat:not(.checked):not(.disabled) > ins,
+body.sirius:has(> .wapper[class*="-"]) .iradio_flat:not(.checked):not(.disabled) > ins,
+body.sirius:has(> .wapper.bc) .icheckbox_flat:not(.checked):not(.disabled) > ins,
+body.sirius:has(> .wapper.bc) .iradio_flat:not(.checked):not(.disabled) > ins {
+}
+
+/* 라디오 버튼만 완전한 원형으로 추가 라운드 처리 */
+body.sirius:has(> .wapper[class*="-"]) .iradio_flat:not(.checked):not(.disabled) > ins,
+body.sirius:has(> .wapper.bc) .iradio_flat:not(.checked):not(.disabled) > ins {
+    border-radius: 50% !important;
+}

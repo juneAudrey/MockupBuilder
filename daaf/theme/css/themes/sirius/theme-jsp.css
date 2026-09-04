@@ -1,0 +1,122 @@
+/* 시스템 로그 */
+body.sirius div[data-program-id="ZO201M1"] {
+	& .search-wrap{
+		padding : 8px 10px;
+
+		& .search-group{
+			display : flex;
+			flex-wrap : nowrap;
+			align-items : center;
+			flex-direction: row;
+
+			& .search-tit{
+				text-align : end;
+				margin-bottom: unset;
+			}
+
+			& .search-content{
+				display : flex;
+				align-items : center;
+				gap : 15px;
+
+				& .form-group{
+					margin-top : auto;
+					margin-bottom : 0px;
+				}
+			}
+		}
+	}
+}
+
+/* 메뉴관리 */
+body.sirius div[data-program-id="ZA201M3"] #formZA201M3 > div {
+	margin-top: 0 !important;
+    background: white;
+    padding-top: 0;
+    padding-bottom: 12px;
+    border-radius: 0 0 10px 10px;
+}
+
+body.sirius div[data-program-id="ZA201M3"] #contTab {
+	background-color: white;
+	border-radius: 10px 10px 0 0;
+}
+
+body.sirius div[data-program-id="ZA201M3"] #tabZA201T1 {
+	padding:0;
+	background-color: white;
+}
+
+body.sirius div[data-program-id="ZA201M3"] #tabZA201T2 {
+	padding:0;
+	background-color: white;
+}
+
+body.sirius div[data-program-id="ZA201M3"] #tabZA201T1 > a {
+  	color: #9d9d9d;
+	font-weight: 400;
+	background-color : white;
+	position: relative;
+	text-align: center;
+	align-items: center;
+	height: var(--tab-a-size, 40px);
+	min-width: 140px;
+	padding-top: 2px;
+	line-height: 1;
+	cursor: pointer;
+	padding : 0 10px;
+	display: inline-block;
+	font-size : var(--tab-font-size, 14px);
+}
+
+body.sirius div[data-program-id="ZA201M3"] #tabZA201T1 > a {
+    /* border-bottom: 2px solid #e2e2e2; */
+}
+
+body.sirius div[data-program-id="ZA201M3"] #tabZA201T1.active > a {
+	font-weight: 700;
+  	color: #009b71;
+  	display: inline-block;
+  	/* border-bottom : 3px solid #009b71; */
+}
+
+
+body.sirius div[data-program-id="ZA201M3"] #tabZA201T1.active{
+	border-bottom : 3px solid #009b71;
+}
+
+
+body.sirius div[data-program-id="ZA201M3"] #tabZA201T2 > a {
+  	color: #9d9d9d;
+	font-weight: 400;
+	background-color : white;
+	position: relative;
+	text-align: center;
+	align-items: center;
+	height: var(--tab-a-size, 40px);
+	min-width: 140px;
+	padding-top: 2px;
+	line-height: 1;
+	cursor: pointer;
+	padding : 0 10px;
+	display: inline-block;
+	font-size : var(--tab-font-size, 16px);
+}
+
+body.sirius div[data-program-id="ZA201M3"] #tabZA201T2 > a {
+    /* border-bottom: 2px solid #e2e2e2; */
+}
+
+body.sirius div[data-program-id="ZA201M3"] #tabZA201T2.active > a {
+	font-weight: 700;
+  	color: #009b71;
+  	display: inline-block;
+/*   	border-bottom : 3px solid #009b71; */
+}
+
+
+body.sirius div[data-program-id="ZA201M3"] #tabZA201T2.active{
+	border-bottom : 3px solid #009b71;
+}
+
+/* 메뉴관리 end */

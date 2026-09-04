@@ -1,0 +1,1219 @@
+/*!
+ *   theme-variables.css v.1.0
+ *
+ *   sirius theme의 layout 에서 사용되는 css 정리
+ *		- Page, Layout, Tab 등
+ *
+ *   Author: kiyoung.park
+ */
+
+@charset "utf-8";
+
+body.sirius .small-scale .scrtabs-tab-scroll-arrow, .small-scale .scrtabs-tabs-fixed-container, .small-scale .scrtabs-tab-container {
+    height: var(--menu-tab-height);
+}
+
+body.sirius .page-footer-wrapper{
+	position: absolute;
+    background: #fff;
+    left: 0;
+    bottom: 0px;	/* border 픽셀만큼 키워서 스크롤 없앰*/
+    width: 100%;
+    /* height: calc(var(--page-footer-height) - 2px); */
+    border-top: solid 1px #dfdfdf;
+    z-index : 11;
+}
+
+body.sirius .page-footer-wrapper .page-footer{
+	position: relative;
+    width: 100%;
+    padding: var(--page-footer-padding, 10px 24px 4px 24px);
+    background : #ffffff;
+}
+
+body.sirius .page-footer-wrapper .page-footer div button{
+	margin-left : 12px;
+}
+body.sirius .theme-portal .my-cont-sub-tabs .active > a {
+	background: white !important;
+}
+body.sirius .theme-portal .my-cont-sub-tabs .active{
+	background: white !important;
+	border-bottom : 3px solid #009b71;
+}
+
+body.sirius .nav-item > div.nav-link{
+	background: white !important;
+	padding : 0;
+}
+
+body.sirius .nav-item > div.nav-link.active{
+	background: white !important;
+	border-bottom : 3px solid #009b71;
+	padding : 0;
+}
+
+body.sirius .nav-item > div.nav-link > a{
+	color: #9d9d9d;
+	font-weight: 400;
+	background-color : white;
+	position: relative;
+	text-align: center;
+	align-items: center;
+	height: 40px;
+	min-width: 110px;
+	padding-top: 2px;
+	line-height: 1;
+	cursor: pointer;
+	background-color: white;
+	padding : 0 15px;
+	display: inline-block;
+	font-size : 16px;
+}
+
+body.sirius .nav-item > div.nav-link.active > a{
+	font-weight: 700;
+  	color: #009b71;
+  	display: inline-block;
+  	padding : 0;
+}
+
+body.sirius .content-wrapper .nav-item a, a:focus, a:hover, a:active {
+    color: #9d9d9d;
+    outline: none;
+    box-shadow: none;
+}
+
+/* body.sirius .content-wrapper .nav-tabs .nav-link {
+    border: 1px solid transparent;
+    border-top-left-radius: .25rem;
+    border-top-right-radius: .25rem;
+} */
+
+/* body.sirius .content-wrapper .nav-tabs .nav-item {
+    margin-bottom: -1px;
+} */
+
+body.sirius .content-wrapper .nav-link {
+    display: block;
+    padding: 8px 15px;
+    color: #9d9d9d;
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 1;
+    min-width: var(--tab-min-width, 100px);
+    height: var(--tab-li-size, 38px);
+    text-align: center;
+
+}
+
+
+body.sirius .nav-item.nav-link.nav-sub-item{
+	border : none;
+	border-bottom : 1px solid #e2e2e2;
+	background-color: white;
+	padding : 0px;
+}
+
+
+body.sirius .nav-item.nav-sub-item > a {
+	color: #9d9d9d;
+	font-weight: 400;
+	background-color : white;
+	position: relative;
+	text-align: center;
+	align-items: center;
+    height: var(--tab-a-size, 35px);
+	min-width: var(--tab-min-width, 110px);
+	line-height: 1;
+	cursor: pointer;
+	background-color: white;
+	padding : 8px 15px;
+	display: inline-block;
+	font-size : var(--tab-font-size, 16px);
+}
+
+body.sirius .nav-item.active.nav-sub-item.active > a {
+	font-weight: 700;
+  	color: #009b71;
+  	display: inline-block;
+}
+
+body.sirius .nav-item.active.nav-sub-item.active{
+	border : none;
+	border-bottom : 3px solid #009b71;
+}
+
+/* Tab 방향 left 인경우*/
+body.sirius .flex-column .nav-sub-tabs{
+	border-bottom:none;
+}
+body.sirius  .flex-column .nav-item.nav-sub-item {
+	border: none;
+	margin: 0px;
+}
+
+body.sirius .flex-column .nav-item.active.nav-sub-item.active{
+	border-right : 3px solid #009b71;
+	border-bottom : none;
+}
+
+body.sirius .flex-column .nav-item.nav-sub-item > a {
+	display : flex;
+	align-items : center;
+	padding-left : 5px;
+}
+
+body.sirius .flex-column .nav-item.active.nav-sub-item.active > a {
+  	display: flex;
+}
+/* Tab 을 Left(vertical)로 하는 경우 content가 100%가 되지 않아서 css를 강제로 정의함*/
+body.sirius .builder-base .tab-vertical-nav-col{
+	width:100%;
+}
+body.sirius .builder-base .tab-vertical-nav-col .tab-content{
+	width:100%;
+}
+
+body.sirius .builder-base .tab-content {
+    padding: var(--container-section-gap) 0 0 0;
+}
+
+
+
+/*---------------------------------------반응형 디자인 추가------------------------------------------*/
+
+/* LG: 992px ~ 1199.98px and XL : 1200~ */
+/* Daaf 설정에 맞춰, lg와 xl은 동일한 디자인 사이즈로 적용*/
+@media (min-width: 992px) {
+body.sirius.resize {
+    --menu-title : 24px;
+    --page-title-height : 34px;
+    --refresh-btn-size : 26px;
+    --main-header-height : 50px;
+    --gnb-width : 76px;
+    --sub-menu-title : 16px;
+    --nav-menu-font-size : 13px;
+    --nav-menu-line-height : 26px;
+    --nav-bar-menu-height : 38px;
+    --menu-items-li-padding : 6px 12px 6px 20px;
+    --lnb-width : 188px;
+    --logo-size : 36px;
+    --left-side-width: calc(var(--gnb-width) + var(--lnb-width));
+    --sub-menu-list-padding : 8px 10px 9px 28px;
+    --content-padding-top : 8px;
+    --content-padding-bottom : 8px;
+    --content-padding-left : 8px;
+    --content-padding-right : 8px;
+    --menu-title-padding-right : 30px;
+    --menu-tab-font-size : 13px;
+    --header-icon-size : 28px;
+    --profile-font-size : 16px;
+
+    --tab-cont-panel-height: calc(100vh - var(--main-header-height) - var(--menu-tab-height) - var(--content-padding-top) - var(--content-padding-bottom) - var(--tab-cont-padding-top));
+
+    & .logo {
+    	margin-left : 0;
+    }
+
+    & header .top .top-area {
+    	position : fixed;
+    	padding: 0 34px 0 0;
+    }
+
+    & .tit-fav label {
+	    height: var(--page-title-height, 39px);
+    }
+
+    & .h1tit-wrap{
+    	&:has(button.collapse-form-btn){
+    		height : 38px;
+    	}
+
+    	& .bread-crumb{
+	    	height: var(--page-title-height, 39px);
+	    	line-height : var(--page-title-height, 34px);
+	    }
+    }
+
+    & .content > .tab-content:has(.collapse-form-btn) .content-wrapper:has(.page-footer-wrapper) {
+   	    height: calc(var(--tab-cont-panel-height) - var(--tab-page-padding-top) - var(--page-title-height) - 4px);
+    }
+
+
+    & .local-nav-bar {
+        padding: 24px 4px 0px 4px;
+
+        & .local-nav-bar-title{
+        	line-height : 24px;
+        }
+
+        & .menu-container {
+        	scrollbar-width: none;
+        	padding-right : 0;
+        }
+        & .local-nav-bar-area .btn-collapse {
+        	&:has(.di-angle-double-left){
+        		margin-right : 10px;
+        	}
+        	&:has(.di-angle-double-right){
+        		margin-right : 0px;
+        		margin : 0;
+        	}
+        }
+    }
+
+    &.menu-items .lnb>li>a{
+    	padding : 0 18px 0 12px;
+    }
+
+
+
+  }
+}
+
+/* md: 768px ~ 991.98px */
+@media (min-width: 768px) and (max-width: 991.98px) {
+body.sirius.resize {
+
+
+	/*----------- md only -----------*/
+	--menu-font-size : 12px;
+	--nav-bar-collapsed-size : 0px;
+	--button-height : 38px;
+	--header-icon-margin-left : 14px;
+	/*----------- md only -----------*/
+	--tab-cont-panel-height: calc(100vh - var(--main-header-height) - var(--menu-tab-height) - var(--content-padding-top) - var(--content-padding-bottom) - var(--tab-cont-padding-top));
+	--breadcrumb-padding : 10px;
+
+	--menu-title : 20px;
+	--page-title-height : 34px;
+	--refresh-btn-size : 26px;
+    --main-header-height : 50px;
+    --gnb-width : 68px;
+    --sub-menu-title : 16px;
+    --nav-menu-font-size : 13px;
+    --nav-menu-line-height : 26px;
+    --nav-bar-menu-height : 38px;
+    --menu-items-li-padding : 6px 12px 6px 20px;
+    --lnb-width : 220px;
+    --logo-size : 30px;
+    --content-padding-top : 8px;
+    --content-padding-bottom : 8px;
+    --content-padding-left : 8px;
+    --content-padding-right : 8px;
+    --menu-title-padding-right : 30px;
+    --menu-tab-font-size : 12px;
+    --header-icon-size : 28px;
+    --profile-font-size : 16px;
+    --left-side-width: calc(var(--gnb-width) + var(--lnb-width));
+
+
+    /*---------- 좌측 메뉴 바 관련 css ----------*/
+    & nav{	/* 좌측 top menu bar(초록색) */
+    	z-index : 103;
+    }
+
+    & .nav-backdrop {	/* 메뉴 보일때, 뒤 backdrop으로 막음 */
+    	background-color : rgba(0, 0, 0, 0.4);
+        position: absolute;
+        z-index: 101;
+        height: calc(100vh - var(--main-header-height));
+        width : 100%;
+    }
+    & .global-nav-bar ul li {
+	    padding-right: 0;
+    	padding-left: 0;
+	}
+	& .btn-collapse {	/* 메뉴 사이드바 collapse 버튼 안보이게 */
+		display : none;
+	}
+
+	& .local-nav-bar {
+        z-index : 102; /*nav-backdrop: 101,  footer : 100 */
+        padding: 20px 4px 20px 4px;
+
+        & .local-nav-bar-title{
+        	line-height : 24px;
+        }
+
+        & .menu-container {
+        	scrollbar-width: none;
+        	padding-right : 0;
+        }
+        & .local-nav-bar-area .btn-collapse {
+        	&:has(.di-angle-double-left){
+        		margin-right : 10px;
+        	}
+        }
+    }
+    & .menu-items .lnb>li {
+    	&>a{
+    		height : 38px;
+    		display: flex;
+        	align-items: center;
+	    	padding : 0 18px 0 12px;
+	    }
+    }
+
+
+    /* menu-bar collapse관련 페이지 사이즈 및 위치 조정*/
+    & main .local-nav-bar:not(.collapsed) ~ .content {	/* 메뉴바 없을 경우 content 위치 */
+		left : calc(var(--gnb-width) + var(--nav-bar-collapsed-size, 32px));
+    	width: calc(100% - var(--gnb-width) - var(--nav-bar-collapsed-size, 32px));
+    }
+    & main .content { /* 메뉴바 있을 경우 content 위치 */
+	    left: calc(var(--gnb-width) + var(--nav-bar-collapsed-size, 32px));
+    }
+
+    /*--------- 좌측 메뉴 바 관련 css end ----------*/
+
+
+
+
+    /*---------- 상단 메뉴 탭 ----------*/
+    & .main-nav-tabs.nav-tabs .nav-link.active {
+    	font-size : 13px;
+    }
+
+    /*---------- top header ----------*/
+    & header{
+	    &> .home-go{
+	    	width : 57px;
+	    }
+	    & .top{
+		    padding: 12px 0 0px 12px;
+	        margin-left: 57px;
+
+	        & .top-area {
+		    	position : fixed;
+		    	padding: 0 24px 0 0;
+
+		    	& .profile{
+			    	margin-left : var(--header-icon-margin-left, 14px);
+			    }
+			    & .top-serch input{
+			    	height : 24px;
+			    	font-size : 15px;
+			    }
+		    }
+	    }
+	}
+	& button.btn-search {
+    	margin: 0 12px 8px 0px !important;
+    	width: 100%;
+    }
+    & .logo {
+    	margin-left : 0;
+    }
+
+
+    /*---------- 페이지 내부 타이틀 ----------*/
+    & .tit-fav{
+    	& label {
+			height: var(--page-title-height, 39px);
+	    }
+	    &:has(button.collapse-form-btn){
+	    	flex-wrap : wrap;
+
+	    	& .bread-crumb {
+	    		width : 66%;
+	    	}
+	    	& button.collapse-form-btn{
+	    		order : 10;
+	    		margin-top : 10px;
+	    	}
+	    }
+    }
+
+    & .h1tit-wrap .bread-crumb{	/* 페이지 경로 */
+    	height: var(--page-title-height, 39px);
+    	display: flex;
+    	align-items: center;
+    }
+
+    & .h1tit-wrap:has(button.collapse-form-btn){
+    	height : calc(var(--page-title-height) + 48px);
+
+    	& .bread-crumb {
+    		line-height : 38px;
+            padding-left: 16px;
+    	}
+    }
+    & .content > .tab-content:has(button.collapse-form-btn) .content-wrapper:has(.page-footer-wrapper){
+    	height : calc(var(--tab-cont-panel-height) - var(--tab-page-padding-top) - var(--page-title-height) - 48px);
+    }
+
+    & .breadcrumb-item+.breadcrumb-item::before{
+    	padding-right : 10px;
+    }
+
+    & .builder-base .search-wrap div[class*="col-"] .search_collapse_btn{
+    	min-width: 38px;
+    }
+
+
+
+    /* 반응형 자동 적용 */
+    & div.col:not([class*="col-md-"]) {
+    	&.col-lg-1{
+    		flex: 0 0 16.666667%;
+        	max-width: 16.666667%;
+    	}
+    	&.col-lg-2{
+    		flex: 0 0 33.333333%;
+        	max-width: 33.333333%;
+    	}
+    	&.col-lg-3{
+    		flex: 0 0 50%;
+        	max-width: 50%;
+    	}
+    	&.col-lg-4{
+    		flex: 0 0 66.666667%;
+        	max-width: 66.666667%;
+    	}
+    	&.col-lg-5{
+    		flex: 0 0 83.333333%;
+        	max-width: 83.333333%;
+    	}
+    	&.col-lg-6{
+    		flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-7{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-8{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-9{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-10{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-11{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-12{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    }
+
+}
+}
+
+/* sm: 575.98px 이상 767.98px 이하 */
+@media  (min-width: 576px) and (max-width: 767.98px) {
+body.sirius.resize {
+
+	--menu-font-size : 12px;		/* 좌측 메뉴바 최상단 메뉴 font-size */
+	--nav-bar-collapsed-size : 0px;	/* 메뉴바 접혔을때, 표시될 width */
+	--button-height : 38px;
+	--header-icon-margin-left : 6px;
+
+	--tab-cont-panel-height: calc(100vh - var(--main-header-height) - var(--menu-tab-height) - var(--content-padding-top) - var(--content-padding-bottom) - var(--tab-cont-padding-top));
+	--breadcrumb-padding : 10px;	/* 페이지 경로 padding */
+
+	--menu-title : 18px;			/* 페이지 타이틀 font-size */
+	--page-title-height : 28px;		/* 페이지 타이틀 line-height */
+	--refresh-btn-size : 24px;		/* 새로고침 버튼 사이즈 */
+    --main-header-height : 50px;	/* header 높이 */
+    --gnb-width : 68px;				/* 좌측 메뉴바 width (초록색) */
+    --sub-menu-title : 16px;		/* 메뉴바 sub menu 제목 font-size */
+    --nav-menu-font-size : 13px;	/* 메뉴바 sub menu font-size */
+    --nav-menu-line-height : 26px;	/* 메뉴바 sub menu line-height */
+    --nav-bar-menu-height : 38px;	/* 메뉴바 sub menu 높이 */
+    --menu-items-li-padding : 6px 12px 6px 20px;	/* 메뉴바 li 메뉴 padding */
+    --lnb-width : 220px;			/* 메뉴바 width (흰색) */
+    --logo-size : 30px;				/* 헤더 로고 사이즈 */
+
+    --content-padding-top : 8px;	/* page content padding-top -> 기존거 덮기 위해 개별로 작성.*/
+    --content-padding-bottom : 8px;	/* page content padding-bottom */
+    --content-padding-left : 8px;	/* page content padding-left */
+    --content-padding-right : 8px;	/* page content padding-right */
+    --menu-title-padding-right : 30px;		/* 페이지 타이틀 padding-right */
+    --menu-tab-font-size : 12px;	/* 메뉴 tab font-size */
+    --header-icon-size : 28px;		/* 헤더 우측 아이콘 사이즈 */
+    --profile-font-size : 16px;		/* 헤더 우측 사용자 font-size */
+    --left-side-width: calc(var(--gnb-width) + var(--lnb-width));
+
+    --icon-size : 24px;
+    --menu-search-dropdown-size : 220px;
+
+
+
+
+
+	/*---------- 좌측 메뉴 바 관련 css ----------*/
+    & nav{	/* 좌측 top menu bar(초록색) */
+    	z-index : 103;
+    }
+
+    & .nav-backdrop {	/* 메뉴 보일때, 뒤 backdrop으로 막음 */
+    	background-color : rgba(0, 0, 0, 0.4);
+        position: absolute;
+        z-index: 101;
+        height: calc(100vh - var(--main-header-height));
+        width : 100%;
+    }
+    & .global-nav-bar ul li {
+	    padding-right: 0;
+    	padding-left: 0;
+	}
+	& .btn-collapse {	/* 메뉴 사이드바 collapse 버튼 안보이게 */
+		display : none;
+	}
+
+	& .local-nav-bar {
+		z-index : 102; /*nav-backdrop: 101,  footer : 100 */
+        padding: 20px 4px 20px 4px;
+
+        & .local-nav-bar-title{
+        	line-height : 24px;
+        }
+
+        & .menu-container {
+        	scrollbar-width: none;
+        	padding-right : 0;
+        }
+        & .local-nav-bar-area .btn-collapse {
+        	&:has(.di-angle-double-left){
+        		margin-right : 10px;
+        	}
+        }
+    }
+    & .menu-items .lnb>li {
+    	&>a{
+    		height : 38px;
+    		display: flex;
+        	align-items: center;
+	    	padding : 0 18px 0 12px;
+	    }
+    }
+
+    /* menu-bar collapse관련 페이지 사이즈 및 위치 조정*/
+    & main .local-nav-bar:not(.collapsed) ~ .content {	/* 메뉴바 없을 경우 content 위치 */
+		left : calc(var(--gnb-width) + var(--nav-bar-collapsed-size, 32px));
+    	width: calc(100% - var(--gnb-width) - var(--nav-bar-collapsed-size, 32px));
+    }
+    & main .content { /* 메뉴바 있을 경우 content 위치 */
+	    left: calc(var(--gnb-width) + var(--nav-bar-collapsed-size, 32px));
+    }
+
+    /*--------- 좌측 메뉴 바 관련 css end ----------*/
+
+
+
+	/*---------- top header ----------*/
+
+    & header{
+	    &> .home-go{
+	    	width : 57px;
+	    }
+	    & .layer-scale {
+	    	right: 0;
+            left: unset;
+    	}
+	    & .top{
+		    padding: 12px 0 0px 12px;
+	        margin-left: 57px;
+
+	        & .top-area {
+		    	position : fixed;
+		    	padding: 0 24px 0 0;
+
+		    	& .profile{
+			    	margin-left : var(--header-icon-margin-left, 6px);
+			    	display : none;
+			    }
+			    & .has-menu-search {
+			    	margin-right : 0;
+			    }
+			    & .top-serch{
+			    	width : 200px;
+			    	& input{
+			    		width : calc(200px - var(--icon-size, 24px) - 4px);
+				    	height : 24px;
+				    	font-size : 15px;
+				    	padding-left : 10px;
+				    }
+			    }
+			    & .top-icon {
+			    	& button[title="Manual"] {
+			    		display : none;
+			    	}
+			    }
+		    }
+	    }
+	}
+
+    & .logo {
+    	margin-left : 0;
+    }
+
+    /*---------- top header end ----------*/
+
+
+    /*---------- 페이지 내부 타이틀 ----------*/
+    & .tit-fav{
+    	flex-wrap: wrap;
+    	& label {
+		    height: var(--page-title-height, 28px);
+		    display : flex;
+		    align-items : center;
+		    padding-right : 0;
+		    &:after{
+		    	height : var(--refresh-btn-size, 24px);
+		    	width : var(--refresh-btn-size, 24px);
+		    	position : relative;
+		    	display : block;
+		    	margin-top : 0;
+		    	position : unset;
+				background-size: var(--refresh-btn-size, 24px) var(--refresh-btn-size, 24px);
+		    	margin-left : 6px;
+		    }
+		}
+		& button.refresh-tab-btn {
+			padding : 3px;
+		}
+	}
+
+    & .h1tit-wrap{
+    	height : calc(var(--page-title-height) + 26px); /* 26px : breadcrum line height */
+    	&:has(.collapse-form-btn){
+    		height : calc(var(--page-title-height) + 26px + 38px);
+    	}
+    	& .bread-crumb{	/* 페이지 경로 */
+	    	height: 26px;
+	    	display: flex;
+	    	align-items: center;
+	    	order : 8;
+	    	padding-left : 0;
+	    	width : 100%;
+	    }
+
+	    & .collapse-form-btn {
+	    	order : 10;
+	    }
+    }
+    & .breadcrumb-item+.breadcrumb-item::before{
+    	padding-right : 10px;
+    }
+    /*---------- 페이지 내부 타이틀 end ----------*/
+    & .content > .tab-content .content-wrapper:has(.page-footer-wrapper){
+    	height : calc(var(--tab-cont-panel-height) - var(--tab-page-padding-top) - var(--page-title-height) - 26px);
+    }
+
+    & .content > .tab-content .page-wrapper:has(.collapse-form-btn) .content-wrapper:has(.page-footer-wrapper) {
+	    height : calc(var(--tab-cont-panel-height) - var(--tab-page-padding-top) - var(--page-title-height) - 26px - 38px);
+    }
+
+    & .pop_wrap .pop_body{
+    	height : auto;
+    }
+    & .search-wrap >.row{
+    	& > div[class*="col-"] {
+    		order : 1;
+    		&:has(button.btn-search){
+
+    			order : 0;
+    			padding-top : 0;
+
+    			& button.btn-search{
+    				width : 120px;
+    			}
+    		}
+    	}
+
+    }
+
+    .page-footer {
+    	& div.others-container {
+    		display : none;
+    		position: absolute;
+            bottom: calc(var(--page-footer-height, 74px) - 5px);
+
+    		&.active{
+    			display : block;
+    		}
+
+    		& button {
+    			margin-left : 0;
+    			margin-top : 12px;
+    			box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+
+    		}
+    	}
+
+    	& button.btn-footer-others {
+    		width : var(--button-height, 38px);
+    		height : var(--button-height, 38px);
+    		border: 1px solid var(--ERP-300);
+			background: #fff;
+			color: var(--ERP-600);
+			border-radius : 8px;
+			align-items: center;
+            justify-content: center;
+            display: flex;
+
+            &:hover {
+   				background : #F6F6F6;
+   			}
+    	}
+    }
+
+    & .page-footer:has(.others-container.active) button.btn-footer-others {
+    	background : var(--ERP-50);
+    }
+
+    /* 반응형 자동 적용 */
+    & div.col:not([class*="col-sm-"]) {
+    	&.col-lg-1{
+    		flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-2{
+    		flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-3{
+    		flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-4{
+    		flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-5{
+    		flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-6{
+    		flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-7{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-8{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-9{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-10{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-11{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-12{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    }
+
+}
+}
+
+/* xs: 575.98px 이하 */
+@media (max-width: 575.98px) {
+body.sirius.resize {
+
+	--menu-font-size : 12px;		/* 좌측 메뉴바 최상단 메뉴 font-size */
+	--nav-bar-collapsed-size : 0px;	/* 메뉴바 접혔을때, 표시될 width */
+	--button-height : 38px;
+	--header-icon-margin-left : 6px;
+
+	--tab-cont-panel-height: calc(100vh - var(--main-header-height) - var(--menu-tab-height) - var(--content-padding-top) - var(--content-padding-bottom) - var(--tab-cont-padding-top));
+	--breadcrumb-padding : 6px;	/* 페이지 경로 padding */
+
+	--menu-title : 16px;			/* 페이지 타이틀 font-size */
+	--page-title-height : 24px;		/* 페이지 타이틀 line-height */
+	--refresh-btn-size : 24px;		/* 새로고침 버튼 사이즈 */
+    --main-header-height : 50px;	/* header 높이 */
+    --gnb-width : 68px;				/* 좌측 메뉴바 width (초록색) */
+    --sub-menu-title : 20px;		/* 메뉴바 sub menu 제목 font-size */
+    --nav-menu-font-size : 15px;	/* 메뉴바 sub menu font-size */
+    --nav-menu-line-height : 26px;	/* 메뉴바 sub menu line-height */
+    --nav-bar-menu-height : 42px;	/* 메뉴바 sub menu 높이 */
+    --nav-bar-menu-side-padding : 10px;	/* 메뉴바 양옆 padding */
+    --menu-items-li-padding : 8px 12px 8px 20px;			/* 메뉴바 li 메뉴 padding */
+    --lnb-width : calc(100vw - var(--gnb-width, 68px));		/* 메뉴바 width (흰색) */
+    --logo-size : 30px;				/* 헤더 로고 사이즈 */
+
+	--content-padding-top : 8px;	/* page content padding-top -> 기존거 덮기 위해 개별로 작성.*/
+    --content-padding-bottom : 8px;	/* page content padding-bottom */
+    --content-padding-left : 8px;	/* page content padding-left */
+    --content-padding-right : 8px;	/* page content padding-right */
+    --menu-title-padding-right : 30px;		/* 페이지 타이틀 padding-right */
+    --menu-tab-font-size : 13px;	/* 메뉴 tab font-size */
+    --header-icon-size : 28px;		/* 헤더 우측 아이콘 사이즈 */
+    --left-side-width: calc(var(--gnb-width) + var(--lnb-width));
+
+    --icon-size : 24px;
+    --menu-search-dropdown-size : 220px;
+
+
+    /*---------- top header ----------*/
+
+    & header{
+        border-bottom: 1px solid #DFDFDF !important;
+	    &> .home-go{
+	    	width : 57px;
+	    }
+	    & .top{
+		    padding: 12px 0 0px 12px;
+	        margin-left: 57px;
+
+	        & .top-area {
+		    	position : fixed;
+   	            padding: 0 12px 0 0;
+
+			    & .has-menu-search {
+			    	margin-right : 0;
+			    	width : 200px;
+			    }
+			    & .top-serch{
+			    	& input{
+			    		width : calc(200px - var(--icon-size, 24px) - 4px);
+				    	height : 24px;
+				    	font-size : 15px;
+				    	padding-left : 10px;
+				    }
+			    }
+			    & .top-icon {
+			    	& button[title="Manual"] {
+			    		display : none;
+			    	}
+			    }
+		    }
+	    }
+	}
+
+    & .logo {
+    	margin-left : 0;
+    }
+
+    /*---------- top header end ----------*/
+
+
+    /*---------- 페이지 내부 타이틀 ----------*/
+    & .tit-fav{
+    	flex-wrap: wrap;
+    	& label {
+		    height: var(--page-title-height, 24px);
+		    display : flex;
+		    align-items : center;
+		    padding-right : 0;
+		    line-height : var(--page-title-height, 24px);
+		    &:after{
+		    	height : var(--refresh-btn-size, 24px);
+		    	width : var(--refresh-btn-size, 24px);
+		    	position : relative;
+		    	display : block;
+		    	margin-top : 0;
+		    	position : unset;
+				background-size: var(--refresh-btn-size, 24px) var(--refresh-btn-size, 24px);
+		    	margin-left : 6px;
+		    }
+		}
+		& button.refresh-tab-btn {
+			padding : 3px;
+		}
+	}
+
+    & .h1tit-wrap{
+    	height : calc(var(--page-title-height) + 24px); /* 26px : breadcrum line height */
+    	&:has(.collapse-form-btn){
+    		height : calc(var(--page-title-height) + 26px + 38px);
+    	}
+    	& .bread-crumb{	/* 페이지 경로 */
+	    	height: 20px;
+	    	display: flex;
+	    	align-items: center;
+	    	order : 8;
+	    	padding-left : 0;
+	    	width : 100%;
+	    	font-size : 12px;
+            font-weight: 400;
+            line-height: 20px;
+	    }
+
+	    & .collapse-form-btn {
+	    	order : 10;
+	    }
+    }
+    & .breadcrumb-item+.breadcrumb-item::before{
+    	padding-right : 10px;
+    }
+    /*---------- 페이지 내부 타이틀 end ----------*/
+
+    & .content > .tab-content .content-wrapper:has(.page-footer-wrapper){
+    	height : calc(var(--tab-cont-panel-height) - var(--tab-page-padding-top) - var(--page-title-height) - 26px);
+    }
+
+    & .content > .tab-content .page-wrapper:has(.collapse-form-btn) .content-wrapper:has(.page-footer-wrapper) {
+	    height : calc(var(--tab-cont-panel-height) - var(--tab-page-padding-top) - var(--page-title-height) - 26px - 38px);
+    }
+
+    & .search-wrap >.row{
+    	& > div[class*="col-"] {
+    		order : 1;
+    		&:has(button.btn-search){
+    			order : 0;
+    			padding-top : 0;
+
+    			& button.btn-search{
+    				width : 120px;
+    			}
+    		}
+    	}
+
+    }
+
+    & .page-footer-wrapper .page-footer div button {
+    	margin-left : 6px;
+    }
+
+    & .page-footer {
+    	& div.others-container {
+    		display : none;
+    		position: absolute;
+            bottom: calc(var(--page-footer-height, 74px) - 5px);
+
+    		&.active{
+    			display : block;
+    		}
+
+    		& button {
+    			margin-left : 0;
+    			margin-top : 12px;
+    			box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    		}
+    	}
+
+    	& button.btn-footer-others {
+    		width : var(--button-height, 38px);
+    		height : var(--button-height, 38px);
+    		border: 1px solid var(--ERP-300);
+			background: #fff;
+			color: var(--ERP-600);
+			border-radius : 8px;
+			align-items: center;
+            justify-content: center;
+            display: flex;
+
+            &:hover {
+   				background : #F6F6F6;
+   			}
+    	}
+    }
+    & .page-footer:has(.others-container.active) button.btn-footer-others {
+    	background : var(--ERP-50);
+    }
+
+    /* 반응형 자동 적용 */
+    & div.col:not([class*="col-xs-"]) {
+    	&.col-lg-1{
+    		flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-2{
+    		flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-3{
+    		flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-4{
+    		flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-5{
+    		flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-6{
+    		flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-7{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-8{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-9{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-10{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-11{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    	&.col-lg-12{
+	    	flex: 0 0 100%;
+        	max-width: 100%;
+    	}
+    }
+
+
+
+  }
+
+  & .col-xs-12 {
+	-ms-flex: 0 0 100%;
+	flex: 0 0 100%;
+	max-width: 100%;
+  }
+  & .col-xs-11 {
+	-ms-flex: 0 0 91.666667%;
+	flex: 0 0 91.666667%;
+	max-width: 91.666667%;
+  }
+  & .col-xs-10 {
+	-ms-flex: 0 0 83.333333%;
+	flex: 0 0 83.333333%;
+	max-width: 83.333333%;
+  }
+  & .col-xs-9 {
+	-ms-flex: 0 0 75%;
+	flex: 0 0 75%;
+	max-width: 75%;
+  }
+  & .col-xs-8 {
+	-ms-flex: 0 0 66.666667%;
+	flex: 0 0 66.666667%;
+	max-width: 66.666667%;
+  }
+  & .col-xs-7 {
+	-ms-flex: 0 0 58.333333%;
+	flex: 0 0 58.333333%;
+	max-width: 58.333333%;
+  }
+  & .col-xs-6 {
+	-ms-flex: 0 0 50%;
+	flex: 0 0 50%;
+	max-width: 50%;
+  }
+  & .col-xs-5 {
+	-ms-flex: 0 0 41.666667%;
+	flex: 0 0 41.666667%;
+	max-width: 41.666667%;
+  }
+  & .col-xs-4 {
+	-ms-flex: 0 0 33.333333%;
+	flex: 0 0 33.333333%;
+	max-width: 33.333333%;
+  }
+  & .col-xs-3 {
+	-ms-flex: 0 0 25%;
+	flex: 0 0 25%;
+	max-width: 25%;
+  }
+  & .col-xs-2 {
+	-ms-flex: 0 0 16.666667%;
+	flex: 0 0 16.666667%;
+	max-width: 16.666667%;
+  }
+  & .col-xs-1 {
+	-ms-flex: 0 0 8.333333%;
+	flex: 0 0 8.333333%;
+	max-width: 8.333333%;
+  }
+
+}
+
+/* 전체 행 */
+body.sirius .offer-widget-row {
+    display: flex;
+    gap: 16px;
+    padding: 20px;
+    background: #f5f6f8;
+}
+
+/* 카드 */
+body.sirius .offer-widget-box {
+    background: #ffffff;
+    border: 1px solid #dcdfe3;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* 위젯 미리보기 영역 */
+body.sirius .offer-widget-preview {
+    flex: 1;
+    padding: 12px;
+    background: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+/* 코드 영역 */
+body.sirius .offer-widget-code {
+    padding: 10px 12px;
+    background: #f8f9fb;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 12px;
+    color: #333;
+    line-height: 1.4;
+    white-space: pre;
+    overflow-x: auto;
+}
+
+/* 코드 타이틀 */
+body.sirius .offer-widget-code::before {
+    content: "Usage";
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 6px;
+}
+/* 코드 영역 */
+body.sirius .offer-widget-script {
+    padding: 10px 12px;
+    /* background: #f8f9fb; */
+    font-family: Consolas, Monaco, monospace;
+    font-size: 12px;
+    color: #333;
+    line-height: 2;
+    /* white-space: pre; */
+    background: #ffffff;
+    border: 1px solid #dcdfe3;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+    display: flex;
+    flex-direction: column;
+}
+
+/* 코드 타이틀 */
+body.sirius .offer-widget-script::before {
+    content: "CDN Usage";
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #666;
+}

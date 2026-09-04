@@ -1,0 +1,21 @@
+/*!
+ *   theme-widget.css v.1.0
+ *
+ *   widget component 전용 css
+ *
+ *   Author: donghoon.lee
+ */
+
+@charset "utf-8";
+
+body.sirius  .widget-text {
+    display: flex;
+    align-items: center;
+    margin: 10px; /* or padding?*/
+    width: unset;
+}
+
+
+body.sirius .list-container{
+	width : 100%;
+}

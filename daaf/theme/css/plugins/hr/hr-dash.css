@@ -1,0 +1,698 @@
+@charset "utf-8";
+
+/* span 컬러 예외 처리 */
+.hr_dash_pop_body .holiday-use ul li.holiday-sta span.color-inherit{
+	color: inherit;
+}
+
+/* 임시 적용 - width 정의없어 임시로 사용 팝업 수정시 해당 dash_pop_w1 삭제하거나 다시정의에서 사용 필요 */
+.hr_dash_pop_body .portlet.dash_pop_w1{
+	width: 438px;
+}
+
+/* 임시 적용 - width 정의없어 임시로 사용 팝업 수정시 해당 dash_pop_w1 삭제하거나 다시정의에서 사용 필요 */
+.hr_dash_pop_body .portlet.dash_pop_w2{
+	width: 591px;
+}
+
+/* span 컬러 예외 처리 */
+.hr_dash_body .holiday-use ul li.holiday-sta span.color-inherit{
+	color: inherit;
+}
+
+/* 임시 적용 - width 정의없어 임시로 사용 팝업 수정시 해당 dash_pop_w1 삭제하거나 다시정의에서 사용 필요 */
+.hr_dash_body .portlet.dash_pop_w1{
+	width: 438px;
+}
+
+/* 임시 적용 - width 정의없어 임시로 사용 팝업 수정시 해당 dash_pop_w1 삭제하거나 다시정의에서 사용 필요 */
+.hr_dash_body .portlet.dash_pop_w2{
+	width: 591px;
+}
+
+/* 임시 적용 - width 정의없어 임시로 사용 팝업 수정시 해당 dash_pop_w1 삭제하거나 다시정의에서 사용 필요 */
+.hr_dash_body .portlet.dash_pop_w3{
+	width: 1514px;
+}
+/*커스텀셀렉트박스*/
+.hr_dash_body .select-input-wrap .input-group input {
+    width: 100%;
+    border: none;
+    background: none;
+}
+
+.hr_dash_body .select-input-wrap .input-group {
+    display: inline-block;
+    position: relative;
+    border: 1px solid #dfdfdf;
+    border-radius: 8px;
+    height: 38px;
+    width: 138px;
+}
+.hr_dash_body .select-input-wrap .input-group input {
+    border: none!important;
+    padding: 6px 44px 6px 16px;
+    font-size: 14px;
+    color: #202020;
+    height: 35px!important;
+    border-radius: 8px;
+    vertical-align: middle;
+}
+.hr_dash_body .select-input-wrap .input-group input::placeholder {
+    font-size: 14px;
+}
+.hr_dash_body .select-input-wrap .input-group input:read-only {
+    background: #fff8e6;
+}
+.hr_dash_body .select-input-wrap .input-group .btn-input-select {
+    position: absolute;
+    top: 9px;
+    right: 12px;
+    width: 20px;
+    height: 20px;
+    background: url(../../../images/plugins/hr/arr-select.svg) no-repeat center;
+    background-size: 20px 20px;
+    border: none;
+}
+.hr_dash_body .select-input-wrap .btn-input-select span {
+    font-size: 0;
+}
+.hr_dash_body .select-input-wrap.time .input-group:before {
+    content: "";
+    position: absolute;
+    left: 6px;
+    top: 6px;
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    background: url(../../../images/common/clock_gray.svg) no-repeat center top;
+    background-size: 24px 24px;
+}
+.hr_dash_body .select-input-wrap.time .input-group input {
+    margin-left: 32px;
+    width: 76%;
+    padding: 6px 0px 6px 5px;
+    font-size: 14px;
+    color: #202020;
+}
+.hr_dash_body .select-input-wrap.time .input-group.readonly {
+    background: #fff8e6;
+}
+.hr_dash_body .select-input-wrap.time .input-group.readonly button,
+.hr_dash_body .select-input-wrap.time .input-group.disabled button,
+.hr_dash_body .select-input-wrap.time .input-group.disabled input button {
+    cursor: default;
+}
+.hr_dash_body .select-input-wrap.time .input-group.disabled,
+.hr_dash_body .select-input-wrap.time .input-group.disabled input {
+    background: #f5f5f5;
+}
+.hr_dash_body .select-input-wrap > .input-list {
+    display: none;
+    position: absolute;
+    top: 48px;
+    left: 0;
+    width: 100%;
+    border: 1px solid #c4c4c4;
+    background: #fff;
+    box-shadow: 4px 4px 14px rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+    z-index: 3;
+}
+.hr_dash_body .select-input-wrap > .input-list > ul {
+    padding: 5px 5px !important;
+    border-radius: 8px;
+}
+.hr_dash_body .select-input-wrap > .input-list > ul > li {
+    font-size: 14px;
+    cursor: pointer;
+    padding: 10px 10px !important;
+    margin-bottom: 0 !important;
+    text-align: left;
+    border-radius: 8px;
+}
+#hw002m1Form .holiday-use ul {
+    display: flex;
+    flex-direction: column;
+}
+#hw002m1Form .holiday-use ul li.holiday-sta{display: inline-flex;height: 30px;justify-content: flex-end;overflow: hidden;-webkit-box-orient: vertical;-webkit-line-clamp: 1;color: var(--Grayscale-Gray_400, #B9B9B9);text-overflow: ellipsis;font-family: Pretendard;font-size: 22px;font-style: normal;font-weight: 700;line-height: 34px;letter-spacing: -0.022px;width: 100%;}
+
+#hw002m1Form .holiday-use ul li em {
+    display: block;
+    margin-bottom: 0px;
+    position: absolute;
+    left: 0px;
+    color: var(--Grayscale-Gray_600, #7E7E7E);
+    font-family: Pretendard;
+    font-size: 18px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 26px;
+    letter-spacing: -0.054px;
+}
+#hw002m1Form .holiday-use ul li.holiday-sta span {
+    overflow: hidden;
+    color: #0079FB;
+    text-overflow: ellipsis;
+    font-size: 20px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 34px;
+    letter-spacing: -0.02px;
+}
+ #hw002m1Form .portlet-con.year-sta-port {
+    margin-top: 0;
+}
+ #hw002m1Form .holiday-use ul li {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+.hr_dash_body .hr-grid .portlet {
+    min-height: auto;
+    margin-bottom: auto;
+    padding: 24px;
+    box-shadow: 0 5px 10px rgb(0 0 0 / 3%);
+    vertical-align: text-top;
+    border-radius: 12px;
+    border: 1px solid var(--Grayscale-Gray_300, #D9D9D9);
+    background: var(--Grayscale-White, #FFF);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+#hw002m1Form .holiday-use ul li + .port-btn {
+    margin-top: 14px;
+}
+#hw002m1Form li.holiday-sta + li{
+    padding-top: 44px;
+}
+#hw004m1Form .portlet-con.portlet-work-time {
+    margin-top: 10px;
+}
+#hw005m1Form .portlet-title {
+    font-size: 20px;
+    font-weight: bold;
+    padding-bottom: 10px;
+    position: relative;
+}
+#hw005m1Form .mail-list {
+    width: 100%;
+    height: 190px;
+    overflow-y: auto;
+}
+#hw005m1Form .portlet-list {
+    width: 100%;
+    max-width: 952px;
+    height: auto;
+    overflow-y: auto;
+    table-layout: fixed;
+}
+#hw005m1Form .portlet-list caption {
+    display: none;
+}
+#hw005m1Form .portlet-list tr td.mail-title.not-read {
+    font-weight: 700;
+    color: #2c2c2c;
+}
+#hw005m1Form .portlet-list tr td {
+    padding: 11px 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-bottom: 1px solid #eee;
+    box-sizing: border-box;
+}
+#hw005m1Form .portlet-list tr td.mail-writer {
+    color: var(--Typography-Black-900, #202020);
+    font-weight: 400;
+    padding: 0 16px;
+}
+#hw005m1Form .portlet-noti {
+    font-size: 12px;
+    margin-right: 6px;
+    font-weight: 600;
+    display: inline-flex;
+    padding: 2px 12px;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    border-radius: 20px;
+    line-height: 20px;
+}
+/*공지, 완료*/
+.hr_dash_body .badge-green{
+    background: #DCEDD9;
+    color: #50A73F !important;
+}
+/*보안*/
+.hr_dash_body .badge-blue{
+    background: #DAE6F0;
+    color: #4680B3!important;
+}
+/*중요함, 지연*/
+.hr_dash_body .badge-orange{
+    background: #FCECE0;
+    color: #FF7F09!important;
+    position: initial;
+}
+/*긴급*/
+.hr_dash_body .badge-red{
+    background: #F7DFDF;
+    color: #D55F5F!important;
+    position: initial;
+}
+/*진행*/
+.hr_dash_body .badge-lightblue{
+    background: #EAF6FF;
+    color:#47B1FF!important;
+}
+/*신규*/
+.hr_dash_body .badge-deepyellow{
+    background: #F4EBD0;
+    color:#C79B16!important;
+}
+/*처리*/
+.hr_dash_body .badge-purple{
+    background: #ECE6F3;
+    color:#9672DB!important;
+}
+#hw005m1Form .tab-btn {
+    margin-bottom: 10px;
+}
+
+#hw006m1Form .work-time-state {
+    margin: 0;
+}
+
+#hw006m1Form .portlet-con {
+    margin-top: 16.5px;
+}
+
+/* 그래프 */
+/* 실제 도넛 그래픽 */
+#hw006m1Form .half-doughnut {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 2 / 1;   /* 반원 */
+    overflow: hidden;      /* 아래 절반 숨김 */
+    margin-bottom: 0.9rem;
+}
+
+/* 원 기준 레이어 */
+#hw006m1Form .half-doughnut-chart {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;   /* 정원 */
+}
+
+/* 채워지는 영역 */
+#hw006m1Form .half-doughnut-fill {
+    position: absolute;
+    inset: 0;
+    clip-path: inset(0 0 50% 0); /* 상단 반원만 표시 */
+    transform: rotate(-180deg); /* 시작점 */
+    transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 도넛 테두리 (가상요소) */
+#hw006m1Form .half-doughnut-chart::before,
+#hw006m1Form .half-doughnut-fill::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    box-sizing: border-box;
+    border: 26px solid;
+}
+
+/* 배경 도넛 (회색) */
+#hw006m1Form .half-doughnut-chart::before {
+    border-color: #E9E9E9;
+}
+
+/* 진행 도넛 (초록) */
+#hw006m1Form .half-doughnut-fill::before {
+    border-color: #45BEA0;
+}
+
+/* 중앙 텍스트 */
+#hw006m1Form .half-doughnut-center {
+    position: absolute;
+    bottom: 2%;
+    width: 100%;
+    text-align: center;
+}
+
+#hw006m1Form .half-doughnut-center em {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    color: #7E7E7E;
+}
+
+#hw006m1Form .half-doughnut-center strong {
+    display: block;
+    font-size: 26px;
+    font-weight: 700;
+    color: #45BEA0;
+}
+
+/* 하단 정보 영역 */
+#hw006m1Form .work-doughnut-cont {
+    margin-top: 0;
+}
+
+#hw006m1Form .work-doughnut-cont li {
+    padding-top: 0;
+}
+
+#hw006m1Form .work-doughnut-cont ul li:first-child::after {
+    top: 0;
+}
+
+#hw006m1Form .work-color-station .chart-lightblue,
+#hw006m1Form .work-color-station .chart-lightred,
+#hw006m1Form .work-color-station  .chart-lightyellow {
+    gap: 16px;
+}
+#hw007m1Form .chart-top{
+    display: flex;
+    align-items: center;
+    height: 34px;
+    width: 100%;
+    position: relative;
+}
+#hw007m1Form .chart-top a{
+    flex-direction: row;
+    display: flex;
+    align-items: center;
+}
+#hw007m1Form .chart-top p.sub-num-text {
+        color: #6E6E6E;
+    font-family: Pretendard;
+    font-size: 15px;
+    font-style: normal;
+    font-weight: 500;
+    line-height: 26px;
+    letter-spacing: -0.045px;
+    margin-left: 20px;
+}
+#hw007m1Form .month .prev .arrow span:after {
+    transform: rotate(225deg);
+    top: -10px;
+    right: 0;
+}
+#hw007m1Form .month .next .arrow span:after {
+    top: -10px;
+    right: 3px;
+}
+#hw007m1Form  .hr-weekly-work {
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+}
+#hw007m1Form  .weekly-day {
+    border-radius: 8px;
+    border: 1px solid #D9D9D9;
+    flex: 1;
+}
+#hw007m1Form .weekly-day ul {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+#hw007m1Form .weekly-day li.title {
+    display: flex;
+    padding: 6px 10px;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    align-self: stretch;
+    color: var(--Grayscale-Gray_900, #2C2C2C);
+    background: var(--status-option-2nd-color-blue-bg, #EAF2FA);
+    font-family: Pretendard;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 26px;
+    letter-spacing: -0.042px;
+    border-radius: 8px 8px 0 0;
+}
+#hw007m1Form  .weekly-day li.title.sunday {
+    background: var(--status-option-2nd-color-pink-bg, #FFE2EC);
+}
+#hw007m1Form  .type02 .weekly-day li.hr-content {
+    min-height: 126px;
+    gap: 4px;
+    padding: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #000;
+    align-items: flex-start;
+    align-self: stretch;
+}
+#hw007m1Form  button.year-holiday {
+    display: flex;
+    padding: 3px 10px;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    border-radius: 4px;
+    height: auto;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 20px;
+    text-align: left;
+    border:none;
+    margin-bottom: 4px;
+}
+/* 연차 */
+.hr_dash_body .text-blue{
+    background: #EAF2FA !important;
+    color: #0062BD !important;
+}
+/* 경조휴가 */
+.hr_dash_body .text-green{
+    background: #E3FAF4;
+    color: #00A67B;
+}
+/* 반차 */
+.hr_dash_body .text-deepyellow{
+    background: #F9F5E3;
+    color: #BA9200;
+}
+/* 반반차 */
+.hr_dash_body .text-red{
+    background: #FFE2EC;
+    color:#F1357A;
+}
+/* 공휴일 */
+.hr_dash_body .text-deepred{
+    background: #FF6F76;
+    color:#fff;
+}
+
+#hw008m1Form .hr-weekly-work {
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+}
+#hw008m1Form .weekly-day {
+    border-radius: 8px;
+    border: 1px solid #D9D9D9;
+    flex: 1;
+}
+#hw008m1Form .weekly-day ul {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+#hw008m1Form .weekly-day li.title {
+    display: flex;
+    padding: 6px 10px;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    align-self: stretch;
+    color: var(--Grayscale-Gray_900, #2C2C2C);
+    background: var(--status-option-2nd-color-blue-bg, #EAF2FA);
+    font-family: Pretendard;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 26px;
+    letter-spacing: -0.042px;
+    border-radius: 8px 8px 0 0;
+}
+#hw008m1Form .weekly-day li.title.sunday {
+    background: var(--status-option-2nd-color-pink-bg, #FFE2EC);
+}
+#hw008m1Form .weekly-day li.hr-content {
+    display: flex;
+    padding: 20px 10px;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    flex: 1 0 0;
+    align-self: stretch;
+    background: var(--Grayscale-White, #FFF);
+    border-radius: 0 0 8px 8px;
+    min-height: 190px;
+}
+#hw008m1Form .weekly-day li.hr-content .sub-cont li.week-title {
+    color: var(--Grayscale-Gray_700, #626262);
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 26px;
+    letter-spacing: -0.042px;
+}
+#hw008m1Form .weekly-day li.hr-content .sub-cont li.number {
+    height: 34px;
+    color: var(--Grayscale-Black, #111);
+    font-size: 20px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 34px;
+    letter-spacing: -0.02px;
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    align-items: center;
+}
+#hw008m1Form .weekly-day li.hr-content .sub-cont li.number span {
+    display: flex;
+    width: 60px;
+    min-width: 60px;
+    padding: 2px 8px;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 20px;
+    letter-spacing: -0.036px;
+    border-radius: 20px;
+    height: 20px;
+}
+.hr_dash_body span.work-orange{
+    background: #FCECE0;
+    color: #FF7F09;
+}
+.hr_dash_body span.work-green{
+    background: #DCEDD9;
+    color: #50A73F;
+}
+#hw008m1Form .weekly-day li.hr-content .sub-time ul {
+    display: flex;
+    flex-direction: row;
+    padding: 8px 10px;
+    align-items: flex-start;
+    gap: 10px;
+    border-radius: 10px;
+    background: var(--Grayscale-Gray_50, #F6F6F6);
+}
+#hw008m1Form .weekly-day li.hr-content .sub-time ul li {
+    color: var(--Grayscale-Black, #111);
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 26px;
+    letter-spacing: -0.042px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+}
+#hw008m1Form .weekly-day li.hr-content .sub-time ul li span {
+    color: var(--Grayscale-Gray_700, #626262);
+    font-size: 13px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 20px;
+    letter-spacing: -0.039px;
+}
+#hw008m1Form .weekly-day li.hr-content .sub-time .work-acitve-btn {
+    display: flex;
+    min-width: 120px;
+    max-width: 400px;
+    padding: 6px 16px;
+    justify-content: center;
+    align-items: center;
+    border-radius: 8px;
+    background: var(--ZeniOne-900-main, #0079FB);
+    color: #FFF;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 26px;
+    letter-spacing: -0.042px;
+    border:none;
+}
+.hr_dash_body button.btn_work_on {
+    display: flex;
+    min-width: 120px;
+    max-width: 400px;
+    padding: 6px 16px;
+    justify-content: center;
+    align-items: center;
+    border-radius: 8px;
+    color: #FFF;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 26px;
+    letter-spacing: -0.042px;
+    border: none;
+    background: #3f88f9!important;
+}
+.hr_dash_body button.btn_work_off {
+    display: flex;
+    min-width: 120px;
+    max-width: 400px;
+    padding: 6px 16px;
+    justify-content: center;
+    align-items: center;
+    border-radius: 8px;
+    color: #FFF;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 26px;
+    letter-spacing: -0.042px;
+    border: none;
+    background: #d56363!important;
+}
+.hr_dash_body button.btn_change_on {
+    display: flex;
+    min-width: 120px;
+    max-width: 400px;
+    padding: 6px 16px;
+    justify-content: center;
+    align-items: center;
+    border-radius: 8px;
+    background: #eca54c!important;
+    color: #FFF;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 26px;
+    letter-spacing: -0.042px;
+    border: none;
+}
+.hr_dash_body .btn_work_on:hover {
+    background: #205bb6!important;
+    color: #fff!important
+}
+.hr_dash_body .btn_work_off:hover {
+    background: #cf2323!important;
+    color: #fff!important
+}
+.hr_dash_body .btn_change_on:hover {
+    background: #f58800!important;
+    color: #fff!important
+}

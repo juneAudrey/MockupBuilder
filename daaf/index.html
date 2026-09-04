@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Daaf Wave [파도타기]</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><img src="assets/icon.png" class="brand-ico" alt=""> Daaf&nbsp;Wave <span class="pado">[파도타기]</span>
+    </div>
+
+    <!-- 모드 스위치 (한 번에 하나만) -->
+    <div class="mode-switch" id="modeSwitch">
+      <button class="ms-btn active" data-mode="db" id="msDb">DB 연결</button>
+      <button class="ms-btn" data-mode="offline" id="msOffline">오프라인</button>
+    </div>
+
+    <!-- DB 연결 패널 -->
+    <div class="mode-panel" id="panelDb">
+      <span class="conn-fields" id="connFields">
+        <select id="dbType" class="w70" title="DB 종류">
+          <option value="mssql">MSSQL</option>
+          <option value="mysql">MySQL</option>
+          <option value="oracle">Oracle</option>
+        </select>
+        <input id="connAlias" class="w100" placeholder="별칭" title="접속 별칭 (비우면 IP 사용)">
+        <input id="dbServer" class="w150" placeholder="서버 IP\\인스턴스" value="">
+        <input id="dbPort" class="w60" placeholder="Port" value="1433">
+        <input id="dbOraSvc" class="w90" placeholder="서비스명/SID" title="Oracle 서비스명(또는 SID:형식으로 SID) — 접속 전 필수" style="display:none">
+        <input id="dbUser" class="w80" placeholder="계정" value="">
+        <span class="pw-wrap">
+          <input id="dbPass" class="w80" type="password" placeholder="비밀번호" value="">
+          <button id="btnPwShow" type="button" class="pw-eye" title="비밀번호 보기">👁</button>
+        </span>
+        <label class="chk sm" title="TLS/SSL 암호화"><input id="dbEncrypt" type="checkbox"> 암호화</label>
+        <button id="btnConnSave" class="btn ghost sm" title="현재 입력값 저장">저장</button>
+        <button id="btnConnDel" class="btn ghost sm" title="선택 접속정보 삭제">삭제</button>
+        <select id="connProfiles" class="w120 conn-profiles-gap" title="저장된 접속정보 (선택하면 바로 불러옵니다)">
+          <option value="">— 저장된 접속 —</option>
+        </select>
+        <button id="btnDbConnect" class="btn primary sm">접속</button>
+      </span>
+      <span class="conn-live" id="connLive" style="display:none">
+        <span class="cl-dot"></span>
+        <span class="cl-name" id="connLiveName"></span>
+        <select id="dbName" class="w130" title="사용할 DB 선택">
+          <option value="">— DB 선택 —</option>
+        </select>
+        <button id="btnDbDisconnect" class="btn ghost sm" title="연결 끊기">접속 해제</button>
+      </span>
+    </div>
+
+    <!-- 오프라인 패널 -->
+    <div class="mode-panel" id="panelOffline" style="display:none">
+      <span class="off-live" id="offLive">
+        <span class="ol-dot"></span>
+        <span class="ol-folder" id="offLiveFolder">파일 미선택</span>
+      </span>
+      <button id="btnOffline" class="btn ghost sm" title="오프라인 데이터 관리">⚙ 데이터 관리</button>
+      <button id="btnLoadErp" class="btn ghost sm" title="저장했던 .erp 파일을 불러와 그래프로 다시 봅니다">📂 불러오기</button>
+    </div>
+
+    <button id="btnGuide" class="btn ghost sm guide-btn" title="사용법 보기">❓ 사용법</button>
+    <button id="btnTour" class="btn ghost sm tour-btn" title="화면 둘러보기 투어">🧭 가이드</button>
+    <button id="btnSettings" class="btn ghost sm settings-btn" title="설정 (화면 배율 등)">⚙ 설정</button>
+  </header>
+
+  <div id="progress" class="progress"><div class="bar"></div></div>
+  <div id="connError" class="conn-error" style="display:none">
+    <span class="ce-ico">⚠</span>
+    <span class="ce-msg"></span>
+    <button id="ceDetailBtn" class="ce-detail-btn" type="button">상세</button>
+    <button id="ceClose" class="ce-close" type="button">×</button>
+    <div class="ce-detail" style="display:none"></div>
+  </div>
+
+  <main class="grid">
+    <!-- ① 검색 -->
+    <section class="pane search">
+      <div class="search-head">
+        <h3>검색</h3>
+        <button id="btnAdvToggle" type="button" class="adv-toggle" title="테넌트/회사/언어 등 자주 안 쓰는 옵션">
+          ⚙ 고급 옵션 <span class="chev">▾</span>
+        </button>
+      </div>
+
+      <!-- 고급 옵션(테넌트/회사/언어) — 기본 숨김: 대부분 '*'/기본값을 그대로 쓰기 때문에
+           평소에는 감춰서 화면을 덜 어수선하게 하고, 검색 결과 목록에 더 많은 공간을 준다. -->
+      <div id="advOptions" class="adv-options" style="display:none">
+        <div class="field-row">
+          <label>테넌트</label>
+          <select id="tenantId"><option value="*" selected>전체</option></select>
+          <label>회사</label>
+          <select id="coCd"><option value="*" selected>전체</option></select>
+        </div>
+        <div class="field-row">
+          <label>언어</label>
+          <select id="langSel">
+            <option value="ko" selected>ko · 한국</option>
+            <option value="en">en · United States</option>
+            <option value="ja">ja · Japanese</option>
+            <option value="vi">vi · Viet Nam</option>
+            <option value="zh">zh · Chinese</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <label>제품</label>
+        <select id="productCd">
+          <option value="ERP" selected>ERP</option>
+          <option value="BC">BC</option>
+          <option value="">전체</option>
+        </select>
+      </div>
+      <div id="searchMenuFields">
+        <div class="field-row folder-row">
+          <label>상위 폴더</label>
+          <div class="folder-picker" id="folderPicker">
+            <div class="folder-picker-inp-wrap">
+              <input id="mnuFolderSearch" class="folder-picker-inp" placeholder="폴더 검색 또는 선택 안 함" autocomplete="off" title="폴더명을 입력해 검색하거나 클릭해서 목록을 펼치세요">
+              <button id="btnFolderClear" type="button" class="folder-picker-clear" title="폴더 선택 해제" style="display:none">×</button>
+            </div>
+            <div id="folderDropdown" class="folder-dropdown" style="display:none"></div>
+          </div>
+          <button id="btnFolderRefresh" type="button" class="btn ghost sm" title="폴더 목록 새로고침">↻</button>
+        </div>
+        <div id="folderHint" class="mode-hint" style="display:none"></div>
+        <div class="field-row split">
+          <input id="mnuId" placeholder="프로그램 ID">
+          <input id="mnuNm" placeholder="메뉴명">
+        </div>
+      </div>
+      <div id="searchWfFields" style="display:none">
+        <div class="field-row split">
+          <input id="svcId" placeholder="서비스 ID 예: IMMVCMUI0002_SELECT">
+          <input id="svcUid" placeholder="서비스 UID 예: 10626">
+        </div>
+      </div>
+      <div id="searchModeHint" class="mode-hint">메뉴(프로그램) 검색</div>
+      <button id="btnSearch" class="btn primary full">프로그램 검색</button>
+
+      <div class="menu-list">
+        <div id="menuCount" class="menu-count" style="display:none"></div>
+        <table class="tbl">
+          <thead id="menuThead"><tr>
+            <th class="chk-col"><input id="menuChkAll" type="checkbox" title="전체 선택/해제"></th>
+            <th>메뉴명</th><th>호출PGM_ID</th><th>모듈</th>
+          </tr></thead>
+          <tbody id="menuBody"></tbody>
+        </table>
+        <div id="menuEmpty" class="empty" style="display:none">검색 결과가 없습니다.</div>
+      </div>
+
+      <div class="run-box">
+        <div class="wave-chip-row">
+          <label class="chk wave-chip chip-UI"><input id="wUI" type="checkbox" checked><span class="badge b-UI">UI</span></label>
+          <label class="chk wave-chip chip-WF"><input id="wWF" type="checkbox" checked><span class="badge b-WF">WF</span></label>
+          <label class="chk wave-chip chip-Rp"><input id="wRp" type="checkbox" checked><span class="badge b-Rp">Rp</span></label>
+          <label class="chk wave-chip chip-Mo"><input id="wMo" type="checkbox"><span class="badge b-Mo">Mo</span></label>
+        </div>
+        <div class="run-btn-row">
+          <button id="btnRun" class="btn accent full">▶ 연관 조회 실행 (파도타기)</button>
+          <button id="btnCancelRun" class="btn danger sm" style="display:none" title="진행 중인 파도타기 조회를 취소합니다">✕ 취소</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="leftResizer" class="pane-resizer" title="드래그하여 좌측 검색 영역 너비 조절"></div>
+
+    <!-- ② 관계 뷰 -->
+    <section class="pane view">
+      <div class="view-head">
+        <div class="tabs">
+          <button id="tabUi" class="tab">UI</button>
+          <button id="tabGraph" class="tab active">그래프</button>
+          <button id="tabTable" class="tab">테이블</button>
+          <button id="tabFlow" class="tab">흐름도</button>
+        </div>
+      </div>
+
+      <!-- 검색은 그래프·테이블 둘 다에 적용되므로(그래프 강조 + 테이블 행 강조) 두 탭에서 공통으로
+           보이는 자기 줄을 따로 둔다(흐름도 탭에서는 숨김). -->
+      <div class="view-tools" id="searchTools">
+        <span class="gv-search">
+          <input id="gvSearch" class="gv-search-inp" placeholder="🔍 ID · 이름 · UID 검색" title="그래프/테이블에서 검색 (ID, 이름, UID)">
+          <span id="gvSearchCnt" class="gv-search-cnt"></span>
+        </span>
+      </div>
+
+      <!-- 그래프 탭 전용 도구: 표시 토글/배치 방식/재배치/전체보기는 그래프에만 의미가 있어
+           그래프 탭에서만 보인다(예전엔 테이블 탭에서도 그대로 보여서, 눌러도 테이블엔 아무
+           변화가 없는 버튼들이 섞여 헷갈렸다). -->
+      <div class="view-tools" id="graphTools">
+        <label class="chk sm" title="테이블 노드 표시"><input id="showTable" type="checkbox"> <span class="badge b-TABLE">Table</span></label>
+        <label class="chk sm" title="순환참조 표시"><input id="showCycle" type="checkbox" checked> 순환</label>
+        <label class="chk sm" title="메인 화면이 팝업/Jump로 여는 다른 UI와 그에 엮인 파도 표시"><input id="showSubUi" type="checkbox" checked> 부가 UI</label>
+        <select id="layoutSel" class="sm" title="노드 배치 방식">
+          <option value="cose" selected>힘기반(겹침 최소)</option>
+          <option value="breadthfirst">계층(위→아래)</option>
+          <option value="concentric">동심원</option>
+          <option value="circle">원형</option>
+          <option value="grid">격자</option>
+        </select>
+        <button id="btnRelayout" class="btn ghost sm">재배치</button>
+        <button id="btnFit" class="btn ghost sm">전체보기</button>
+      </div>
+
+      <!-- 흐름도 탭 전용 도구: 제목(WF 이름 · 반복문 내부 등)은 길어질 수 있어 자기 줄을 따로
+           쓰고, 버튼들은 그 아래 줄에 모아 좁은 화면에서도 줄바꿈만 될 뿐 잘리지 않게 한다. -->
+      <div class="view-tools flow-tools" id="flowTools" style="display:none">
+        <div class="flow-tools-title-row">
+          <button id="btnFlowBack" class="btn ghost sm" style="display:none" title="이동하기 전 보고 있던 화면으로 되돌아갑니다(다른 WF로 이동했거나, 반복문/분기 내부로 들어왔던 경우 모두)">◀ 뒤로</button>
+          <span id="flowTitle" class="flow-title muted">WF 노드를 선택하고 상세 패널의 [🔀 흐름도 보기]를 누르세요.</span>
+          <span class="gv-search">
+            <input id="flowSearch" class="gv-search-inp" placeholder="🔍 지금 화면의 단계 검색" title="지금 보고 있는 흐름도 화면 안의 단계를 이름·메시지·테이블·조건식 등으로 검색">
+            <span id="flowSearchCnt" class="gv-search-cnt"></span>
+          </span>
+        </div>
+        <div class="flow-tools-action-row">
+          <select id="flowLayoutSel" class="sm" title="흐름도 배치 방식">
+            <option value="breadthfirst" selected>계층(위→아래, 가독성)</option>
+            <option value="preset">원본 배치(디자이너 좌표)</option>
+          </select>
+          <button id="btnFlowGoStart" class="btn ghost sm" title="시작 노드로 이동하여 확대">⏮ 시작</button>
+          <button id="btnFlowGoEnd" class="btn ghost sm" title="종료 노드로 이동하여 확대">⏭ 종료</button>
+          <label class="chk sm" title="흐름도 미니맵 표시/숨김"><input id="flowMinimapToggle" type="checkbox" checked> 미니맵</label>
+          <button id="btnFlowRelayout" class="btn ghost sm">재배치</button>
+          <button id="btnFlowFit" class="btn ghost sm">전체보기</button>
+        </div>
+      </div>
+
+      <div id="paneGraph" class="graph-wrap">
+        <div id="graph"></div>
+        <div class="legend">
+          <span><i class="lg" style="background:#1f6fd6"></i>UI</span>
+          <span><i class="lg" style="background:#12a150"></i>WF</span>
+          <span><i class="lg" style="background:#e08e0b"></i>Rp</span>
+          <span><i class="lg" style="background:#8b5cf6"></i>Mo</span>
+          <span><i class="lg" style="background:#6b7280;border-radius:2px"></i>Table</span>
+          <span><i class="lg" style="border:2px dashed #ef4444;background:transparent"></i>순환</span>
+        </div>
+      </div>
+
+      <div id="paneTable" class="table-wrap" style="display:none">
+        <table class="tbl result">
+          <thead><tr><th style="width:30px"></th><th>구분</th><th>ID</th><th>이름</th><th>UID</th><th>깊이</th><th></th></tr></thead>
+          <tbody id="resultBody"></tbody>
+        </table>
+      </div>
+
+      <div id="paneFlow" class="graph-wrap" style="display:none">
+        <div id="flowchart"></div>
+        <div id="flowEmpty" class="empty flow-empty">WF 노드를 선택한 뒤, 상세 패널의 <b>[🔀 흐름도 보기]</b> 버튼을 누르세요.</div>
+        <div id="flowStepBox" class="flow-stepbox" style="display:none"></div>
+        <!-- 흐름도 미니맵: 기본적으로 쿼리 팝업(우측)과 겹치지 않는 좌상단에 위치. 드래그로 옮길 수 있고
+             옮긴 위치는 다음에 열어도 유지된다(localStorage). -->
+        <div id="flowMinimap" class="flow-minimap">
+          <div id="flowMinimapHead" class="flow-minimap-head" title="드래그하여 위치 이동"><span>미니맵</span></div>
+          <canvas id="flowMinimapCanvas" class="flow-minimap-canvas"></canvas>
+        </div>
+        <div class="legend flow-legend">
+          <span><i class="lg" style="background:#12a150"></i>시작/종료</span>
+          <span><i class="lg" style="background:#f59e0b;border-radius:2px;transform:rotate(45deg)"></i>조건분기</span>
+          <span><i class="lg" style="background:#1f6fd6"></i>조회/엔티티</span>
+          <span><i class="lg" style="background:#0ea5e9"></i>SQL실행</span>
+          <span title="점선 테두리 노드를 더블클릭하면 그 서비스(다른 WF)의 흐름도로 이동합니다"><i class="lg" style="background:#8b5cf6;border-style:dashed;border-width:1.5px;border-color:#6d28d9"></i>서비스호출(더블클릭: 이동)</span>
+          <span><i class="lg" style="background:#e08e0b"></i>메시지</span>
+          <span><i class="lg" style="background:#334155"></i>코드/반복</span>
+        </div>
+      </div>
+
+      <!-- 신규: "UI" 탭 — 프로그램 검색 결과를 더블클릭하면 코드·디자인 보기의 "디자인" 모드만
+           팝업 없이 바로 여기 표시된다. WF/UI 뱃지 클릭 등 사용법은 모달과 완전히 동일하다
+           (뒤로가기 포함). 더 자세히 봐야 하면(코드 보기, 그래프 탐색 등) 그래프 탭에서 기존
+           코드·디자인 보기 팝업을 그대로 쓰면 된다. -->
+      <div id="paneUi" class="graph-wrap ui-tab-wrap" style="display:none">
+        <div class="ui-tab-head">
+          <button id="uiTabBack" class="btn ghost xs" style="display:none" title="이전 화면으로 되돌아가기">◀ 뒤로</button>
+          <b id="uiTabTitle" class="muted">왼쪽에서 프로그램을 검색해 더블클릭하면 여기에 디자인이 표시됩니다.</b>
+        </div>
+        <div class="ui-tab-body">
+          <div id="uiTabDesignPane" class="ui-tab-design-pane">
+            <!-- 리포트(Rp) 전용 툴바 — 확대/축소, PDF/이미지로 저장. 코드·디자인 보기 모달의
+                 #vwDesignToolbar 와 동일한 기능이며, Rp 를 볼 때만 보인다. -->
+            <div id="uiTabDesignToolbar" class="viewer-design-toolbar" style="display:none">
+              <button id="uiTabZoomOut" class="btn ghost xs" title="축소">🔍−</button>
+              <button id="uiTabZoomReset" class="btn ghost xs" title="100%로 되돌리기">100%</button>
+              <button id="uiTabZoomIn" class="btn ghost xs" title="확대">🔍+</button>
+              <span class="vw-toolbar-sep"></span>
+              <button id="uiTabExportPdf" class="btn ghost xs" title="PDF 파일로 저장">📄 PDF</button>
+              <button id="uiTabExportImage" class="btn ghost xs" title="PNG 이미지 파일로 저장">🖼 이미지</button>
+              <span class="vw-toolbar-sep"></span>
+              <!-- 연결된 WF 쿼리 패널을 통째로 숨기고/보여서 리포트 미리보기를 넓게 볼 수 있게 하는
+                   토글 — 패널 안의 접기 버튼이 아니라 여기 두는 이유는, 패널을 완전히 숨긴
+                   뒤에도(그 자리를 리포트가 차지) 다시 켤 방법이 남아 있어야 하기 때문. -->
+              <button id="uiTabSqlToggle" class="btn ghost xs active" title="연결된 WF 쿼리 패널 숨기고 리포트를 넓게 보기">🔎 쿼리</button>
+              <span id="uiTabExportStatus" class="vw-export-status"></span>
+            </div>
+            <!-- iframe 은 처음부터(display:none 없이) 항상 레이아웃에 포함시켜 둔다 — 숨겨진
+                 채로 있다가 첫 srcdoc 대입과 동시에 보이도록 바뀌면(같은 프레임 안에서) 일부
+                 환경에서 그 첫 네비게이션이 씹혀 로드 이벤트가 안 오는 문제가 있었다(그래서
+                 맨 처음 더블클릭한 화면만 뱃지 클릭이 하나도 안 먹는 버그로 나타남). #uiTabEmpty
+                 는 position:absolute(.flow-empty)라 iframe 위에 그냥 겹쳐서 가려주므로, 내용이
+                 없을 때도 iframe 자체를 숨길 필요가 없다. -->
+            <iframe id="uiTabDesignView" class="viewer-design ui-tab-frame" sandbox="allow-same-origin"></iframe>
+            <div id="uiTabEmpty" class="empty flow-empty">왼쪽에서 프로그램을 검색해 더블클릭하면 여기에 디자인이 표시됩니다.</div>
+            <!-- 컴포넌트의 "IV"(초기값) 배지 상세 — 모달의 #vwInitBox 와 동일한 기능. -->
+            <div id="uiTabInitBox" class="flow-stepbox vw-init-box" style="display:none"></div>
+          </div>
+          <!-- 리포트(Rp)를 볼 때만 옆에 나타나는 SQL 사이드 패널 — 모달의 #vwSqlView 와 동일. -->
+          <div id="uiTabSqlView" class="viewer-sql" style="display:none"></div>
+        </div>
+        <div id="uiTabLinkToast" class="vw-link-toast" style="display:none"></div>
+      </div>
+    </section>
+
+    <div id="rightResizer" class="pane-resizer" title="드래그하여 우측 상세 영역 너비 조절"></div>
+
+    <!-- ③ 상세 -->
+    <section class="pane detail-pane">
+      <h3>상세 <button id="dToggleAll" class="btn ghost xs">전체 펼치기</button></h3>
+      <div id="detail" class="detail"><div class="muted">노드를 선택하세요.</div></div>
+      <div id="detailActions" class="detail-actions"></div>
+    </section>
+  </main>
+
+  <!-- ④ 바구니 -->
+  <footer class="basket">
+    <div class="bk-head">
+      <b>수집 바구니</b> <span class="pill" id="basketCount">0</span>
+      <span class="muted" id="basketSummary"></span>
+      <div class="spacer"></div>
+      <button id="btnClearBasket" class="btn basket-o sm">비우기</button>
+      <button id="btnSaveBasket" class="btn basket sm">부분 저장 (바구니)</button>
+      <button id="btnSaveAll" class="btn accent sm" title="검색 결과 목록에 체크된 항목이 있으면 그 항목들을 모아 다운로드하고, 없으면 지금 조회 중인 전체 데이터를 저장합니다">일괄 저장 (전체)</button>
+    </div>
+    <div id="basketList" class="bk-list"></div>
+    <div class="status-row">
+      <div id="status" class="status">준비됨</div>
+      <div class="credit">by June (ver.20260904.001)</div>
+    </div>
+  </footer>
+
+  <!-- 오프라인 데이터 관리 모달 -->
+  <div id="offlineModal" class="modal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-head">
+        <b>⤓ 오프라인 데이터 관리</b>
+        <button id="offClose" class="modal-x">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="off-row">
+          <label>데이터 파일</label>
+          <input id="offFile" readonly placeholder="파일을 선택하거나 새로 만드세요">
+          <button id="btnOffPickNew" class="btn ghost sm">새로 만들기</button>
+          <button id="btnOffPickExisting" class="btn ghost sm">파일 열기</button>
+        </div>
+
+        <div class="off-note">
+          💡 데이터를 다운로드한 뒤, 상단의 <b>[오프라인]</b> 스위치를 누르면 로컬 데이터로 조회합니다.
+          <b>메뉴</b>는 상단 검색 패널의 <b>제품</b> 선택값과 무관하게, 등록된 <b>모든 제품(ERP·BC)</b>을
+          동기화할 때마다 자동으로 순회하며 폴더 구조까지 함께 저장합니다 — 오프라인에서도
+          <b>상위 폴더로 찾아보기</b>를 그대로 쓸 수 있고, DB 접속 모드처럼 모든 제품이 오프라인 파일 하나에 함께 공존합니다.
+        </div>
+        <div id="offFileSize" class="off-note" style="display:none"></div>
+
+        <div class="off-tables">
+          <div class="off-th"><span>테이블</span><span>행수</span><span>최근 갱신</span><span>선택</span></div>
+          <div id="offTableRows"></div>
+        </div>
+
+        <div class="off-actions">
+          <button id="btnOffDownload" class="btn primary sm">⤓ 전체 다운로드</button>
+          <button id="btnOffSync" class="btn accent sm">↻ 증분 갱신</button>
+          <button id="btnOffDelSel" class="btn ghost sm">선택 테이블 삭제</button>
+          <div class="spacer"></div>
+          <button id="btnOffCancel" class="btn danger sm" style="display:none">■ 강제 중단</button>
+        </div>
+
+        <div id="offProgress" class="off-progress" style="display:none">
+          <div class="op-bar-wrap"><div id="opBar" class="op-bar"></div></div>
+          <div id="opText" class="op-text"></div>
+        </div>
+        <div id="offMsg" class="off-msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 오프라인 다운로드용 DB 접속정보 선택 다이얼로그 -->
+  <div id="dlConnModal" class="modal" style="display:none;z-index:120">
+    <div class="modal-box" style="width:460px">
+      <div class="modal-head">
+        <b>⤓ 다운로드할 DB 선택</b>
+        <button id="dlConnX" class="modal-x">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="dlc-note">저장된 접속정보로만 다운로드할 수 있습니다. 접속정보와 DB를 선택한 뒤 [확인]을 누르세요.</div>
+        <div class="dlc-row">
+          <label>접속정보</label>
+          <select id="dlConnProfiles"><option value="">— 저장된 접속 —</option></select>
+        </div>
+        <div class="dlc-row">
+          <label>데이터베이스</label>
+          <select id="dlConnDb" disabled><option value="">— 접속 후 선택 —</option></select>
+          <button id="dlConnTest" class="btn ghost sm">접속·DB조회</button>
+        </div>
+        <div id="dlConnMsg" class="dlc-msg"></div>
+      </div>
+      <div class="dlc-actions">
+        <button id="dlConnCancel" class="btn ghost sm">취소</button>
+        <button id="dlConnOk" class="btn primary sm" disabled>확인 후 다운로드</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 코드/디자인 뷰어 모달 -->
+  <div id="viewerModal" class="modal" style="display:none">
+    <div class="modal-box viewer-box">
+      <div class="modal-head">
+        <span class="viewer-title-wrap">
+          <button id="vwBack" class="btn ghost xs" style="display:none" title="이전 화면으로 되돌아가기">◀ 뒤로</button>
+          <b id="viewerTitle">리소스 보기</b>
+        </span>
+        <div class="viewer-switch">
+          <button id="vwCode" class="vw-tab active">코드</button>
+          <button id="vwDesign" class="vw-tab">디자인</button>
+          <select id="vwResSel" class="sm" style="margin-left:8px"></select>
+          <span class="gv-search" id="vwCodeSearchWrap" style="margin-left:8px">
+            <input id="vwCodeSearch" class="gv-search-inp" placeholder="🔍 코드 검색" title="지금 보고 있는 코드 안에서 검색 (일치하는 단어를 강조 표시)">
+            <span id="vwCodeSearchCnt" class="gv-search-cnt"></span>
+          </span>
+          <button id="vwCopy" class="btn ghost sm">복사</button>
+          <label class="chk sm" id="vwValMsgWrap" style="display:none;margin-left:8px" title="필수입력/유효성 검증 오류 메시지를 미리보기에 표시할지 여부(기본: 숨김)">
+            <input type="checkbox" id="vwShowValMsg"> 검증 메시지 표시
+          </label>
+        </div>
+        <div class="viewer-winbtns">
+          <button id="viewerMax" class="modal-x" title="최대화">▢</button>
+          <button id="viewerClose" class="modal-x">×</button>
+        </div>
+      </div>
+      <div class="modal-body viewer-body">
+        <pre id="vwCodeView" class="viewer-code"></pre>
+        <div id="vwDesignPane" class="viewer-design-pane" style="display:none">
+          <!-- 리포트(Rp) 디자인 미리보기 전용 툴바 — 확대/축소, PDF/이미지로 저장.
+               UI/Mo 미리보기에는 안 보인다(우리가 직접 만든 self-contained 리포트 문서에만
+               쓸 수 있는 기능들이라 — renderViewer()/setViewerMode() 에서 표시 여부를 정함). -->
+          <div id="vwDesignToolbar" class="viewer-design-toolbar" style="display:none">
+            <button id="vwZoomOut" class="btn ghost xs" title="축소">🔍−</button>
+            <button id="vwZoomReset" class="btn ghost xs" title="100%로 되돌리기">100%</button>
+            <button id="vwZoomIn" class="btn ghost xs" title="확대">🔍+</button>
+            <span class="vw-toolbar-sep"></span>
+            <button id="vwExportPdf" class="btn ghost xs" title="PDF 파일로 저장">📄 PDF</button>
+            <button id="vwExportImage" class="btn ghost xs" title="PNG 이미지 파일로 저장">🖼 이미지</button>
+            <span class="vw-toolbar-sep"></span>
+            <button id="vwSqlToggle" class="btn ghost xs active" title="연결된 WF 쿼리 패널 숨기고 리포트를 넓게 보기">🔎 쿼리</button>
+            <span id="vwExportStatus" class="vw-export-status"></span>
+          </div>
+          <iframe id="vwDesignView" class="viewer-design" sandbox="allow-same-origin"></iframe>
+          <!-- 컴포넌트의 "IV"(초기값) 배지를 클릭하면 여기에 정적/스크립트/체인 추적 결과를 보여준다.
+               흐름도의 #flowStepBox 와 동일하게 닫기 없이 접기/펼치기만 지원(항상 화면에 남음). -->
+          <div id="vwInitBox" class="flow-stepbox vw-init-box" style="display:none"></div>
+        </div>
+        <div id="vwSqlView" class="viewer-sql" style="display:none"></div>
+        <!-- 디자인 미리보기에서 WF/UI 배지를 눌렀는데 대상 노드가 현재 파도타기 결과에
+             없을 때의 안내: 창이 (특히 최대화 상태로) 화면 전체를 덮고 있어 아래 상태 표시줄이
+             가려지므로, 뷰어 안에서도 바로 보이는 토스트로 띄운다. -->
+        <div id="vwLinkToast" class="vw-link-toast" style="display:none"></div>
+      </div>
+      <div id="viewerResize" class="viewer-resize" title="드래그하여 크기 조절"></div>
+    </div>
+  </div>
+
+  <!-- 사용법 가이드 모달 -->
+  <div id="guideModal" class="modal" style="display:none">
+    <div class="modal-box guide-box">
+      <div class="modal-head">
+        <b>📖 Daaf Wave 사용법</b>
+        <button id="guideClose" class="modal-x">×</button>
+      </div>
+
+      <!-- 탭 -->
+      <div class="guide-tabs" id="guideTabs">
+        <button class="gtab active" data-gt="start">🚀 시작하기</button>
+        <button class="gtab" data-gt="search">🔍 검색</button>
+        <button class="gtab" data-gt="wave">🌊 파도타기</button>
+        <button class="gtab" data-gt="uitab">🖥 UI 탭</button>
+        <button class="gtab" data-gt="view">📊 그래프·테이블</button>
+        <button class="gtab" data-gt="flow">🔀 흐름도</button>
+        <button class="gtab" data-gt="save">💾 저장</button>
+        <button class="gtab" data-gt="offline">⤓ 오프라인·DB</button>
+      </div>
+
+      <div class="modal-body guide-body">
+
+        <!-- 1. 시작하기 -->
+        <div class="gpanel active" data-gp="start">
+          <div class="off-note">💡 상단 스위치로 <b>DB 연결</b> · <b>오프라인</b> 중 하나를 먼저 선택하세요.</div>
+          <div class="guide-step"><span class="guide-num">1</span>
+            <div><b>모드 선택</b><br>상단에서 <b>DB 연결 / 오프라인</b> 중 하나를 고릅니다. <b>DB 연결</b>은 <b>DB 종류</b> <span class="guide-new">3종</span>에서 MSSQL·MySQL·Oracle 중 하나를 선택합니다.</div>
+          </div>
+          <div class="guide-step"><span class="guide-num">2</span>
+            <div><b>검색 → 파도타기</b><br>프로그램을 검색해 고른 뒤, 볼 범위(<span class="gb gb-ui">UI</span> <span class="gb gb-wf">WF</span> <span class="gb gb-rp">Rp</span> <span class="gb gb-mo">Mo</span>)를 정하고 <b>[▶ 연관 조회 실행]</b>을 누릅니다. 깊이 제한 없이 끝까지 연관을 따라가며, 너무 오래 걸리면 옆의 <b>[✕ 취소]</b> 로 언제든 중단할 수 있습니다.</div>
+          </div>
+          <div class="guide-step"><span class="guide-num">3</span>
+            <div><b>확인 → 저장</b><br>더블클릭하면 좌측 <b>UI 탭</b>에 그 화면의 디자인이 바로 뜨고, <b>그래프·테이블·흐름도</b>로도 관계를 살펴볼 수 있습니다. 필요한 항목을 바구니에 담아 <b>JSON/CSV</b>로 저장합니다.</div>
+          </div>
+          <div class="guide-cardrow">
+            <div class="guide-mini"><b>🔒 읽기 전용</b><br>연결된 DB에는 조회(SELECT)만 수행합니다. 쓰기는 코드 차원에서 차단됩니다.</div>
+            <div class="guide-mini"><b>❓ 도움말</b><br>상단 <b>[❓ 사용법]</b> 버튼으로 이 가이드를 언제든 다시 열 수 있습니다.</div>
+          </div>
+        </div>
+
+        <!-- 2. 검색 -->
+        <div class="gpanel" data-gp="search">
+          <div class="guide-step"><span class="guide-num">1</span>
+            <div><b>검색어 입력</b><br><b>프로그램 ID</b> 또는 <b>메뉴명</b>을 넣고 <b>[프로그램 검색]</b>을 누릅니다. 결과는 <b>메뉴명이 첫 컬럼</b>에 오도록 정렬되고, 건수가 <b>"검색 결과 N건"</b>으로 표시됩니다.</div>
+          </div>
+          <div class="guide-step"><span class="guide-num">2</span>
+            <div><b>결과에서 선택</b><br>행을 클릭해 고르거나 <b>더블클릭</b>하면 곧바로 파도타기가 실행됩니다. 헤더의 <b>전체 선택 체크박스</b>로 여러 개를 골라 일괄 저장과 연계할 수 있습니다.</div>
+          </div>
+          <details class="gacc" open>
+            <summary>📁 상위 폴더로 찾아보기 <span class="guide-new">검색형 콤보</span><span class="gchev">▾</span></summary>
+            <div class="gacc-in">
+              <b>상위 폴더</b> 입력칸을 클릭하면 트리 전체가 펼쳐지고, 글자를 입력하면 경로 어디든 일치하는 폴더만 즉시 걸러집니다. 폴더를 고르면 <b>그 폴더·하위 폴더의 모든 프로그램</b>이 한 번에 조회됩니다.
+              <ul class="gul">
+                <li><span class="gkey">↑</span> <span class="gkey">↓</span> 이동 · <span class="gkey">Enter</span> 선택 · <span class="gkey">×</span> 초기화 · <span class="gkey">↻</span> 목록 새로고침</li>
+                <li>DB 연결 · 오프라인 <b>모두 지원</b></li>
+                <li class="gwarn">오프라인은 <b>[⚙ 데이터 관리]</b>에서 메뉴를 먼저 받고, <b>"제품"을 특정 값(예: ERP)</b>으로 선택해야 합니다("전체" 미지원).</li>
+              </ul>
+            </div>
+          </details>
+          <details class="gacc">
+            <summary>⚙ 고급 옵션 · WF 직접 검색<span class="gchev">▾</span></summary>
+            <div class="gacc-in">
+              테넌트·회사·언어처럼 자주 바꾸지 않는 값은 <b>[⚙ 고급 옵션]</b>을 눌러야 보입니다(기본 <code>*</code>).<br>
+              WF만 바로 찾으려면 검색 대상을 WF로 두고 <b>서비스 ID</b>(예: <code>IMMVCMUI0002_SELECT</code>) 또는 <b>서비스 UID</b>로 검색합니다.
+            </div>
+          </details>
+        </div>
+
+        <!-- 3. 파도타기 -->
+        <div class="gpanel" data-gp="wave">
+          <div class="off-note">🌊 선택한 프로그램에서 <b>서비스 관계를 재귀적으로 확장</b>합니다. 연결된 UI·WF·Report·Mobile을 한 화면에 모읍니다.</div>
+          <div class="guide-step"><span class="guide-num">1</span>
+            <div><b>볼 범위 선택</b><br>각 칩을 켜고 끕니다(기본 <span class="gb gb-ui">UI</span> <span class="gb gb-wf">WF</span> <span class="gb gb-rp">Rp</span>). 선택된 칩은 <b>진한 배경 + 체크(✓)</b>, 꺼진 칩은 옅은 테두리로 표시됩니다.</div>
+          </div>
+          <div class="guide-step"><span class="guide-num">2</span>
+            <div><b>[▶ 연관 조회 실행 (파도타기)]</b><br>깊이 제한 없이 끝까지 연관을 따라가며 확장됩니다. 결과가 그래프·테이블·흐름도에 채워지고, <b>순환참조</b>는 <b style="color:#ef4444">빨간 점선</b>으로 표시됩니다. 오래 걸리면 실행 버튼 옆 <b>[✕ 취소]</b> 로 중단할 수 있습니다.</div>
+          </div>
+          <details class="gacc">
+            <summary>🧩 무엇을 어떻게 잇는가<span class="gchev">▾</span></summary>
+            <div class="gacc-in">
+              공통 연결키는 <b>serviceUid(숫자)</b>, serviceId(문자)는 라벨로 쓰입니다.
+              <ul class="gul">
+                <li><span class="gb gb-ui">UI</span> <span class="gb gb-mo">Mo</span> — serviceUid · serviceId · 실행 경로</li>
+                <li><span class="gb gb-rp">Rp</span> — 상동 + 참조 테이블</li>
+                <li><span class="gb gb-wf">WF</span> — 하위 serviceUid · 테이블명 · SQL의 FROM/JOIN/INTO/UPDATE 테이블</li>
+              </ul>
+              노드 클릭 시 우측 <b>상세 패널</b>에서 참조 테이블·하위 서비스·<b>버튼→이벤트 트리거</b>·<b>공통코드(MAJOR_CD/MINOR_CD)</b>를 확인할 수 있습니다.
+            </div>
+          </details>
+        </div>
+
+        <!-- 3.5 UI 탭 -->
+        <div class="gpanel" data-gp="uitab">
+          <div class="off-note">🖥 그래프 왼쪽 <b>[UI]</b> 탭 — 검색 결과를 <b>더블클릭</b>하면 팝업 없이 바로 그 화면의 디자인이 뜹니다. 코드·디자인 보기 팝업의 "디자인" 모드와 사용법이 동일합니다.</div>
+          <div class="guide-step"><span class="guide-num">1</span>
+            <div><b>뱃지로 화면 이동</b><br>라벨 오른쪽의 <span class="gb gb-wf">WF</span>/<span class="gb gb-ui">UI</span>/<span class="gb gb-rp">Rp</span> 뱃지를 누르면: <b>UI/Mo/Rp</b>는 탭 안에서 바로 그 화면으로 전환(<b>[◀ 뒤로]</b>로 되돌아가기), <b>WF</b>는 그래프에 그 노드를 선택·확대해 둔 뒤 흐름도 탭으로 이동합니다.</div>
+          </div>
+          <div class="guide-step"><span class="guide-num">2</span>
+            <div><b>초기값(IV) 배지</b><br>클릭하면 그 필드의 초기값 추적 결과가 패널로 뜹니다. <b>같은 배지를 다시 누르면 닫힙니다.</b></div>
+          </div>
+          <div class="guide-step"><span class="guide-num">3</span>
+            <div><b>그리드 컬럼 표</b><br>그리드는 제목·뱃지 2줄짜리 컬럼 표로 재현됩니다. z_grid_columns/z_grid_options에 실시간 값이 있으면(관리자가 그리드 커스터마이징으로 배포 없이 바꾼 순서·표시여부 등) 배포 스냅샷 대신 그 값을 우선 보여줍니다.</div>
+          </div>
+          <div class="guide-cardrow">
+            <div class="guide-mini"><b>🔎 리포트(Rp) 도구</b><br>Rp 화면엔 확대/축소·PDF/이미지 저장·<b>연결된 WF 쿼리</b> 패널이 함께 뜹니다. 툴바의 <b>[🔎 쿼리]</b>로 그 패널을 통째로 숨겨 리포트를 넓게 볼 수 있습니다.</div>
+            <div class="guide-mini"><b>🔗 상세 패널 연동</b><br>탭 안에서 화면을 옮길 때마다 우측 <b>상세 패널</b>도 지금 보고 있는 노드 정보로 함께 바뀝니다.</div>
+          </div>
+        </div>
+
+        <!-- 4. 그래프·테이블 -->
+        <div class="gpanel" data-gp="view">
+          <div class="guide-legend">
+            <span><i style="background:#1f6fd6"></i>UI</span>
+            <span><i style="background:#12a150"></i>WF</span>
+            <span><i style="background:#e08e0b"></i>Rp</span>
+            <span><i style="background:#8b5cf6"></i>Mo</span>
+            <span><i class="sq" style="background:#6b7280"></i>Table</span>
+            <span><i class="dash"></i>순환</span>
+          </div>
+          <div class="guide-cardrow">
+            <div class="guide-mini"><b>🔍 검색 <span class="guide-new">NEW</span></b><br>상단 검색창에서 <b>ID·이름·UID</b>로 즉시 찾아 강조하고 일치 건수를 표시합니다.</div>
+            <div class="guide-mini"><b>🎛 배치 방식 <span class="guide-new">NEW</span></b><br>힘기반·계층·동심원·원형·격자 중 선택. <b>[재배치]·[전체보기]</b>로 정리·맞춤.</div>
+            <div class="guide-mini"><b>👁 표시 토글</b><br><b>Table</b> 노드 · <b>순환</b> · <b>부가 UI</b> <span class="guide-new">NEW</span>(팝업/Jump로 열리는 UI)를 켜고 끕니다.</div>
+            <div class="guide-mini"><b>🖱 이동</b><br>노드 드래그 · <span class="gkey">Space</span>/<span class="gkey">휠 버튼</span> 드래그로 화면 이동 · 테이블 행 <b>더블클릭</b>→그래프 노드로 점프.</div>
+          </div>
+        </div>
+
+        <!-- 5. 흐름도 -->
+        <div class="gpanel" data-gp="flow">
+          <div class="off-note">🔀 WF 노드를 선택하고 상세의 <b>[🔀 흐름도 보기]</b>를 누르면 처리 단계(조회·SQL·조건분기·메시지·서비스호출·반복 등)가 순서도로 펼쳐집니다.</div>
+          <div class="guide-legend">
+            <span><i style="background:#12a150"></i>시작/종료</span>
+            <span><i class="sq" style="background:#f59e0b"></i>조건분기</span>
+            <span><i style="background:#1f6fd6"></i>조회</span>
+            <span><i style="background:#0ea5e9"></i>SQL</span>
+            <span><i class="dashp"></i>서비스호출</span>
+            <span><i style="background:#e08e0b"></i>메시지</span>
+            <span><i style="background:#334155"></i>코드/반복</span>
+          </div>
+          <details class="gacc" open>
+            <summary>🧭 길 찾기 · 탐색 도구<span class="gchev">▾</span></summary>
+            <div class="gacc-in">
+              <ul class="gul">
+                <li><b>[⏮ 시작] / [⏭ 종료]</b> <span class="guide-new">NEW</span> — 시작·종료 노드로 즉시 확대 이동</li>
+                <li><b>미니맵</b> <span class="guide-new">NEW</span> — 좌상단에서 현재 위치 확인(클릭·드래그 이동, 제목줄 드래그로 위치 옮김·저장, 체크박스로 on/off)</li>
+                <li><span class="gkey">Space</span>·<span class="gkey">휠 버튼</span> 드래그로 화면 이동, 배치는 <b>계층/원본좌표</b> 선택</li>
+                <li><b>반복(Loop)</b> 단계는 <b>점선 상자</b>로 감싸 안쪽 세부 단계까지 표시(상세의 "SQL 쿼리" 수와 일치)</li>
+              </ul>
+            </div>
+          </details>
+          <details class="gacc">
+            <summary>📄 단계 상세 · SQL 확인<span class="gchev">▾</span></summary>
+            <div class="gacc-in">
+              <ul class="gul">
+                <li>단계 클릭 → 우측 팝업에 <b>쿼리·조건식·메시지</b> 원본 표시 및 <b>복사</b></li>
+                <li>팝업은 <b>[▾ 접기]/[▸ 펼치기]</b> 가능(상태는 다른 단계·WF로 이동해도 유지)</li>
+                <li>상세의 각 "SQL 쿼리" <b>[🔀 이동]</b> → 흐름도에서 그 쿼리 단계로 바로 이동·선택·줌</li>
+              </ul>
+            </div>
+          </details>
+          <details class="gacc">
+            <summary>↗ 서비스콜 단계로 바로 이동 <span class="guide-new">NEW</span><span class="gchev">▾</span></summary>
+            <div class="gacc-in">
+              다른 WF를 호출하는 단계는 <b>점선 테두리 + 옅은 보라 + "↗"</b>로 구분됩니다.
+              <ul class="gul">
+                <li><b>더블클릭</b> 또는 <b>[🔀 이 서비스 흐름도 보기]</b> → 그 WF 흐름도로 즉시 전환</li>
+                <li>이동 후 <b>[◀ 뒤로]</b> → 원래 보던 WF의 그 단계로 정확히 복귀(연달아 이동 시 순서대로 되짚음)</li>
+                <li class="gwarn">그 서비스가 파도타기 결과에 없으면(취소로 중단됨·DB 미발견 등) 이유를 상태 표시줄에 안내</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+
+        <!-- 6. 저장 -->
+        <div class="gpanel" data-gp="save">
+          <div class="guide-cardrow">
+            <div class="guide-mini"><b>🧺 부분 저장 (바구니)</b><br>체크박스나 <b>[+ 바구니에 담기]</b>로 원하는 노드만 모아 JSON/CSV로 저장합니다.</div>
+            <div class="guide-mini"><b>📦 일괄 저장 (전체) <span class="guide-new">자동</span></b><br>검색 결과에 <b>체크된 항목이 있으면</b> 그것들을 합쳐 파도타기해 저장, <b>없으면</b> 지금 조회 중인 데이터를 저장.</div>
+          </div>
+          <div class="off-note">💡 여러 개를 헤더 체크박스로 골라(폴더 전체 포함) <b>[일괄 저장(전체)]</b>을 누르면 연관 데이터가 하나로 합쳐져 <b>바로 저장</b>됩니다. 화면(그래프·테이블)은 그대로 유지되고, 항목이 많아 화면 반영이 느려도 저장은 끝까지 진행됩니다.</div>
+          <details class="gacc">
+            <summary>🗂 저장되는 파일<span class="gchev">▾</span></summary>
+            <div class="gacc-in">
+              출력 폴더 <code>wave_&lt;프로그램ID&gt;_&lt;일시&gt;/</code> 아래에 생성(4개 배포정보 테이블의 <b>모든 컬럼 원본</b> 포함):
+              <ul class="gul">
+                <li><code>*.json</code> — 노드 + 관계 + 각 노드 원본 레코드(AI 재분석 최적)</li>
+                <li><code>*_UI/WF/Rp/Mo.csv</code> — 타입별 전체 컬럼 CSV(엑셀 한글 BOM 포함)</li>
+                <li><code>*_TABLE.csv</code> — 참조 테이블 · <code>*_EDGES.csv</code> — 관계(from/to/relType)</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+
+        <!-- 7. 오프라인·DB -->
+        <div class="gpanel" data-gp="offline">
+          <div class="off-note">⤓ 대용량 배포정보를 로컬에 내려받아 <b>DB 연결 없이</b> 조회·저장할 수 있습니다. 상단 <b>[⚙ 데이터 관리]</b>로 관리합니다.</div>
+          <div class="guide-cardrow">
+            <div class="guide-mini"><b>⤓ 전체 다운로드</b><br>테이블별 SQLite로 저장 — 1GB 규모도 빠르게 조회합니다.</div>
+            <div class="guide-mini"><b>↻ 증분 갱신</b><br>변경분만(UPDT_DT 기준) 반영. 삭제 행 정리는 <b>[선택 테이블 삭제]</b>로.</div>
+            <div class="guide-mini"><b>📁 메뉴·폴더</b><br>메뉴를 받으면 트리(L1~L6)까지 저장되어 오프라인에서도 폴더 찾기가 동작합니다.</div>
+            <div class="guide-mini"><b>🧩 그리드 실시간 구성 <span class="guide-new">NEW</span></b><br>z_grid_columns/z_grid_options(테넌트 오버라이드 포함)도 받아두면, UI 탭의 그리드 컬럼 표가 배포 스냅샷 대신 최신 커스터마이징 값을 보여줍니다.</div>
+            <div class="guide-mini"><b>⏱ 진행률·중단</b><br>실시간 진행률과 <b>[■ 강제 중단]</b>. 대용량에서도 화면이 멈추지 않습니다.</div>
+          </div>
+          <details class="gacc">
+            <summary>🗄 DB 연결 · 접속정보 관리<span class="gchev">▾</span></summary>
+            <div class="gacc-in">
+              <ul class="gul">
+                <li><b>DB 종류</b>에서 MSSQL·MySQL·Oracle 선택(포트 기본값 자동: 1433/3306/1521)</li>
+                <li><b>별칭</b>으로 접속정보를 저장·불러오기(비밀번호 포함, <span class="gkey">👁</span>로 확인)</li>
+                <li class="gwarn"><b>Oracle</b>은 접속 전 <b>서비스명/SID</b> 칸을 먼저 채워야 하며, 옛 방식은 <code>SID:ORCL</code> 형식</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- 온보딩 투어 오버레이 -->
+  <div id="tour" class="tour" style="display:none">
+    <div id="tourBackdrop" class="tour-backdrop"></div>
+    <div id="tourSpot" class="tour-spot"></div>
+    <div id="tourPop" class="tour-pop">
+      <div class="tour-pop-top">
+        <span id="tourEmoji" class="tour-emoji">👋</span>
+        <div class="tour-heads">
+          <div id="tourKicker" class="tour-kicker">둘러보기</div>
+          <h3 id="tourTitle" class="tour-title">Daaf Wave에 오신 걸 환영합니다</h3>
+        </div>
+        <button id="tourX" class="tour-x" title="닫기">×</button>
+      </div>
+      <p id="tourDesc" class="tour-desc"></p>
+      <div class="tour-dots" id="tourDots"></div>
+      <div class="tour-foot">
+        <label class="tour-skip"><input id="tourNever" type="checkbox"> 다시 보지 않기</label>
+        <div class="tour-nav">
+          <button id="tourPrev" class="tour-btn2 ghost">이전</button>
+          <button id="tourNext" class="tour-btn2 primary">다음 →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 설정 모달: 화면 배율 등 (추후 다른 설정 항목도 이 안에 추가) -->
+  <div id="settingsModal" class="modal" style="display:none;z-index:200">
+    <div class="modal-box" style="width:420px">
+      <div class="modal-head">
+        <b>⚙ 설정</b>
+        <button id="settingsClose" class="modal-x">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-group">
+          <div class="settings-group-title">화면 배율</div>
+          <div class="settings-hint">PC 환경(고해상도·확대 설정 등)에 따라 글자가 너무 크게 보이면 배율을 낮춰보세요. 즉시 반영되며, 다음 실행 시에도 유지됩니다.</div>
+          <div class="settings-zoom-row">
+            <span class="settings-zoom-ico">A</span>
+            <input id="settingsZoomRange" class="settings-range" type="range" min="70" max="150" step="5" value="100">
+            <span class="settings-zoom-ico settings-zoom-ico-lg">A</span>
+            <span id="settingsZoomVal" class="settings-zoom-val">100%</span>
+          </div>
+          <div class="settings-zoom-actions">
+            <button id="settingsZoomReset" class="btn ghost sm">기본값(100%)으로</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="erpSaveNoticeModal" class="modal" style="display:none;z-index:300">
+    <div class="modal-box" style="width:400px">
+      <div class="modal-head">
+        <span style="font-weight:600">💾 저장 안내</span>
+      </div>
+      <div class="modal-body" style="font-size:13px;line-height:1.8;color:var(--ink)">
+        <p style="margin:0 0 10px">
+          저장된 <b>.erp 파일</b>은 Claude 같은 AI에게 첨부해 <b>분석하거나 업무에 참고</b>하는 용도로 쓰도록 만들어졌습니다.
+        </p>
+        <p style="margin:0;color:#64748b">
+          AI에게 전달할 때는 "이 .erp 파일을 분석해줘" 정도로 요청하면, 파일 안내에 따라 알아서 내용을 해석합니다.
+        </p>
+      </div>
+      <div class="modal-foot" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--line)">
+        <label class="chk sm" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="erpSaveNoticeHide"> 다시 보지 않기
+        </label>
+        <button id="erpSaveNoticeOk" class="btn primary">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="erpInfoModal" class="modal" style="display:none;z-index:300">
+    <div class="modal-box" style="width:400px">
+      <div class="modal-head">
+        <span style="font-weight:600">📂 불러온 파일 정보</span>
+      </div>
+      <div class="modal-body" style="font-size:13px;line-height:1.9;color:var(--ink)">
+        <div style="background:#f1f5f9;border-radius:8px;padding:12px 14px">
+          <div style="display:flex;justify-content:space-between"><span style="color:#64748b">생성 일시</span><b id="erpInfoCreatedAt">-</b></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:#64748b">PC 이름</span><b id="erpInfoHostname">-</b></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Windows 계정</span><b id="erpInfoOsUser">-</b></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:#64748b">외부 IP</span><b id="erpInfoExternalIp">-</b></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:#64748b">앱 버전</span><b id="erpInfoAppVer">-</b></div>
+        </div>
+        <div id="erpInfoSummary" style="margin-top:10px;color:#64748b;font-size:12px"></div>
+      </div>
+      <div class="modal-foot" style="display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--line)">
+        <button id="erpInfoOk" class="btn primary">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="consentModal" class="modal" style="display:none;z-index:300">
+    <div class="modal-box" style="width:440px">
+      <div class="modal-head">
+        <span style="font-weight:600">Daaf Wave [파도타기] · 사용 동의</span>
+      </div>
+      <div class="modal-body" style="font-size:13px;line-height:1.75;color:var(--ink)">
+        <p style="margin:0 0 14px">
+          본 프로그램은 <b style="color:#185fa5">인가된 업무 목적</b>으로만 사용할 수 있습니다.
+        </p>
+        <div style="background:#f1f5f9;border-radius:8px;padding:11px 14px;margin:0 0 14px">
+          <div style="font-size:12px;color:#64748b;margin-bottom:6px">다음 행위를 금지합니다</div>
+          <div style="margin:3px 0">· 목적 외 사용</div>
+          <div style="margin:3px 0">· 데이터의 외부 유출 및 무단 배포</div>
+        </div>
+        <p style="margin:0;color:#334155">
+          원활한 운영과 보안을 위해 <b style="color:var(--ink)">접속 정보(IP, 사용자명 등)가 기록</b>될 수 있으며,
+          사용에 따른 <b style="color:var(--ink)">모든 책임은 사용자 본인</b>에게 있습니다.
+        </p>
+      </div>
+      <div class="modal-foot" style="display:block;padding:12px 16px;border-top:1px solid var(--line)">
+        <div style="font-size:12px;color:#64748b;margin-bottom:11px">
+          위 내용에 동의하십니까?
+          <span style="color:#94a3b8">동의하지 않으면 프로그램이 종료됩니다.</span>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="consentDecline" class="btn ghost">동의하지 않습니다</button>
+          <button id="consentAgree" class="btn primary">동의합니다</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="cytoscape.min.js"></script>
+  <script src="demo-data.js"></script>
+  <script src="parser.js"></script>
+  <script src="store.js"></script>
+  <script src="graph.js"></script>
+  <script src="flowchart.js"></script>
+  <script src="offline.js"></script>
+  <script src="app.js"></script>
+  <script src="tour.js"></script>
+</body>
+</html>

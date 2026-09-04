@@ -1,0 +1,315 @@
+
+@charset "utf-8";
+
+:root {
+    --icon-di-add-plus: url('daafIcons/di-add-plus.svg');
+    --icon-di-clipboard: url('daafIcons/di-clipboard.svg');
+    --icon-di-cloud-fileupload: url('daafIcons/di-cloud-fileupload.svg');
+    --icon-di-copy: url('daafIcons/di-copy.svg');
+    --icon-di-edit-pencil: url('daafIcons/di-edit-pencil.svg');
+    --icon-di-exchange: url('daafIcons/di-exchange.svg');
+    --icon-di-file-download: url('daafIcons/di-file-download.svg');
+    --icon-di-fileupload-box: url('daafIcons/di-fileupload-box.svg');
+    --icon-di-fileupload-box-success: url('daafIcons/di-fileupload-box-success.svg');
+    --icon-di-filter: url('daafIcons/di-filter.svg');
+    --icon-di-pin-checked: url('daafIcons/di-pin-checked.svg');
+    --icon-di-popup-search: url('daafIcons/di-popup-search.svg');
+    --icon-di-refresh: url('daafIcons/di-refresh.svg');
+    --icon-di-tour-guide: url('daafIcons/di-tour-guide.svg');
+    --icon-di-save: url('daafIcons/di-save.svg');
+    --icon-di-setting: url('daafIcons/di-setting.svg');
+    --icon-di-setting-outline: url('daafIcons/di-setting-outline.svg');
+    --icon-di-trash: url('daafIcons/di-trash.svg');
+
+    --icon-di-angle-double-left: url('daafIcons/di-angle-double-left.svg');
+    --icon-di-angle-double-down: url('daafIcons/di-angle-double-down.svg');
+    --icon-di-angle-double-right: url('daafIcons/di-angle-double-right.svg');
+    --icon-di-angle-double-up: url('daafIcons/di-angle-double-up.svg');
+    --icon-di-calendar: url('daafIcons/di-calendar.svg');
+    --icon-di-search: url('daafIcons/di-search.svg');
+    --icon-di-angle-up: url('daafIcons/di-angle-up.svg');
+    --icon-di-angle-left: url('daafIcons/di-angle-left.svg');
+    --icon-di-angle-right: url('daafIcons/di-angle-right.svg');
+    --icon-di-angle-down: url('daafIcons/di-angle-down.svg');
+    --icon-di-file-arrow-up: url('daafIcons/di-file-arrow-up.svg');
+    --icon-di-close: url('daafIcons/di-close.svg');
+    --icon-di-logout: url('daafIcons/di-logout.svg');
+    --icon-di-bell: url('daafIcons/di-bell.svg');
+    --icon-di-fileupload-file: url('daafIcons/di-fileupload-file.svg');
+    --icon-di-home: url('daafIcons/di-home.svg');
+    --icon-di-manual: url('daafIcons/di-manual.svg');
+    --icon-di-channelTalk: url('daafIcons/di-channelTalk.svg');
+    --icon-di-file: url('daafIcons/di-file.svg');
+    --icon-di-office-excel: url('daafIcons/di-office-excel.svg');
+    --icon-di-img-red: url('daafIcons/di-img-red.svg');
+    --icon-di-pdf: url('daafIcons/di-pdf.svg');
+    --icon-di-office-word: url('daafIcons/di-office-word.svg');
+    --icon-di-office-ppt: url('daafIcons/di-office-ppt.svg');
+    --icon-di-zip: url('daafIcons/di-zip.svg');
+    --icon-di-download: url('daafIcons/di-download.svg');
+    --icon-di-scale: url('daafIcons/di-scale.svg');
+    --icon-di-star-favorite: url('daafIcons/di-star-favorite.svg');
+    --icon-di-hamburger-menu: url('daafIcons/di-hamburger-menu.svg');
+    --icon-di-additional: url('daafIcons/di-additional.svg');
+}
+
+.di {
+    display: inline-block;
+    width: var(--icon-size, 24px);
+    height: var(--icon-size, 24px);
+    -webkit-mask: no-repeat center / contain;
+    mask: no-repeat center / contain;
+    background-color: currentColor;
+    font-size: 0;
+}
+
+.di.di-add-plus {
+    --icon: var(--icon-di-add-plus);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-clipboard {
+    --icon: var(--icon-di-clipboard);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-cloud-fileupload {
+    --icon: var(--icon-di-cloud-fileupload);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-copy {
+    --icon: var(--icon-di-copy);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-edit-pencil {
+    --icon: var(--icon-di-edit-pencil);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-exchange {
+    --icon: var(--icon-di-exchange);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-file-download {
+    --icon: var(--icon-di-file-download);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-fileupload-box {
+    --icon: var(--icon-di-fileupload-box);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-fileupload-box-success {
+    --icon: var(--icon-di-fileupload-box-success);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-filter {
+    --icon: var(--icon-di-filter);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-pin-checked {
+    --icon: var(--icon-di-pin-checked);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-popup-search {
+    --icon: var(--icon-di-popup-search);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-refresh {
+    --icon: var(--icon-di-refresh);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-tour-guide {
+    --icon: var(--icon-di-tour-guide);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-save {
+    --icon: var(--icon-di-save);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-settings-black {		/* 기존 사용자용 */
+    --icon: var(--icon-di-setting-outline);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-setting-outline {
+    --icon: var(--icon-di-setting-outline);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-setting {
+    --icon: var(--icon-di-setting);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-trash {
+    --icon: var(--icon-di-trash);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.di.di-angle-double-left {
+    --icon: var(--icon-di-angle-double-left);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-angle-double-down {
+    --icon: var(--icon-di-angle-double-down);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-angle-double-right {
+    --icon: var(--icon-di-angle-double-right);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-angle-double-up {
+    --icon: var(--icon-di-angle-double-up);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-search-collapse-open {	/* 기존 사용자용 */
+    --icon: var(--icon-di-angle-double-up);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-calendar {
+    --icon: var(--icon-di-calendar);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-search {
+    --icon: var(--icon-di-search);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-search-navy { 	/* 기존 사용자용 */
+    --icon: var(--icon-di-search);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+.di.di-angle-up {
+    --icon: var(--icon-di-angle-up);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-angle-down {
+    --icon: var(--icon-di-angle-down);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-angle-right {
+    --icon: var(--icon-di-angle-right);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-angle-left {
+    --icon: var(--icon-di-angle-left);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-file-arrow-up {
+    --icon: var(--icon-di-file-arrow-up);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-close {
+    --icon: var(--icon-di-close);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-logout {
+    --icon: var(--icon-di-logout);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-bell {
+    --icon: var(--icon-di-bell);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-fileupload-file {
+    --icon: var(--icon-di-fileupload-file);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-home {
+    --icon: var(--icon-di-home);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-manual {
+    --icon: var(--icon-di-manual);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-channelTalk {
+    --icon: var(--icon-di-channelTalk);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-file {
+    --icon: var(--icon-di-file);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-office-excel {
+    --icon: var(--icon-di-office-excel);
+    background: var(--icon) no-repeat center;
+}
+.di.di-img-red {
+    --icon: var(--icon-di-img-red);
+    background: var(--icon) no-repeat center;
+}
+.di.di-pdf {
+    --icon: var(--icon-di-pdf);
+    background: var(--icon) no-repeat center;
+}
+.di.di-office-word {
+    --icon: var(--icon-di-office-word);
+    background: var(--icon) no-repeat center;
+}
+.di.di-office-ppt {
+    --icon: var(--icon-di-office-ppt);
+    background: var(--icon) no-repeat center;
+}
+.di.di-zip {
+    --icon: var(--icon-di-zip);
+    background: var(--icon) no-repeat center;
+}
+.di.di-download {
+    --icon: var(--icon-di-download);
+    background: var(--icon) no-repeat center;
+}
+.di.di-scale {
+    --icon: var(--icon-di-scale);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-star-favorite {
+    --icon: var(--icon-di-star-favorite);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-hamburger-menu {
+    --icon: var(--icon-di-hamburger-menu);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+.di.di-additional {
+    --icon: var(--icon-di-additional);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}

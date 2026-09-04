@@ -1,0 +1,656 @@
+:root{
+  --nv:#0b2b52;        /* Bizentro navy */
+  --bl:#1f6fd6;        /* primary blue */
+  --acc:#0ea5a0;       /* teal accent (wave) */
+  --ink:#0b1220;
+  --mut:#64748b;
+  --line:#e2e8f0;
+  --bg:#f1f5f9;
+  --panel:#ffffff;
+  --ui:#1f6fd6; --wf:#12a150; --rp:#e08e0b; --mo:#8b5cf6; --tb:#6b7280;
+  --basket:#d97706;      /* 바구니(수집/저장) 관련 버튼 전용 색 — 상세 패널의 [바구니에 담기]와 동일 */
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font-family:Pretendard,"Malgun Gothic","맑은 고딕",system-ui,sans-serif;color:var(--ink);background:var(--bg);font-size:13px}
+body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+/* topbar */
+/* DB 연결 패널은 필드가 많아(별칭/서버/포트/계정/비밀번호/저장/삭제/접속정보콤보/접속) 좁은 창에서
+   한 줄에 다 안 들어가면, 줄바꿈 없이 그대로 우측 [사용법]/[가이드] 버튼 영역과 겹쳐 보이는 문제가
+   있었다 — flex-wrap 으로 필요하면 상단바 자체가 2줄로 나뉘도록 해서 겹침 대신 줄바꿈이 되게 한다. */
+.topbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:8px 14px;background:linear-gradient(90deg,var(--nv),#123c6e);color:#fff}
+.brand{font-size:17px;font-weight:700;letter-spacing:.3px;white-space:nowrap;display:flex;align-items:center;gap:8px}
+.brand-ico{width:26px;height:26px;border-radius:6px;vertical-align:middle}
+.brand .pado{color:var(--acc);font-size:14px;font-weight:600}
+.brand .wave-mark{color:var(--acc);font-size:20px;margin-right:2px}
+.brand .sub{font-size:11px;font-weight:400;opacity:.7;margin-left:8px}
+/* 상단바 입력/셀렉트 (패널 공통) */
+.mode-panel input{height:28px;border:1px solid #2a4f7d;background:#0e335c;color:#fff;border-radius:6px;padding:0 8px;font-size:12px}
+.mode-panel input::placeholder{color:#8fb0d6}
+.mode-panel select{height:28px;border:1px solid #2a4f7d;background:#0e335c;color:#fff;border-radius:6px;padding:0 6px;font-size:12px}
+.conn-live select{background:#0b3a24;border-color:#1f7a4d}
+.mode-panel .w60{width:52px}.mode-panel .w70{width:66px}.mode-panel .w80{width:78px}
+.mode-panel .w90{width:88px}.mode-panel .w100{width:98px}
+.mode-panel .w120{width:120px}.mode-panel .w130{width:130px}.mode-panel .w150{width:158px}
+.mode-panel .chk{display:flex;align-items:center;gap:4px;font-size:11px;color:#cfe0f5;white-space:nowrap}
+
+/* progress bar */
+.progress{height:3px;background:transparent;overflow:hidden}
+.progress.on{background:#dbeafe}
+.progress .bar{height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--bl));transition:width .2s}
+.progress.on .bar{width:100%;animation:indet 1.1s ease-in-out infinite}
+@keyframes indet{0%{width:0;margin-left:0}50%{width:60%;margin-left:20%}100%{width:0;margin-left:100%}}
+
+.empty{padding:24px 12px;text-align:center;color:var(--mut);font-size:12px}
+.mode-hint{margin:2px 12px 0;font-size:11px;color:var(--acc);font-weight:700}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.dot.on{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.25)}
+.dot.off{background:#ef4444}
+
+/* 연결 상태 뱃지 */
+.conn-badge{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:13px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid transparent}
+.conn-badge .cb-ico{width:9px;height:9px;border-radius:50%;flex:none}
+.conn-badge.idle{background:#1e3a5f;color:#b8cfe8;border-color:#2a4f7d}
+.conn-badge.idle .cb-ico{background:#7c93ad}
+.conn-badge.connecting{background:#3a2f0e;color:#ffe08a;border-color:#7a5f1e}
+.conn-badge.connecting .cb-ico{background:#f6c343;animation:pulse 1s infinite}
+.conn-badge.success{background:#0e3a24;color:#7ee6ad;border-color:#1e7a4d}
+.conn-badge.success .cb-ico{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.3)}
+.conn-badge.fail{background:#3a1414;color:#ffb0b0;border-color:#7a2a2a}
+.conn-badge.fail .cb-ico{background:#ef4444}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* 연결 실패 배너 */
+.conn-error{display:flex;align-items:center;gap:8px;background:#fef2f2;border-bottom:1px solid #fecaca;color:#b91c1c;padding:7px 14px;font-size:12px;flex-wrap:wrap}
+.conn-error .ce-ico{font-size:14px}
+.conn-error .ce-msg{flex:1;font-weight:600}
+.conn-error .ce-detail-btn,.conn-error .ce-close{border:1px solid #fecaca;background:#fff;color:#b91c1c;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer}
+.conn-error .ce-close{font-size:14px;line-height:1;padding:1px 7px}
+.conn-error .ce-detail{flex-basis:100%;margin-top:6px;background:#fff;border:1px solid #fecaca;border-radius:6px;padding:6px 8px;font-family:Consolas,monospace;font-size:11px;color:#7f1d1d;white-space:pre-wrap;word-break:break-all}
+
+/* layout grid */
+.grid{flex:1;display:grid;grid-template-columns:var(--left-w,300px) 6px 1fr 6px var(--right-w,300px);gap:8px;padding:8px;min-height:0}
+.pane-resizer{cursor:col-resize;position:relative;margin:0 -1px;border-radius:3px}
+.pane-resizer::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:2px;transform:translateX(-50%);background:var(--line);border-radius:2px}
+.pane-resizer:hover::after,.pane-resizer.dragging::after{background:var(--nv);width:3px}
+.pane{background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.pane h3{margin:0;padding:10px 12px;font-size:13px;border-bottom:1px solid var(--line);color:var(--nv);background:#f8fafc}
+
+/* search pane */
+.search{padding:0}
+.search h3{margin-bottom:2px}
+.search-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--line);background:#f8fafc}
+.search-head h3{margin:0;padding:0;border:none;background:none}
+/* 고급 옵션(테넌트/회사/언어) 토글 — 자주 안 쓰는 값이라 기본 숨김. 눌렀을 때만 살짝 펼쳐진다. */
+.adv-toggle{border:1px solid var(--line);background:#fff;color:var(--mut);font-size:11px;font-weight:600;
+  padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;transition:.12s}
+.adv-toggle:hover{background:#eef2f7;color:var(--ink)}
+.adv-toggle.open{color:var(--bl);border-color:#bfdbfe;background:#eff6ff}
+.adv-toggle .chev{display:inline-block;transition:transform .15s;margin-left:1px}
+.adv-toggle.open .chev{transform:rotate(180deg)}
+.adv-options{background:#f8fafc;border-bottom:1px dashed var(--line);padding-bottom:2px}
+.field-row{display:flex;align-items:center;gap:6px;padding:6px 12px;flex-wrap:wrap}
+.field-row.tight{padding:4px 12px}
+.field-row.split{gap:8px}
+.field-row.split input{flex:1;min-width:0}
+.field-row label{font-size:11px;color:var(--mut);min-width:52px}
+.field-row input,.field-row select{flex:1;height:28px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font-size:12px;min-width:70px}
+.field-row.folder-row{align-items:flex-start}
+
+/* 상위 폴더 검색형 콤보 — 폴더가 많을 때 기본 <select> 로 하나씩 찾기 힘들다는 피드백을 반영해,
+   입력하면 경로 어디든 일치하는 폴더만 걸러서 보여주는 자동완성 드롭다운으로 바꿨다. */
+.folder-picker{position:relative;flex:1;min-width:0}
+.folder-picker-inp-wrap{position:relative;display:flex;align-items:center}
+.folder-picker-inp{width:100%;height:28px;border:1px solid var(--line);border-radius:6px;padding:0 26px 0 8px;font-size:12px;box-sizing:border-box}
+.folder-picker-inp:focus{outline:none;border-color:var(--bl);box-shadow:0 0 0 2px rgba(31,111,214,.15)}
+.folder-picker-clear{position:absolute;right:3px;top:50%;transform:translateY(-50%);border:none;background:transparent;
+  color:var(--mut);font-size:15px;line-height:1;padding:2px 5px;cursor:pointer;border-radius:4px}
+.folder-picker-clear:hover{color:#ef4444;background:#fef2f2}
+.folder-dropdown{position:absolute;left:0;right:0;top:calc(100% + 3px);max-height:240px;overflow:auto;
+  background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.15);z-index:20}
+.folder-item{padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.folder-item:hover,.folder-item.active{background:#eef5ff}
+.folder-item-indent{white-space:pre}
+.folder-item-cnt{color:var(--mut);font-size:10.5px}
+.folder-item-none{color:var(--mut);border-bottom:1px solid #f1f5f9;font-style:italic}
+.folder-item-empty{color:var(--mut);cursor:default;font-style:italic}
+.folder-item-empty:hover{background:none}
+.btn{border:1px solid var(--line);background:#fff;border-radius:7px;padding:7px 12px;font-size:12px;cursor:pointer;transition:.12s;font-weight:600;color:var(--ink)}
+.btn:hover{filter:brightness(.97)}
+.btn.sm{padding:5px 9px;font-size:11px}
+.btn.full{width:calc(100% - 24px);margin:8px 12px}
+.btn.primary{background:var(--bl);color:#fff;border-color:var(--bl)}
+.btn.accent{background:var(--acc);color:#fff;border-color:var(--acc)}
+.btn.ghost{background:#fff}
+.btn.ghost.sm{color:#e2e8f0;border-color:#2a4f7d;background:transparent}
+.topbar .btn.ghost.sm{color:#fff;border-color:#2a4f7d}
+/* 바구니 관련 버튼(담기/빼기·비우기·부분 저장)은 같은 호박색 계열로 통일한다.
+   담기/부분저장은 진하게(주 동작), 비우기는 외곽선만(가벼운 동작).
+   일괄 저장(전체)은 바구니 범위를 벗어난(전체 데이터) 별도 동작이라 원래의 강조색(teal accent)을 유지한다. */
+.btn.basket{background:var(--basket);color:#fff;border-color:var(--basket)}
+.btn.basket-o{background:#fff;color:var(--basket);border-color:var(--basket)}
+
+.menu-list{flex:1;overflow:auto;margin:2px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);min-height:120px;display:flex;flex-direction:column}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl thead th{position:sticky;top:0;background:#eef2f7;color:var(--nv);text-align:left;padding:6px 8px;font-weight:600;border-bottom:1px solid var(--line);z-index:1}
+.tbl tbody td{padding:5px 8px;border-bottom:1px solid #f1f5f9}
+.tbl tbody tr{cursor:pointer}
+.tbl tbody tr:hover{background:#f0f7ff}
+.tbl tbody tr.sel{background:#dbeafe}
+
+.menu-count{font-size:11px;font-weight:700;color:var(--bl);padding:4px 8px;position:sticky;top:0;background:#fff;z-index:1}
+
+.run-box{padding:8px 12px;border-top:1px solid var(--line);background:#f8fafc}
+.run-btn-row{display:flex;align-items:stretch;gap:6px}
+.run-btn-row .btn.full{flex:1}
+/* Wave 선택을 체크박스 목록 대신 배지형 토글칩 한 줄로 — 세로 공간을 아끼고 눈에 더 잘 들어온다.
+   실제 input[type=checkbox]는 그대로 두고(기존 JS 로직 무변경) 시각적으로만 감춘다.
+   켜짐/꺼짐 구분이 어렵다는 피드백을 반영해, opacity 만으로 구분하던 방식을 버리고
+   꺼짐=옅은 색 배경+색 테두리(윤곽 칩), 켜짐=해당 wave 색으로 완전히 채운 칩 + 체크표시로 명확히 나눈다. */
+.wave-chip-row{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.wave-chip{position:relative;display:inline-flex;align-items:center;gap:0;padding:0;cursor:pointer;border-radius:7px}
+.wave-chip input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.wave-chip .badge{transition:.12s;padding:5px 13px;font-size:11.5px;font-weight:700;min-width:34px;
+  border:1.5px solid transparent;box-sizing:border-box}
+.wave-chip input:checked + .badge{color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.18)}
+.wave-chip input:checked + .badge::before{content:"✓ ";font-weight:900}
+.wave-chip:hover .badge{filter:brightness(.96)}
+.wave-chip.chip-UI .badge{background:#eaf2fd;border-color:#bcd7f6;color:var(--ui)}
+.wave-chip.chip-UI input:checked + .badge{background:var(--ui);border-color:var(--ui)}
+.wave-chip.chip-WF .badge{background:#e9f7ee;border-color:#b6e3c6;color:var(--wf)}
+.wave-chip.chip-WF input:checked + .badge{background:var(--wf);border-color:var(--wf)}
+.wave-chip.chip-Rp .badge{background:#fdf1e0;border-color:#f3d29b;color:var(--rp)}
+.wave-chip.chip-Rp input:checked + .badge{background:var(--rp);border-color:var(--rp)}
+.wave-chip.chip-Mo .badge{background:#f1ecfd;border-color:#d4c5f7;color:var(--mo)}
+.wave-chip.chip-Mo input:checked + .badge{background:var(--mo);border-color:var(--mo)}
+.depth-inline{display:flex;align-items:center;gap:5px;margin-left:auto;flex:none}
+.depth-inline label{font-size:11px;color:var(--mut)}
+.depth-inline select{height:26px;border:1px solid var(--line);border-radius:6px;padding:0 6px;font-size:11.5px}
+.chk{display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer}
+.chk.sm{font-size:11px;color:#cfe0f3}
+.chk input{width:14px;height:14px}
+.tbl th.chk-col,.tbl td.chk-col{width:22px;text-align:center;padding:4px 2px}
+.tbl th.chk-col input,.tbl td.chk-col input{width:13px;height:13px;cursor:pointer;vertical-align:middle;margin:0}
+
+/* badges */
+.badge{display:inline-block;min-width:26px;text-align:center;padding:1px 6px;border-radius:4px;color:#fff;font-size:10px;font-weight:700}
+.b-UI{background:var(--ui)}.b-WF{background:var(--wf)}.b-Rp{background:var(--rp)}.b-Mo{background:var(--mo)}.b-TABLE{background:var(--tb)}
+
+/* view pane */
+.view{min-width:0}
+.view-head{display:flex;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line);background:#f8fafc}
+.tabs{display:flex;gap:4px}
+.tab{border:none;background:transparent;padding:6px 14px;font-size:13px;font-weight:600;color:var(--mut);cursor:pointer;border-radius:7px}
+.tab.active{background:var(--nv);color:#fff}
+/* 도구 줄(검색/그래프 도구/흐름도 도구)은 tabs 아래 별도 줄로 뺐다 — 예전엔 tabs 와 한 줄에
+   같이 우겨넣어서(justify-content:space-between) 해상도가 작은 PC에서 오른쪽 도구들이 화면
+   밖으로 잘려나가는 문제가 있었다. flex-wrap 을 켜서, 그래도 폭이 부족하면 잘리는 대신
+   다음 줄로 자연스럽게 넘어가게 한다. */
+.view-tools{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line);background:#fbfcfe}
+.view-tools select{height:28px;border:1px solid var(--line);border-radius:6px;padding:0 6px;font-size:12px}
+/* .btn.ghost.sm / .chk.sm 의 기본 글자색(#e2e8f0 / #cfe0f3)은 어두운 상단바(.topbar) 기준으로
+   만들어져 있어, 이 툴바처럼 밝은 배경(.view-head, #f8fafc) 위에서는 거의 안 보인다(대비 부족).
+   여기서만 어두운 색으로 다시 지정해 재배치/전체보기/시작/종료/미니맵/순환/부가UI/Table 이
+   모두 또렷하게 보이도록 한다. */
+.view-tools .btn.ghost.sm{color:var(--ink);border-color:var(--line);background:#fff}
+.view-tools .chk.sm{color:var(--ink)}
+.gv-search{display:flex;align-items:center;gap:4px}
+.gv-search-inp{height:28px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font-size:12px;width:190px}
+.gv-search-inp:focus{outline:none;border-color:var(--bl);box-shadow:0 0 0 2px rgba(31,111,214,.15)}
+.gv-search-cnt{font-size:10px;color:var(--mut);font-weight:700;min-width:34px}
+/* 검색 하이라이트 (테이블 행) */
+.tbl tbody tr.gv-hit{background:#fff7d6}
+.tbl tbody tr.gv-hit:hover{background:#ffefb0}
+.tbl tbody tr.gv-dim{opacity:.32}
+
+.graph-wrap{flex:1;position:relative;min-height:0;display:flex}
+.ui-tab-wrap{flex-direction:column}
+.ui-tab-head{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f8fafc;border-bottom:1px solid var(--line);font-size:12px}
+.ui-tab-body{flex:1;min-height:0;display:flex;position:relative}
+.ui-tab-design-pane{flex:1;min-width:0;display:flex;flex-direction:column;overflow:auto;position:relative}
+.ui-tab-frame{flex:1}
+#graph{flex:1;background:
+  radial-gradient(circle,#e8eef5 1px,transparent 1px) 0 0/22px 22px,#fbfdff}
+/* 스페이스바 패닝 모드 커서 */
+#graph.pan-mode{cursor:grab}
+#graph.pan-mode.pan-active{cursor:grabbing}
+#graph.pan-mode canvas{cursor:grab !important}
+#graph.pan-mode.pan-active canvas{cursor:grabbing !important}
+/* 마우스 휠(가운데) 버튼 패닝 중 커서 */
+#graph.wheel-pan{cursor:grabbing}
+#graph.wheel-pan canvas{cursor:grabbing !important}
+.legend{position:absolute;left:10px;bottom:10px;display:flex;gap:12px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:11px;color:var(--mut)}
+.legend i.lg{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+.legend.flow-legend{flex-wrap:wrap;max-width:92%;row-gap:4px}
+
+/* 흐름도(흐름도 탭) — 제목 줄과 버튼 줄을 분리해서, 제목(WF 이름 · 반복문 내부 등)이 길어져도
+   버튼들을 밀어내며 화면 밖으로 잘리지 않고 자기 줄 안에서 자연스럽게 줄바꿈된다. */
+.flow-tools{flex-direction:column;align-items:stretch;gap:6px}
+.flow-tools-title-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.flow-tools-action-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.flow-title{font-size:12px;flex:1;min-width:0;word-break:break-word}
+#flowchart{flex:1;background:
+  radial-gradient(circle,#e8eef5 1px,transparent 1px) 0 0/22px 22px,#fbfdff}
+/* 스페이스바 패닝 모드 커서 (그래프 탭과 동일) */
+#flowchart.pan-mode{cursor:grab}
+#flowchart.pan-mode.pan-active{cursor:grabbing}
+#flowchart.pan-mode canvas{cursor:grab !important}
+#flowchart.pan-mode.pan-active canvas{cursor:grabbing !important}
+/* 마우스 휠(가운데) 버튼 패닝 중 커서 */
+#flowchart.wheel-pan{cursor:grabbing}
+#flowchart.wheel-pan canvas{cursor:grabbing !important}
+.flow-empty{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:340px;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:10px;padding:20px}
+/* 노드 상세 팝업: 사용자가 우측 하단 모서리를 드래그해 크기 조절 가능(resize:both).
+   위치는 top/left 로 고정한다(JS에서 최초 표시 시 1회 계산) — 브라우저 네이티브 resize 는
+   항상 "왼쪽 위 고정, 오른쪽/아래로 확장" 방식으로 동작하므로, top/right 앵커였을 때처럼
+   커서를 따라가지 않고 반대 방향(왼쪽)으로 자라 보이는 문제를 없앤다.
+   같은 DOM 엘리먼트를 계속 재사용하므로(innerHTML만 교체) 다른 노드를 선택해도 조절한 크기가 유지된다.
+   내부는 세로 flex 로 구성해 SQL/코드 미리보기(.sql-code)가 남는 높이를 모두 차지하도록 한다
+   → 팝업을 키우면 긴 SQL 쿼리가 스크롤 없이 한 번에 더 많이 보인다. */
+/* 기본값은 세로로 화면(흐름도 캔버스)을 거의 꽉 채운 높이로 시작한다(위/아래 12px 여백만 남김).
+   사용자가 모서리를 드래그하면 여전히 조절 가능하지만, 컨테이너 밖으로는 못 나가게 max-height 로 막는다. */
+.flow-stepbox{position:absolute;top:12px;right:12px;width:340px;height:calc(100% - 24px);
+  min-width:300px;min-height:160px;max-width:92%;max-height:calc(100% - 24px);
+  display:flex;flex-direction:column;
+  overflow:auto;resize:both;background:#fff;border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 6px 18px rgba(15,23,42,.12);padding:12px 14px;font-size:12px;z-index:5}
+.fsb-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+/* 닫기(X) 대신 최소화 버튼만 제공 — 팝업은 항상 화면에 남아있고, 접기/펼치기만 가능하다. */
+.fsb-min{border:1px solid var(--line);background:#f8fafc;color:var(--mut);font-size:11px;
+  cursor:pointer;line-height:1;padding:3px 8px;border-radius:6px;white-space:nowrap}
+.fsb-min:hover{color:var(--ink);background:#eef2f7}
+.flow-stepbox .kv,.flow-stepbox .d-sec,.flow-stepbox .sql-head{flex:none}
+/* SQL/코드 미리보기: 팝업 안에서 남는 세로 공간을 전부 차지 → 크기를 키우면 그만큼 더 보인다 */
+.flow-stepbox .sql-code{flex:1 1 auto;min-height:70px;max-height:none}
+
+/* 접힌 상태: 타이틀 표시줄만 남기고 나머지 내용은 숨긴 채 높이를 콘텐츠에 맞춘다. */
+.flow-stepbox.collapsed{height:auto !important;min-height:0;resize:none;overflow:hidden}
+.flow-stepbox.collapsed .fsb-head{margin-bottom:0}
+.flow-stepbox.collapsed > *:not(.fsb-head){display:none}
+
+/* 디자인 미리보기의 "IV"(초기값) 배지 클릭 시 뜨는 상세패널 — .flow-stepbox 와 같은 뼈대(위치/리사이즈/
+   접기)를 그대로 쓰되, 흐름도 패널보다 폭이 좁아도 충분해 기본 너비만 살짝 줄인다. */
+.vw-init-box{width:300px;height:auto;max-height:calc(100% - 24px)}
+.vw-init-box .iv-body{overflow:auto}
+.iv-card{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;background:#faf9ff}
+.iv-card-head{font-weight:700;font-size:11.5px;margin-bottom:4px}
+.iv-card.iv-static .iv-card-head{color:#7c3aed}
+.iv-card.iv-lit .iv-card-head{color:#6d28d9}
+.iv-card.iv-chain .iv-card-head{color:#4c1d95}
+.iv-card code{display:block;white-space:pre-wrap;word-break:break-all;background:#0f172a;color:#e2e8f0;
+  font-family:'D2Coding','Consolas','Courier New',monospace;font-size:11px;padding:6px 8px;border-radius:6px;margin-top:2px}
+.iv-row{margin:6px 0}
+.iv-label{display:block;color:var(--mut);font-size:11px;margin-bottom:2px}
+.iv-opt{display:inline-block;background:#ede9fe;color:#4c1d95;border-radius:5px;padding:2px 7px;margin:0 5px 4px 0;font-size:11.5px}
+.iv-goto-wf{margin-left:6px}
+.iv-live-result{margin-top:4px}
+.iv-live-result.iv-live-ok{color:#166534}
+.iv-live-result.iv-live-error{color:#b91c1c}
+
+/* 흐름도 미니맵 — 쿼리 상세 팝업(.flow-stepbox, 우측 상단~하단 대부분을 차지)과 겹치지 않도록
+   기본은 좌상단에 둔다(범례는 좌하단이라 그 쪽도 피한다). 드래그로 옮길 수 있고 옮긴 위치는
+   localStorage 에 저장해 다음에 열어도 유지된다. z-index 는 쿼리 팝업(5)보다 낮게 둬서, 사용자가
+   미니맵을 팝업 쪽으로 옮기더라도 항상 더 중요한 쿼리 내용이 위에 보이게 한다. */
+.flow-minimap{position:absolute;top:12px;left:12px;width:190px;height:140px;
+  background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:8px;
+  box-shadow:0 4px 14px rgba(15,23,42,.16);overflow:hidden;z-index:4;
+  display:flex;flex-direction:column;user-select:none}
+.flow-minimap.hidden{display:none}
+.flow-minimap-head{flex:none;height:18px;background:#eef2f7;color:var(--mut);font-size:9.5px;font-weight:700;
+  display:flex;align-items:center;padding:0 7px;cursor:move;border-bottom:1px solid var(--line);letter-spacing:.3px}
+.flow-minimap-canvas{flex:1;display:block;cursor:crosshair;width:100%;height:100%}
+
+.table-wrap{flex:1;overflow:auto}
+.tbl.result thead th{background:#eef2f7}
+.tbl.result td.cyc{color:#ef4444;font-weight:700}
+.tbl.result .badge{cursor:default}
+
+/* detail pane */
+.detail-pane{min-width:0}
+.detail-pane h3{display:flex;align-items:center;justify-content:space-between}
+.detail{padding:12px;overflow:auto;flex:1;font-size:12px}
+.detail .d-head{font-size:14px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.kv{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed #eef2f7}
+.kv span{color:var(--mut)}
+.d-sec{margin:12px 0 6px;font-weight:700;color:var(--nv);font-size:12px;border-left:3px solid var(--acc);padding-left:7px}
+/* 실제 SQL 텍스트가 없는 선언적 스텝(SelectEntity/PutEntity/DeleteEntity 등)에 대해, 참조된
+   엔티티 스키마+필터로 재구성한 "추정 쿼리"임을 표시하는 배지. 실제 실행 SQL과 100% 같다는
+   보장이 없다는 점을 항상 함께 보여준다. */
+.guess-badge{display:inline-block;font-size:10px;font-weight:700;color:#8a5a00;background:#fff3d6;
+  border:1px solid #f3d9a0;border-radius:9px;padding:1px 8px;margin-left:6px;cursor:help;vertical-align:middle}
+/* 접기/펼치기 섹션 (참조테이블·하위서비스·화면이벤트·실행트리거·공통코드·SQL쿼리·테이블컬럼 공통) */
+.d-sec-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 4px;
+  font-weight:700;color:var(--nv);font-size:12px;border-left:3px solid var(--acc);padding-left:7px}
+.d-sec-row .d-toggle{flex:none}
+.d-collapse{margin-top:2px}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{background:#eef2f7;border:1px solid var(--line);border-radius:5px;padding:2px 7px;font-size:11px}
+.chip.s{background:#e6f4ee;border-color:#c9e8d8}
+.warn{color:#b45309;background:#fef3c7;border-radius:6px;padding:6px 8px;margin-top:8px;font-size:11px}
+.muted{color:var(--mut)}
+
+/* 상세 하단 액션 버튼: 스크롤 영역(.detail) 밖에 고정되어 항상 보임 */
+.detail-actions{flex:0 0 auto;display:flex;flex-direction:column;gap:8px;padding:10px 12px;
+  border-top:1px solid var(--line);background:#fff}
+.detail-actions .btn{width:100%}
+
+/* basket */
+.basket{background:var(--panel);border-top:1px solid var(--line);padding:8px 12px;max-height:170px;display:flex;flex-direction:column;gap:6px}
+.bk-head{display:flex;align-items:center;gap:10px}
+.bk-head b{color:var(--nv)}
+.pill{background:var(--acc);color:#fff;border-radius:20px;padding:1px 9px;font-size:11px;font-weight:700}
+.spacer{flex:1}
+.bk-list{display:flex;flex-wrap:wrap;gap:6px;overflow:auto;max-height:70px}
+.bk-item{display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:11px}
+.bk-item .bk-id{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-x{border:none;background:transparent;color:#ef4444;cursor:pointer;font-size:15px;line-height:1;padding:0 2px}
+.status-row{display:flex;align-items:center;justify-content:space-between;border-top:1px dashed var(--line);padding-top:5px;gap:12px}
+.status{font-size:11px;color:var(--mut)}
+.status.err{color:#dc2626;font-weight:600}
+.credit{font-size:10px;color:#94a3b8;white-space:nowrap;font-style:italic}
+
+/* 모드 3-way 스위치 */
+.mode-switch{display:flex;background:#1e293b;border-radius:9px;padding:3px;gap:2px;flex:none}
+.mode-switch .ms-btn{border:none;background:transparent;color:#94a3b8;font-size:12.5px;font-weight:600;padding:6px 16px;border-radius:7px;cursor:pointer;transition:all .12s;white-space:nowrap}
+.mode-switch .ms-btn:hover{color:#e2e8f0}
+.mode-switch .ms-btn.active{color:#fff}
+.mode-switch .ms-btn[data-mode="demo"].active{background:#64748b}
+.mode-switch .ms-btn[data-mode="db"].active{background:#0e7a4d}
+.mode-switch .ms-btn[data-mode="offline"].active{background:#1f6fd6}
+
+/* 모드별 패널 (스위치 오른쪽 컨트롤 영역) */
+.mode-panel{display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex:1;min-width:0}
+.mode-panel .mp-hint{font-size:12px;color:#94a3b8}
+.conn-fields{display:flex;flex-wrap:wrap;align-items:center;gap:6px 6px}
+/* 삭제 버튼과 저장된 접속정보 콤보 사이를 살짝 벌려 그룹을 시각적으로 구분한다. */
+.conn-profiles-gap{margin-left:10px}
+.conn-live{display:flex;align-items:center;gap:8px;background:rgba(16,161,80,.14);border:1px solid rgba(16,161,80,.4);border-radius:8px;padding:4px 10px}
+.conn-live .cl-dot{width:9px;height:9px;border-radius:50%;background:#22c55e;animation:midot 1.6s ease-in-out infinite}
+.conn-live .cl-name{font-size:12.5px;font-weight:700;color:#d1fae5}
+/* 오프라인 라이브 표시 */
+.off-live{display:flex;align-items:center;gap:8px;background:rgba(31,111,214,.14);border:1px solid rgba(31,111,214,.4);border-radius:8px;padding:4px 10px;max-width:420px}
+.off-live .ol-dot{width:9px;height:9px;border-radius:50%;background:#60a5fa;flex:none}
+.off-live.has-data .ol-dot{animation:midot 1.6s ease-in-out infinite}
+.off-live .ol-folder{font-size:12px;color:#dbeafe;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@keyframes midot{0%,100%{opacity:1}50%{opacity:.4}}
+.pw-wrap{position:relative;display:inline-flex}
+.pw-eye{position:absolute;right:2px;top:50%;transform:translateY(-50%);border:none;background:transparent;cursor:pointer;font-size:13px;padding:2px 4px;opacity:.6}
+.pw-eye:hover{opacity:1}
+.pw-eye.on{opacity:1}
+
+/* 오프라인 모달 */
+.modal{position:fixed;inset:0;background:rgba(11,18,32,.55);display:flex;align-items:center;justify-content:center;z-index:100}
+.modal-box{background:#fff;border-radius:12px;width:720px;max-width:94vw;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--nv);color:#fff;font-size:15px}
+.modal-x{border:none;background:transparent;color:#fff;font-size:20px;cursor:pointer;line-height:1}
+#viewerMax{font-size:14px;margin-right:2px;opacity:.85}
+#viewerMax:hover,.modal-x:hover{opacity:1}
+.viewer-winbtns{display:flex;align-items:center;gap:8px}
+.viewer-title-wrap{display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modal-body{padding:16px;overflow:auto}
+.off-row{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.off-row label{font-size:12px;color:var(--mut);min-width:70px}
+.off-row input{flex:1;height:30px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font-size:12px;background:#f8fafc}
+.off-mode{display:flex;align-items:center;gap:16px;margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px}
+.off-modeopt{font-size:12px;display:flex;align-items:center;gap:5px;cursor:pointer}
+.off-tables{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:12px}
+.off-th,.off-tr{display:grid;grid-template-columns:1.6fr 1fr 1.6fr 60px;gap:6px;padding:8px 10px;font-size:12px;align-items:center}
+.off-th{background:#eef2f7;color:var(--nv);font-weight:700}
+.off-tr{border-top:1px solid #f1f5f9}
+.off-tr .t-name{font-weight:600}
+.off-tr .muted{color:var(--mut)}
+.off-actions{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.btn.danger{background:#ef4444;color:#fff;border-color:#ef4444}
+.off-progress{margin-bottom:10px}
+.op-bar-wrap{height:14px;background:#e2e8f0;border-radius:8px;overflow:hidden}
+.op-bar{height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--bl));transition:width .15s}
+.op-bar.indet{width:40%;animation:opIndet 1.1s ease-in-out infinite}
+@keyframes opIndet{0%{margin-left:-40%}100%{margin-left:100%}}
+.op-text{font-size:11px;color:var(--mut);margin-top:5px}
+.off-msg{font-size:12px;min-height:18px}
+.off-msg.err{color:#dc2626;font-weight:600}
+.off-msg.ok{color:#0e7a4d;font-weight:600}
+.off-note{font-size:12px;color:#475569;background:#f1f5f9;border-radius:8px;padding:8px 12px;margin-bottom:12px}
+/* 다운로드용 DB 접속정보 선택 다이얼로그 */
+.dlc-note{font-size:12px;color:#475569;background:#f1f5f9;border-radius:8px;padding:8px 12px;margin-bottom:14px;line-height:1.5}
+.dlc-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.dlc-row label{font-size:12px;color:var(--mut);min-width:74px}
+.dlc-row select{flex:1;height:30px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font-size:12px;background:#fff}
+.dlc-msg{font-size:12px;min-height:18px;margin-top:4px}
+.dlc-msg.err{color:#dc2626;font-weight:600}
+.dlc-msg.ok{color:#0e7a4d;font-weight:600}
+.dlc-msg.busy{color:var(--bl);font-weight:600}
+.dlc-actions{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:#f8fafc}
+/* 모달/다이얼로그 안의 ghost 버튼은 밝은 배경이므로 어두운 글씨로 (상단바용 흰 글씨 규칙 상쇄) */
+.modal .btn.ghost,.modal .btn.ghost.sm{color:var(--ink);border-color:var(--line);background:#fff}
+.modal .btn.ghost:hover,.modal .btn.ghost.sm:hover{background:#f1f5f9}
+
+/* 사용법 가이드 */
+.guide-btn{flex:none;margin-left:auto}
+.guide-step{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px dashed var(--line);font-size:12.5px;line-height:1.6}
+.guide-step:last-child{border-bottom:none}
+.guide-step div{flex:1}
+.guide-num{flex:none;width:24px;height:24px;border-radius:50%;background:var(--nv);color:#fff;font-size:12px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;margin-top:1px}
+.guide-new{display:inline-block;background:var(--acc);color:#fff;font-size:9px;font-weight:800;border-radius:4px;padding:1px 5px;margin-left:4px;vertical-align:middle}
+/* 사용법 가이드 — 탭형 레이아웃 */
+.guide-box{width:660px;height:600px;max-height:88vh;display:flex;flex-direction:column}
+.guide-tabs{display:flex;flex-wrap:wrap;gap:4px;padding:8px 12px 0;background:#f8fafc;border-bottom:1px solid var(--line)}
+.gtab{border:1px solid var(--line);background:#fff;color:var(--mut);padding:6px 11px;border-radius:8px 8px 0 0;
+  font-size:12px;font-weight:700;cursor:pointer;border-bottom:none;transition:.12s;white-space:nowrap;line-height:1.4}
+.gtab:hover{color:var(--nv)}
+.gtab.active{background:var(--nv);color:#fff;border-color:var(--nv)}
+.guide-body{flex:1;overflow:auto;padding:16px}
+.gpanel{display:none;animation:gfade .18s ease}
+.gpanel.active{display:block}
+@keyframes gfade{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.gpanel .off-note{margin-bottom:12px}
+/* 미니 카드 그리드 */
+.guide-cardrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.guide-mini{border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:#fbfcfe;font-size:12px;line-height:1.55;color:var(--mut)}
+.guide-mini b{color:var(--nv)}
+/* 색 배지 */
+.gb{display:inline-block;padding:1px 7px;border-radius:5px;font-size:10.5px;font-weight:800;color:#fff;vertical-align:middle;line-height:1.5}
+.gb-ui{background:var(--ui)} .gb-wf{background:var(--wf)} .gb-rp{background:var(--rp)} .gb-mo{background:var(--mo)}
+/* 키캡 */
+.gkey{display:inline-block;border:1px solid #cbd3df;border-bottom-width:2px;border-radius:5px;background:#f7f9fc;
+  padding:0 6px;font-size:11px;font-weight:700;color:var(--nv);line-height:1.6;white-space:nowrap}
+/* 접기(details) */
+.gacc{border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-top:10px}
+.gacc>summary{list-style:none;cursor:pointer;padding:10px 13px;font-weight:700;font-size:12.5px;color:var(--nv);
+  background:#fbfcfe;user-select:none;display:flex;align-items:center;gap:7px}
+.gacc>summary::-webkit-details-marker{display:none}
+.gacc>summary .gchev{margin-left:auto;color:var(--mut);font-size:11px;transition:.18s}
+.gacc[open]>summary .gchev{transform:rotate(180deg)}
+.gacc-in{padding:6px 14px 13px;font-size:12.3px;line-height:1.6;color:var(--ink)}
+.gacc-in code,.guide-mini code,.gpanel code{background:#eef2f7;border-radius:4px;padding:1px 5px;font-size:11px;color:#2b3a4d}
+.gul{margin:8px 0 0;padding-left:0;list-style:none}
+.gul li{position:relative;padding:4px 0 4px 16px;font-size:12.2px;border-bottom:1px dashed #eef2f7;color:var(--ink)}
+.gul li:last-child{border-bottom:none}
+.gul li::before{content:"";position:absolute;left:3px;top:11px;width:5px;height:5px;border-radius:50%;background:var(--acc)}
+.gul li.gwarn{color:#8a3b3b}
+.gul li.gwarn::before{background:#d9534f}
+/* 범례 */
+.guide-legend{display:flex;flex-wrap:wrap;gap:12px;margin:4px 0 2px}
+.guide-legend span{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink)}
+.guide-legend i{width:12px;height:12px;border-radius:50%;flex:none}
+.guide-legend i.sq{border-radius:3px}
+.guide-legend i.dash{background:transparent;border:2px dashed #ef4444}
+.guide-legend i.dashp{background:#8b5cf6;border:1.5px dashed #6d28d9;border-radius:3px}
+@media(max-width:560px){.guide-cardrow{grid-template-columns:1fr}}
+/* SQL 쿼리 표시 */
+.btn.xs{font-size:10px;padding:2px 7px;height:auto;line-height:1.4}
+.sql-box{margin-top:6px}
+.sql-item{margin-bottom:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.sql-head{display:flex;align-items:center;justify-content:space-between;background:#f1f5f9;padding:5px 10px;font-size:11px;font-weight:700;color:#475569}
+.sql-code{margin:0;padding:10px;background:#0f172a;color:#e2e8f0;font-family:'D2Coding','Consolas','Courier New',monospace;font-size:11.5px;line-height:1.5;white-space:pre-wrap;word-break:break-all;max-height:280px;overflow:auto}
+/* DB별 SQL 탭 (ANSI / MSSQL / MySQL / Oracle …) */
+.sqlvar-bar{display:flex;flex-wrap:nowrap;gap:3px;margin:10px 0 0;padding:0 0 1px;overflow-x:auto;scrollbar-width:thin}
+.sqlvar-bar::-webkit-scrollbar{height:4px}
+.sqlvar-bar::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px}
+.sqlvar-tab{display:inline-flex;align-items:center;gap:3px;flex:0 0 auto;white-space:nowrap;border:1px solid var(--line);background:#f8fafc;color:#475569;
+  font-size:10.5px;font-weight:700;line-height:1;padding:4px 7px;border-radius:6px 6px 0 0;cursor:pointer;transition:.1s}
+.sqlvar-tab:hover{background:#eef2f7;color:var(--ink)}
+.sqlvar-tab.active{background:#0f172a;color:#fff;border-color:#0f172a}
+.sqlvar-tab.empty{color:#b6c0cc;background:#f4f6f8;cursor:pointer}
+.sqlvar-tab.empty .sqlvar-label,.sqlvar-tab.empty{text-decoration:line-through;text-decoration-color:#cbd5e1}
+.sqlvar-tab.empty.active{background:#64748b;color:#fff;text-decoration:none;border-color:#64748b}
+.sqlvar-dot{font-size:8px;line-height:1}
+.sqlvar-dot.ok{color:#12a150}
+.sqlvar-dot.no{color:#ef4444;font-size:9px}
+.sqlvar-tab.active .sqlvar-dot.ok{color:#7ee2a8}
+.sqlvar-cur{margin-right:auto;font-weight:700;color:#0ea5e9;font-size:11px}
+.sqlvar-pre.sqlvar-empty{background:#111827;color:#94a3b8;font-style:italic;text-align:center;min-height:0}
+.sqlvar-node{font-weight:700;color:var(--nv);font-size:12px;margin:2px 0 4px;padding-left:2px}
+.sqlvar-group{margin-bottom:6px}
+/* 이벤트 트리거 */
+.trig-list{display:flex;flex-direction:column;gap:5px;margin-top:4px}
+.trig{font-size:12px;line-height:1.5;padding:6px 9px;background:#f8fafc;border:1px solid var(--line);border-radius:7px}
+.trig .arw{color:#94a3b8;margin:0 3px}
+.trig .ev{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px;margin-right:5px;color:#fff}
+.trig .ev-wf{background:#16a34a}
+.trig .ev-pop{background:#7c3aed}
+.trig .ev-usr{background:#64748b}
+.trig.nav{cursor:pointer}
+.trig.nav:hover{background:#eef4ff;border-color:#93c5fd}
+/* 공통코드 */
+.code-row{display:flex;align-items:flex-start;gap:8px;margin:4px 0}
+.code-lbl{font-size:10px;font-weight:700;color:#64748b;min-width:64px;padding-top:3px}
+.chip.c-maj{background:#eef2ff;color:#4338ca;border-color:#c7d2fe}
+.chip.c-min{background:#f0fdf4;color:#15803d;border-color:#bbf7d0}
+/* 코드/디자인 뷰어 */
+.viewer-box{width:90vw;max-width:1100px;height:85vh;min-width:420px;min-height:300px;display:flex;flex-direction:column;position:relative}
+/* 제목 표시줄 드래그로 창 이동: 드래그 시작 시 절대좌표로 고정 */
+.viewer-box.dragged{position:absolute;margin:0}
+.viewer-box .modal-head{cursor:move;user-select:none}
+.viewer-box.maximized .modal-head{cursor:default}
+.viewer-box .modal-head button,.viewer-box .modal-head select{cursor:pointer}
+.viewer-box.maximized{width:98vw!important;height:96vh!important;max-width:98vw!important}
+.viewer-body{flex:1;padding:0;overflow:hidden;display:flex;position:relative}
+/* 디자인 미리보기 배지를 눌렀는데 대상이 파도타기 결과에 없을 때의 안내 — 뷰어(특히 최대화 시
+   화면 전체를 덮는)가 열려있는 동안엔 하단 상태표시줄이 가려지므로, 뷰어 안에 바로 보이게 띄운다. */
+.vw-link-toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);
+  background:#1e293b;color:#fecaca;border:1px solid #ef4444;border-radius:8px;
+  padding:10px 16px;font-size:12.5px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.25);
+  max-width:80%;z-index:20;text-align:center}
+.viewer-resize{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;z-index:5;background:linear-gradient(135deg,transparent 50%,#94a3b8 50%,#94a3b8 60%,transparent 60%,transparent 70%,#94a3b8 70%,#94a3b8 80%,transparent 80%)}
+.viewer-box.maximized .viewer-resize{display:none}
+.viewer-switch{display:flex;align-items:center;gap:4px;margin-left:auto;margin-right:12px}
+.vw-tab{border:1px solid var(--line);background:#fff;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;color:#64748b}
+.vw-tab:first-of-type{border-radius:7px 0 0 7px}
+.vw-tab:last-of-type{border-radius:0 7px 7px 0;border-left:0}
+.vw-tab.active{background:var(--bl);color:#fff;border-color:var(--bl)}
+.viewer-code{flex:1;margin:0;padding:16px;background:#0f172a;color:#e2e8f0;font-family:'D2Coding','Consolas','Courier New',monospace;font-size:12.5px;line-height:1.6;white-space:pre;overflow:auto}
+/* 코드 보기 검색: 일치한 단어만 부각시키고 나머지 텍스트는 흐리게 하지 않는다(원래 색 그대로 유지). */
+.viewer-code mark.vw-code-hit{background:#fbbf24;color:#1e293b;border-radius:2px;padding:0 1px}
+.viewer-code mark.vw-code-hit.vw-code-hit-cur{background:#f97316;box-shadow:0 0 0 1px #fff}
+/* 디자인 iframe + (리포트 전용) 툴바를 세로로 쌓는 컬럼 — viewer-body(가로 flex) 안에서
+   vwSqlView 사이드 패널과 나란히 놓이는 한 칸을 차지한다. */
+.viewer-design-pane{flex:1;min-width:0;display:flex;flex-direction:column;overflow:auto;position:relative}
+.viewer-design-toolbar{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#f1f5f9;
+  border-bottom:1px solid var(--line);flex:0 0 auto}
+.viewer-design-toolbar .btn.xs{padding:3px 9px;font-size:11.5px}
+.viewer-design-toolbar .btn.xs.active{background:var(--nv);color:#fff;border-color:var(--nv)}
+.vw-toolbar-sep{width:1px;align-self:stretch;background:var(--line);margin:0 2px}
+.vw-export-status{font-size:11.5px;color:var(--mut);margin-left:4px}
+.vw-export-status.err{color:#dc2626}
+.vw-export-status.ok{color:#16a34a}
+.viewer-design{flex:1;border:0;background:#fff;width:100%;height:100%;min-width:0}
+/* SQL은 더 이상 별도 탭이 아니라, 흐름도 탭의 상세 패널처럼 디자인 미리보기 옆에
+   항상 나란히 붙는 고정폭 사이드 패널이다(리포트(Rp) 노드에서만, 디자인 모드일 때만 보임). */
+.viewer-sql{flex:0 0 400px;width:400px;max-width:45%;overflow:auto;background:#f8fafc;
+  padding:16px;border-left:1px solid var(--line);box-shadow:-2px 0 6px rgba(0,0,0,.04)}
+.viewer-sql .rpq-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.viewer-sql .rpq-empty{color:var(--mut);font-size:13px;padding:20px;text-align:center}
+/* SQL 패널 전체 접기/펼치기 헤더 — 요청사항: "우측에 쿼리 나오는 팝업에 접기 기능을 넣어줘" */
+.rpq-panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+.rpq-panel-head b{font-size:13px;color:var(--ink)}
+.rpq-panel-body{overflow:auto}
+
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:#94a3b8}
+
+/* ============================================================
+   온보딩 투어 (스포트라이트)
+   ============================================================ */
+.tour-btn{flex:none}
+.tour{position:fixed;inset:0;z-index:200;pointer-events:none}
+.tour-backdrop{position:absolute;inset:0;background:rgba(8,16,30,.62);
+  backdrop-filter:blur(1.5px);pointer-events:auto;animation:tourFade .25s ease}
+@keyframes tourFade{from{opacity:0}to{opacity:1}}
+
+/* 스포트라이트: 큰 그림자로 주변을 어둡게, 가운데 타겟만 밝게 */
+.tour-spot{position:absolute;border-radius:12px;pointer-events:none;
+  box-shadow:0 0 0 3px rgba(14,165,160,.9), 0 0 0 9999px rgba(8,16,30,.62);
+  transition:all .35s cubic-bezier(.4,0,.2,1);opacity:0;
+  animation:spotPulse 2s ease-in-out infinite}
+@keyframes spotPulse{
+  0%,100%{box-shadow:0 0 0 3px rgba(14,165,160,.9), 0 0 0 9999px rgba(8,16,30,.62)}
+  50%{box-shadow:0 0 0 6px rgba(14,165,160,.45), 0 0 0 9999px rgba(8,16,30,.62)}
+}
+
+/* 팝오버 카드 */
+.tour-pop{position:absolute;width:340px;max-width:92vw;background:#fff;border-radius:16px;
+  box-shadow:0 24px 60px rgba(8,16,30,.4);pointer-events:auto;overflow:hidden;
+  border:1px solid rgba(255,255,255,.5)}
+.tour-pop.pop-in{animation:popIn .32s cubic-bezier(.34,1.56,.64,1)}
+@keyframes popIn{from{opacity:0;transform:scale(.92) translateY(6px)}to{opacity:1;transform:none}}
+.tour-pop.center.pop-in{animation:popInC .34s cubic-bezier(.34,1.56,.64,1)}
+@keyframes popInC{from{opacity:0;transform:translate(-50%,-50%) scale(.9)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+
+.tour-pop-top{display:flex;align-items:flex-start;gap:11px;padding:16px 16px 4px}
+.tour-emoji{font-size:30px;line-height:1;flex:none;
+  animation:emojiPop .5s cubic-bezier(.34,1.56,.64,1)}
+@keyframes emojiPop{0%{transform:scale(0) rotate(-20deg)}100%{transform:scale(1) rotate(0)}}
+.tour-heads{flex:1;min-width:0}
+.tour-kicker{font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--acc);margin-bottom:2px}
+.tour-title{margin:0;font-size:16px;font-weight:800;color:var(--nv);line-height:1.3}
+.tour-x{border:none;background:transparent;color:#94a3b8;font-size:20px;line-height:1;cursor:pointer;
+  padding:0 2px;flex:none;transition:.12s}
+.tour-x:hover{color:var(--nv)}
+.tour-desc{margin:6px 16px 0;font-size:13px;line-height:1.62;color:#475569}
+.tour-desc b{color:var(--nv);font-weight:700}
+
+/* 진행 점 */
+.tour-dots{display:flex;gap:6px;padding:14px 16px 0;justify-content:center}
+.tour-dot{width:7px;height:7px;border-radius:50%;background:#dbe2ea;cursor:pointer;transition:.2s}
+.tour-dot:hover{background:#b7c2d0}
+.tour-dot.on{background:var(--acc);width:22px;border-radius:5px}
+
+/* 하단 */
+.tour-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:13px 16px 15px;margin-top:12px;border-top:1px solid #eef2f7}
+.tour-skip{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--mut);cursor:pointer;user-select:none}
+.tour-skip input{width:14px;height:14px;cursor:pointer;accent-color:var(--acc)}
+.tour-nav{display:flex;gap:7px}
+.tour-btn2{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 14px;
+  font-size:12.5px;font-weight:700;cursor:pointer;transition:.14s;color:var(--ink);font-family:inherit}
+.tour-btn2.ghost:hover{background:#f1f5f9}
+.tour-btn2.primary{background:linear-gradient(135deg,var(--acc),#0d9488);color:#fff;border-color:transparent;
+  box-shadow:0 4px 12px rgba(14,165,160,.32)}
+.tour-btn2.primary:hover{filter:brightness(1.06);transform:translateY(-1px)}
+.tour-btn2.primary:active{transform:none}
+
+/* ---------- 설정 모달 (화면 배율 등) ---------- */
+.settings-group{padding:2px 0}
+.settings-group-title{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px}
+.settings-hint{font-size:11.5px;color:var(--mut);line-height:1.5;margin-bottom:14px}
+.settings-zoom-row{display:flex;align-items:center;gap:10px}
+.settings-zoom-ico{font-size:11px;color:var(--mut);font-weight:700;user-select:none}
+.settings-zoom-ico-lg{font-size:17px}
+.settings-zoom-val{min-width:44px;text-align:right;font-size:13px;font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums}
+.settings-zoom-actions{display:flex;justify-content:flex-end;margin-top:12px}
+
+/* 트래킹바(range) 커스텀 스타일 — 직관적으로 드래그해서 배율을 조절할 수 있게 */
+.settings-range{flex:1;-webkit-appearance:none;appearance:none;height:6px;border-radius:999px;
+  background:linear-gradient(90deg,var(--acc) 0%,var(--acc) 37.5%,#e2e8f0 37.5%,#e2e8f0 100%);
+  outline:none;cursor:pointer}
+.settings-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;
+  border-radius:50%;background:#fff;border:3px solid var(--acc);box-shadow:0 1px 4px rgba(15,23,42,.25);
+  cursor:pointer;transition:.12s}
+.settings-range::-webkit-slider-thumb:hover{transform:scale(1.1)}
+.settings-range::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#fff;
+  border:3px solid var(--acc);box-shadow:0 1px 4px rgba(15,23,42,.25);cursor:pointer}
+.settings-range::-moz-range-track{height:6px;border-radius:999px;background:#e2e8f0}

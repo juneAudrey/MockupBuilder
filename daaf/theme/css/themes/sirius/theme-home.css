@@ -1,0 +1,1676 @@
+/*!
+ *   theme-home.css v.1.0
+ *
+ *   sirius theme for main/home
+ *
+ *   Author: donghoon.lee
+ */
+
+@charset "utf-8";
+
+/*
+ * Main
+ * -----------------------------------------------------------------------------------
+ */
+body.sirius .wapper {
+    /* min-width: 1900px; */
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    max-height: 100%;
+}
+
+body.sirius header {
+    position: fixed;
+    left: 0;
+    width: 100%;
+    top: 0;
+    height: var(--main-header-height);
+	background: #fff;
+	z-index: 12;
+    border-bottom: 1px solid var(--Typography-Black-300, #DFDFDF);
+}
+
+body.sirius header button {
+	border : none;
+}
+
+body.sirius header > .home-go {
+    display: inline-block;
+    width: var(--gnb-width, 80px);
+    height: var(--main-header-height);
+    text-align: center;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+body.sirius header > .home-go > .home-btn-open {
+    width: var(--gnb-width);
+    height: calc(var(--main-header-height) - 1px);
+    border: 0;
+    border-radius: 0;
+    background: #fff;
+}
+
+body.sirius header > .home-go > .home-btn-open:hover {
+  background: #009b71;
+  transition: 0.5s;
+}
+body.sirius header > .home-go > .home-btn-open:hover .ic-home {
+  background: var(--image-home-on) no-repeat center center;
+}
+body.sirius header > .home-go > .home-btn-open > .ic-home {
+    margin-top: 5px;
+    width: var(--home-btn-icon-size, 28px);
+    height: var(--home-btn-icon-size, 28px);
+    display: inline-block;
+    background: var(--image-home) no-repeat center center;
+    background-size: var(--home-btn-icon-size, 28px) var(--home-btn-icon-size, 28px);
+}
+
+body.sirius header .top {
+    display: inline-block;
+    width: calc(100% - var(--gnb-width));
+    box-sizing: border-box;
+    padding: 12px 0 0px 24px;
+    padding-top : calc((var(--main-header-height) - var(--logo-size, 37px)) / 2);
+    margin-left: var(--gnb-width);
+}
+
+body.sirius header .top .logo {
+	width: 111px;
+	display: inline-block;
+	padding-left: unset;
+    position: unset;
+}
+
+body.sirius:not(:has(.zenione)) header .top .logo {
+    &>img {
+    	height : var(--logo-size, 37px);
+    }
+}
+
+
+body.sirius header .top .top-area {
+    text-align: right;
+    vertical-align: middle;
+}
+body.sirius header .top .top-area.ready {
+	display : none;
+}
+
+body.sirius header .top .top-area {
+    display: inline-block;
+    position: absolute;
+    right: 0;
+    padding: 0 40px 0 0;
+    top: 0;
+}
+body.sirius .top-area .top-serch {
+    width: 240px;
+    vertical-align: middle;
+    padding-left: 0;
+    text-align: left;
+    position: relative;
+    display: inline-block;
+}
+body.sirius .top-area .top-serch button {
+    position: unset;
+    display: inline-block;
+    outline: none;
+    background: none;
+    padding: 0;
+    vertical-align: middle;
+    width: auto;
+    height: var(--icon-size, 28px);
+}
+
+body.sirius .top-area .top-serch input {
+    text-align: left;
+    width: 196px;
+    height: 26px;
+    vertical-align: middle;
+    color: #202020;
+    font-size: var(--font-size, 14px);
+	border: none;
+}
+
+body.sirius .top-area .profile {
+    padding-left: 12px;
+    padding-right: 12px;
+    margin-left: 24px;
+    vertical-align: middle;
+    position: relative;
+    display: inline-block;
+    cursor: pointer;
+}
+
+body.sirius .top-area .profile:hover ,
+body.sirius .top-area .profile:has(.layer-mypage.active) {
+	color: #fff;
+	background: #009b71;
+}
+body.sirius .top-area .profile .mybox {
+    width: 100%;
+}
+
+body.sirius .top-area .profile img {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid #f1f4f7;
+    vertical-align: middle;
+    background: #fff;
+}
+
+body.sirius .top-area .profile:hover span,
+body.sirius .top-area .profile:has(.layer-mypage.active) span{
+	color: #fff;
+}
+
+body.sirius header .object-footer ul li:last-child button:before {
+	content: unset !important;
+	background : none;
+}
+
+body.sirius .top-area .profile span {
+	display: inline-block;
+    width: auto;
+    height: inherit;
+    border: 0;
+    font-size: var(--profile-font-size, 17px);
+    font-weight: 500;
+    color: #202020;
+    vertical-align: middle;
+    margin-left: 8px;
+    line-height: var(--main-header-height);
+}
+
+body.sirius header .scale-wrapper{
+	display : inline-block;
+	position : relative;
+
+	& .scale {
+		margin-top : calc((var(--main-header-height) - var(--menu-icon-size)) / 2);
+	}
+}
+
+body.sirius header .profile .layer-mypage {
+    position: absolute;
+    top: var(--main-header-height);
+    left: -20px;
+    width: 160px;
+    border: 1px solid #dfdfdf;
+    border-radius: 8px;
+    box-shadow: 3px 3px 10px rgba(0, 0, 0, 0.1);
+    background: #fff;
+    z-index: 30;
+    cursor: default;
+    display: none;
+}
+
+body.sirius header .setting-options {
+	position: absolute;
+    top: calc(var(--main-header-height, 58px) - 8px);
+    right: 24px;
+    border-radius: 8px;
+    box-shadow: 3px 3px 10px rgba(0, 0, 0, 0.1);
+    background: #fff;
+    z-index: 30;
+    cursor: default;
+    display: none;
+
+    padding : 10px 0;
+    width : 130px;
+    height : 204px;
+    border : 1px solid #DFDFDF;
+    overflow-y : scroll;
+
+    &::-webkit-scrollbar {
+		display: none;
+	}
+
+	&.active {
+		display : block;
+	}
+
+	& li {
+		height : 38px;
+		display : flex;
+		align-items : center;
+
+		&:hover {
+        	background : #EFEFEF;
+        }
+
+		& button {
+			font-size : 14px;
+			line-height : 26px;
+			font-weight : 400;
+			color : #202020;
+			margin-left : 0;
+			padding : 6px 16px;
+			width : 100%;
+			display : flex;
+		}
+	}
+}
+
+body.sirius header .layer-scale {
+    position: absolute;
+    top: calc(var(--main-header-height, 58px) - 10px);
+    left: var(--header-icon-margin-left, 18px);
+    border-radius: 8px;
+    box-shadow: 3px 3px 10px rgba(0, 0, 0, 0.1);
+    background: #fff;
+    z-index: 30;
+    cursor: default;
+    display: none;
+
+    padding : 10px 0;
+    width : 130px;
+    height : 204px;
+    border : 1px solid #DFDFDF;
+
+    & .layer-scale-title{
+    	height : 32px;
+    	display : flex;
+    	justify-content : center;
+    	align-items : center;
+    	color : #626262;
+    	font-size : 12px;
+    	line-height : 20px;
+    	letter-spacing : -0.3%;
+    	font-weight : 600;
+    }
+    & .scale-detail {
+    	height : 38px;
+    	display : flex;
+    	justify-content : center;
+    	align-items : center;
+    	color : #111111;
+    	font-size : 14px;
+    	line-height : 26px;
+    	letter-spacing : -0.3%;
+    	font-weight : 600;
+ 	    width: 100%;
+        margin-left: 0;
+
+        &:hover {
+        	background : #EFEFEF;
+        }
+        &.selected {
+        	background : #EFEFEF;
+        }
+    }
+}
+body.sirius header .profile .layer-mypage.active,
+body.sirius header .layer-scale.active,
+body.sirius header .layer-manual.active {
+	display: block;
+}
+
+body.sirius header .manual-wrapper {
+    display: inline-block;
+    position: relative;
+    height : 100%;
+
+    & .logout-text {
+        width: calc(100% - 24px);
+    }
+}
+
+body.sirius header .layer-manual {
+    position: absolute;
+    top: calc(var(--main-header-height, 58px) - 10px);
+    right: 0;
+    border-radius: 8px;
+    box-shadow: 3px 3px 10px rgba(0, 0, 0, 0.1);
+    background: #fff;
+    z-index: 30;
+    cursor: default;
+    display: none;
+
+    padding : 10px 0;
+    width : 150px;
+    height : 88px;
+    border : 1px solid #DFDFDF;
+
+    & .manual-detail {
+    	display : flex;
+    	height : 34px;
+    	width : 100%;
+    	align-items : center;
+	   	margin-left: 0;
+        gap: 6px;
+        padding: 0 10px;
+
+        &:hover {
+        	background : #EFEFEF;
+        }
+    }
+}
+
+
+
+body.sirius header .top-area .top-icon {
+    display: inline-block;
+    padding-left: 0;
+    vertical-align: middle;
+    height : var(--main-header-height, 58px)
+}
+
+body.sirius header .object-cover {
+    padding: 10px 0;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    height: 100%;
+    z-index: 31;
+/*     width: 160px; */
+}
+
+body.sirius header .object-top img {
+    width: 64px !important;
+    height: 64px !important;
+    border-radius: 50%;
+    z-index: 32;
+}
+
+body.sirius header .object-body {
+    margin-top: 12px;
+    z-index: 33;
+}
+
+body.sirius header .object-body h2 {
+    color: #202020;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 26px;
+}
+
+body.sirius .object-body p {
+    line-height: 20px;
+    font-size: 12px;
+    color: #747474;
+}
+
+body.sirius header .object-footer {
+    width: 100%;
+}
+
+body.sirius header .object-footer ul li {
+    display: block;
+    padding: 0 0 0;
+    position: relative;
+}
+
+body.sirius header .object-footer button {
+    width: 100%;
+    height: var(--button-height, 38px);
+    padding-right: 10px;
+    border: none;
+    text-align: left;
+    padding-left: 16px !important;
+    color:  #111 !important;
+    font-family: Pretendard !important;
+    font-size: 14px !important;
+    font-style: normal !important;
+    font-weight: 400 !important;
+}
+
+body.sirius header .object-footer button:hover {
+	background-color: #efefef;
+}
+
+body.sirius header .object-footer button span {
+    font-size: 14px !important;
+    color: #747474 !important;
+    line-height: var(--button-height, 38px) !important;
+}
+
+body.sirius header .object-footer button span.logout {
+    color: #f04349 !important;
+    padding-left: 30px;
+    background: var(--image-logout) no-repeat left center;
+    background-size: 25px 24px;
+}
+
+body.sirius header .top-icon button {
+    display: inline-block;
+    margin-left: var(--header-icon-margin-left, 18px);
+    background: transparent;
+    height : 100%;
+}
+
+body.sirius header .top-icon button span {
+    display: inline-block;
+    width: var(--header-icon-size, 32px);
+    height: var(--header-icon-size, 32px);
+    font-size: 0;
+    color: #202020;
+    vertical-align: middle;
+}
+
+body.sirius header .top-icon button span.di.di-settings-black,
+body.sirius header .top-icon button span.di.di-bell {
+    background-size: 28px 28px;
+    /*
+    width: 28px;
+    height: 28px;
+    */
+}
+
+/* 타이머 전체를 감싸는 컨테이너 */
+body.sirius header .delegation-timer-container {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 5px; /* 헤더 여백에 맞게 조절 */
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background-color: #ffeaeb;
+    padding: 6px 12px 6px 20px;
+    border-radius: 20px;
+    border: 1px solid #ffccc7;
+    z-index: 9999;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: background-color 0.3s, border-color 0.3s;
+}
+
+/* 시간 텍스트 */
+body.sirius header .delegation-timer-text {
+    color: #ff4d4f;
+    font-weight: bold;
+}
+
+/* 연장 버튼 */
+body.sirius header .delegation-extend-btn {
+    background-color: #ff4d4f;
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s; /* 마우스 오버 시 부드러운 전환 */
+}
+
+/* 연장 버튼 마우스 오버 효과 */
+body.sirius header .delegation-extend-btn:hover {
+    background-color: #cf1322;
+}
+
+/* 💡 타이머 만료 시 적용될 클래스 */
+body.sirius header .delegation-timer-expired {
+    background-color: #f5f5f5 !important;
+    border-color: #d9d9d9 !important;
+}
+
+body.sirius header .delegation-timer-expired .delegation-timer-text {
+    color: #999 !important;
+}
+
+body.sirius main {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding-top: var(--main-header-height);
+    min-height: 100%;
+    max-height: 100%;
+    /*overflow: hidden; */
+}
+/*body.sirius main:not(:has(.local-nav-bar.collapsed)),*/
+body.sirius main:has(.tab-pane.active .page-footer-wrapper) {
+    overflow: hidden;
+}
+
+body.sirius nav {
+    position: fixed;
+    left: 0;
+    top: var(--main-header-height);
+    color: #fff;
+    padding-top: 0px;
+    font-size: 11px;
+    text-align: center;
+    overflow-y: hidden;
+    background:var(--nav-background);
+    height : calc(100vh - var(--main-header-height));
+    width: var(--gnb-width);
+    z-index  : 10;
+}
+
+
+body.sirius .global-nav-bar {
+    display: block;
+    /*
+	padding-top: var(--gnb-padding-top);
+    padding-right: 0px;
+    padding-bottom: 0px;
+    padding-left: 0px;
+    */
+   	margin-top: var(--gnb-top-margin);
+    margin-right: 0px;
+    margin-bottom: 0px;
+    margin-left: 0px;
+}
+
+body.sirius .global-nav-bar ul li {
+    margin-top: 0px;
+    margin-right: auto;
+    margin-bottom: var(--gnb-item-margin-bottom, 16px);
+    margin-left: auto;
+    text-align: center;
+    align-items: center;
+    padding-right: var(--nav-bar-menu-side-padding, 15px);
+    padding-left: var(--nav-bar-menu-side-padding, 15px);
+}
+
+body.sirius .global-nav-bar ul li .menu {
+    margin: 0 auto;
+    width: 100%;
+    min-height: 50px;
+    text-align: center;
+    white-space: nowrap;
+}
+/*
+body.sirius .global-nav-bar ul li .menu span.ico {
+    display: block;
+    width: 32px;
+    height: 34px;
+    margin: 0 auto;
+    background-size: 32px 32px;
+}
+*/
+body.sirius .global-nav-bar ul li .menu-label {
+    display: block;
+    font-weight: 500;
+    line-height: 18px;
+    margin-top: 4px;
+    color: #fff;
+    white-space : normal;
+    letter-spacing: 0px;
+    font-size: var(--menu-font-size, 13px);
+}
+
+
+/* Menu item styles */
+body.sirius .global-nav-bar ul li .menu-item {
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	position: relative;
+	cursor: pointer;
+}
+
+/* Icon styles */
+body.sirius .global-nav-bar ul li  .menu-item .icon:before {
+	content: '';
+	width: 32px;
+	height: 32px;
+	background-color: white; /* 기본 아이콘 색상 */
+}
+
+/* Hover effect on icon */
+body.sirius .global-nav-bar ul li  .menu-item .icon,
+body.sirius .global-nav-bar ul li  .menu-item .icon{
+	width: var(--menu-icon-size, 32px);
+	height: var(--menu-icon-size, 32px);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	position: relative;
+	cursor: pointer;
+
+
+	&:before {
+		display: inline-block;
+	    width: var(--menu-icon-size , 32px);
+	    height: var(--menu-icon-size , 32px);
+	    -webkit-mask: no-repeat center / contain;
+	    mask: no-repeat center / contain;
+	    background-color: currentColor;
+	    font-size: 0;
+	}
+}
+
+/* Hover effect on icon */
+body.sirius .global-nav-bar ul li .menu-item:hover .icon,
+body.sirius .global-nav-bar ul li .menu-item.active .icon{
+	background-color: var(--nav-base-font); /* 흰 배경 */
+	border-radius: 25%; /* 둥근 모서리 */
+}
+
+body.sirius .global-nav-bar ul li .menu-item:hover .icon:before,
+body.sirius .global-nav-bar ul li .menu-item.active .icon:before{
+	background-color: var(--nav-background); /* 기본 아이콘 색상 */
+}
+
+body.sirius .global-nav-bar ul li  .menu-item .icon.ico-home:before {
+	--icon: var(--ico-home-svg);
+    -webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+
+	 /* mask: var(--ico-home-svg) no-repeat center;
+	  -webkit-mask: var(--ico-home-svg) no-repeat center;*/
+}
+
+
+body.sirius .global-nav-bar ul li  .menu-item .icon.ico-star:before {
+	  /* mask: var(--ico-star-svg) no-repeat center;
+	  -webkit-mask: var(--ico-star-svg) no-repeat center; */
+	--icon: url('../../icon/daafIcons/di-star-favorite.svg');
+	-webkit-mask-image: var(--icon);
+    mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-comm:before {
+	--icon: var(--ico-gnb-comm);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-fi:before {
+	--icon: var(--ico-gnb-fi);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-co:before {
+    --icon: var(--ico-gnb-co);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-sd:before {
+    --icon: var(--ico-gnb-sd);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-mm:before {
+	--icon: var(--ico-gnb-mm);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-pp:before {
+    --icon: var(--ico-gnb-pp);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-im:before {
+    --icon: var(--ico-gnb-im);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-esg:before {
+    --icon: var(--ico-gnb-esg);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-hr:before {
+    --icon: var(--ico-gnb-hr);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-zm:before {
+    --icon: var(--ico-gnb-zm);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-tax:before {
+    --icon: var(--ico-gnb-tax);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.menu-date:before {
+    --icon: var(--menu-date);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.menu-board:before {
+    --icon: var(--menu-board);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-dollar-sign:before {
+   --icon: var(--ico-dollar-sign);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+/* ess 추가 아이콘 */
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-att:before {
+	--icon: var(--ico-gnb-att);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-benefits:before {
+	--icon: var(--ico-gnb-benefits);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-dept-att:before {
+	--icon: var(--ico-gnb-dept-att);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-edu:before {
+	--icon: var(--ico-gnb-edu);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-eval:before {
+	--icon: var(--ico-gnb-eval);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-notice:before {
+	--icon: var(--ico-gnb-notice);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-org:before {
+	--icon: var(--ico-gnb-org);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-payroll:before {
+	--icon: var(--ico-gnb-payroll);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+body.sirius .global-nav-bar ul li .menu-item .icon.ico-gnb-recruit:before {
+	--icon: var(--ico-gnb-recruit);
+	-webkit-mask-image: var(--icon);
+	mask-image: var(--icon);
+}
+
+
+body.sirius .menu-scroll-arrow {
+	position: sticky; /* 화면에 고정 */
+	left: 0; /* 왼쪽 끝에 위치 */
+	width: var(--gnb-width); /* 화면 너비에 꽉 채움 */
+	height: 20px; /* 고정 영역 높이 */
+	background-color:var(--nav-scrollbar-background); /* 배경색 */
+	color: white; /* 텍스트 색상 */
+	display: flex; /* 내용 정렬을 위한 flexbox */
+	align-items: center; /* 세로 중앙 정렬 */
+	justify-content: center; /* 가로 중앙 정렬 */
+	z-index: 1000; /* 다른 요소 위에 표시 */
+    cursor: pointer;
+}
+
+body.sirius .menu-scroll-arrow.menu-scroll-down{
+	bottom: 0; /* 화면의 하단에 위치 */
+	box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1); /* 상단 그림자 효과 */
+}
+body.sirius .menu-scroll-arrow.menu-scroll-up{
+	top: 0; /* 화면의 하단에 위치 */
+	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* 하단 그림자 효과 */
+}
+
+body.sirius .local-nav-bar {
+    position: fixed;
+    left: var(--gnb-width, 94px);
+    width: var(--lnb-width, 220px);
+    background: #fff;
+    border-right: 1px solid #dfdfdf;
+	padding: 30px 0px 30px 8px;
+    z-index: 9;
+    height: calc(100vh - var(--main-header-height));
+    transition: transform 0.3s ease;
+    transform: translateX(0);
+}
+
+body.sirius .local-nav-bar.collapsed {
+    transform: translateX(-100%); /* 접기 상태 */
+}
+
+body.sirius .local-nav-bar .local-nav-bar-area {
+	height: 100%;
+    visibility: visible;
+}
+body.sirius .local-nav-bar .local-nav-bar-area .btn-collapse{
+    border: none;
+    color : #747474;
+	margin: 0 2px;
+    height: var(--icon-size, 24px);
+    width: var(--icon-size, 24px);
+    padding: 0;
+    border-radius: 3px;
+
+    &:has(.di-angle-double-left){
+    	margin-right : 14px;
+    }
+    &:has(.di-angle-double-right){
+    	margin-right : 4px;
+    }
+}
+body.sirius .local-nav-bar .local-nav-bar-area .btn-collapse:hover{
+    border: none;
+    background-color: #ededed !important;
+}
+
+body.sirius .local-nav-bar .local-nav-bar-title-wrap {
+	display: flex;
+  	position: relative;
+	font-size: 20px;
+  	font-weight: bold;
+	justify-content: space-between;
+	align-items: center;
+    padding-left: 8px;
+}
+body.sirius .local-nav-bar .local-nav-bar-title {
+	width : 100%;
+	font-size: var(--sub-menu-title, 20px);
+  	font-weight: bold;
+}
+body.sirius .local-nav-bar .menu-container{
+    height: calc(100% - 32px);
+    overflow: auto;
+    padding-right: 4px;
+    padding-top: 24px;
+
+    & .has-submenu.on {
+    	>a{
+    		font-weight : 600;
+    	}
+    	& a {
+    		font-size : var(--nav-menu-font-size, 14px);
+    		font-weight : 500;
+    		height : var(--nav-bar-menu-height, 38px);
+
+            display: flex;
+            align-items: center;
+    	}
+    }
+}
+
+body.sirius .local-nav-bar .menu-container .menu-home{
+    border: none;
+    margin-bottom : 12px;
+}
+body.sirius .local-nav-bar .menu-container .menu-home > .lnb-menu{
+    margin-top: 10px;
+    margin-bottom: 12px;
+}
+body.sirius .local-nav-bar .menu-container .menu-items > .menu-group > .lnb-menu {
+    margin-top: 6px;
+}
+
+.menu-group.active > .lnb-menu{
+	display : block;
+}
+.menu-group > .lnb-menu{
+	display :none;
+}
+
+.menu-items > .menu-group > .menu-title{
+    padding-top: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f5f5f5;
+    border-top: 1px solid #f5f5f5;
+    font-size : 13px;
+    font-weight: 600;
+}
+
+body.sirius .local-nav-bar .menu-container .menu-group{
+    padding-top: 12px;
+}
+
+body.sirius .menu-home > ul > li {
+    padding: 4px 12px 4px 12px;
+    width: 100%;
+    position: relative;
+    /* margin-bottom: 4px; */
+    height: 34px;
+    vertical-align: top;
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    color: #068965;
+}
+
+body.sirius .menu-home > ul > li.on,
+body.sirius .menu-items .snb-lnb>li.on:not(.has-submenu) {
+    font-size : 14px;
+    font-weight: 700;
+    background: #F4FCFA;
+    border-radius: 6px;
+    color: #068965;
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+}
+
+
+/* home 과 1level만 유효 */
+body.sirius .menu-home > ul > li.on::before,
+body.sirius .menu-items > ul.lnb > li > ul.snb-lnb > li.on:not(.has-submenu)::before ,
+body.sirius .menu-items > ul.lnb > li > ul.snb-lnb > li > ul.snb-lnb > li.on:not(.has-submenu)::before {
+	/* background: #009b71;
+    content: "";
+    width: 3px;
+    height: 20px;
+    display: inline-block;
+    position: absolute;
+    position: relative;
+    left: 0;
+    border-radius: 0 22px 22px 0; */
+}
+
+body.sirius .menu-home > ul > li.on::before{
+	left : -12px;
+}
+body.sirius .menu-items > ul.lnb > li > ul.snb-lnb > li.on:not(.has-submenu)::before{
+	left : 0px;
+}
+body.sirius .menu-items > ul.lnb > li > ul.snb-lnb > li > ul.snb-lnb > li.on:not(.has-submenu)::before {
+	left: -32px;
+}
+
+body.sirius .menu-items .lnb>li.has-submenu>a ,
+body.sirius .menu-items .snb-lnb>li.has-submenu>a {
+	display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    height : var(--nav-bar-menu-height, 38px);
+}
+body.sirius .menu-items .lnb>li.has-submenu>a::after ,
+body.sirius .menu-items .snb-lnb>li.has-submenu>a::after {
+	content: "\f067";
+    font-family: "Font Awesome 5 Free";
+    font-weight: 700; /* 이거 빠질경우 - 아이콘 깨짐 */
+    font-size: var(--sub-menu-icon-font, 11px);
+    right: 0;
+    color: #9d9898;
+    background-color: #fff;
+    border: 1px solid #E9E9E9;
+    /* border-radius: 4px; */
+    width: var(--sub-menu-icon-size, 16px);
+    height: var(--sub-menu-icon-size, 16px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.sirius .menu-items .lnb>li.has-submenu.on>a::after ,
+body.sirius .menu-items .snb-lnb>li.has-submenu.on>a::after,
+body.sirius .menu-items .lnb>li.has-submenu.expand>a::after ,
+body.sirius .menu-items .snb-lnb>li.has-submenu.expand>a::after {
+    content: "\f068";
+}
+body.sirius .menu-items .lnb>li.has-submenu>a:hover::after ,
+body.sirius .menu-items .snb-lnb>li.has-submenu>a:hover::after {
+    background-color: #f4f7f7;
+}
+
+
+body.sirius .menu-home > ul > li .link{
+    cursor : point;
+}
+body.sirius .menu-home > ul > li.on .link{
+    color: #068965;
+}
+body.sirius .menu-home > ul > li .text-menu.home{
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+
+body.sirius .menu-items {
+	/* margin-top : 14px; */
+	min-height : 48px;
+}
+
+body.sirius .menu-items .lnb-cont {
+    height: 100%;
+    background: #f5f5f5;
+    border-right: 1px solid #dadada
+}
+body.sirius .menu-items > .lnb>li>a ,
+body.sirius .menu-home > ul > li .text-menu.home {
+	color: #2c2c2c;
+    font-size: var(--nav-menu-font-size, 14px)!important;
+    font-weight: 600!important;
+}
+
+body.sirius .menu-items > .lnb > li.leaf>a{
+	line-height : 38px;
+}
+
+body.sirius .menu-home > ul > li.on > a > .text-menu.home {
+  color: #068965 !important;
+  font-weight: 700 !important;
+}
+
+body.sirius .menu-items ul.snb-lnb > li:first-child {
+	/* margin-top : 4px;*/
+}
+
+/*첫번째 메뉴 & 하위 메뉴가 있는것들.*/
+body.sirius .menu-items .lnb>li>a {
+    display: block;
+    position: relative;
+    padding: 0 12px;
+    line-height: var(--nav-menu-line-height, 26px);
+}
+
+body.sirius .menu-items .lnb>li>a ,
+body.sirius .menu-items .snb-lnb>li.has-submenu>a {
+    font-weight: 500;
+    color: #2c2c2c;
+    font-size: var(--nav-menu-font-size, 14px);
+    /* color: #777777; */
+}
+
+body.sirius .menu-items .lnb>li>a {
+	/*
+	border-top: 1px solid #F5F5F5;
+    border-bottom: 1px solid #F5F5F5;
+    */
+}
+body.sirius .menu-items .lnb>li.on>a {
+    font-weight: 600;
+}
+
+body.sirius .theme-portal .menu-items .lnb>li>.snb-lnb>li.on>a.menu-link {
+    font-weight: 500;
+}
+
+body.sirius .menu-items .lnb>li .snb-lnb {
+    display : none;
+    opacity: 0;
+    transition: all .2s ease;
+    height: 0;
+    padding-left : 28px;
+
+}
+body.sirius .menu-items .lnb>li.on>.snb-lnb {
+	/* padding-top : 8px;*/
+}
+
+body.sirius .menu-items .lnb>li.on>.snb-lnb,
+body.sirius .menu-items .lnb>li.expand>.snb-lnb,
+body.sirius .menu-items .lnb>li.on>.snb-lnb li.on>.snb-lnb,
+body.sirius .menu-items .lnb>li.on>.snb-lnb li.expand>.snb-lnb,
+body.sirius .menu-items .lnb>li.expand>.snb-lnb li.on>.snb-lnb,
+body.sirius .menu-items .lnb>li.expand>.snb-lnb li.expand>.snb-lnb {
+    display : block;
+    opacity: 1;
+    height: auto;
+    /* padding-bottom: 4px;*/
+}
+
+body.sirius .menu-items .lnb>li>.snb-lnb {
+    padding: 0;
+}
+body.sirius .menu-items .lnb>li>.snb-lnb>li>a {
+    display: flex;
+    padding: var(--menu-items-li-padding, 8px 10px 8px 22px); /* 0 10px 0 20px;*/
+    min-height: var(--input-height, 38px);
+}
+
+body.sirius .menu-items .lnb>li>.snb-lnb>li {
+	min-height: var(--input-height, 38px);
+}
+
+body.sirius .menu-items .lnb>li>a:hover,
+body.sirius .menu-items .lnb>li>.snb-lnb>li>a:hover,
+body.sirius .menu-items .lnb>li>ul.snb-lnb li.has-submenu .snb-lnb>li>a:hover {
+    color: #068965;
+}
+
+body.sirius .menu-items .snb-lnb>li.has-submenu.on>a {
+    color: #2C2C2C;
+    font-weight: 700;
+}
+body.sirius .menu-items .snb-lnb>li.has-submenu.on>a,
+body.sirius .menu-items .snb-lnb>li.has-submenu.expand>a {
+	/*
+    padding: 8px 10px 8px 22px;
+    min-height: 38px;
+    */
+}
+
+body.sirius .menu-items .snb-lnb>li:not(.has-submenu)>a {
+    color: #2c2c2c;
+    font-weight: 500;
+}
+body.sirius .menu-items .snb-lnb>li.on:not(.has-submenu)>a {
+	font-weight: 700;
+    color: #068965;
+}
+
+body.sirius .menu-items .lnb>li>.snb-lnb>li {
+    /*
+    padding-top: 6px;
+    padding-bottom: 6px
+    */
+}
+
+body.sirius .menu-items .lnb>li>ul.snb-lnb li.has-submenu .snb-lnb>li {
+    min-height: var(--input-height, 38px);
+/*     padding: var(--sub-menu-list-padding, 8px 10px 9px 32px); */
+    line-height : var(--line-height, 20px);
+    align-items: center;
+}
+body.sirius .menu-items .lnb>li>ul.snb-lnb li.has-submenu .snb-lnb>li.has-submenu>.snb-lnb{
+	/* padding-top : 10px; */
+	padding-left : 0;
+}
+body.sirius .menu-items .lnb>li>ul.snb-lnb li.has-submenu .snb-lnb>li.has-submenu>.snb-lnb>li {
+    padding : 0 10px;
+    align-items: center;
+    display: flex;
+}
+
+body.sirius main .content {
+	/* content padding 변경 , 2025/02/28 changed by donghoon.lee
+    padding: 0 2rem;
+    */
+    position: relative;
+    padding-right: var(--content-padding-right);
+    padding-left: var(--content-padding-left);
+    padding-top: var(--content-padding-top);
+    padding-bottom: var(--content-padding-bottom);
+}
+body.sirius main .content.main-display.daaf-home {
+    height: calc(100vh - var(--main-header-height));
+    overflow-y: auto;
+    padding-bottom: 30px;
+}
+
+body.sirius main .content .main-history-tab {
+	display : none;
+}
+body.sirius main .content.daaf-home.main-display .main-history-tab {
+    display: inline-block;
+    position: absolute;
+    top: 15px;
+    height: 18px;
+}
+body.sirius main .content.daaf-home.main-display .main-history-tab .tab-toggle-btn {
+    background-color: #A7C32E;
+    color: white;
+    border: none;
+    padding: 8px 20px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 5px;
+    transition: background-color 0.3s;
+}
+
+body.sirius main .content.daaf-home.main-display .main-history-tab .tab-toggle-btn i {
+    margin-right: 8px;
+}
+
+body.sirius main .content.daaf-home.main-display .main-history-tab .tab-toggle-btn:hover {
+    background-color: #8FAF2C;
+}
+
+body.sirius main .content.daaf-home.main-display .main-history-tab .tab-toggle-btn:focus {
+    outline: none;
+}
+
+body.sirius main .content > .scrtabs-tab-container {
+	/*
+    margin-top: 0.6rem;
+    */
+}
+body.sirius main .scrtabs-tab-scroll-arrow,
+body.sirius main .scrtabs-tabs-fixed-container,
+body.sirius main .scrtabs-tab-container {
+    height: var(--menu-tab-height, 32px);
+}
+
+
+body.sirius main .scrtabs-tab-container:has(.scrtabs-tab-scroll-arrow-left[style*="display: block"]) .scrtabs-custom-right-container {
+    display: flex!important;
+}
+body.sirius main .scrtabs-tab-container:has(.scrtabs-tab-scroll-arrow-left[style*="display: block"]) .scrtabs-control-btn-container,
+body.sirius main .scrtabs-tab-container ul:not(:has(li.nav-item)) > li.tab-control  {
+    display: none;
+}
+body.sirius main .scrtabs-custom-right-container {
+    position: absolute;
+    align-items: center;
+	display: none;
+    padding-left: 2px;
+    top: var(--content-padding-top);
+    right: var(--content-padding-right);
+    background-color: var(--base-content-background);
+}
+body.sirius main .scrtabs-tab-scroll-arrow{
+    background-color: #fff;
+    color: #3e3e3e;
+    border-radius: 6px;
+    padding-top: var(--tab-scroll-arrow-padding-top, 7px);
+}
+body.sirius main .scrtabs-tab-scroll-arrow-right {
+	display : block;
+}
+body.sirius main .scrtabs-tab-scroll-arrow-left {
+    margin-right: 6px;
+}
+body.sirius main .tab-control-container {
+    position: relative;
+    margin-left: 6px;
+}
+body.sirius main .scrtabs-control-btn-container {
+    order: 9999;
+}
+
+body.sirius main .tab-control.dropdown button{
+    height: var(--menu-tab-height, 32px);
+    background-color: #fff;
+    border-radius: var(--menu-tab-radius, 6px);
+    padding: var(--menu-tab-dropdown-padding, 6px 10px);
+    font-size: var(--menu-tab-font-size, 12px);
+    font-weight: 600;
+    line-height : var(--line-height);
+}
+
+body.sirius main .tab-control.dropdown .dropdown-menu{
+    display: none !important;
+    visibility: hidden !important;
+}
+
+body.sirius main .main-nav-tabs.nav-tabs .nav-item {
+    padding-right: var(--menu-tab-padding-right, 12px);
+}
+body.sirius main .content .main-nav-tabs.nav-tabs {
+    border-bottom: unset;
+    margin-top: unset;
+}
+body.sirius main .local-nav-bar.collapsed ~ .content {
+    width: calc(100% - var(--gnb-width));
+    left: calc(var(--gnb-width));
+
+    &.content-collapsed{
+    	width: calc(100% - var(--gnb-width) - var(--nav-bar-collapsed-size, 32px));
+    	left : calc(var(--gnb-width) + var(--nav-bar-collapsed-size, 32px));
+    }
+}
+body.sirius main .local-nav-bar:not(.collapsed) ~ .content {
+    /*transform: translateX(300px); */
+    left : var(--left-side-width);
+    transition: transform 0.3s ease; /* 부드러운 애니메이션 */
+    width: calc(100% - var(--left-side-width)); /* 레이아웃을 변경하지 않음 */
+    position: relative; /* 이동된 위치를 유지 */
+}
+
+body.sirius .main-nav-tabs.nav-tabs .nav-link {
+    background-color: #ffffff;
+    color: #333;
+    text-align: center;
+    border: 1px solid #ddd;
+    border-radius: var(--menu-tab-radius, 6px);
+    cursor: pointer;
+    /*
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 0 30px 0 20px;
+    */
+    padding: var(--menu-tab-padding, 6px 28px 6px 10px);
+    line-height: var(--line-height, 20px);
+    letter-spacing: 0.03rem;
+    height: var(--menu-tab-height);
+}
+
+body.sirius .main-nav-tabs.nav-tabs .nav-link.active{
+    background-color: #068965;
+    color: #ffffff;
+    border: 1px solid #068965;
+    /*
+    box-shadow: 0 8px 12px rgba(40, 167, 69, 0.4);
+    transform: translateY(-2px);
+    */
+}
+
+body.sirius .main-nav-tabs.nav-tabs .nav-link:not(.active) .icon_del {
+	background:url('../../images/icon/ico_setting_del.png') no-repeat 0 0/100%;
+}
+body.sirius .menu-caret.dropdown-toggle::after {
+    margin-left: 0.6em;
+	vertical-align: 0.08em;
+    border-top: .5em solid;
+    border-right: .4em solid transparent;
+    border-bottom: 0;
+    border-left: .4em solid transparent;
+}
+
+body.sirius .h1tit-wrap {
+    position: relative;
+    width: 100%;
+    height: var(--page-title-height);
+    padding-bottom: 0px;
+}
+
+body.sirius .h1tit-wrap .h1tit {
+	font-size : inherit;
+	font-weight: var(--base-font-weight);
+}
+
+
+body.sirius .h1tit-wrap .bread-crumb {
+    line-height: 26px;
+    color: #909090;
+    padding-left: 20px;
+    font-weight: 500;
+    font-size : var(--font-size, 14px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.sirius .breadcrumb-item+.breadcrumb-item {
+    padding-left: var(--breadcrumb-padding, 1rem);
+}
+body.sirius .h1tit-wrap .bread-crumb .breadcrumb-active-item {
+    color: var(--base-font-color);
+    font-weight: 600;
+}
+body.sirius .breadcrumb-item+.breadcrumb-item::before {
+    padding-right: 1rem;
+}
+body.sirius .__base[data-menu-id='HOME'] > .page-wrapper > .h1tit-wrap {
+	display : none;
+}
+
+body.sirius .__base[data-menu-id='HOME'] > .page-wrapper > .content-wrapper {
+    padding-top: 30px;
+}
+
+
+body.sirius .content > .tab-content {
+	padding : unset;
+	padding-top : var(--tab-cont-padding-top);
+   /*
+    padding: 1rem 0 0 0;
+     border-radius: 8px;
+     margin-top: 10px;
+   */
+}
+
+
+body.sirius .content > .tab-content > .tab-pane{
+	height : var(--tab-cont-panel-height);
+	min-height : 500px;
+	overflow: auto;
+}
+
+body.sirius .content > .tab-content > .tab-pane:has(.page-footer-wrapper){
+	/* Sirius의 메뉴테마가 적용되기 전에 임시적으로 최대 높이를 제한하여 sticky를 구현
+	40px는 Footer가 있을때 가려지는 부분이 없도록 함
+	padding-bottom:40px
+	*/
+}
+
+body.sirius .content > .tab-content .tab-pane {
+    /* padding-right : 2rem; */
+}
+
+body.sirius .content > .tab-content .page-wrapper:has(.page-footer-wrapper),
+body.sirius .content > .tab-content .page-wrapper:has(+ .page-footer-wrapper){
+     height : var(--tab-cont-panel-height);
+     padding-bottom: 0;
+}
+body.sirius .content.daaf-home .page-wrapper,
+body.sirius .content > .tab-content .page-wrapper,
+body.sirius .content > .tab-content .page-wrapper.manual-page {
+    background: white;
+    padding-top: var(--tab-page-padding-top);
+    padding-right: var(--tab-page-padding-right);
+    padding-bottom: var(--tab-page-padding-bottom);
+    padding-left: var(--tab-page-padding-left);
+    border-radius: var(--tab-page-radius);
+    position: relative;
+}
+
+body.sirius .content > .tab-content .page-wrapper.manual-page,
+body.sirius .content > .tab-content .page-wrapper.manual-page .sun-editor-editable {
+    font-family: var(--base-font-family);
+}
+
+body.sirius .content > .tab-content .content-wrapper{
+	padding-top : var(--container-section-gap);
+	padding-right : var(--tab-page-content-padding-right);
+}
+body.sirius .content > .tab-content .content-wrapper:not(:has(.page-footer-wrapper)){
+	/*
+	background : white;
+    padding: 24px 24px 12px 24px;
+    border-radius: 12px;
+    */
+    position : relative;
+}
+
+body.sirius .content > .tab-content .content-wrapper:has(.page-footer-wrapper){
+	background : white;
+	/*확인필요*/
+    position : relative;
+    height : calc(var(--tab-cont-panel-height) - var(--tab-page-padding-top) - var(--page-title-height));
+    overflow : auto;
+
+}
+
+/* jsp 파일 갈색 border 제거용 */
+body.sirius .h1tit-wrap{
+	border-bottom : 0;
+}
+
+body.sirius .tit-fav label:before {
+    border: unset;
+    border-radius: unset;
+    top: 30%;
+    width: 0;/*28px;*/
+    height: 0; /*28px;*/
+    background: url(../../../images/icon/ico_main-title-arrow.png) no-repeat 0 0;
+}
+
+body.sirius .tit-fav label {
+	/*
+    font-size: 24px;
+    font-weight : 800;
+    padding-left: 1.5rem;
+    */
+	font-size: var(--menu-title, 26px);
+    font-weight: 700;
+    padding-left: 0;/*2.0rem;*/
+    padding-right: var(--menu-title-padding-right, 32px);
+    line-height: var(--page-title-height, 39px);
+    height: unset;
+    letter-spacing: 0.03rem;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.sirius .tit-fav label:after{
+    right: 0;
+    top: calc((var(--page-title-height) - var(--menu-title)) / 2 + 8px);;
+    width: var(--menu-title, 26px);
+    height: var(--menu-title, 26px);
+    background: url(../../../images/icon/ico_fav_inactive.png) no-repeat 0 0;
+    background-size: var(--menu-title, 26px) var(--menu-title, 26px);
+}
+.tit-fav input[type=checkbox]:checked + label:after {
+    background: url(../../../images/icon/ico_fav_active.png) no-repeat 0 0;
+    background-size: var(--menu-title,26px) var(--menu-title,26px) ;
+}
+body.sirius .tit-fav .link-with {
+    font-size: 1rem;
+    color: #817ccb;
+    vertical-align: middle;
+    margin-left: 0.5rem;
+    display : none;
+}
+body.sirius .typeahead-wrap .typeahead.dropdown-menu {
+	min-width : var(--menu-search-dropdown-size, 380px);
+}
+
+body.sirius .local-nav-bar .skeleton.is-loading{
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+  min-height: 30px;
+}
+
+/* 깜빡이는 애니메이션 */
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Expand 버튼 스타일 */
+body.sirius button.expand-btn {
+  	position: absolute;
+    top: calc(var(--content-padding-left) - 4px);
+    left: calc(var(--gnb-width));
+ 	z-index: 1000;
+	background: linear-gradient(135deg, #007a5c, #00a77d); /* 녹색 계열 그라데이션 */
+	border: none;
+	cursor: pointer;
+	padding: 0.2rem; /* 버튼 크기를 2rem 공간에 맞게 조정 */
+	box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* 그림자 줄임 */
+	transition: transform 0.3s ease, box-shadow 0.3s ease; /* 부드러운 전환 */
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: calc(var(--content-padding-left) - 4px); /* 버튼 너비 */
+	height: calc(var(--content-padding-left) + 4px); /* 버튼 높이 */
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+    display : none;
+}
+
+
+body.sirius button.expand-btn:hover {
+  background: #00b58d; /* Hover 시 밝은 녹색 강조 */
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3); /* 그림자 강조 */
+}
+/* 아이콘 컨테이너 */
+body.sirius .icon-expand {
+  position: relative;
+  width: 1.2rem; /* 아이콘의 전체 너비 */
+  height: 1rem; /* 아이콘의 전체 높이 */
+}
+
+/* Bar 스타일 */
+body.sirius .icon-expand .bar {
+  display: block;
+  position: absolute;
+    width: 100%;
+    height: 2px;
+  background-color: #ffffff; /* 아이콘 색상: 흰색 */
+  border-radius: 0.075rem; /* 부드러운 끝 */
+  transition: transform 0.3s ease-in-out, width 0.3s ease-in-out;
+}
+
+/* 초기 상태 */
+body.sirius .icon-expand .top {
+  top: 0;
+}
+
+body.sirius .icon-expand .middle {
+  top: 50%;
+  transform: translateY(-50%); /* 중앙 정렬 */
+}
+
+body.sirius .icon-expand .bottom {
+  bottom: 0;
+}
+
+/* Hover 시 애니메이션 */
+body.sirius button.expand-btn:hover .icon-expand .top {
+  transform:  rotate(22.5deg); /* 위쪽 이동 및 회전 */
+  width: 100%; /* 가운데 바의 끝점과 일치 */
+}
+
+body.sirius button.expand-btn:hover .icon-expand .middle {
+  width: 100%; /* 가운데 바는 길이 유지 */
+}
+
+body.sirius button.expand-btn:hover .icon-expand .bottom {
+  transform: rotate(-22.5deg); /* 아래쪽 이동 및 회전 */
+  width: 100%; /* 가운데 바의 끝점과 일치 */
+}
+
+body.sirius .logo-fallback-text{
+	width: 600px;
+    display: block;
+}
+
+body.sirius header .object-footer .change-buttons {
+    display: flex;
+    gap: 2px;
+    justify-content: space-between;
+}
+
+body.sirius header .object-footer .change-buttons button {
+    padding-right: 10px;
+    padding-left: 4px;
+    font-size: 13px;
+}
+
+body.sirius header .object-footer .btn-logout {
+	display : flex;
+	align-items : center;
+
+	& .logout-text{
+		color: var(--Grayscale-Black, #111111) !important;
+		font-family: Pretendard !important;
+		font-size: var(--font-size, 14px) !important;
+		line-height : 26px;
+		font-style: normal !important;
+		font-weight: 400 !important;
+	}
+	&>.di-logout,
+	&>.fa-lock,
+	&>.fa-user {
+		color : #909090;
+		height : 20px;
+		width : 20px;
+		margin-right : 6px;
+	}
+
+	&>.di-logout {
+		margin-left: 2px;
+	}
+}
+
+body.sirius[data-product="man"]{
+	--lnb-width : 400px !important;
+}

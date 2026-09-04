@@ -1,0 +1,982 @@
+@font-face {
+  font-family: "daafIcon";
+  /* url('fonts/daafIcon.eot?48tq87'); */
+  src: url("./font-daaficon/daafIcon.eot?48tq87");
+  src: url("./font-daaficon/daafIcon.eot?48tq87#iefix")
+      format("embedded-opentype"),
+    url("./font-daaficon/daafIcon.ttf?48tq87")
+      format("truetype"),
+    url("./font-daaficon/daafIcon.woff?48tq87") format("woff"),
+    url("./font-daaficon/daafIcon.svg?48tq87#daafIcon")
+      format("svg");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+
+/*
+.di {
+
+  font-family: "daafIcon" !important;
+  speak: never;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.di.di-angle-double-up:before {
+  content: "\e900";
+}
+.di.di-angle-down:before {
+  content: "\e901";
+}
+.di.di-angle-left-b:before {
+  content: "\e902";
+}
+.di.di-angle-right-b:before {
+  content: "\e903";
+}
+.di.di-angle-up:before {
+  content: "\e904";
+}
+.di.di-anniversary:before {
+  content: "\e905";
+}
+.di.di-arrow-down:before {
+  content: "\e906";
+}
+.di.di-arrow-down-fill:before {
+  content: "\e907";
+}
+.di.di-arrow-right-fill:before {
+  content: "\e908";
+}
+.di.di-arrow-up:before {
+  content: "\e909";
+}
+.di.di-auth:before {
+  content: "\e90a";
+}
+.di.di-bell:before {
+  content: "\e90b";
+}
+.di.di-board-divide:before {
+  content: "\e90c";
+}
+.di.di-board-list:before {
+  content: "\e90d";
+}
+.di.di-board-topdivide:before {
+  content: "\e90e";
+}
+.di.di-button-active:before {
+  content: "\e90f";
+}
+.di.di-calender:before {
+  content: "\e910";
+}
+.di.di-calender-big:before {
+  content: "\e911";
+}
+.di.di-cancel:before {
+  content: "\e912";
+}
+.di.di-clipboard-gray:before {
+  content: "\e913";
+}
+.di.di-clock:before {
+  content: "\e914";
+}
+.di.di-close:before {
+  content: "\e915";
+}
+.di.di-comm:before {
+  content: "\e916";
+}
+.di.di-company:before {
+  content: "\e917";
+}
+.di.di-confirm:before {
+  content: "\e918";
+}
+.di.di-contact:before {
+  content: "\e919";
+}
+.di.di-crm:before {
+  content: "\e91a";
+}
+.di.di-current:before {
+  content: "\e91b";
+}
+.di.di-customer:before {
+  content: "\e91c";
+}
+.di.di-delete:before {
+  content: "\e91d";
+}
+.di.di-delivery:before {
+  content: "\e91e";
+}
+.di.di-document:before {
+  content: "\e91f";
+}
+.di.di-dollar:before {
+  content: "\e920";
+}
+.di.di-donut-chart:before {
+  content: "\e921";
+}
+.di.di-dot:before {
+  content: "\e922";
+}
+.di.di-download:before {
+  content: "\e923";
+}
+.di.di-employees:before {
+  content: "\e924";
+}
+.di.di-erp .path1:before {
+  content: "\e925";
+  color: rgb(0, 0, 0);
+}
+.di.di-erp .path2:before {
+  content: "\e926";
+  margin-left: -1em;
+  color: rgb(0, 0, 0);
+  opacity: 0.8;
+}
+.di.di-erp .path3:before {
+  content: "\e927";
+  margin-left: -1em;
+  color: rgb(6, 137, 101);
+}
+.di.di-erp .path4:before {
+  content: "\e928";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-erp .path5:before {
+  content: "\e929";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-erp .path6:before {
+  content: "\e92a";
+  margin-left: -1em;
+  color: rgb(6, 137, 101);
+}
+.di.di-erp .path7:before {
+  content: "\e92b";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-erp-logo .path1:before {
+  content: "\e92c";
+  color: rgb(0, 0, 0);
+}
+.di.di-erp-logo .path2:before {
+  content: "\e92d";
+  margin-left: -1em;
+  color: rgb(29, 197, 154);
+  opacity: 0.6;
+}
+.di.di-erp-logo .path3:before {
+  content: "\e92e";
+  margin-left: -1em;
+  color: rgb(20, 124, 98);
+}
+.di.di-erp-logo .path4:before {
+  content: "\e92f";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-erp-logo .path5:before {
+  content: "\e930";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-erp-logo .path6:before {
+  content: "\e931";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-erp-logo .path7:before {
+  content: "\e932";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-erp-logo .path8:before {
+  content: "\e933";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-erp-logo .path9:before {
+  content: "\e934";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-erp-logo .path10:before {
+  content: "\e935";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-erp-logo .path11:before {
+  content: "\e936";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-erp-logo .path12:before {
+  content: "\e937";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-erp-logo .path13:before {
+  content: "\e938";
+  margin-left: -1em;
+  color: rgb(20, 124, 98);
+}
+.di.di-erp-logo .path14:before {
+  content: "\e939";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-erp-logo .path15:before {
+  content: "\e93a";
+  margin-left: -1em;
+  color: rgb(15, 171, 131);
+}
+.di.di-export:before {
+  content: "\e93b";
+}
+.di.di-export-box:before {
+  content: "\e93c";
+}
+.di.di-fi:before {
+  content: "\e93d";
+}
+.di.di-file:before {
+  content: "\e93e";
+}
+.di.di-file-arrow-up:before {
+  content: "\e93f";
+}
+.di.di-files:before {
+  content: "\e940";
+}
+.di.di-file-search:before {
+  content: "\e941";
+}
+.di.di-filled-01:before {
+  content: "\e942";
+}
+.di.di-filled-02:before {
+  content: "\e943";
+}
+.di.di-filled-03:before {
+  content: "\e944";
+}
+.di.di-filled-04:before {
+  content: "\e945";
+}
+.di.di-flag-china .path1:before {
+  content: "\e946";
+  color: rgb(227, 29, 28);
+}
+.di.di-flag-china .path2:before {
+  content: "\e947";
+  margin-left: -1em;
+  color: rgb(254, 202, 0);
+}
+.di.di-flag-china .path3:before {
+  content: "\e948";
+  margin-left: -1em;
+  color: rgb(254, 202, 0);
+}
+.di.di-flag-china .path4:before {
+  content: "\e949";
+  margin-left: -1em;
+  color: rgb(254, 202, 0);
+}
+.di.di-flag-china .path5:before {
+  content: "\e94a";
+  margin-left: -1em;
+  color: rgb(254, 202, 0);
+}
+.di.di-flag-china .path6:before {
+  content: "\e94b";
+  margin-left: -1em;
+  color: rgb(254, 202, 0);
+}
+.di.di-flag-jap .path1:before {
+  content: "\e94c";
+  color: rgb(255, 255, 255);
+}
+.di.di-flag-jap .path2:before {
+  content: "\e94d";
+  margin-left: -1em;
+  color: rgb(227, 29, 28);
+}
+.di.di-flag-kor .path1:before {
+  content: "\e94e";
+  color: rgb(255, 255, 255);
+}
+.di.di-flag-kor .path2:before {
+  content: "\e94f";
+  margin-left: -1em;
+  color: rgb(61, 88, 219);
+}
+.di.di-flag-kor .path3:before {
+  content: "\e950";
+  margin-left: -1em;
+  color: rgb(227, 29, 28);
+}
+.di.di-flag-kor .path4:before {
+  content: "\e951";
+  margin-left: -1em;
+  color: rgb(39, 39, 39);
+}
+.di.di-flag-kor .path5:before {
+  content: "\e952";
+  margin-left: -1em;
+  color: rgb(39, 39, 39);
+}
+.di.di-flag-kor .path6:before {
+  content: "\e953";
+  margin-left: -1em;
+  color: rgb(39, 39, 39);
+}
+.di.di-flag-kor .path7:before {
+  content: "\e954";
+  margin-left: -1em;
+  color: rgb(39, 39, 39);
+}
+.di.di-flag-kor .path8:before {
+  content: "\e955";
+  margin-left: -1em;
+  color: rgb(39, 39, 39);
+}
+.di.di-flag-kor .path9:before {
+  content: "\e956";
+  margin-left: -1em;
+  color: rgb(39, 39, 39);
+}
+.di.di-flag-kor .path10:before {
+  content: "\e957";
+  margin-left: -1em;
+  color: rgb(39, 39, 39);
+}
+.di.di-flag-kor .path11:before {
+  content: "\e958";
+  margin-left: -1em;
+  color: rgb(39, 39, 39);
+}
+.di.di-flag-spanish .path1:before {
+  content: "\e959";
+  color: rgb(217, 7, 30);
+}
+.di.di-flag-spanish .path2:before {
+  content: "\e95a";
+  margin-left: -1em;
+  color: rgb(0, 105, 35);
+}
+.di.di-flag-spanish .path3:before {
+  content: "\e95b";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-flag-spanish .path4:before {
+  content: "\e95c";
+  margin-left: -1em;
+  color: rgb(252, 202, 61);
+}
+.di.di-flag-spanish .path5:before {
+  content: "\e95d";
+  margin-left: -1em;
+  color: rgb(168, 172, 113);
+}
+.di.di-flag-spanish .path6:before {
+  content: "\e95e";
+  margin-left: -1em;
+  color: rgb(143, 70, 32);
+}
+.di.di-flag-spanish .path7:before {
+  content: "\e95f";
+  margin-left: -1em;
+  color: rgb(159, 171, 47);
+}
+.di.di-flag-spanish .path8:before {
+  content: "\e960";
+  margin-left: -1em;
+  color: rgb(47, 194, 220);
+}
+.di.di-flag-spanish .path9:before {
+  content: "\e961";
+  margin-left: -1em;
+  color: rgb(249, 170, 81);
+}
+.di.di-flag-spanish .path10:before {
+  content: "\e962";
+  margin-left: -1em;
+  color: rgb(37, 148, 133);
+}
+.di.di-flag-spanish .path11:before {
+  content: "\e963";
+  margin-left: -1em;
+  color: rgb(252, 202, 61);
+}
+.di.di-flag-spanish .path12:before {
+  content: "\e964";
+  margin-left: -1em;
+  color: rgb(252, 202, 61);
+}
+.di.di-flag-usa .path1:before {
+  content: "\e965";
+  color: rgb(227, 29, 28);
+}
+.di.di-flag-usa .path2:before {
+  content: "\e966";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-flag-usa .path3:before {
+  content: "\e967";
+  margin-left: -1em;
+  color: rgb(46, 66, 165);
+}
+.di.di-flag-usa .path4:before {
+  content: "\e968";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-folder:before {
+  content: "\e969";
+}
+.di.di-folder-big:before {
+  content: "\e96a";
+}
+.di.di-folder-open:before {
+  content: "\e96b";
+}
+.di.di-form:before {
+  content: "\e96c";
+}
+.di.di-guide:before {
+  content: "\e96d";
+}
+.di.di-help:before {
+  content: "\e96e";
+}
+.di.di-home:before {
+  content: "\e96f";
+}
+.di.di-home-small:before {
+  content: "\e970";
+}
+.di.di-hr:before {
+  content: "\e971";
+}
+.di.di-im:before {
+  content: "\e972";
+}
+.di.di-img-red .path1:before {
+  content: "\e973";
+  color: rgb(68, 68, 68);
+}
+.di.di-img-red .path2:before {
+  content: "\e974";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-img-red .path3:before {
+  content: "\e975";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-list:before {
+  content: "\e976";
+}
+.di.di-list-up:before {
+  content: "\e977";
+}
+.di.di-mail:before {
+  content: "\e978";
+}
+.di.di-mail-fill:before {
+  content: "\e979";
+}
+.di.di-mail-send:before {
+  content: "\e97a";
+}
+.di.di-mail-send-schedule:before {
+  content: "\e97b";
+}
+.di.di-mm:before {
+  content: "\e97c";
+}
+.di.di-moving:before {
+  content: "\e97d";
+}
+.di.di-noresults .path1:before {
+  content: "\e97e";
+  color: rgb(243, 245, 251);
+}
+.di.di-noresults .path2:before {
+  content: "\e97f";
+  margin-left: -1em;
+  color: rgb(68, 68, 68);
+}
+.di.di-noresults .path3:before {
+  content: "\e980";
+  margin-left: -1em;
+  color: rgb(68, 68, 68);
+}
+.di.di-noresults .path4:before {
+  content: "\e981";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-noresults .path5:before {
+  content: "\e982";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-noresults .path6:before {
+  content: "\e983";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-noresults .path7:before {
+  content: "\e984";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-noresults .path8:before {
+  content: "\e985";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-noresults .path9:before {
+  content: "\e986";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-notice:before {
+  content: "\e987";
+}
+.di.di-office .path1:before {
+  content: "\e988";
+  color: rgb(39, 113, 216);
+}
+.di.di-office .path2:before {
+  content: "\e989";
+  margin-left: -1em;
+  color: rgb(0, 0, 0);
+  opacity: 0.7;
+}
+.di.di-office .path3:before {
+  content: "\e98a";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-office .path4:before {
+  content: "\e98b";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+  opacity: 0.8;
+}
+.di.di-office .path5:before {
+  content: "\e98c";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+  opacity: 0.6;
+}
+.di.di-office .path6:before {
+  content: "\e98d";
+  margin-left: -1em;
+  color: rgb(39, 147, 233);
+}
+.di.di-office .path7:before {
+  content: "\e98e";
+  margin-left: -1em;
+  color: rgb(0, 0, 0);
+}
+.di.di-office .path8:before {
+  content: "\e98f";
+  margin-left: -1em;
+  color: rgb(15, 97, 213);
+}
+.di.di-office .path9:before {
+  content: "\e990";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-office-excel .path1:before {
+  content: "\e991";
+  color: rgb(73, 180, 110);
+}
+.di.di-office-excel .path2:before {
+  content: "\e992";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-office-ppt .path1:before {
+  content: "\e993";
+  color: rgb(245, 100, 100);
+}
+.di.di-office-ppt .path2:before {
+  content: "\e994";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-office-ppt-purple .path1:before {
+  content: "\e995";
+  color: rgb(196, 97, 250);
+}
+.di.di-office-ppt-purple .path2:before {
+  content: "\e996";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-office-ppt-red .path1:before {
+  content: "\e997";
+  color: rgb(245, 100, 100);
+}
+.di.di-office-ppt-red .path2:before {
+  content: "\e998";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-office-word .path1:before {
+  content: "\e999";
+  color: rgb(61, 138, 242);
+}
+.di.di-office-word .path2:before {
+  content: "\e99a";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-open-main-big:before {
+  content: "\e99b";
+}
+.di.di-paperclip:before {
+  content: "\e99c";
+}
+.di.di-papers:before {
+  content: "\e99d";
+}
+.di.di-pdf .path1:before {
+  content: "\e99e";
+  color: rgb(178, 23, 2);
+}
+.di.di-pdf .path2:before {
+  content: "\e99f";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-pdf .path3:before {
+  content: "\e9a0";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-pdf .path4:before {
+  content: "\e9a1";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-pencil:before {
+  content: "\e9a2";
+}
+.di.di-personal:before {
+  content: "\e9a3";
+}
+.di.di-plus:before {
+  content: "\e9a4";
+}
+.di.di-plus-circle_bright:before {
+  content: "\e9a5";
+}
+.di.di-preview:before {
+  content: "\e9a6";
+}
+.di.di-primary:before {
+  content: "\e9a7";
+}
+.di.di-print:before {
+  content: "\e9a8";
+}
+.di.di-quick-mail:before {
+  content: "\e9a9";
+}
+.di.di-quick-organization:before {
+  content: "\e9aa";
+}
+.di.di-register:before {
+  content: "\e9ab";
+}
+.di.di-resend-big:before {
+  content: "\e9ac";
+}
+.di.di-save:before {
+  content: "\e9ad";
+}
+.di.di-sd:before {
+  content: "\e9ae";
+}
+.di.di-search-big:before {
+  content: "\e9af";
+}
+.di.di-select-caret:before {
+  content: "\e9b0";
+}
+.di.di-service:before {
+  content: "\e9b1";
+}
+.di.di-settings:before {
+  content: "\e9b2";
+}
+.di.di-share:before {
+  content: "\e9b3";
+}
+.di.di-star:before {
+  content: "\e9b4";
+}
+.di.di-star-blue-fill:before {
+  content: "\e9b5";
+}
+.di.di-state-failed .path1:before {
+  content: "\e9b6";
+  color: rgb(240, 67, 73);
+  opacity: 0.2;
+}
+.di.di-state-failed .path2:before {
+  content: "\e9b7";
+  margin-left: -1em;
+  color: rgb(240, 67, 73);
+}
+.di.di-state-success .path1:before {
+  content: "\e9b8";
+  color: rgb(61, 213, 152);
+  opacity: 0.2;
+}
+.di.di-state-success .path2:before {
+  content: "\e9b9";
+  margin-left: -1em;
+  color: rgb(40, 202, 137);
+}
+.di.di-statistics:before {
+  content: "\e9ba";
+}
+.di.di-status-work:before {
+  content: "\e9bb";
+}
+.di.di-tiimeline:before {
+  content: "\e9bc";
+}
+.di.di-timeline-order:before {
+  content: "\e9bd";
+}
+.di.di-timeline-product:before {
+  content: "\e9be";
+}
+.di.di-timeline-ship:before {
+  content: "\e9bf";
+}
+.di.di-trame .path1:before {
+  content: "\e9c0";
+  color: rgb(177, 228, 215);
+}
+.di.di-trame .path2:before {
+  content: "\e9c1";
+  margin-left: -1em;
+  color: rgb(15, 171, 131);
+}
+.di.di-tree-group:before {
+  content: "\e9c2";
+}
+.di.di-user:before {
+  content: "\e9c3";
+}
+.di.di-vacation:before {
+  content: "\e9c4";
+}
+.di.di-vacation-pen:before {
+  content: "\e9c5";
+}
+.di.di-vertical-dot_blue:before {
+  content: "\e9c6";
+}
+.di.di-view-cube:before {
+  content: "\e9c7";
+}
+.di.di-zip .path1:before {
+  content: "\e9c8";
+  color: rgb(255, 203, 89);
+}
+.di.di-zip .path2:before {
+  content: "\e9c9";
+  margin-left: -1em;
+  color: rgb(255, 203, 89);
+}
+.di.di-zip .path3:before {
+  content: "\e9ca";
+  margin-left: -1em;
+  color: rgb(255, 255, 255);
+}
+.di.di-zip .path4:before {
+  content: "\e9cb";
+  margin-left: -1em;
+  color: rgb(255, 220, 115);
+}
+.di.di-zip .path5:before {
+  content: "\e9cc";
+  margin-left: -1em;
+  color: rgb(255, 203, 89);
+}
+.di.di-zip .path6:before {
+  content: "\e9cd";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path7:before {
+  content: "\e9ce";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path8:before {
+  content: "\e9cf";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path9:before {
+  content: "\e9d0";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path10:before {
+  content: "\e9d1";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path11:before {
+  content: "\e9d2";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path12:before {
+  content: "\e9d3";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path13:before {
+  content: "\e9d4";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path14:before {
+  content: "\e9d5";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path15:before {
+  content: "\e9d6";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path16:before {
+  content: "\e9d7";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path17:before {
+  content: "\e9d8";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path18:before {
+  content: "\e9d9";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path19:before {
+  content: "\e9da";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path20:before {
+  content: "\e9db";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path21:before {
+  content: "\e9dc";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path22:before {
+  content: "\e9dd";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path23:before {
+  content: "\e9de";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path24:before {
+  content: "\e9df";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path25:before {
+  content: "\e9e0";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path26:before {
+  content: "\e9e1";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path27:before {
+  content: "\e9e2";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path28:before {
+  content: "\e9e3";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path29:before {
+  content: "\e9e4";
+  margin-left: -1em;
+  color: none;
+}
+.di.di-zip .path30:before {
+  content: "\e9e5";
+  margin-left: -1em;
+  color: rgb(71, 69, 69);
+}
+.di.di-zip .path31:before {
+  content: "\e9e6";
+  margin-left: -1em;
+  color: rgb(94, 92, 92);
+}
+.di.di-admin:before {
+  content: "\e9e7";
+}
+.di.di-angle-double-down:before {
+  content: "\e9e8";
+}
+.di.di-angle-double-left:before {
+  content: "\e9e9";
+}
+.di.di-angle-double-right:before {
+  content: "\e9ea";
+}
+*/
