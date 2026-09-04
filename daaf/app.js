@@ -141,6 +141,17 @@
 
 
 
+  // 화면(웹 콘텐츠) 자신의 버전 — index.html 하단 크레딧("ver.YYYYMMDD.NNN")에서 읽는다.
+  // 이 값을 메인 프로세스에 넘겨줘야, GitHub Pages로 화면만 갱신했을 때도 접속 로그가
+  // 실제로 지금 보이는 화면 버전을 정확히 반영한다(로컬 exe 번들 버전이 아니라).
+  function getContentVersion() {
+    try {
+      const el2 = document.querySelector('.credit');
+      const m = el2 && el2.textContent && el2.textContent.match(/ver\.\d{8}\.\d{3}/);
+      return m ? m[0] : null;
+    } catch (_) { return null; }
+  }
+
   // 사용 동의 게이트: 아직 동의하지 않았으면 모달을 띄우고 그 전까지 앱 사용을 막는다.
   // [동의] → 메인에서 동의 저장 + 접속 로그 전송, [동의 안 함] → 앱 종료(로그 전송 없음).
   async function consentGate() {
@@ -150,7 +161,11 @@
       const r = await window.api.consentGet();
       agreed = !!(r && r.agreed);
     } catch (_) {}
-    if (agreed) return; // 이미 동의함 → 그냥 진행
+    if (agreed) {
+      // 이미 동의함 → 그냥 진행하되, 화면 버전을 들고 접속 로그는 남긴다.
+      try { await window.api.reportAccess(getContentVersion()); } catch (_) {}
+      return;
+    }
 
     const modal = el('consentModal');
     if (!modal) return;
@@ -160,7 +175,7 @@
     const declineBtn = el('consentDecline');
     if (agreeBtn) agreeBtn.onclick = async () => {
       agreeBtn.disabled = true;
-      try { await window.api.consentAgree(); } catch (_) {}
+      try { await window.api.consentAgree(getContentVersion()); } catch (_) {}
       modal.style.display = 'none';
     };
     if (declineBtn) declineBtn.onclick = async () => {
