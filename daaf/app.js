@@ -141,17 +141,6 @@
 
 
 
-  // 화면(웹 콘텐츠) 자신의 버전 — index.html 하단 크레딧("ver.YYYYMMDD.NNN")에서 읽는다.
-  // 이 값을 메인 프로세스에 넘겨줘야, GitHub Pages로 화면만 갱신했을 때도 접속 로그가
-  // 실제로 지금 보이는 화면 버전을 정확히 반영한다(로컬 exe 번들 버전이 아니라).
-  function getContentVersion() {
-    try {
-      const el2 = document.querySelector('.credit');
-      const m = el2 && el2.textContent && el2.textContent.match(/ver\.\d{8}\.\d{3}/);
-      return m ? m[0] : null;
-    } catch (_) { return null; }
-  }
-
   // 사용 동의 게이트: 아직 동의하지 않았으면 모달을 띄우고 그 전까지 앱 사용을 막는다.
   // [동의] → 메인에서 동의 저장 + 접속 로그 전송, [동의 안 함] → 앱 종료(로그 전송 없음).
   async function consentGate() {
@@ -161,11 +150,7 @@
       const r = await window.api.consentGet();
       agreed = !!(r && r.agreed);
     } catch (_) {}
-    if (agreed) {
-      // 이미 동의함 → 그냥 진행하되, 화면 버전을 들고 접속 로그는 남긴다.
-      try { await window.api.reportAccess(getContentVersion()); } catch (_) {}
-      return;
-    }
+    if (agreed) return; // 이미 동의함 → 그냥 진행
 
     const modal = el('consentModal');
     if (!modal) return;
@@ -175,7 +160,7 @@
     const declineBtn = el('consentDecline');
     if (agreeBtn) agreeBtn.onclick = async () => {
       agreeBtn.disabled = true;
-      try { await window.api.consentAgree(getContentVersion()); } catch (_) {}
+      try { await window.api.consentAgree(); } catch (_) {}
       modal.style.display = 'none';
     };
     if (declineBtn) declineBtn.onclick = async () => {
@@ -4067,10 +4052,14 @@
       '.dz-root{padding:4px}',
       '.dz-form{padding:8px 0}',
       '.dz-search{border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:12px;background:#fafcff}',
-      '.dz-row{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0;align-items:flex-end}',
+      '.dz-row{display:flex;flex-wrap:wrap;gap:14px;margin:6px 0;align-items:flex-end}',
       '.dz-row.dz-border{border-top:1px solid #e8edf3;padding-top:12px;margin-top:4px}',
-      '.dz-col{flex:1 1 0;min-width:96px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}',
-      '.dz-container{display:flex;flex-wrap:wrap;gap:8px;width:100%}',
+      '.dz-col{flex:1 1 0;min-width:120px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}',
+      // isDisplay:false 컬럼(런타임 조건부 표시): 점선 테두리+옅은 배경으로 "지금은 안 보이는 영역"임을
+      // 시각적으로 구분한다. 일반 dz-col과 똑같이 그려버리면 다른 그리드들 사이에 붕 뜬 것처럼 보인다.
+      '.dz-col-hidden{border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;padding:8px;opacity:.72}',
+      '.dz-col-hidden-badge{width:100%;font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px}',
+      '.dz-container{display:flex;flex-wrap:wrap;gap:10px;width:100%}',
       // ===== 서브탭 네비게이션(신청대상/상신내역/미신청 등, JSON tabContainer) =====
       // 클릭 전환은 구현하지 않고(다른 dz-* 섹션과 동일 방침) 모든 탭 내용을 펼쳐서 보여주되,
       // 탭 이름/아이콘 자체는 실제 화면처럼 가로 스트립으로 명확히 보이게 한다. white-space:nowrap +
@@ -4083,7 +4072,7 @@
       '.dz-tab-active{color:#0f9d58;border-bottom-color:#0f9d58}',
       '.dz-tab-panel{margin-bottom:14px;padding:10px;border:1px solid #eef2f7;border-radius:8px;background:#fbfdff}',
       '.dz-tab-panel-head{font-weight:700;font-size:12.5px;color:#334155;margin-bottom:8px;display:flex;align-items:center;gap:5px}',
-      '.dz-field{display:flex;flex-direction:column;gap:3px;flex:1 1 auto;min-width:88px}',
+      '.dz-field{display:flex;flex-direction:column;gap:3px;flex:1 1 auto;min-width:110px}',
       '.dz-field label{font-size:12px;font-weight:600;color:#334155;white-space:nowrap}',
       '.dz-field .req{color:#ef4444;margin-left:2px}',
       '.req{color:#ef4444;margin-left:2px}',
