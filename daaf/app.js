@@ -3252,13 +3252,32 @@
   // 마크업 자체에 style="display:none" 으로 박혀있으면 브라우저가 정말로 안 그려버린다(JSON
   // 모드의 isDisplay:false 와 동일한 의도인데 표현 방식만 다름). 분석 도구 목적상 숨겨진
   // 부분도 배지를 보고 클릭할 수 있어야 하므로, display:none 을 강제로 풀고 "숨겨짐" 배지를 붙인다.
-  function revealHiddenElements(doc) {
+  // HTML 모드에서 강제로 펼칠 가치가 있는 숨김 요소인지 판단한다: 그리드(구조 파악용, 뱃지 없어도
+  // 항상 펼침) 이거나, 자기 자신 또는 후손 중 하나라도 WF/UI/Rp 뱃지 연결(linkMap)이 있는 경우만
+  // 대상으로 삼는다. 그 외(예: 안 쓰이는 숨김 버튼처럼 뱃지도 없고 그리드도 아닌 것)는 분석 가치가
+  // 없으니 그대로 안 보이게 둬서 화면이 불필요하게 복잡해지는 걸 막는다.
+  function isRevealWorthy(el, linkMap, gridIds) {
+    if (el.id && gridIds && gridIds.has(el.id)) return true;
+    if (el.id && linkMap && linkMap[el.id] && linkMap[el.id].length) return true;
+    if (gridIds && gridIds.size) {
+      for (const gid of gridIds) { if (el.querySelector('#' + CSS.escape(gid))) return true; }
+    }
+    if (linkMap) {
+      for (const lid of Object.keys(linkMap)) {
+        if (linkMap[lid] && linkMap[lid].length && el.querySelector('#' + CSS.escape(lid))) return true;
+      }
+    }
+    return false;
+  }
+
+  function revealHiddenElements(doc, linkMap, gridIds) {
     if (!doc) return;
     let all = [];
     try { all = Array.prototype.slice.call(doc.querySelectorAll('[style*="display:none"], [style*="display: none"]')); }
     catch (e) { return; }
     all.forEach(el => {
       if (el.getAttribute('data-dz-revealed') === '1') return;
+      if (!isRevealWorthy(el, linkMap, gridIds)) return;
       el.setAttribute('data-dz-revealed', '1');
       el.classList.add('dz-hidden-wrap');
       // 인라인 style 에서 display:none 부분만 제거(다른 style 선언은 그대로 유지 — 예:
@@ -3282,7 +3301,7 @@
     try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
     catch (e) { return; }
     if (!doc || !doc.body) return;
-    revealHiddenElements(doc);
+    revealHiddenElements(doc, linkMap, gridIds);
     const clsOf = { wf: 'lk-wf', ui: 'lk-ui', rp: 'lk-rp' };
     const badgeOf = { wf: 'WF', ui: 'UI', rp: 'Rp' };
     Object.keys(linkMap || {}).forEach(id => {
