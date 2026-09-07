@@ -4050,7 +4050,7 @@
       'body.sirius .page-footer-wrapper{position:sticky!important;top:auto!important;left:auto!important;bottom:0!important;margin-top:14px!important;background:#fff!important;border-top:solid 1px #dfdfdf!important;z-index:11!important}',
       // ===== JSON 컴포넌트 트리 기반 디자인(dz-*) =====
       '.dz-root{padding:4px}',
-      '.dz-form{padding:8px 0}',
+      '.dz-form{padding:8px 0;min-width:0}',
       '.dz-search{border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:12px;background:#fafcff}',
       '.dz-row{display:flex;flex-wrap:wrap;gap:14px;margin:6px 0;align-items:flex-end}',
       '.dz-row.dz-border{border-top:1px solid #e8edf3;padding-top:12px;margin-top:4px}',
@@ -4102,7 +4102,7 @@
       '.dz-btn{border:1px solid #cbd5e1;background:#f1f5f9;border-radius:6px;height:30px;padding:4px 14px;font-size:12px;color:#334155;white-space:nowrap;cursor:default;align-self:flex-end}',
       '.dz-heading{font-size:13px;font-weight:700;color:#0f172a;padding:8px 0 4px;border-bottom:2px solid #e8edf3;margin:8px 0 4px;width:100%}',
       '.dz-text{font-size:12.5px;color:#475569;align-self:center}',
-      '.dz-grid{border:1px solid #cbd5e1;border-radius:8px;margin:10px 0;min-height:120px;background:#fff}',
+      '.dz-grid{border:1px solid #cbd5e1;border-radius:8px;margin:10px 0;min-height:120px;background:#fff;min-width:0;max-width:100%}',
       '.dz-grid-head{background:#f8fafc;border-bottom:1px solid #cbd5e1;padding:8px 12px;font-size:12px;font-weight:700;color:#475569;border-radius:8px 8px 0 0}',
       // ===== 그리드 컬럼 표(z_grid_columns/z_grid_options 기반 헤더+뱃지+샘플 행 재현) =====
       // 이 표(및 뱃지)의 실제 스타일은 parser.js buildGridColumnsTableHtml() 안에서 전부 인라인

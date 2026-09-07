@@ -1084,6 +1084,19 @@
       return null;
     }
 
+    // isDisplay:false 컨테이너(column/form 등) 공통 처리: 페이지 로드 시 숨겨져 있다가 특정
+    // 변수/플래그나 선택된 행 타입(국내/해외/반품 등)에 따라 런타임에만 보이는 조건부 영역이다.
+    // 이 미리보기는 런타임 조건을 실행하지 않으므로 무조건 펼쳐서 다른 영역과 나란히 그리는 대신,
+    // "기본 숨김" 배지를 달아 조건부 표시 영역임을 명시한다(예: 국내/해외/반품 상세 그리드처럼
+    // 서로 배타적으로 하나만 보여야 하는 폼들이 미리보기에선 전부 펼쳐져 보이는 문제의 원인).
+    function dzHiddenDeco(pv) {
+      const hidden = pv.isDisplay === false;
+      return {
+        cls: hidden ? ' dz-col-hidden' : '',
+        badge: hidden ? '<div class="dz-col-hidden-badge">🔒 기본 숨김 (조건부 표시 영역)</div>' : ''
+      };
+    }
+
     function renderNode(node) {
       if (!node || typeof node !== 'object') return '';
       const t = node.type;
@@ -1094,23 +1107,50 @@
       if (t === 'component') return renderComp(node);
       if (t === 'row') {
         const border = /border-line/.test(cls) ? ' dz-border' : '';
-        return '<div class="dz-row' + border + '">' + kids + '</div>';
+        const kidNodes = node.child || [];
+        const hasExplicitWidths = kidNodes.length >= 2 && kidNodes.every(c => {
+          const cpv = (c && c.propertyValue) || {};
+          return c && c.type === 'column' && ((cpv.style && (cpv.style.maxWidth || cpv.style.width)) || cpv.widthLaptop);
+        });
+        const nowrap = hasExplicitWidths ? ' style="flex-wrap:nowrap;align-items:flex-start"' : '';
+        return '<div class="dz-row' + border + '"' + nowrap + '>' + kids + '</div>';
       }
       if (t === 'column') {
-        const wl = pv.widthLaptop ? (' style="flex:0 0 ' + (parseInt(pv.widthLaptop, 10) ? (pv.widthLaptop <= 12 ? (pv.widthLaptop / 12 * 100) + '%' : pv.widthLaptop + 'px') : 'auto') + '"') : '';
-        // isDisplay:false 는 페이지 로드 시 숨겨져 있다가 특정 변수/플래그(예: 재고관리 유형)에 따라
-        // 런타임에 표시되는 조건부 패널이다. 이 미리보기는 런타임 조건을 실행하지 않으므로 무조건
-        // 펼쳐서 그리는 대신, "기본 숨김" 배지를 달아 다른 컬럼들과 구분되는 조건부 영역임을 알린다.
-        const hidden = pv.isDisplay === false;
-        const hiddenCls = hidden ? ' dz-col-hidden' : '';
-        const hiddenBadge = hidden ? '<div class="dz-col-hidden-badge">🔒 기본 숨김 (조건부 표시 영역)</div>' : '';
-        return '<div class="dz-col' + hiddenCls + '"' + wl + '>' + hiddenBadge + kids + '</div>';
+        // widthLaptop(그리드 기준 폭)과 propertyValue.style(px/%, camelCase 인라인 스타일 객체) 둘 다
+        // 컬럼 폭을 지정하는 데 쓰인다. style 쪽이 더 구체적(실제 화면의 좌우 분할 비율, 예:
+        // colLeftMain maxWidth:67%+marginRight:20px / colRightLot maxWidth:31%)인데 이제까지는
+        // widthLaptop만 반영하고 style은 통째로 무시하고 있었다 — 그래서 두 컬럼이 항상
+        // flex:1 1 0 균등분배로 떨어져 줄바꿈/겹침이 났다.
+        const styleParts = [];
+        if (pv.widthLaptop) {
+          const wpx = parseInt(pv.widthLaptop, 10);
+          styleParts.push('flex:0 0 ' + (wpx ? (pv.widthLaptop <= 12 ? (pv.widthLaptop / 12 * 100) + '%' : pv.widthLaptop + 'px') : 'auto'));
+        }
+        if (pv.style && typeof pv.style === 'object') {
+          Object.keys(pv.style).forEach(k => {
+            const v = pv.style[k];
+            if (v == null || v === '') return;
+            const kebab = k.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
+            styleParts.push(kebab + ':' + v);
+          });
+          // maxWidth가 있는데 flex-basis(flex:0 0 ..)를 안 줬으면 flex-shrink 로 인해 좁아지려는
+          // 힘이 없어 여전히 균등분배(flex:1 1 0)를 따라가 버린다 — maxWidth를 실제 폭으로 쓰려면
+          // flex-basis도 같이 맞춰줘야 두 컬럼이 지정한 비율대로 나란히 앉는다.
+          if (pv.style.maxWidth && !pv.widthLaptop) styleParts.push('flex:0 0 ' + pv.style.maxWidth);
+        }
+        const wl = styleParts.length ? (' style="' + styleParts.join(';') + '"') : '';
+        const deco = dzHiddenDeco(pv);
+        return '<div class="dz-col' + deco.cls + '"' + wl + '>' + deco.badge + kids + '</div>';
       }
       if (t === 'form') {
         const isSearch = /search-wrap/.test(cls);
-        return '<div class="dz-form' + (isSearch ? ' dz-search' : '') + '">' + kids + '</div>';
+        const deco = dzHiddenDeco(pv);
+        return '<div class="dz-form' + (isSearch ? ' dz-search' : '') + deco.cls + '">' + deco.badge + kids + '</div>';
       }
-      if (t === 'container' || t === 'block') return '<div class="dz-container">' + kids + '</div>';
+      if (t === 'container' || t === 'block') {
+        const deco = dzHiddenDeco(pv);
+        return '<div class="dz-container' + deco.cls + '">' + deco.badge + kids + '</div>';
+      }
       // 탭(신청대상/상신내역/미신청 같은 서브탭 네비게이션): 실제 화면은 Bootstrap nav-tabs(<ul class="nav
       // nav-tabs">)로 마크업되는데, 이 트리 순회는 그 실제 HTML이 아니라 JSON을 그대로 근사 재구성하는
       // 경로라서 이 타입을 처리하지 않으면 tabContainer/tab 노드가 그냥 "래퍼 없는 노드"로 취급되어
