@@ -340,7 +340,7 @@
     <div id="basketList" class="bk-list"></div>
     <div class="status-row">
       <div id="status" class="status">준비됨</div>
-      <div class="credit">by June (ver.20260907.001)</div>
+      <div class="credit">by June (ver.20260907.002)</div>
     </div>
   </footer>
 
@@ -819,13 +819,19 @@
   </div>
 
   <script src="cytoscape.min.js"></script>
-  <script src="demo-data.js?v=20260907001"></script>
-  <script src="parser.js?v=20260907001"></script>
-  <script src="store.js?v=20260907001"></script>
-  <script src="graph.js?v=20260907001"></script>
-  <script src="flowchart.js?v=20260907001"></script>
-  <script src="offline.js?v=20260907001"></script>
-  <script src="app.js?v=20260907001"></script>
-  <script src="tour.js?v=20260907001"></script>
+  <script>
+    // 앱 소유 스크립트들의 캐시버스팅 토큰. 배포마다 사람이 ?v=번호를 손으로 올려야 새로고침
+    // 버튼이 실제로 새 파일을 받아오던 문제를 없애기 위해, 페이지를 열 때마다(=새로고침 버튼을
+    // 누를 때마다) 현재 시각으로 매번 새 토큰을 만든다 — 항상 네트워크에서 새로 받아온다.
+    // document.write는 지금처럼 최초 HTML 파싱 중 <script src> 를 순서대로 나열하던 자리를
+    // 그대로 대체하는 용도라 로드 순서/차단(blocking) 동작이 기존과 동일하게 유지된다.
+    (function () {
+      var cb = Date.now();
+      ['demo-data.js', 'parser.js', 'store.js', 'graph.js', 'flowchart.js', 'offline.js', 'app.js', 'tour.js']
+        .forEach(function (f) {
+          document.write('<scr' + 'ipt src="' + f + '?_cb=' + cb + '"></scr' + 'ipt>');
+        });
+    })();
+  </script>
 </body>
 </html>
