@@ -4095,6 +4095,13 @@
       '.dz-label-badges .dz-link-tag{margin-left:0}',
       '.dz-badge-host{position:relative}',
       '.dz-ctrl{width:100%}',
+      // InputGroup(예: 발주번호 입력창 + 옆의 팝업검색 아이콘버튼) — 가로로 나란히 배치.
+      // 안의 input은 개별 컴포넌트라 자기 자신도 .dz-field로 한번 더 감싸져 나오는데(중첩),
+      // 바깥 그룹 라벨과 안쪽 필드 라벨이 이중으로 보이지 않도록 중첩된 필드는 라벨/세로여백을 죽인다.
+      '.dz-inputgroup{display:flex;align-items:center;gap:4px}',
+      '.dz-inputgroup .dz-field{flex:1;gap:0}',
+      '.dz-inputgroup .dz-field label{display:none}',
+      '.dz-inputgroup .dz-btn{align-self:auto}',
       '.dz-badge-overlay{position:absolute;top:50%;left:6px;transform:translateY(-50%);display:flex;align-items:center;gap:3px;z-index:3;pointer-events:auto;max-width:calc(100% - 12px);overflow:hidden}',
       '.dz-badge-overlay .dz-link-tag,.dz-badge-overlay .dz-hidden-tag{margin-left:0;flex:0 0 auto}',
       // 버튼 안에 자연스러운 내용으로 이어붙는 뱃지(그리드 툴바 버튼과 동일한 방식) — 절대배치가

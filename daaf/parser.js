@@ -939,12 +939,15 @@
       const label = labelOf(pv);
       const req = pv.isRequired ? '<span class="req">*</span>' : '';
       const w = (pv.style && pv.style.width) ? (';width:' + pv.style.width) : '';
-      // 숨김 여부: visible:false 또는 style.display:none 등. 숨겨진 컨트롤도 강제로 표시하되
-      // 사용자가 인지할 수 있도록 "숨김" 배지를 붙이고 흐리게 처리한다.
-      const isHidden = (pv.visible === false)
+      // 숨김 여부: visible:false, style.display:none, hide/d-none 클래스, 또는 isDisplay:false
+      // (런타임 변수/플래그로만 조건부 표시되는 컴포넌트 — column/form 컨테이너뿐 아니라 개별
+      // 콤보/입력/그리드 등에도 쓰인다). 숨겨진 컨트롤도 강제로 표시하되 사용자가 인지할 수 있도록
+      // "숨겨짐" 배지를 붙이고 흐리게 처리한다 — 이 배지와는 별개로 WF/UI/Rp/IV 연결 뱃지는 hidden
+      // 여부와 무관하게 항상 계산되므로(아래 link/initTag), 숨겨진 컴포넌트도 연결 정보는 그대로 보인다.
+      const isHidden = (pv.visible === false) || (pv.isDisplay === false)
         || (pv.style && /display\s*:\s*none/i.test(String(pv.style.display || pv.style || '')))
         || /(^|\s)(hide|d-none)(\s|$)/.test(String(pv.className || ''));
-      const hiddenBadge = isHidden ? '<span class="dz-hidden-tag">숨김</span>' : '';
+      const hiddenBadge = isHidden ? '<span class="dz-hidden-tag">숨겨짐</span>' : '';
       // 연결 표시(link): 저장WF/팝업UI/리포트 등과 엮인 컨트롤은 클릭 가능한 링크로 렌더
       const link = compLink(node, pv, o);
       const dataAttr = link ? (' data-navkey="' + esc(link.navKey) + '" title="' + esc(link.title) + '"') : '';
@@ -994,10 +997,14 @@
           // 글리프만 표시한다(자주 쓰이는 fa-search 만 우선 매핑, 그 외 아이콘은 작은 점으로 대체).
           const hasTextLabel = !!(label || pv.id);
           const iconGlyph = pv.icon === 'fa-search' ? '🔍' : (pv.icon ? '◾' : '');
-          const btnText = hasTextLabel ? esc(label || pv.id) : (iconGlyph || 'button');
-          const iconOnlyCls = (!hasTextLabel && iconGlyph) ? ' dz-btn-icon-only' : '';
+          // btn-search 관례 버튼(조회 버튼)은 DD사전에 이 버튼 id가 개별 등록돼있지 않으면
+          // JSON에 박힌 영어 라벨("Search")이 그대로 나온다 — 실제 화면은 항상 "조회"이므로
+          // 이 관례 버튼만은 라벨을 고정한다(다른 버튼은 원래 label/DD 우선순위 그대로 유지).
+          const forcedLabel = pv.btnColor === 'btn-search' ? '조회' : null;
+          const btnText = forcedLabel || (hasTextLabel ? esc(label || pv.id) : (iconGlyph || 'button'));
+          const iconOnlyCls = (!forcedLabel && !hasTextLabel && iconGlyph) ? ' dz-btn-icon-only' : '';
           return '<button class="dz-btn' + linkCls + hiddenCls + iconOnlyCls + '"' + dataAttr + btnType + btnDis
-            + (!hasTextLabel && pv.icon ? (' title="' + esc(pv.icon) + '"') : '') + '>'
+            + (!forcedLabel && !hasTextLabel && pv.icon ? (' title="' + esc(pv.icon) + '"') : '') + '>'
             + btnText + hiddenBadge + linkTag + '</button>';
         }
         case 'heading':
@@ -1227,6 +1234,13 @@
       }
       if (t === 'container' || t === 'block') {
         const deco = dzHiddenDeco(pv);
+        // InputGroup(예: 발주번호 입력창+옆의 팝업검색 아이콘버튼)은 formLabel 을 컨테이너 자체가
+        // 들고 있고 안의 input 컴포넌트에는 라벨이 없다 — 이걸 안 읽으면 라벨이 통째로 사라진다.
+        const isInputGroup = node.editorAttr && node.editorAttr.componentClass === 'layout/InputGroup';
+        if (isInputGroup && pv.formLabel) {
+          return '<div class="dz-field' + deco.cls + '"><label>' + esc(pv.formLabel) + '</label>'
+            + '<div class="dz-ctrl dz-inputgroup">' + deco.badge + kids + '</div></div>';
+        }
         return '<div class="dz-container' + deco.cls + '">' + deco.badge + kids + '</div>';
       }
       // 탭(신청대상/상신내역/미신청 같은 서브탭 네비게이션): 실제 화면은 Bootstrap nav-tabs(<ul class="nav
@@ -1254,8 +1268,11 @@
         const go = pv.gridOptions || {};
         const gid = go.gridId || null;
         const gtitle = go.title || '';
+        // 그리드 자체가 isDisplay:false(런타임 조건부 표시)인 경우 헤더에 "(숨겨짐)" 표시를 덧붙인다.
+        // WF 연결 뱃지(headBadges, 아래)는 hidden 여부와 무관하게 이미 항상 계산되므로 그대로 같이 보인다.
+        const gridHiddenTag = pv.isDisplay === false ? ' <span class="dz-hidden-tag">숨겨짐</span>' : '';
         const headLabel = '📊 ' + (gtitle ? esc(gtitle) : '데이터 그리드 영역')
-          + (gid ? (' <span style="font-weight:400;color:#94a3b8">(' + esc(gid) + ')</span>') : '');
+          + (gid ? (' <span style="font-weight:400;color:#94a3b8">(' + esc(gid) + ')</span>') : '') + gridHiddenTag;
         // 컬럼 정의를 먼저 한 번 계산해 둔다 — (i) 컬럼별 제목+뱃지 표 렌더링과 (ii) 그리드 상단
         // 배지 목록에서 "이미 컬럼에 매핑된 배지"를 걸러내는 데 함께 쓴다(요청사항: 상단 줄에는
         // 어느 컬럼에도 안 붙은 WF/UI만 남긴다).
