@@ -861,11 +861,12 @@
     return renderGridColumnsTableFromDefs(computeGridColumnDefs(go, lookupNode, popupByTitle, dict));
   }
 
-  function buildDesignHtml(resourceJson, resourceHtml, dict, lookupNode, initMap, resourceJsText) {
+  function buildDesignHtml(resourceJson, resourceHtml, dict, lookupNode, initMap, resourceJsText, authMap) {
     let obj;
     try { obj = JSON.parse(resourceJson); } catch (e) { return null; }
     const page = obj && obj.page;
     if (!page) return null;
+    authMap = authMap || {}; // 하위 호환: 호출부가 아직 authMap 을 안 넘기면 빈 맵으로 동작(AUTH 배지 없음)
     const langMap = extractLangMap(resourceHtml || '');
     const ddSingle = (dict && dict.single) || {};   // z_dd_lang: 컴포넌트 id → 현재 언어 라벨
     // 그리드 배지 대상 병합: (a) 그리드 자체가 서비스로 조회/처리되는 경우(WF, computeGridServiceMap)
@@ -964,9 +965,17 @@
         ? ('<span class="dz-link-tag dz-init-tag ' + initCls + '" data-init-id="' + esc(pv.id) + '" title="초기값 추적 정보 보기 (클릭)">IV</span>')
         : '';
 
-      // 뱃지(숨김/연결/초기값)는 컨트롤 박스 안이 아니라 "라벨 텍스트 오른쪽"에 붙인다(요청사항:
-      // 컴포넌트 안에 넣은 뱃지가 마음에 안 든다 — 그리드 제외 모든 컴포넌트는 라벨 우측으로).
-      const badgesInner = (hiddenBadge || linkTag || initTag) ? (hiddenBadge + linkTag + initTag) : '';
+      // 권한체크(AUTH) 배지: 버튼의 usrEventFn 안에 useAuthGuard/hasPermission 패턴(권한 없으면
+      // 화면을 잠그는 구조)이 있으면 붙인다. IV 배지와 마찬가지로 그래프 이동이 아니라, 클릭하면
+      // (app.js bindAuthBadges) 그 usrEventFn 코드 자체를 상세패널에 보여준다.
+      const authInfo = (authMap && pv.id) ? authMap[pv.id] : null;
+      const authTag = authInfo
+        ? ('<span class="dz-link-tag dz-auth-tag" data-auth-id="' + esc(pv.id) + '" title="권한체크 로직 보기 (클릭)">🔒</span>')
+        : '';
+
+      // 뱃지(숨김/연결/초기값/권한체크)는 컨트롤 박스 안이 아니라 "라벨 텍스트 오른쪽"에 붙인다
+      // (요청사항: 컴포넌트 안에 넣은 뱃지가 마음에 안 든다 — 그리드 제외 모든 컴포넌트는 라벨 우측으로).
+      const badgesInner = (hiddenBadge || linkTag || initTag || authTag) ? (hiddenBadge + linkTag + initTag + authTag) : '';
       const badgeSlot = badgesInner ? ('<span class="dz-label-badges">' + badgesInner + '</span>') : '';
       const field = (inner) => '<div class="dz-field' + linkCls + hiddenCls + '"' + dataAttr + '>'
         + (label ? ('<label>' + esc(label) + req + badgeSlot + '</label>')
@@ -990,8 +999,10 @@
         case 'button': {
           // 연결(link)된 버튼은 클릭 이벤트를 받아야 하므로 disabled 를 걸지 않는다.
           // (disabled 버튼은 click 이벤트가 발생하지 않아 그래프 이동이 동작하지 않음)
-          const btnDis = link ? '' : ' disabled';
-          const btnType = link ? ' type="button"' : '';
+          // AUTH 배지만 있고 link 는 없는 버튼(예: 조회 버튼이 WF 배지 없이 권한체크만 있는 경우)도
+          // 배지가 클릭을 받아야 하므로 authInfo 유무도 함께 확인한다.
+          const btnDis = (link || authInfo) ? '' : ' disabled';
+          const btnType = (link || authInfo) ? ' type="button"' : '';
           // 라벨/이름이 아예 없는 버튼(예: 검색 입력창 옆의 팝업조회 아이콘버튼)은 실제 화면에서도
           // 텍스트 없이 아이콘만 있다 — "button" 이라는 플레이스홀더 글자를 보여주는 대신 아이콘
           // 글리프만 표시한다(자주 쓰이는 fa-search 만 우선 매핑, 그 외 아이콘은 작은 점으로 대체).
@@ -1005,7 +1016,7 @@
           const iconOnlyCls = (!forcedLabel && !hasTextLabel && iconGlyph) ? ' dz-btn-icon-only' : '';
           return '<button class="dz-btn' + linkCls + hiddenCls + iconOnlyCls + '"' + dataAttr + btnType + btnDis
             + (!forcedLabel && !hasTextLabel && pv.icon ? (' title="' + esc(pv.icon) + '"') : '') + '>'
-            + btnText + hiddenBadge + linkTag + '</button>';
+            + btnText + hiddenBadge + linkTag + authTag + '</button>';
         }
         case 'heading':
           return '<div class="dz-heading' + hiddenCls + '">' + esc(pv.text || label) + hiddenBadge + '</div>';
@@ -1495,6 +1506,66 @@
       }
       Object.keys(o).forEach(k => scan(o[k]));
     })(obj);
+    return map;
+  }
+
+  // [권한체크 배지] 버튼의 usrEventFn 안에서 useAuthGuard/hasPermission 패턴을 찾아 그 블록만
+  // 잘라 반환한다. 예)
+  //   const { useAuthGuard } = $pageObjects;
+  //   const { hasPermission } = useAuthGuard();
+  //   if (!hasPermission()) { ... }
+  // 이 패턴은 화면 JSON 안의 커스텀 스크립트로만 존재하고, useAuthGuard 자체의 실제 구현(권한을
+  // 어느 테이블/키로 판정하는지)은 런타임에 주입되는 프레임워크 공통 JS 쪽이라 배포정보 어디에도
+  // 없다 — 그래서 Daaf Wave 는 "이 버튼에 권한체크가 있다"는 사실과 그 호출부 코드까지만 보여주고,
+  // 실제 판정 로직 추적은 범위 밖으로 둔다.
+  // 정규식만으로 블록 끝을 자르면 중첩된 객체 리터럴이나 if 안의 또 다른 {}가 있을 때 잘못 잘릴 수
+  // 있어, if(!hasPermission()){ ... } 블록의 여는/닫는 중괄호를 직접 카운팅해 정확히 짝을 맞춘다.
+  function extractAuthGuardBlock(usrEventFn) {
+    if (!usrEventFn || typeof usrEventFn !== 'string') return null;
+    if (usrEventFn.indexOf('useAuthGuard') === -1) return null;
+
+    const startIdx = usrEventFn.indexOf('useAuthGuard');
+    // useAuthGuard 를 구조분해할당하는 라인의 시작(줄바꿈 다음)까지 백트래킹 — 보통 그 위에
+    // 다른 코드가 없어 이 라인부터 보여주는 게 자연스럽다.
+    let blockStart = usrEventFn.lastIndexOf('\n', startIdx);
+    blockStart = blockStart === -1 ? 0 : blockStart + 1;
+
+    // hasPermission() 을 검사하는 if 블록의 끝(짝 맞는 '}')까지 괄호 카운팅으로 추출.
+    const ifIdx = usrEventFn.indexOf('if', startIdx);
+    const braceOpenIdx = ifIdx !== -1 ? usrEventFn.indexOf('{', ifIdx) : -1;
+    if (ifIdx === -1 || braceOpenIdx === -1) {
+      // if 블록을 못 찾는 예외적인 형태면 훅 선언부 주변만이라도 보여준다.
+      return usrEventFn.slice(blockStart, Math.min(usrEventFn.length, startIdx + 200)).trim();
+    }
+    let depth = 0, i = braceOpenIdx;
+    for (; i < usrEventFn.length; i++) {
+      if (usrEventFn[i] === '{') depth++;
+      else if (usrEventFn[i] === '}') { depth--; if (depth === 0) { i++; break; } }
+    }
+    return usrEventFn.slice(blockStart, i).trim();
+  }
+
+  // 화면(RESOURCE_JSON) 전체에서 권한체크 패턴이 있는 버튼을 모아 { compId(=pv.id): info } 형태로
+  // 반환한다. computeInitValueMap 과 동일하게 pv.id 를 키로 쓴다(html 모드 오버레이도 같은 id로
+  // DOM 요소를 찾으므로 구조를 맞춰야 한다).
+  function computeAuthGuardMap(resourceJson) {
+    const map = {};
+    let obj;
+    try { obj = JSON.parse(resourceJson); } catch (e) { return map; }
+    const page = obj && obj.page;
+    if (!page) return map;
+    (function walk(o) {
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) { o.forEach(walk); return; }
+      const pv = o.propertyValue || {};
+      if (pv.id && typeof pv.usrEventFn === 'string') {
+        const authCode = extractAuthGuardBlock(pv.usrEventFn);
+        if (authCode) {
+          map[pv.id] = { authCode, fullEventFn: pv.usrEventFn, label: pv.label || pv.formLabel || pv.id };
+        }
+      }
+      Object.keys(o).forEach(k => walk(o[k]));
+    })(page);
     return map;
   }
 
@@ -2020,5 +2091,5 @@
     return out;
   }
 
-  return { extractServiceRefs, extractTables, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, extractHeaderLabels, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeGridServiceMap, extractInlineBranchedWfMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
+  return { extractServiceRefs, extractTables, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, extractHeaderLabels, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeAuthGuardMap, computeGridServiceMap, extractInlineBranchedWfMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
 });

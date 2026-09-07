@@ -309,6 +309,8 @@
             <div id="uiTabEmpty" class="empty flow-empty">왼쪽에서 프로그램을 검색해 더블클릭하면 여기에 디자인이 표시됩니다.</div>
             <!-- 컴포넌트의 "IV"(초기값) 배지 상세 — 모달의 #vwInitBox 와 동일한 기능. -->
             <div id="uiTabInitBox" class="flow-stepbox vw-init-box" style="display:none"></div>
+            <!-- 컴포넌트의 "🔒"(권한체크) 배지 상세 — 모달의 #vwAuthBox 와 동일한 기능. -->
+            <div id="uiTabAuthBox" class="flow-stepbox vw-init-box vw-auth-box" style="display:none"></div>
           </div>
           <!-- 리포트(Rp)를 볼 때만 옆에 나타나는 SQL 사이드 패널 — 모달의 #vwSqlView 와 동일. -->
           <div id="uiTabSqlView" class="viewer-sql" style="display:none"></div>
@@ -340,7 +342,7 @@
     <div id="basketList" class="bk-list"></div>
     <div class="status-row">
       <div id="status" class="status">준비됨</div>
-      <div class="credit">by June (ver.20260907.008)</div>
+      <div class="credit">by June (ver.20260907.009)</div>
     </div>
   </footer>
 
@@ -463,6 +465,8 @@
           <!-- 컴포넌트의 "IV"(초기값) 배지를 클릭하면 여기에 정적/스크립트/체인 추적 결과를 보여준다.
                흐름도의 #flowStepBox 와 동일하게 닫기 없이 접기/펼치기만 지원(항상 화면에 남음). -->
           <div id="vwInitBox" class="flow-stepbox vw-init-box" style="display:none"></div>
+          <!-- 컴포넌트의 "🔒"(권한체크) 배지를 클릭하면 여기에 useAuthGuard/hasPermission 코드를 보여준다. -->
+          <div id="vwAuthBox" class="flow-stepbox vw-init-box vw-auth-box" style="display:none"></div>
         </div>
         <div id="vwSqlView" class="viewer-sql" style="display:none"></div>
         <!-- 디자인 미리보기에서 WF/UI 배지를 눌렀는데 대상 노드가 현재 파도타기 결과에

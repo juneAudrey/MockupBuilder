@@ -287,6 +287,15 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .iv-live-result.iv-live-ok{color:#166534}
 .iv-live-result.iv-live-error{color:#b91c1c}
 
+/* 디자인 미리보기의 "🔒"(권한체크) 배지 클릭 시 뜨는 상세패널 — .flow-stepbox 뼈대를 그대로 쓰되,
+   전체 usrEventFn 코드까지 같이 보여줄 수 있어 IV 패널보다 살짝 더 넓게 잡는다. */
+.vw-auth-box{width:360px;height:auto;max-height:calc(100% - 24px)}
+.vw-auth-box .auth-body{overflow:auto}
+.auth-card{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;background:#fef2f2}
+.auth-card-head{font-weight:700;font-size:11.5px;margin-bottom:4px;color:#b91c1c}
+.auth-card code{display:block;white-space:pre-wrap;word-break:break-all;background:#0f172a;color:#e2e8f0;
+  font-family:'D2Coding','Consolas','Courier New',monospace;font-size:11px;padding:6px 8px;border-radius:6px;margin-top:2px;max-height:260px;overflow:auto}
+
 /* 흐름도 미니맵 — 쿼리 상세 팝업(.flow-stepbox, 우측 상단~하단 대부분을 차지)과 겹치지 않도록
    기본은 좌상단에 둔다(범례는 좌하단이라 그 쪽도 피한다). 드래그로 옮길 수 있고 옮긴 위치는
    localStorage 에 저장해 다음에 열어도 유지된다. z-index 는 쿼리 팝업(5)보다 낮게 둬서, 사용자가

@@ -2252,6 +2252,7 @@
   let _viewerGridColumnPopupMap = {}; // 현재 뷰어 화면의 gridId → {컬럼제목 -> {programId,label}}(컬럼 액션버튼 UI 팝업, RESOURCE_HTML 모드에서 컬럼 표 오버레이용)
   let _viewerInlineReportMap = {}; // 현재 뷰어 화면의 컴포넌트id → 그 컴포넌트에 통째로 박혀 있는 reportJsonData(별도 Rp 배포 레코드 없이 자체 미리보기가 가능한 리포트 컴포넌트용)
   let _viewerInitMap = {}; // 현재 뷰어 화면의 id → 초기값 추적 정보(정적/리터럴/스크립트→WF→테이블 체인)
+  let _viewerAuthMap = {}; // 현재 뷰어 화면의 id → 권한체크(useAuthGuard/hasPermission) 로직 정보
   let _vwCodeRaw = '';    // "코드" 탭에 지금 표시 중인 원본 텍스트(검색/하이라이트 재계산용)
   let _vwCodeHitIdx = -1; // 코드 검색 결과 중 현재 포커스된(강조색이 다른) 일치 인덱스
   let _vwZoom = 1;        // 리포트 디자인 미리보기 확대/축소 배율(1 = 100%). 새 노드를 열 때 초기화.
@@ -2272,6 +2273,7 @@
   let _uiTabGridColumnPopupMap = {};
   let _uiTabInlineReportMap = {}; // 탭 버전 — 위 _viewerInlineReportMap 과 동일한 용도
   let _uiTabInitMap = {};
+  let _uiTabAuthMap = {}; // 탭 버전 — 위 _viewerAuthMap 과 동일한 용도
   let _uiTabDict = { single: {}, col: {} }; // 이 탭 전용 다국어 라벨 사전(모달의 _viewerDict 와 공유하지 않음 — 서로 다른 노드를 동시에 볼 수 있어야 하므로)
   let _uiTabZoom = 1;             // 이 탭의 리포트 미리보기 확대/축소 배율(모달의 _vwZoom 과 별개)
   let _uiTabReportDocHtml = '';   // 이 탭에 지금 표시 중인 리포트 문서 원문(PDF/이미지 내보내기용, 모달의 _vwReportDocHtml 과 별개)
@@ -2677,7 +2679,9 @@
       _designLinksBoundModal = null;   // 새 문서를 그리므로 링크 바인딩 상태 초기화
       _designTabsBoundModal = null;    // 탭 바인딩 상태도 함께 초기화
       _initBadgesBoundModal = null;    // 초기값 배지 바인딩 상태도 함께 초기화
+      _authBadgesBoundModal = null;    // 권한체크 배지 바인딩 상태도 함께 초기화
       { const ivBox = el('vwInitBox'); if (ivBox) ivBox.style.display = 'none'; } // 다른 화면 정보가 남아있지 않도록 숨김
+      { const abBox = el('vwAuthBox'); if (abBox) abBox.style.display = 'none'; } // 다른 화면 정보가 남아있지 않도록 숨김
       const raw = _viewerRaw || {};
       // 리포트(Rp): REPORT_JSON 좌표/스타일로 재구성한 "레이아웃 추정 미리보기".
       // 실제 ActiveReportsJS 뷰어(CDN)는 라이선스/네트워크 이슈로 제거하고, 이 방식만 사용한다.
@@ -2725,11 +2729,14 @@
       // 초기값 추적 맵(정적/리터럴/스크립트→WF→테이블 체인) — html/json 두 렌더 경로 모두에서 필요하므로
       // 모드가 정해지기 전에 한 번만 계산해 둔다.
       const initMapForNode = (rj && P.computeInitValueMap) ? P.computeInitValueMap(rj) : {};
+      // 권한체크(AUTH) 맵 — useAuthGuard/hasPermission 패턴이 있는 버튼 정보. initMap 과 동일하게
+      // html/json 두 렌더 경로 모두에서 필요하므로 모드가 정해지기 전에 한 번만 계산해 둔다.
+      const authMapForNode = (rj && P.computeAuthGuardMap) ? P.computeAuthGuardMap(rj) : {};
       if (htmlRes && htmlRes.text) { bodyHtml = translateHtmlLabels(htmlRes.text, _viewerDict); mode = 'html'; }
       // 2) 폴백: RESOURCE_HTML 이 없으면 RESOURCE_JSON 으로 근사 재구성
       if (!bodyHtml && rj) {
         try {
-          const built = P.buildDesignHtml(rj, raw.RESOURCE_HTML || '', _viewerDict, (navKey) => store.nodes.get(navKey), initMapForNode, raw.RESOURCE_JS);
+          const built = P.buildDesignHtml(rj, raw.RESOURCE_HTML || '', _viewerDict, (navKey) => store.nodes.get(navKey), initMapForNode, raw.RESOURCE_JS, authMapForNode);
           if (built) { bodyHtml = built; mode = 'json'; }
         } catch (e) { /* 렌더 불가 */ }
       }
@@ -2754,6 +2761,10 @@
       // 초기값 배지: html 모드는 DOM 오버레이로 붙이고(applyInitValueOverlay), json 모드는 buildDesignHtml 이
       // 이미 마크업에 직접 심어 준다. bindInitBadges 는 클릭 핸들러 바인딩용이라 모드에 상관없이 항상 채워둔다.
       _viewerInitMap = rj ? initMapForNode : {};
+      // 권한체크(AUTH) 배지: html 모드는 DOM 오버레이로 붙이고(applyAuthGuardOverlay), json 모드는
+      // buildDesignHtml 이 이미 마크업에 직접 심어 준다. bindAuthBadges 는 클릭 핸들러 바인딩용이라
+      // 모드에 상관없이 항상 채워둔다(bindInitBadges 와 동일한 패턴).
+      _viewerAuthMap = rj ? authMapForNode : {};
       if (bodyHtml) {
         // 검증 메시지 토글 기본 상태(_vwShowValMsg=false)를 최초 렌더부터 반영 — 껐다 켤 때 깜빡이지 않게
         const wrapCls = (mode === 'json' ? 'daaf-preview dz-root' : 'daaf-preview') + (_vwShowValMsg ? '' : ' dz-hide-valmsg');
@@ -2778,11 +2789,14 @@
           // 초기값(IV) 배지: html 모드는 DOM 오버레이로 붙여야 하고, json 모드는 buildDesignHtml 이 이미
           // 마크업에 심어뒀으므로 바인딩만 하면 된다.
           if (mode === 'html') { try { applyInitValueOverlay(iframe, _viewerInitMap); } catch (e) { /* 무시 */ } }
+          // 권한체크(AUTH) 배지: html 모드만 오버레이가 필요(json 모드는 buildDesignHtml 이 이미 심어둠).
+          if (mode === 'html') { try { applyAuthGuardOverlay(iframe, _viewerAuthMap); } catch (e) { /* 무시 */ } }
           try { applyValidationMsgOverlay(iframe); } catch (e) { /* 무시 */ }
           try { preventDesignNavigation(iframe); } catch (e) { /* 무시 */ }
           try { bindDesignTabs(iframe); } catch (e) { /* 무시 */ }
           bindDesignLinks(iframe);
           try { bindInitBadges(iframe, _viewerInitMap); } catch (e) { /* 무시 */ }
+          try { bindAuthBadges(iframe, _viewerAuthMap); } catch (e) { /* 무시 */ }
           // 그리드가 있으면(모드 무관 — json 은 data-grid-id, html 은 _viewerGridIds) 배포
           // 스냅샷 컬럼 표를 z_grid_columns 실시간 값으로 백그라운드에서 업그레이드한다.
           try {
@@ -3664,6 +3678,116 @@
     resultElm.classList.add('iv-live-ok');
   }
 
+  // RESOURCE_HTML(원본 마크업) 모드에서 "권한체크"(AUTH) 배지를 오버레이로 붙인다.
+  // applyInitValueOverlay 와 동일한 구조({compId: info})를 쓰고, navKey 없이 data-auth-id 만
+  // 심어 클릭 시 그래프 이동이 아니라 코드 상세패널을 띄운다(bindAuthBadges 참고).
+  function applyAuthGuardOverlay(iframe, authMap) {
+    if (!authMap || !Object.keys(authMap).length) return;
+    let doc = null;
+    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
+    catch (e) { return; }
+    if (!doc || !doc.body) return;
+    Object.keys(authMap).forEach(id => {
+      const info = authMap[id];
+      if (!info) return;
+      const elm = resolveOverlayTarget(doc, id);
+      if (!elm || elm.getAttribute('data-dz-auth') === '1') return;
+      elm.setAttribute('data-dz-auth', '1');
+      // IV 배지(applyInitValueOverlay)와 같은 슬롯을 공유한다 — 같은 컨트롤에 WF 조회 + 권한체크가
+      // 동시에 있는 경우, 라벨 오른쪽 한 자리에 배지들이 나란히 모여 보이게 하기 위함.
+      const overlay = getOrCreateLabelBadgeSlot(doc, elm, id);
+      if (!overlay) return;
+      const badge = doc.createElement('span');
+      badge.className = 'dz-link-tag dz-auth-tag';
+      badge.textContent = '🔒';
+      badge.title = '권한체크 로직 보기 (클릭)';
+      badge.setAttribute('data-auth-id', id);
+      overlay.appendChild(badge);
+    });
+  }
+
+  // 디자인 미리보기(iframe) 안의 권한체크(AUTH) 배지에 클릭 핸들러를 건다.
+  // WF/UI/Rp 배지(data-navkey, bindDesignLinks)와 달리 그래프로 이동하지 않고, IV 배지와 같은 방식으로
+  // 상세패널(모달은 #vwAuthBox, UI 탭은 #uiTabAuthBox)에 그 버튼의 usrEventFn 코드를 보여준다.
+  let _authBadgesBoundModal = null;
+  let _authBadgesBoundTab = null;
+  function bindAuthBadges(iframe, authMap, hostKind) {
+    hostKind = hostKind === 'tab' ? 'tab' : 'modal';
+    let doc = null;
+    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
+    catch (e) { return; }
+    if (!doc || !doc.body) return;
+    if (hostKind === 'tab') {
+      if (_authBadgesBoundTab === doc) return;
+      _authBadgesBoundTab = doc;
+    } else {
+      if (_authBadgesBoundModal === doc) return;
+      _authBadgesBoundModal = doc;
+    }
+    doc.querySelectorAll('[data-auth-id]').forEach(elm => {
+      elm.style.cursor = 'pointer';
+      elm.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const id = elm.getAttribute('data-auth-id');
+        if (!id) return;
+        // IV 배지와 동일하게, 같은 AUTH 배지를 다시 누르면(이미 그 버튼의 정보가 열려 있는 상태)
+        // 팝업을 닫는다(토글).
+        const box = el(hostKind === 'tab' ? 'uiTabAuthBox' : 'vwAuthBox');
+        const isOpen = box && box.style.display !== 'none' && box.getAttribute('data-current-id') === id;
+        if (isOpen) {
+          box.style.display = 'none';
+          box.removeAttribute('data-current-id');
+          return;
+        }
+        showAuthDetail(id, (authMap && authMap[id]) || null, hostKind);
+      });
+    });
+  }
+
+  // 권한체크 정보 한 건을 사람이 읽을 수 있는 코드 카드로 렌더.
+  function renderAuthInfoCard(id, info) {
+    if (!info) return '<div class="mut" style="padding:8px 0">권한체크 로직을 찾지 못했습니다.</div>';
+    return '<div class="auth-card">'
+      + '<div class="auth-card-head">🔒 useAuthGuard / hasPermission</div>'
+      + '<div class="iv-row"><span class="iv-label">권한체크 블록</span><code>' + escHtmlLite(info.authCode || '') + '</code></div>'
+      + (info.fullEventFn && info.fullEventFn !== info.authCode
+          ? '<div class="iv-row"><span class="iv-label">버튼 전체 스크립트 (usrEventFn)</span><code>' + escHtmlLite(info.fullEventFn) + '</code></div>'
+          : '')
+      + '</div>';
+  }
+
+  // 권한체크(AUTH) 상세패널(#vwAuthBox / #uiTabAuthBox) 표시/갱신. showInitDetail 과 동일하게
+  // "닫기" 없이 접기/펼치기만 지원 — 화면을 옮기며 계속 참고할 일이 많아 항상 화면에 남겨둔다.
+  let _authBoxCollapsed = false;
+  function showAuthDetail(compId, info, hostKind) {
+    hostKind = hostKind === 'tab' ? 'tab' : 'modal';
+    const box = el(hostKind === 'tab' ? 'uiTabAuthBox' : 'vwAuthBox');
+    if (!box) return;
+    box.setAttribute('data-current-id', compId); // 같은 배지 재클릭 시 닫기(토글) 판단용
+    if (!box.hasAttribute('data-positioned')) {
+      const pane = el(hostKind === 'tab' ? 'uiTabDesignPane' : 'vwDesignPane');
+      const paneW = (pane && pane.clientWidth) || 900;
+      const w = box.offsetWidth || 360;
+      box.style.left = Math.max(12, paneW - w - 12) + 'px';
+      box.style.right = 'auto';
+      box.style.top = '12px';
+      box.setAttribute('data-positioned', '1');
+    }
+    box.innerHTML = '<div class="fsb-head"><b>🔒 권한체크 로직 · ' + escHtmlLite((info && info.label) || compId) + '</b>'
+      + '<button id="abMin" class="fsb-min" title="' + (_authBoxCollapsed ? '펼치기' : '접기') + '">'
+      + (_authBoxCollapsed ? '▸ 펼치기' : '▾ 접기') + '</button></div>'
+      + '<div class="auth-body">' + renderAuthInfoCard(compId, info) + '</div>';
+    box.classList.toggle('collapsed', _authBoxCollapsed);
+    box.style.display = 'flex';
+    const minBtn = box.querySelector('#abMin');
+    if (minBtn) minBtn.addEventListener('click', () => {
+      _authBoxCollapsed = !_authBoxCollapsed;
+      box.classList.toggle('collapsed', _authBoxCollapsed);
+      minBtn.textContent = _authBoxCollapsed ? '▸ 펼치기' : '▾ 접기';
+      minBtn.title = _authBoxCollapsed ? '펼치기' : '접기';
+    });
+  }
+
   // 디자인 미리보기(iframe) 안의 연결 객체(data-navkey)에 클릭 핸들러를 건다.
   // hostKind: 'modal'(코드·디자인 보기 팝업, 기본값) | 'tab'(그래프 왼쪽 새 UI 탭에 도킹된 미리보기).
   // 두 호스트 모두 배지 클릭 동작은 동일해야 한다는 요구사항에 따라 분기만 다르게 태운다:
@@ -3819,7 +3943,9 @@
     _designLinksBoundTab = null;
     _designTabsBoundTab = null;
     _initBadgesBoundTab = null;
+    _authBadgesBoundTab = null;
     { const ivBox = el('uiTabInitBox'); if (ivBox) ivBox.style.display = 'none'; } // 다른 화면 정보가 남아있지 않도록 숨김
+    { const abBox = el('uiTabAuthBox'); if (abBox) abBox.style.display = 'none'; } // 다른 화면 정보가 남아있지 않도록 숨김
     const raw = (n && n.raw) || {};
     if (emptyEl) emptyEl.style.display = 'none';
     const toolbar = el('uiTabDesignToolbar');
@@ -3859,10 +3985,11 @@
     let bodyHtml = null, mode = '';
     const rj = raw.RESOURCE_JSON;
     const initMapForNode = (rj && P.computeInitValueMap) ? P.computeInitValueMap(rj) : {};
+    const authMapForNode = (rj && P.computeAuthGuardMap) ? P.computeAuthGuardMap(rj) : {};
     if (raw.RESOURCE_HTML) { bodyHtml = translateHtmlLabels(raw.RESOURCE_HTML, _uiTabDict); mode = 'html'; }
     if (!bodyHtml && rj) {
       try {
-        const built = P.buildDesignHtml(rj, raw.RESOURCE_HTML || '', _uiTabDict, (navKey) => store.nodes.get(navKey), initMapForNode, raw.RESOURCE_JS);
+        const built = P.buildDesignHtml(rj, raw.RESOURCE_HTML || '', _uiTabDict, (navKey) => store.nodes.get(navKey), initMapForNode, raw.RESOURCE_JS, authMapForNode);
         if (built) { bodyHtml = built; mode = 'json'; }
       } catch (e) { /* 렌더 불가 */ }
     }
@@ -3873,6 +4000,7 @@
     _uiTabGridColumnPopupMap = (rj && P.computeGridColumnPopups) ? P.computeGridColumnPopups(rj, raw.RESOURCE_JS) : {};
     _uiTabInlineReportMap = (rj && P.computeInlineReportMap) ? P.computeInlineReportMap(rj) : {};
     _uiTabInitMap = rj ? initMapForNode : {};
+    _uiTabAuthMap = rj ? authMapForNode : {};
     if (bodyHtml) {
       // 검증 메시지는 탭에는 토글 UI가 없으므로 항상 숨김 상태로 고정한다(모달의 기본값과 동일).
       const wrapCls = (mode === 'json' ? 'daaf-preview dz-root' : 'daaf-preview') + ' dz-hide-valmsg';
@@ -3887,11 +4015,13 @@
         if (mode === 'html') { try { insertValidationMessages(fdoc, _uiTabDict); } catch (e) { /* 무시 */ } }
         try { applyHtmlLinkOverlay(iframe, _uiTabLinkMap, _uiTabGridIds, _uiTabGridButtonMap, _uiTabGridColsMap, _uiTabGridColumnPopupMap, _uiTabDict.single); } catch (e) { /* 무시 */ }
         if (mode === 'html') { try { applyInitValueOverlay(iframe, _uiTabInitMap); } catch (e) { /* 무시 */ } }
+        if (mode === 'html') { try { applyAuthGuardOverlay(iframe, _uiTabAuthMap); } catch (e) { /* 무시 */ } }
         try { applyValidationMsgOverlay(iframe); } catch (e) { /* 무시 */ }
         try { preventDesignNavigation(iframe); } catch (e) { /* 무시 */ }
         try { bindDesignTabs(iframe, 'tab'); } catch (e) { /* 무시 */ }
         bindDesignLinks(iframe, 'tab');
         try { bindInitBadges(iframe, _uiTabInitMap, 'tab'); } catch (e) { /* 무시 */ }
+        try { bindAuthBadges(iframe, _uiTabAuthMap, 'tab'); } catch (e) { /* 무시 */ }
         try {
           const programId = raw && raw.PROGRAM_ID;
           if (programId && fdoc) {
@@ -4258,6 +4388,10 @@
       '.dz-link-tag.dz-init-static{background:#a78bfa}',
       '.dz-link-tag.dz-init-lit{background:#7c3aed}',
       '.dz-link-tag.dz-init-chain{background:#5b21b6}',
+      // ===== 권한체크(AUTH) 배지: useAuthGuard/hasPermission 패턴이 있는 버튼 =====
+      // IV(보라)와 헷갈리지 않도록 경고색 계열(빨강)을 쓴다 — "이 버튼은 권한 게이트가 있다"가
+      // 한눈에 보이는 게 목적이라 WF/UI/Rp(초록/파랑/주황)와도 톤을 분명히 다르게 뒀다.
+      '.dz-link-tag.dz-auth-tag{background:#dc2626}',
       '.dz-report.dz-linked{border-style:solid;border-color:#e08e0b}',
       '.dz-tree.dz-linked{border-style:solid;border-color:#2563eb}',
       '.dz-chart.dz-linked{border-style:solid;border-color:#e08e0b}',
