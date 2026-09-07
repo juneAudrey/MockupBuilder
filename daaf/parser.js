@@ -466,6 +466,49 @@
     return map;
   }
 
+  // 헤더그리드 행 선택 → 타입별로 다른 WF를 인라인 ajax 호출로 실행해 각기 다른 하위 그리드에
+  // 채우는 패턴(예: fncLoadDetailGrid의 국내/해외/반품 분기)을 잡아낸다. 버튼 form[] 같은 선언적
+  // 바인딩이 아니라 "'/wf/' + uid변수 + '/execute.do'" 처럼 문자열 조합으로 URL을 만들기 때문에
+  // computeGridServiceMap(선언적 serviceId/serviceUid만 스캔)으로는 못 잡는다.
+  //
+  // 잡는 방식: (1) ajax.postJson(...'/wf/'+VAR+'/execute...) 호출을 찾아 uid 변수명(VAR)을 얻고,
+  // (2) 그 콜백 본문 안에서 실제 .resetData(...)를 호출하는 그리드 변수명을 찾은 뒤,
+  // (3) VAR 에 대입되는 모든 숫자 리터럴(분기별 uid 값)을 찾아, 각 대입 지점 근처(±400자)에서
+  // 그리드 변수에 실제 그리드ID가 대입되는 코드를 찾아 (그리드ID, uid) 로 짝짓는다.
+  // 분기가 코드 순서상 우연히 다른 그리드와 가까워 오탐할 수 있으나, 이 정도 근접 매칭도 없이
+  // 아예 못 잡는 것보다는 낫다(배지는 참고용이며, 틀리면 그래프 이동 시 바로 드러난다).
+  function extractInlineBranchedWfMap(resourceJsText) {
+    const map = {}; // gridId -> [{navKey,uid,id,label}]
+    if (!resourceJsText) return map;
+    const text = resourceJsText;
+    const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const add = (gid, uid) => {
+      if (!gid || !uid) return;
+      const navKey = 'WF:u' + uid;
+      const arr = map[gid] || (map[gid] = []);
+      if (!arr.some(x => x.navKey === navKey)) arr.push({ navKey, uid, id: null, label: 'uid=' + uid });
+    };
+    const callRe = /\/wf\/['"]\s*\+\s*(\w+)\s*\+\s*['"]\/execute/g;
+    let m;
+    while ((m = callRe.exec(text)) !== null) {
+      const uidVar = m[1];
+      const cbWindow = text.slice(m.index, Math.min(text.length, m.index + 1500));
+      const gridMatch = new RegExp('(\\w+)\\.resetData\\(').exec(cbWindow);
+      if (!gridMatch) continue;
+      const gridVar = gridMatch[1];
+      const assignRe = new RegExp(esc(uidVar) + "\\s*=\\s*['\"](\\d+)['\"]", 'g');
+      let am;
+      while ((am = assignRe.exec(text)) !== null) {
+        const uidVal = am[1];
+        const nearby = text.slice(am.index, Math.min(text.length, am.index + 200));
+        const gridAssignRe = new RegExp(esc(gridVar) + '\\s*=\\s*(\\w+)');
+        const gm = gridAssignRe.exec(nearby);
+        if (gm) add(gm[1], uidVal);
+      }
+    }
+    return map;
+  }
+
   function computeGridServiceMap(resourceJson) {
     const map = {}; // gridId -> [{navKey, uid, id, label}]
     let obj;
@@ -814,6 +857,16 @@
     // + (c) 그리드 "컬럼" 자체의 콤보 WF(serviceId/serviceUid)와, resourceJsText 가 주어지면
     // 컬럼 액션 버튼(Tracking No 팝업 등)의 UI 연결까지 buildGridColumnsTableHtml 안에서 함께 반영한다.
     const gridWfMap = computeGridServiceMap(resourceJson); // gridId -> [{navKey,label,...}] (kind는 항상 wf)
+    // 헤더그리드 선택에 따라 인라인 ajax로 다른 WF를 호출해 채우는 하위 그리드(국내/해외/반품 등)도
+    // 배지에 포함시킨다 — resourceJsText 가 있을 때만(스크립트 텍스트가 RESOURCE_JSON 자체에 들어있는
+    // 경우 buildDesignHtml 호출부가 resourceJson 을 그대로 넘겨준다).
+    if (resourceJsText) {
+      const inlineMap = extractInlineBranchedWfMap(resourceJsText);
+      Object.keys(inlineMap).forEach(gid => {
+        const arr = gridWfMap[gid] || (gridWfMap[gid] = []);
+        inlineMap[gid].forEach(l => { if (!arr.some(x => x.navKey === l.navKey)) arr.push(l); });
+      });
+    }
     // 그리드 컬럼 액션 버튼(cellTemplate + RESOURCE_JS 클릭 핸들러)이 여는 UI 팝업 — resourceJsText 가
     // 없는 호출부(RESOURCE_JS 미전달)에서는 빈 맵이 되어 기존처럼 WF만 표시된다(하위 호환).
     const gridColumnPopupMap = computeGridColumnPopups(resourceJson, resourceJsText); // gridId -> {title -> {programId,label}}
@@ -1417,6 +1470,13 @@
     // 로 확인되는 target 에만 배지를 남긴다.
     const realGridIds = collectGridIds(resourceJson);
     const gridMap = computeGridServiceMap(resourceJson);
+    if (resourceJsText) {
+      const inlineMap = extractInlineBranchedWfMap(resourceJsText);
+      Object.keys(inlineMap).forEach(gid => {
+        const arr = gridMap[gid] || (gridMap[gid] = []);
+        inlineMap[gid].forEach(l => { if (!arr.some(x => x.navKey === l.navKey)) arr.push(l); });
+      });
+    }
     Object.keys(gridMap).forEach(gid => {
       if (!realGridIds.has(gid)) return;
       gridMap[gid].forEach(l => addLink(gid, { navKey: l.navKey, label: l.label, kind: 'wf' }));
@@ -1918,5 +1978,5 @@
     return out;
   }
 
-  return { extractServiceRefs, extractTables, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, extractHeaderLabels, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeGridServiceMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
+  return { extractServiceRefs, extractTables, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, extractHeaderLabels, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeGridServiceMap, extractInlineBranchedWfMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
 });
