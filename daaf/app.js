@@ -48,8 +48,23 @@
   let _tenantCoCdSig = '';       // 캐시 유효성 판단용 서명
   let _tenantCoCdLoading = false;
 
+  // 이 웹컨텐츠(GitHub Pages)의 실제 credit 버전(ver.YYYYMMDD.NNN)을 main 프로세스에
+  // 알린다. main은 접속 로그(Supabase access_log)의 app_ver 컬럼에 exe 로컬 번들
+  // 버전 대신 이 값을 우선 사용한다 — 웹컨텐츠만 자주 갱신하는 현재 운영 방식에서
+  // 로그에 남는 버전이 실제 배포된 화면 버전과 일치하게 하기 위함.
+  function reportAppVersion() {
+    if (!window.api || !window.api.reportAppVersion) return; // 웹 미리보기 등 방어
+    try {
+      const creditEl = document.querySelector('.credit');
+      const text = creditEl ? creditEl.textContent : '';
+      const m = text && text.match(/ver\.\d{8}\.\d{3}/);
+      if (m) window.api.reportAppVersion(m[0]).catch(() => {});
+    } catch (_) { /* 무시 — 보고 실패해도 앱 동작에는 영향 없음(로컬 버전으로 폴백됨) */ }
+  }
+
   /* ---------- 초기화 ---------- */
   window.addEventListener('DOMContentLoaded', () => {
+    reportAppVersion();   // 다른 초기화보다 먼저: 접속 로그 전송 타이밍과 최대한 안 겹치게
     G.init(el('graph'), { onNodeTap: onNodeTap, onNodeDblTap: onNodeDblTap });
     F.init(el('flowchart'), { onStepTap: onFlowStepTap, onServiceJump: jumpToServiceFlow, onContainerJump: jumpToContainerScope });
     bindEvents();
