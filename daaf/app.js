@@ -4055,6 +4055,10 @@
       '.dz-row{display:flex;flex-wrap:wrap;gap:14px;margin:6px 0;align-items:flex-end}',
       '.dz-row.dz-border{border-top:1px solid #e8edf3;padding-top:12px;margin-top:4px}',
       '.dz-col{flex:1 1 0;min-width:120px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}',
+      // isDisplay:false 컬럼(런타임 조건부 표시): 점선 테두리+옅은 배경으로 "지금은 안 보이는 영역"임을
+      // 시각적으로 구분한다. 일반 dz-col과 똑같이 그려버리면 다른 그리드들 사이에 붕 뜬 것처럼 보인다.
+      '.dz-col-hidden{border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;padding:8px;opacity:.72}',
+      '.dz-col-hidden-badge{width:100%;font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px}',
       '.dz-container{display:flex;flex-wrap:wrap;gap:10px;width:100%}',
       // ===== 서브탭 네비게이션(신청대상/상신내역/미신청 등, JSON tabContainer) =====
       // 클릭 전환은 구현하지 않고(다른 dz-* 섹션과 동일 방침) 모든 탭 내용을 펼쳐서 보여주되,

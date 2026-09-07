@@ -485,8 +485,11 @@
                    : (o.serviceUid != null ? String(o.serviceUid) : null);
       const svcId = pv.serviceId || o.serviceId || null;
       // (a) WF 서비스를 가진 노드(버튼 등)의 form[] 바인딩 → 각 target 그리드에 연결
+      // f.useYn === false 는 "등록만 돼있고 이 버튼 조회로는 채워지지 않는" 대상이다(예: 메인 조회
+      // 버튼 form[] 에 상세 그리드들이 이름만 올라가 있고 실제로는 별도 인라인 WF 로 채워지는 경우).
+      // 여기서 걸러내지 않으면 서로 무관한 그리드들이 전부 같은 버튼의 WF 배지를 달게 된다.
       const forms = Array.isArray(pv.form) ? pv.form : (Array.isArray(o.form) ? o.form : null);
-      if ((svcUid || svcId) && forms) forms.forEach(f => { if (f && f.target) add(f.target, svcUid, svcId); });
+      if ((svcUid || svcId) && forms) forms.forEach(f => { if (f && f.target && f.useYn !== false) add(f.target, svcUid, svcId); });
       // (b) 그리드 바인딩 노드가 자체 서비스로 조회하는 경우
       if (o.type === 'grid' && o.target && (svcUid || svcId)) add(o.target, svcUid, svcId);
       Object.keys(o).forEach(k => scan(o[k]));
@@ -1095,7 +1098,13 @@
       }
       if (t === 'column') {
         const wl = pv.widthLaptop ? (' style="flex:0 0 ' + (parseInt(pv.widthLaptop, 10) ? (pv.widthLaptop <= 12 ? (pv.widthLaptop / 12 * 100) + '%' : pv.widthLaptop + 'px') : 'auto') + '"') : '';
-        return '<div class="dz-col"' + wl + '>' + kids + '</div>';
+        // isDisplay:false 는 페이지 로드 시 숨겨져 있다가 특정 변수/플래그(예: 재고관리 유형)에 따라
+        // 런타임에 표시되는 조건부 패널이다. 이 미리보기는 런타임 조건을 실행하지 않으므로 무조건
+        // 펼쳐서 그리는 대신, "기본 숨김" 배지를 달아 다른 컬럼들과 구분되는 조건부 영역임을 알린다.
+        const hidden = pv.isDisplay === false;
+        const hiddenCls = hidden ? ' dz-col-hidden' : '';
+        const hiddenBadge = hidden ? '<div class="dz-col-hidden-badge">🔒 기본 숨김 (조건부 표시 영역)</div>' : '';
+        return '<div class="dz-col' + hiddenCls + '"' + wl + '>' + hiddenBadge + kids + '</div>';
       }
       if (t === 'form') {
         const isSearch = /search-wrap/.test(cls);
