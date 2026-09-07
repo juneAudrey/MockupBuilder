@@ -1178,7 +1178,7 @@
       const hidden = pv.isDisplay === false;
       return {
         cls: hidden ? ' dz-col-hidden' : '',
-        badge: hidden ? '<div class="dz-col-hidden-badge">🔒 기본 숨김 (조건부 표시 영역)</div>' : ''
+        badge: hidden ? '<div class="dz-col-hidden-badge">🔒 숨겨짐 (조건부 표시 영역)</div>' : ''
       };
     }
 

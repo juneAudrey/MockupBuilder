@@ -3237,6 +3237,43 @@
     elm.appendChild(wrap.firstChild);
   }
 
+  // HTML 모드 그리드 라벨: colsMap(z_grid_columns/options 스냅샷)에 title 이 있으면 그걸 쓰고,
+  // 없을 때만 "그리드"로 폴백한다 — 지금까지는 무조건 "그리드"로 고정돼 있어서 국내/해외/반품/LOT
+  // 처럼 실제로 지정된 제목이 있는 그리드도 전부 똑같이 "그리드"로만 보였다.
+  // data-grid-label 은 CSS content:attr() 로 그대로 출력되는 순수 텍스트 속성이라 HTML 태그는
+  // 못 쓴다(넣어도 태그 글자 그대로 보임) — 일반 텍스트만 반환한다.
+  function gridLabelFor(id, colsMap) {
+    const title = colsMap && colsMap[id] && colsMap[id].title;
+    return '📊 ' + (title || '그리드') + ' (' + id + ')';
+  }
+
+  // HTML 모드 미리보기는 RESOURCE_HTML(실제 운영 마크업)을 그대로 iframe 에 넣고 브라우저가
+  // 진짜로 렌더링하는 방식이라, 국내/해외/반품/LOT 처럼 런타임에만 조건부로 보이는 영역이
+  // 마크업 자체에 style="display:none" 으로 박혀있으면 브라우저가 정말로 안 그려버린다(JSON
+  // 모드의 isDisplay:false 와 동일한 의도인데 표현 방식만 다름). 분석 도구 목적상 숨겨진
+  // 부분도 배지를 보고 클릭할 수 있어야 하므로, display:none 을 강제로 풀고 "숨겨짐" 배지를 붙인다.
+  function revealHiddenElements(doc) {
+    if (!doc) return;
+    let all = [];
+    try { all = Array.prototype.slice.call(doc.querySelectorAll('[style*="display:none"], [style*="display: none"]')); }
+    catch (e) { return; }
+    all.forEach(el => {
+      if (el.getAttribute('data-dz-revealed') === '1') return;
+      el.setAttribute('data-dz-revealed', '1');
+      el.classList.add('dz-hidden-wrap');
+      // 인라인 style 에서 display:none 부분만 제거(다른 style 선언은 그대로 유지 — 예:
+      // colRightLot 의 max-width:31% 는 살려야 레이아웃이 원래 의도대로 나온다).
+      const cur = el.getAttribute('style') || '';
+      el.setAttribute('style', cur.replace(/display\s*:\s*none\s*;?/i, ''));
+      if (!el.querySelector(':scope > .dz-hidden-banner')) {
+        const banner = doc.createElement('div');
+        banner.className = 'dz-hidden-banner';
+        banner.textContent = '🔒 숨겨짐 (조건부 표시 영역)';
+        el.insertBefore(banner, el.firstChild);
+      }
+    });
+  }
+
   function applyHtmlLinkOverlay(iframe, linkMap, gridIds, buttonListMap, colsMap, popupMap, dict) {
     const hasLinks = linkMap && Object.keys(linkMap).length;
     const hasGrids = gridIds && gridIds.size;
@@ -3245,6 +3282,7 @@
     try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
     catch (e) { return; }
     if (!doc || !doc.body) return;
+    revealHiddenElements(doc);
     const clsOf = { wf: 'lk-wf', ui: 'lk-ui', rp: 'lk-rp' };
     const badgeOf = { wf: 'WF', ui: 'UI', rp: 'Rp' };
     Object.keys(linkMap || {}).forEach(id => {
@@ -3276,7 +3314,7 @@
       // 허공에 떠 있는 것처럼 보이므로, 실제 그리드로 확인된 id 는 박스(테두리+헤더)를 씌워준다.
       if (isGridId) {
         elm.classList.add('dz-grid-box');
-        elm.setAttribute('data-grid-label', '📊 그리드 (' + id + ')');
+        elm.setAttribute('data-grid-label', gridLabelFor(id, colsMap));
       }
       elm.classList.add(links.length > 1 ? 'dz-linked-multi' : 'dz-linked');
       // 조회/저장/재계산 등 서로 다른 버튼이 같은 그리드를 각각 다른 WF 로 채우는 경우가 흔해서,
@@ -3332,7 +3370,7 @@
         if (!elm) return;
         if (!elm.classList.contains('dz-grid-box')) {
           elm.classList.add('dz-grid-box');
-          elm.setAttribute('data-grid-label', '📊 그리드 (' + id + ')');
+          elm.setAttribute('data-grid-label', gridLabelFor(id, colsMap));
         }
         // 헤더 배지가 없어(위 루프를 안 거쳐) 버튼도 아직 안 그려졌을 수 있는 그리드까지 마저 채운다.
         renderGridToolbarInto(doc, elm, id, buttonListMap);
@@ -4069,6 +4107,10 @@
       // 시각적으로 구분한다. 일반 dz-col과 똑같이 그려버리면 다른 그리드들 사이에 붕 뜬 것처럼 보인다.
       '.dz-col-hidden{border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;padding:8px;opacity:.72}',
       '.dz-col-hidden-badge{width:100%;font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px}',
+      // HTML 모드(RESOURCE_HTML 원본 마크업)에서 강제로 펼친 display:none 영역 — JSON 모드의
+      // dz-col-hidden 과 같은 톤(점선 테두리 + 옅은 배경)으로 맞춘다.
+      '.dz-hidden-wrap{border:1px dashed #cbd5e1!important;border-radius:8px;background:#f8fafc;padding:8px;opacity:.85}',
+      '.dz-hidden-banner{font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px}',
       '.dz-container{display:flex;flex-wrap:wrap;gap:10px;width:100%}',
       // ===== 서브탭 네비게이션(신청대상/상신내역/미신청 등, JSON tabContainer) =====
       // 클릭 전환은 구현하지 않고(다른 dz-* 섹션과 동일 방침) 모든 탭 내용을 펼쳐서 보여주되,
