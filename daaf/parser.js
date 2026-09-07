@@ -48,6 +48,22 @@
     const execRe = /\/wf\/(\d+)\/execute/g;
     while ((m = execRe.exec(text)) !== null) addRef(refs, m[1], null);
 
+    // 2-1) '/wf/' + 변수 + '/execute' 형태의 동적 호출 — 국내/해외/반품처럼 선택된 행 타입에 따라
+    // 분기별로 다른 WF를 실행하는 코드(리터럴 uid가 아니라 변수로 URL을 조합)에서 흔하다. 이 패턴은
+    // 위 execRe(리터럴 숫자만 매칭)로는 못 잡혀서, 이런 WF들은 지금까지 파도타기 탐색·조회 자체가
+    // 안 되고 있었다(그래프에 나타나지 않음). 변수명을 찾은 뒤, 그 변수에 대입되는 모든 숫자 리터럴을
+    // (실행 시점엔 그중 하나만 타지만 정적 분석으론 알 수 없으므로) 전부 후보로 추가한다.
+    const dynExecRe = /\/wf\/['"]\s*\+\s*(\w+)\s*\+\s*['"]\/execute/g;
+    const seenDynVars = new Set();
+    while ((m = dynExecRe.exec(text)) !== null) {
+      const v = m[1];
+      if (seenDynVars.has(v)) continue;
+      seenDynVars.add(v);
+      const assignRe = new RegExp(v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "\\s*=\\s*['\"](\\d+)['\"]", 'g');
+      let am;
+      while ((am = assignRe.exec(text)) !== null) addRef(refs, am[1], null);
+    }
+
     // 3) serviceId 만 있고 uid 없는 경우도 노드로 (uid=null, id 로 후속 조회)
     ids.forEach(i => {
       const hasUidNear = uids.some(u => Math.abs(u.pos - i.pos) < 400);
