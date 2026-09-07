@@ -242,6 +242,31 @@
     return null;
   }
 
+  // $pageObjects['name'] = (args) => { ... } 헬퍼 정의를 스크립트 모음(scriptTexts, 보통
+  // [onLoad, ...버튼 usrEventFn들])에서 찾아, 그 본문 안의 '/wf/{uid}/execute' 직접호출 uid를
+  // 반환한다. 버튼이 $pageObjects['search'](...) 처럼 헬퍼를 "이름으로만" 호출하는 경우, 실제 WF는
+  // 그 버튼 자신의 스크립트가 아니라 이 헬퍼 정의 안에 있다 — 조회 버튼에 남아있는 leftover
+  // serviceUid/serviceId 보다 이쪽이 실제 동작을 더 정확히 반영하므로, WF 배지 판정 시
+  // (compLink/computeLinkMap 양쪽) leftover 값보다 먼저 확인한다.
+  // computeInitValueMap 의 헬퍼 분석(analyzeHelper, 초기값 체인 추적용)과 같은 원리를 WF 배지
+  // 판정용으로 가볍게 재사용한 버전 — 여기서는 uid 하나만 있으면 충분해 파라미터 치환 등은 생략한다.
+  function findHelperWfUid(fnName, scriptTexts) {
+    if (!fnName || !scriptTexts) return null;
+    const defRe = new RegExp('\\$pageObjects\\[\\s*["\']' + fnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\']\\s*\\]\\s*=\\s*\\([^)]*\\)\\s*=>\\s*\\{');
+    for (const txt of scriptTexts) {
+      if (!txt) continue;
+      const m = defRe.exec(txt);
+      if (!m) continue;
+      const braceIdx = txt.indexOf('{', m.index);
+      if (braceIdx === -1) continue;
+      const body = sliceBalanced(txt, braceIdx, '{', '}');
+      if (!body) continue;
+      const wm = /\/wf\/(\d+)\/execute/.exec(body);
+      if (wm) return wm[1];
+    }
+    return null;
+  }
+
   function computeInitValueMap(resourceJson) {
     const map = {};
     let obj;
@@ -867,6 +892,21 @@
     const page = obj && obj.page;
     if (!page) return null;
     authMap = authMap || {}; // 하위 호환: 호출부가 아직 authMap 을 안 넘기면 빈 맵으로 동작(AUTH 배지 없음)
+
+    // WF 배지 판정용 "간접호출 헬퍼" 스크립트 풀: onLoad + 화면 안 모든 버튼의 usrEventFn.
+    // 버튼이 $pageObjects['search'](...) 처럼 헬퍼를 이름으로만 부르고 실제 WF 호출은 그 헬퍼
+    // 정의(보통 onLoad) 안에 있는 경우, 여기서 미리 모아둔 텍스트 풀로 findHelperWfUid() 가
+    // 그 헬퍼 정의를 찾는다. compLink()가 이 목록을 참조한다(아래 클로저).
+    const pageOnLoadText = (page.propertyValue && typeof page.propertyValue.onLoad === 'string') ? page.propertyValue.onLoad : '';
+    const wfScriptPool = [pageOnLoadText];
+    (function collectBtnScripts(o) {
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) { o.forEach(collectBtnScripts); return; }
+      const pv0 = o.propertyValue || {};
+      if (typeof pv0.usrEventFn === 'string' && pv0.usrEventFn.trim()) wfScriptPool.push(pv0.usrEventFn);
+      Object.keys(o).forEach(k => collectBtnScripts(o[k]));
+    })(page);
+
     const langMap = extractLangMap(resourceHtml || '');
     const ddSingle = (dict && dict.single) || {};   // z_dd_lang: 컴포넌트 id → 현재 언어 라벨
     // 그리드 배지 대상 병합: (a) 그리드 자체가 서비스로 조회/처리되는 경우(WF, computeGridServiceMap)
@@ -1129,6 +1169,29 @@
         // eventType 은 있는데 정작 링크 필드를 못 찾은 예외적인 경우 — 아래 일반 폴백으로 넘어간다.
       }
       // 1) 저장/실행 버튼 등: serviceUid/serviceId (BTN_WORKFLOW 계열, 또는 eventType 없는 콤보/그리드)
+      //    단, BTN_USR_EVENT 버튼은 이 값이 예전 바인딩 방식의 leftover(잔재)일 수 있다 — 지금은
+      //    usrEventFn 커스텀 스크립트로 동작이 바뀌었는데 Screen Builder가 예전 serviceUid/serviceId
+      //    필드를 안 지운 채로 남겨두는 경우가 실무에서 나온다(예: 조회 버튼이 WF:712로 표시되지만
+      //    실제로는 다른 WF를 호출하는 경우). 그래서 BTN_USR_EVENT 버튼에 한해, 그 스크립트가
+      //    $pageObjects['xxx'](...) 형태로 헬퍼를 "이름으로만" 호출하고 그 헬퍼 정의(보통 onLoad)
+      //    안에 실제 '/wf/{uid}/execute' 호출이 있으면, leftover 값보다 그걸 우선한다.
+      if (pv.eventType === 'BTN_USR_EVENT' && typeof pv.usrEventFn === 'string' && pv.usrEventFn.indexOf('$pageObjects[') !== -1) {
+        const helperCallRe = /\$pageObjects\[['"]([A-Za-z0-9_]+)['"]\]\s*\(/g;
+        const seenFn = new Set();
+        let hcm;
+        while ((hcm = helperCallRe.exec(pv.usrEventFn)) !== null) {
+          const fnName = hcm[1];
+          if (seenFn.has(fnName)) continue;
+          seenFn.add(fnName);
+          const uid = findHelperWfUid(fnName, wfScriptPool);
+          if (uid) {
+            const navKey = 'WF:u' + uid;
+            const idPart = 'uid=' + uid;
+            const title = withExtra(navKey, idPart, 'WF 연결: ' + idPart + " · 간접호출($pageObjects['" + fnName + "']) (더블클릭: 그래프 이동)");
+            return { navKey, cls: 'lk-wf', badge: 'WF', title };
+          }
+        }
+      }
       const wfLink = findWfLink(pv);
       if (wfLink) return wfLink;
       // 2) 팝업 버튼: programId — 실제로는 대부분 최상위 pv.programId 가 아니라
@@ -1619,6 +1682,18 @@
     } catch (e) { /* 무시 */ }
     let obj;
     try { obj = JSON.parse(resourceJson); } catch (e) { return map; }
+    // WF 배지 판정용 "간접호출 헬퍼" 스크립트 풀 — compLink()(buildDesignHtml, json 모드)와 동일한
+    // 원리를 html 모드(computeLinkMap)에도 그대로 적용해, 두 렌더링 경로의 배지 판정이 갈리지
+    // 않게 한다(예: 조회 버튼의 leftover serviceUid가 실제 WF보다 우선 표시되는 문제).
+    const pageOnLoadText = (obj && obj.page && obj.page.propertyValue && typeof obj.page.propertyValue.onLoad === 'string') ? obj.page.propertyValue.onLoad : '';
+    const wfScriptPool = [pageOnLoadText, resourceJsText || ''];
+    (function collectBtnScripts(o) {
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) { o.forEach(collectBtnScripts); return; }
+      const pv0 = o.propertyValue || {};
+      if (typeof pv0.usrEventFn === 'string' && pv0.usrEventFn.trim()) wfScriptPool.push(pv0.usrEventFn);
+      Object.keys(o).forEach(k => collectBtnScripts(o[k]));
+    })(obj);
     (function scan(o) {
       if (!o || typeof o !== 'object') return;
       if (Array.isArray(o)) { o.forEach(scan); return; }
@@ -1643,8 +1718,30 @@
         const svcId = pv.serviceId || null;
         const navKey = svcUid ? ('WF:u' + svcUid) : (svcId ? ('WF:s' + svcId) : null);
         const label = svcId || (svcUid ? ('uid=' + svcUid) : null);
-        // (a) 컴포넌트 자체가 WF 서비스를 가짐 (버튼/콤보 등)
-        if (navKey && compKey) addLink(compKey, { navKey, label, kind: 'wf' });
+        // (a-0) leftover serviceUid/serviceId 보다 먼저 확인: BTN_USR_EVENT 버튼이 자기 스크립트
+        //    안에서 곧장 WF를 부르지 않고 $pageObjects['xxx'](...) 헬퍼를 이름으로만 호출하는 경우,
+        //    진짜 WF는 그 헬퍼 정의(보통 onLoad) 안에 있다 — findHelperWfUid()로 찾아지면 그게
+        //    실제 동작을 더 정확히 반영하므로, (a) 규칙의 leftover 값 대신 이것만 배지로 남긴다
+        //    (조회 버튼에 leftover WF와 실제 WF 두 개가 동시에 뜨는 혼란을 막기 위해 else 로 분기).
+        let indirectUid = null;
+        if (typeof pv.usrEventFn === 'string' && pv.usrEventFn.indexOf('$pageObjects[') !== -1) {
+          const helperCallRe = /\$pageObjects\[['"]([A-Za-z0-9_]+)['"]\]\s*\(/g;
+          const seenFn = new Set();
+          let hcm;
+          while ((hcm = helperCallRe.exec(pv.usrEventFn)) !== null) {
+            if (seenFn.has(hcm[1])) continue;
+            seenFn.add(hcm[1]);
+            const uid = findHelperWfUid(hcm[1], wfScriptPool);
+            if (uid) { indirectUid = uid; break; }
+          }
+        }
+        if (compKey && indirectUid) {
+          // (a) 컴포넌트 자체가 WF 서비스를 가짐(버튼/콤보 등) — 단, 간접호출 실제값이 있으면 그것으로 대체.
+          addLink(compKey, { navKey: 'WF:u' + indirectUid, label: 'uid=' + indirectUid, kind: 'wf', custom: true });
+        } else if (navKey && compKey) {
+          // (a) 컴포넌트 자체가 WF 서비스를 가짐 (버튼/콤보 등)
+          addLink(compKey, { navKey, label, kind: 'wf' });
+        }
         // (a-2) BTN_USR_EVENT 버튼: 선언적 serviceId/serviceUid 바인딩이 없고, usrEventFn(커스텀 JS)
         //    안에서 ajax.postJson(... '/wf/{uid}/execute...' ...) 형태로 WF 를 직접 호출하는 경우가
         //    실무 화면(결의전표등록 저장 등)에 흔하다. 이 경우 (a) 규칙은 navKey 를 못 만들어 배지가

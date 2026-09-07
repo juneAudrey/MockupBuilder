@@ -288,13 +288,39 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .iv-live-result.iv-live-error{color:#b91c1c}
 
 /* 디자인 미리보기의 "🔒"(권한체크) 배지 클릭 시 뜨는 상세패널 — .flow-stepbox 뼈대를 그대로 쓰되,
-   전체 usrEventFn 코드까지 같이 보여줄 수 있어 IV 패널보다 살짝 더 넓게 잡는다. */
-.vw-auth-box{width:360px;height:auto;max-height:calc(100% - 24px)}
+   요약 체크리스트 + 접이식 코드뷰까지 같이 보여줄 수 있어 IV 패널보다 살짝 더 넓게 잡는다. */
+.vw-auth-box{width:420px;height:auto;max-height:calc(100% - 24px)}
 .vw-auth-box .auth-body{overflow:auto}
-.auth-card{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;background:#fef2f2}
-.auth-card-head{font-weight:700;font-size:11.5px;margin-bottom:4px;color:#b91c1c}
-.auth-card code{display:block;white-space:pre-wrap;word-break:break-all;background:#0f172a;color:#e2e8f0;
-  font-family:'D2Coding','Consolas','Courier New',monospace;font-size:11px;padding:6px 8px;border-radius:6px;margin-top:2px;max-height:260px;overflow:auto}
+.auth-card{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#fef2f2}
+.auth-card-head{font-weight:700;font-size:12px;margin-bottom:6px;color:#b91c1c}
+
+/* "권한이 없으면 이렇게 됩니다" 요약 체크리스트 — 초보자가 코드를 안 봐도 결과를 바로 이해하게 하는
+   목적이라, 아이콘 + 짧은 문장 위주로 여백을 넉넉히 준다. */
+.auth-summary{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.auth-summary li{display:flex;align-items:flex-start;gap:6px;font-size:12px;line-height:1.5;color:#1f2937}
+.auth-summary-icon{flex:0 0 auto;font-size:13px;line-height:1.4}
+.auth-chip-row{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 0 0;width:100%}
+.auth-chip{display:inline-block;font-size:10.5px;background:#fff;border:1px solid #fecaca;color:#991b1b;
+  border-radius:999px;padding:1px 8px}
+
+/* 원본 코드 — 기본은 접혀 있고(개발자용), 펼치면 에디터에서 보는 것처럼 정돈된 들여쓰기 +
+   최소한의 문법 강조(키워드/문자열/숫자/주석/$pageObjects)로 보여준다. */
+.auth-code-details{margin-top:8px;border-top:1px dashed #fecaca;padding-top:6px}
+.auth-code-details summary{cursor:pointer;font-size:11px;font-weight:600;color:#991b1b;list-style:none;user-select:none}
+.auth-code-details summary::-webkit-details-marker{display:none}
+.auth-code-details summary::before{content:'▸ ';display:inline-block;transition:transform .1s}
+.auth-code-details[open] summary::before{content:'▾ '}
+.auth-code-label{font-size:10.5px;font-weight:700;color:#6b7280;margin:8px 0 2px}
+.auth-code-pre{display:block;white-space:pre;overflow:auto;background:#0f172a;color:#e2e8f0;
+  font-family:'D2Coding','Consolas','Courier New',monospace;font-size:11px;line-height:1.55;
+  padding:8px 10px;border-radius:6px;margin:0;max-height:260px;tab-size:2}
+.auth-code-pre code{white-space:inherit;background:none;padding:0;font:inherit;color:inherit}
+/* 아주 가벼운 신택스 하이라이팅 팔레트 — VSCode 다크 테마와 비슷한 톤으로 맞춰 눈에 익게 했다. */
+.auth-code-pre .js-keyword{color:#c586c0}
+.auth-code-pre .js-string{color:#ce9178}
+.auth-code-pre .js-number{color:#b5cea8}
+.auth-code-pre .js-comment{color:#6a9955;font-style:italic}
+.auth-code-pre .js-pageobj{color:#4fc1ff}
 
 /* 흐름도 미니맵 — 쿼리 상세 팝업(.flow-stepbox, 우측 상단~하단 대부분을 차지)과 겹치지 않도록
    기본은 좌상단에 둔다(범례는 좌하단이라 그 쪽도 피한다). 드래그로 옮길 수 있고 옮긴 위치는

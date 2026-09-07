@@ -3744,15 +3744,122 @@
     });
   }
 
-  // 권한체크 정보 한 건을 사람이 읽을 수 있는 코드 카드로 렌더.
+  // usrEventFn/authCode 원본 문자열은 화면 JSON 안에 들어있던 그대로라 들여쓰기가 들쭉날쭉하다
+  // (탭/스페이스 혼용, 개발자마다 다른 습관 등). 괄호 깊이 기준으로 다시 들여써서 실제 코드
+  // 에디터에서 보는 것처럼 정돈해 보여준다 — 문자열 리터럴 안의 괄호까지 완벽히 구분하는 실제 JS
+  // 파서는 아니지만(이 코드 특성상 그런 케이스가 거의 없어), 표시용 정리로는 충분하다.
+  function reindentJs(code) {
+    if (!code) return '';
+    const rawLines = code.replace(/\r\n/g, '\n').split('\n').map(l => l.trim());
+    // 원본에 있던 의미 없는 빈 줄(연속 공백 줄)은 하나로 합쳐 너무 늘어지지 않게 한다.
+    const lines = [];
+    rawLines.forEach(l => { if (l !== '' || lines[lines.length - 1] !== '') lines.push(l); });
+    while (lines.length && lines[0] === '') lines.shift();
+    while (lines.length && lines[lines.length - 1] === '') lines.pop();
+    const OPEN = /[{([]/g, CLOSE = /[)\]}]/g;
+    let depth = 0;
+    const out = [];
+    lines.forEach(line => {
+      if (line === '') { out.push(''); return; }
+      // 이 줄만 한 단계 얕게 보여줄지(줄 맨 앞이 닫는 괄호로 시작하는 경우) 결정 — depth 자체는
+      // 아래에서 이 줄의 전체 순증감(open-close)으로 갱신하므로 여기서 미리 깎지 않는다
+      // (미리 깎고 나중에 또 반영하면 두 번 깎이는 버그가 남).
+      const displayDepth = /^[)\]}]/.test(line) ? Math.max(0, depth - 1) : depth;
+      out.push('  '.repeat(displayDepth) + line);
+      const opens = (line.match(OPEN) || []).length;
+      const closes = (line.match(CLOSE) || []).length;
+      depth = Math.max(0, depth + opens - closes);
+    });
+    return out.join('\n');
+  }
+
+  // 아주 가벼운 JS 신택스 하이라이터(문자열/주석/숫자/키워드/$pageObjects 만 색으로 구분).
+  // 완전한 토크나이저는 아니지만, 이 화면들의 usrEventFn 정도 규모에서는 충분히 잘 작동한다.
+  const JS_KEYWORD_RE = /^(const|let|var|function|return|if|else|true|false|null|undefined|new|typeof|while|for|break|continue|in|of|this|await|async|debugger)$/;
+  function highlightJs(code) {
+    if (!code) return '';
+    const tokenRe = /(\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`|\b\d+(?:\.\d+)?\b|\$pageObjects\b|\b[A-Za-z_][A-Za-z0-9_]*\b)/g;
+    let out = '', last = 0, m;
+    while ((m = tokenRe.exec(code)) !== null) {
+      out += escHtmlLite(code.slice(last, m.index));
+      const tok = m[0];
+      let cls = null;
+      if (tok.startsWith('//') || tok.startsWith('/*')) cls = 'js-comment';
+      else if (/^['"`]/.test(tok)) cls = 'js-string';
+      else if (/^\d/.test(tok)) cls = 'js-number';
+      else if (tok === '$pageObjects') cls = 'js-pageobj';
+      else if (JS_KEYWORD_RE.test(tok)) cls = 'js-keyword';
+      out += cls ? ('<span class="' + cls + '">' + escHtmlLite(tok) + '</span>') : escHtmlLite(tok);
+      last = tokenRe.lastIndex;
+    }
+    out += escHtmlLite(code.slice(last));
+    return out;
+  }
+  // 정돈(reindentJs) + 하이라이트(highlightJs)를 합쳐 "코드 보기" 영역에 바로 꽂을 수 있는 HTML을 만든다.
+  function renderCodeBlock(rawCode) {
+    return highlightJs(reindentJs(rawCode));
+  }
+
+  // 권한체크 코드를 정규식으로 훑어 "권한이 없으면 벌어지는 일"을 사람이 읽는 체크리스트로 뽑는다.
+  // 100% 정확한 코드 분석이 아니라 실무에서 자주 쓰는 패턴 몇 가지(경고/폼잠금/그리드초기화/버튼
+  // 비활성화/실행중단)만 잡는 "요약 추정" — 패턴에 없는 코드는 그냥 "코드 보기"로 직접 확인하면 된다.
+  function summarizeAuthGuardCode(code) {
+    if (!code) return [];
+    const items = [];
+    const alertCodes = Array.from(code.matchAll(/message\.alert\(\s*['"]?([\w.]+)['"]?\s*\)/g)).map(m => m[1]);
+    if (alertCodes.length) {
+      items.push({ icon: '🚫', text: '경고 메시지 표시' + (alertCodes.length ? ' (메시지 코드: ' + alertCodes.join(', ') + ')' : '') });
+    }
+    const formNames = Array.from(new Set(Array.from(code.matchAll(/\b([A-Za-z_][\w]*(?:Form|Frm))\.disable\(\)/g)).map(m => m[1])));
+    if (formNames.length) {
+      items.push({ icon: '🔒', text: '입력 폼 비활성화', chips: formNames });
+    }
+    const gridNames = Array.from(new Set(Array.from(code.matchAll(/\b([A-Za-z_][\w]*[Gg]rid[\w]*)\.resetData\(/g)).map(m => m[1])));
+    if (gridNames.length) {
+      items.push({ icon: '🔄', text: '그리드 초기화 (' + gridNames.length + '개)', chips: gridNames });
+    }
+    const btnIds = [];
+    const disableBtnRe = /page\.\$\(\s*["']([^"']+)["']\s*\)\s*\.addClass\(\s*['"]wj-state-disabled['"]\s*\)/g;
+    let dbm;
+    while ((dbm = disableBtnRe.exec(code)) !== null) {
+      dbm[1].split(',').forEach(s => { const id = s.trim().replace(/^#/, ''); if (id) btnIds.push(id); });
+    }
+    if (btnIds.length) {
+      items.push({ icon: '⛔', text: '버튼 ' + btnIds.length + '개 비활성화', chips: btnIds });
+    }
+    if (/return\s+false\b/.test(code)) {
+      items.push({ icon: '⏹️', text: '이후 로직 실행 중단 — 즉, 권한이 없으면 조회/저장 등 이 버튼의 본래 동작 자체가 실행되지 않습니다' });
+    }
+    return items;
+  }
+
+  // 권한체크 정보 한 건을 렌더. 초보자용 "권한이 없으면 이렇게 됩니다" 체크리스트를 먼저 보여주고,
+  // 원본 코드는 <details>(기본 접힘)로 접어 넣어 개발자가 필요할 때만 펼쳐 보게 한다.
   function renderAuthInfoCard(id, info) {
     if (!info) return '<div class="mut" style="padding:8px 0">권한체크 로직을 찾지 못했습니다.</div>';
+    const summary = summarizeAuthGuardCode(info.authCode || '');
+    const summaryHtml = summary.length
+      ? '<ul class="auth-summary">' + summary.map(it =>
+          '<li><span class="auth-summary-icon">' + it.icon + '</span><span>' + escHtmlLite(it.text) + '</span>'
+          + (it.chips && it.chips.length
+              ? ('<div class="auth-chip-row">' + it.chips.map(c => '<span class="auth-chip">' + escHtmlLite(c) + '</span>').join('') + '</div>')
+              : '')
+          + '</li>').join('') + '</ul>'
+      : '<div class="mut" style="padding:2px 0 6px">자동 요약할 수 있는 패턴을 찾지 못했습니다 — 아래 코드를 직접 확인해주세요.</div>';
+
+    const hasFull = info.fullEventFn && info.fullEventFn !== info.authCode;
     return '<div class="auth-card">'
-      + '<div class="auth-card-head">🔒 useAuthGuard / hasPermission</div>'
-      + '<div class="iv-row"><span class="iv-label">권한체크 블록</span><code>' + escHtmlLite(info.authCode || '') + '</code></div>'
-      + (info.fullEventFn && info.fullEventFn !== info.authCode
-          ? '<div class="iv-row"><span class="iv-label">버튼 전체 스크립트 (usrEventFn)</span><code>' + escHtmlLite(info.fullEventFn) + '</code></div>'
+      + '<div class="auth-card-head">🔒 권한이 없으면 이렇게 됩니다</div>'
+      + summaryHtml
+      + '<details class="auth-code-details">'
+      + '<summary>코드 보기 (개발자용)</summary>'
+      + '<div class="auth-code-label">권한체크 블록</div>'
+      + '<pre class="auth-code-pre"><code>' + renderCodeBlock(info.authCode || '') + '</code></pre>'
+      + (hasFull
+          ? ('<div class="auth-code-label">버튼 전체 스크립트 (usrEventFn)</div>'
+             + '<pre class="auth-code-pre"><code>' + renderCodeBlock(info.fullEventFn) + '</code></pre>')
           : '')
+      + '</details>'
       + '</div>';
   }
 
@@ -3767,7 +3874,7 @@
     if (!box.hasAttribute('data-positioned')) {
       const pane = el(hostKind === 'tab' ? 'uiTabDesignPane' : 'vwDesignPane');
       const paneW = (pane && pane.clientWidth) || 900;
-      const w = box.offsetWidth || 360;
+      const w = box.offsetWidth || 420;
       box.style.left = Math.max(12, paneW - w - 12) + 'px';
       box.style.right = 'auto';
       box.style.top = '12px';
