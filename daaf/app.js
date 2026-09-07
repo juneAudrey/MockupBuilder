@@ -221,6 +221,16 @@
     el('tabTable').addEventListener('click', () => switchTab('table'));
     el('tabFlow').addEventListener('click', () => switchTab('flow'));
     el('tabUi').addEventListener('click', () => switchTab('ui'));
+    el('btnRefreshContent').addEventListener('click', () => {
+      try {
+        const u = new URL(location.href);
+        u.searchParams.set('_r', Date.now());
+        location.href = u.toString();
+      } catch (e) {
+        // URL 파싱 실패 등 예외 상황의 최후 수단 — 그냥 강제 재로드
+        location.reload();
+      }
+    });
     // [◀ 뒤로]: UI 탭에서 UI/Mo 뱃지를 눌러 다른 화면으로 이동했던 이력을 하나씩 되짚는다
     // (코드·디자인 보기 모달의 [◀ 뒤로]와 완전히 동일한 패턴/코드 구조).
     el('uiTabBack').addEventListener('click', () => {
