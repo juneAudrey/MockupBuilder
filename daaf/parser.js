@@ -858,10 +858,11 @@
     // 컬럼 액션 버튼(Tracking No 팝업 등)의 UI 연결까지 buildGridColumnsTableHtml 안에서 함께 반영한다.
     const gridWfMap = computeGridServiceMap(resourceJson); // gridId -> [{navKey,label,...}] (kind는 항상 wf)
     // 헤더그리드 선택에 따라 인라인 ajax로 다른 WF를 호출해 채우는 하위 그리드(국내/해외/반품 등)도
-    // 배지에 포함시킨다 — resourceJsText 가 있을 때만(스크립트 텍스트가 RESOURCE_JSON 자체에 들어있는
-    // 경우 buildDesignHtml 호출부가 resourceJson 을 그대로 넘겨준다).
-    if (resourceJsText) {
-      const inlineMap = extractInlineBranchedWfMap(resourceJsText);
+    // 배지에 포함시킨다. 화면에 따라 스크립트가 별도 RESOURCE_JS 파일(resourceJsText)에 있기도 하고,
+    // MMGMQUI0017처럼 RESOURCE_JSON 자체의 eventFnc/onLoad 문자열 안에 박혀있기도 해서(RESOURCE_JS는
+    // 비어있음) 둘 다 이어붙여서 스캔해야 한다 — resourceJsText만 보면 후자의 경우 항상 빈 결과였다.
+    {
+      const inlineMap = extractInlineBranchedWfMap((resourceJson || '') + '\n' + (resourceJsText || ''));
       Object.keys(inlineMap).forEach(gid => {
         const arr = gridWfMap[gid] || (gridWfMap[gid] = []);
         inlineMap[gid].forEach(l => { if (!arr.some(x => x.navKey === l.navKey)) arr.push(l); });
@@ -1470,8 +1471,8 @@
     // 로 확인되는 target 에만 배지를 남긴다.
     const realGridIds = collectGridIds(resourceJson);
     const gridMap = computeGridServiceMap(resourceJson);
-    if (resourceJsText) {
-      const inlineMap = extractInlineBranchedWfMap(resourceJsText);
+    {
+      const inlineMap = extractInlineBranchedWfMap((resourceJson || '') + '\n' + (resourceJsText || ''));
       Object.keys(inlineMap).forEach(gid => {
         const arr = gridMap[gid] || (gridMap[gid] = []);
         inlineMap[gid].forEach(l => { if (!arr.some(x => x.navKey === l.navKey)) arr.push(l); });
