@@ -989,8 +989,16 @@
           // (disabled 버튼은 click 이벤트가 발생하지 않아 그래프 이동이 동작하지 않음)
           const btnDis = link ? '' : ' disabled';
           const btnType = link ? ' type="button"' : '';
-          return '<button class="dz-btn' + linkCls + hiddenCls + '"' + dataAttr + btnType + btnDis + '>'
-            + esc(label || pv.id || 'button') + hiddenBadge + linkTag + '</button>';
+          // 라벨/이름이 아예 없는 버튼(예: 검색 입력창 옆의 팝업조회 아이콘버튼)은 실제 화면에서도
+          // 텍스트 없이 아이콘만 있다 — "button" 이라는 플레이스홀더 글자를 보여주는 대신 아이콘
+          // 글리프만 표시한다(자주 쓰이는 fa-search 만 우선 매핑, 그 외 아이콘은 작은 점으로 대체).
+          const hasTextLabel = !!(label || pv.id);
+          const iconGlyph = pv.icon === 'fa-search' ? '🔍' : (pv.icon ? '◾' : '');
+          const btnText = hasTextLabel ? esc(label || pv.id) : (iconGlyph || 'button');
+          const iconOnlyCls = (!hasTextLabel && iconGlyph) ? ' dz-btn-icon-only' : '';
+          return '<button class="dz-btn' + linkCls + hiddenCls + iconOnlyCls + '"' + dataAttr + btnType + btnDis
+            + (!hasTextLabel && pv.icon ? (' title="' + esc(pv.icon) + '"') : '') + '>'
+            + btnText + hiddenBadge + linkTag + '</button>';
         }
         case 'heading':
           return '<div class="dz-heading' + hiddenCls + '">' + esc(pv.text || label) + hiddenBadge + '</div>';

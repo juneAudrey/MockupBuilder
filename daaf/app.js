@@ -4064,7 +4064,7 @@
       '.dz-search{border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:12px;background:#fafcff}',
       '.dz-row{display:flex;flex-wrap:wrap;gap:14px;margin:6px 0;align-items:flex-end}',
       '.dz-row.dz-border{border-top:1px solid #e8edf3;padding-top:12px;margin-top:4px}',
-      '.dz-col{flex:1 1 0;min-width:120px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}',
+      '.dz-col{flex:1 1 0;min-width:0;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}',
       // isDisplay:false 컬럼(런타임 조건부 표시): 점선 테두리+옅은 배경으로 "지금은 안 보이는 영역"임을
       // 시각적으로 구분한다. 일반 dz-col과 똑같이 그려버리면 다른 그리드들 사이에 붕 뜬 것처럼 보인다.
       '.dz-col-hidden{border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;padding:8px;opacity:.72}',
@@ -4082,8 +4082,8 @@
       '.dz-tab-active{color:#0f9d58;border-bottom-color:#0f9d58}',
       '.dz-tab-panel{margin-bottom:14px;padding:10px;border:1px solid #eef2f7;border-radius:8px;background:#fbfdff}',
       '.dz-tab-panel-head{font-weight:700;font-size:12.5px;color:#334155;margin-bottom:8px;display:flex;align-items:center;gap:5px}',
-      '.dz-field{display:flex;flex-direction:column;gap:3px;flex:1 1 auto;min-width:110px}',
-      '.dz-field label{font-size:12px;font-weight:600;color:#334155;white-space:nowrap}',
+      '.dz-field{display:flex;flex-direction:column;gap:3px;flex:1 1 auto;min-width:70px}',
+      '.dz-field label{font-size:12px;font-weight:600;color:#334155;max-width:100%;word-break:keep-all}',
       '.dz-field .req{color:#ef4444;margin-left:2px}',
       '.req{color:#ef4444;margin-left:2px}',
       // ===== 뱃지(WF/UI/IV/숨김)는 라벨 텍스트 오른쪽에 붙인다 =====
@@ -4103,13 +4103,16 @@
       '.dz-badge-inline{display:inline-flex;align-items:center;gap:3px;margin-left:6px;vertical-align:middle}',
       '.dz-badge-inline .dz-link-tag{margin-left:0}',
       '.dz-inp{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;width:100%}',
-      '.dz-sel{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;display:flex;align-items:center;justify-content:space-between;color:#94a3b8;min-width:90px}',
+      '.dz-sel{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;display:flex;align-items:center;justify-content:space-between;color:#94a3b8;min-width:70px}',
       '.dz-sel i{font-style:normal;color:#94a3b8}',
-      '.dz-date{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;display:flex;align-items:center;justify-content:space-between;color:#94a3b8;min-width:120px}',
+      '.dz-date{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;display:flex;align-items:center;justify-content:space-between;color:#94a3b8;min-width:90px}',
       '.dz-date i{font-style:normal}',
       '.dz-radios{display:flex;gap:12px;align-items:center;height:30px}',
       '.dz-radio{font-size:12.5px;color:#334155;font-weight:400;display:flex;align-items:center;gap:3px}',
       '.dz-btn{border:1px solid #cbd5e1;background:#f1f5f9;border-radius:6px;height:30px;padding:4px 14px;font-size:12px;color:#334155;white-space:nowrap;cursor:default;align-self:flex-end}',
+      // 라벨/이름 없이 아이콘만 있는 버튼(검색창 옆 팝업조회 아이콘 등) — 넓은 텍스트 버튼처럼 보이면
+      // 실제 화면과 다르고 자리도 많이 차지해서, 정사각형에 가깝게 작고 컴팩트하게 보이게 한다.
+      '.dz-btn-icon-only{padding:4px 8px;min-width:30px;justify-content:center;font-size:13px}',
       '.dz-heading{font-size:13px;font-weight:700;color:#0f172a;padding:8px 0 4px;border-bottom:2px solid #e8edf3;margin:8px 0 4px;width:100%}',
       '.dz-text{font-size:12.5px;color:#475569;align-self:center}',
       '.dz-grid{border:1px solid #cbd5e1;border-radius:8px;margin:10px 0;min-height:120px;background:#fff;min-width:0;max-width:100%}',
@@ -4127,9 +4130,12 @@
       '.dz-checkbox{display:inline-flex;align-items:center;height:30px}',
       '.dz-checkbox input{width:auto;margin:0}',
       '.dz-textarea{border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:12.5px;background:#fff;width:100%;resize:none;color:#94a3b8}',
-      '.dz-daterange{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;display:flex;align-items:center;gap:6px;color:#94a3b8;min-width:190px}',
-      '.dz-daterange i{font-style:normal}',
-      '.dz-daterange .dz-date-ico{margin-left:auto}',
+      '.dz-daterange{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;display:flex;align-items:center;gap:6px;color:#94a3b8;min-width:130px}',
+      '.dz-daterange i{font-style:normal;flex:0 0 auto}',
+      // 날짜 두 개(YYYY-MM-DD ~ YYYY-MM-DD)를 담는 span들 — 컨테이너가 좁아지면 서로 겹치는 대신
+      // 각자 줄어들면서 말줄임(ellipsis)되게 한다(실제 화면도 좁아지면 날짜가 잘려 보임).
+      '.dz-daterange span{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.dz-daterange .dz-date-ico{margin-left:auto;flex:0 0 auto}',
       '.dz-tree{border:1px solid #cbd5e1;border-radius:8px;margin:10px 0;background:#fff;min-height:100px}',
       '.dz-tree-head{background:#f8fafc;border-bottom:1px solid #cbd5e1;padding:8px 12px;font-size:12px;font-weight:700;color:#475569;border-radius:8px 8px 0 0}',
       '.dz-tree-body{padding:8px 12px;font-size:12.5px;color:#64748b}',
