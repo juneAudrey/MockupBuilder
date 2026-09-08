@@ -342,7 +342,7 @@
     <div id="basketList" class="bk-list"></div>
     <div class="status-row">
       <div id="status" class="status">준비됨</div>
-      <div class="credit">by June (ver.20260907.010)</div>
+      <div class="credit">by June (ver.20260908.001)</div>
     </div>
   </footer>
 
@@ -362,16 +362,21 @@
         </div>
 
         <div class="off-note">
-          💡 데이터를 다운로드한 뒤, 상단의 <b>[오프라인]</b> 스위치를 누르면 로컬 데이터로 조회합니다.
-          <b>메뉴</b>는 상단 검색 패널의 <b>제품</b> 선택값과 무관하게, 등록된 <b>모든 제품(ERP·BC)</b>을
-          동기화할 때마다 자동으로 순회하며 폴더 구조까지 함께 저장합니다 — 오프라인에서도
-          <b>상위 폴더로 찾아보기</b>를 그대로 쓸 수 있고, DB 접속 모드처럼 모든 제품이 오프라인 파일 하나에 함께 공존합니다.
+          <div class="off-note-line">① 데이터를 다운로드한 뒤, 상단의 <b>[오프라인]</b> 스위치를 누르면 로컬 데이터로 조회합니다.</div>
+          <div class="off-note-line">② <b>메뉴</b>는 상단 검색 패널의 <b>제품</b> 선택값과 무관하게, 등록된 <b>모든 제품(ERP·BC)</b>을 동기화할 때마다 자동으로 순회하며 폴더 구조까지 함께 저장합니다.</div>
+          <div class="off-note-line">③ 오프라인에서도 <b>상위 폴더로 찾아보기</b>를 그대로 쓸 수 있고, DB 접속 모드처럼 모든 제품이 오프라인 파일 하나에 함께 공존합니다.</div>
         </div>
         <div id="offFileSize" class="off-note" style="display:none"></div>
 
         <div class="off-tables">
-          <div class="off-th"><span>테이블</span><span>행수</span><span>최근 갱신</span><span>선택</span></div>
-          <div id="offTableRows"></div>
+          <button type="button" id="offTablesToggle" class="off-tables-toggle">
+            <span id="offTablesSummary">테이블 정보</span>
+            <span id="offTablesArrow" class="off-toggle-arrow">▸ 펼치기</span>
+          </button>
+          <div id="offTablesBody" class="off-tables-body" style="display:none">
+            <div class="off-th"><span>테이블</span><span>행수</span><span>최근 갱신</span><span>선택</span></div>
+            <div id="offTableRows"></div>
+          </div>
         </div>
 
         <div class="off-actions">

@@ -24,6 +24,7 @@ window.WaveOffline = (function () {
     getCfg = opts.getCfg; getProductCd = opts.getProductCd; getLang = opts.getLang;
     onModeChange = opts.onModeChange; onDataChange = opts.onDataChange; setStatus = opts.setStatus;
     bind();
+    initTablesToggle();
     window.api.onOfflineProgress(handleProgress);
     restoreSavedFile();
   }
@@ -106,8 +107,10 @@ window.WaveOffline = (function () {
   function renderTables() {
     const box = el('offTableRows'); box.innerHTML = '';
     const mt = (state.manifest && state.manifest.tables) || {};
+    let syncedCount = 0, totalRows = 0;
     ALL_TABLES.forEach(key => {
       const info = mt[key];
+      if (info) { syncedCount++; totalRows += (Number(info.rows) || 0); }
       const div = document.createElement('div');
       div.className = 'off-tr';
       div.innerHTML =
@@ -116,6 +119,27 @@ window.WaveOffline = (function () {
         '<span class="' + (info ? '' : 'muted') + '">' + (info ? fmtDate(info.lastSync) : '없음') + '</span>' +
         '<span><input type="checkbox" data-tk="' + key + '" checked></span>';
       box.appendChild(div);
+    });
+    renderTablesSummary(syncedCount, totalRows);
+  }
+
+  function renderTablesSummary(syncedCount, totalRows) {
+    const sum = el('offTablesSummary'); if (!sum) return;
+    sum.textContent = syncedCount
+      ? '테이블 정보 · 총 ' + ALL_TABLES.length + '개 (동기화됨 ' + syncedCount + '개 · ' + fmtNum(totalRows) + '행)'
+      : '테이블 정보 · 총 ' + ALL_TABLES.length + '개 (다운로드 전)';
+  }
+
+  function initTablesToggle() {
+    const toggleBtn = el('offTablesToggle');
+    const body = el('offTablesBody');
+    const arrow = el('offTablesArrow');
+    if (!toggleBtn || toggleBtn.dataset.bound) return;
+    toggleBtn.dataset.bound = '1';
+    toggleBtn.addEventListener('click', () => {
+      const collapsed = body.style.display === 'none';
+      body.style.display = collapsed ? 'block' : 'none';
+      arrow.textContent = collapsed ? '▾ 접기' : '▸ 펼치기';
     });
   }
 
