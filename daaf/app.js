@@ -1607,6 +1607,12 @@
         // 노드 보강
         const node = store.addNode({ type: 'WF', id: row.SERVICE_ID, uid: String(row.SERVICE_UID),
                                      name: row.SERVICE_NAME || row.SERVICE_ID, depth: n.depth, raw: row });
+        // '/wf/{uid}/execute' 직접호출(파서 주석: "id 없음")로 처음 큐잉된 노드는 uid만 있고
+        // id=null 상태로 store 에 생성된다. addNode() 가 이미 존재하는 노드에 병합될 때 id 를
+        // 갱신하지 않는 케이스가 있어(예: MMPOPUI0001의 Grid2 "/wf/4685/execute" → SERVICE_ID
+        // "MMPOPUI0001_SELECT2"), row 를 방금 조회해왔는데도 흐름도/화면에서 id 가 null 로
+        // 영구히 남아 해당 WF 만 흐름도 렌더링이 실패하는 버그가 있었다. 실측 DB 값으로 직접 보정.
+        if (!node.id && row.SERVICE_ID) node.id = row.SERVICE_ID;
         // 순환감지: 이미 방문한 uid 를 다시 참조하면 cycle 표시
         const parsed = P.parseWf(row);
         parsed.refs.forEach(ref => {
