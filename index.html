@@ -1007,7 +1007,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260901.007)</span>
+      <span id="verText">by June (ver.20260908.001)</span>
     </div>
   </div>
 
@@ -1657,6 +1657,43 @@ function copySelection(){
   const ids=collectWithChildren([...selIds]);
   clipboard=comps.filter(c=>ids.includes(c.id)).map(c=>JSON.parse(JSON.stringify(c)));
   pasteSeq=0;
+}
+// ---- 브라우저 간 복사/붙여넣기 (OS 클립보드 연동) ----
+// 동일/타 브라우저(창·탭·프로필 구분 없이) 사이에 컴포넌트를 복사·붙여넣기 하기 위해,
+// 로컬 clipboard 배열에 담는 것과 별개로 OS 클립보드에도 식별 마커를 포함한 JSON 문자열로
+// 기록한다. 붙여넣기 시에는 OS 클립보드를 먼저 읽어 마커가 있으면 그 내용을 쓰고,
+// 읽기 실패(권한 거부·비-JSON·비-목업빌더 텍스트 등)하면 기존 로컬 clipboard 로 대체 동작한다.
+const MB_CLIP_MARKER='__mockupBuilderClipboard__';
+let clipboardTextSeen=null; // 직전에 OS 클립보드에 기록/인식한 텍스트(중복 붙여넣기 시 오프셋 리셋 방지용)
+// Ctrl+C 전용 진입점. 로컬 복사는 항상 성공하므로(선택이 있는 한) 하단 토스트를 띄운다.
+// OS 클립보드 기록은 실패해도(구형 브라우저·권한 거부 등) 로컬 복사/붙여넣기 자체는 그대로 동작한다.
+function copySelectionToSystem(){
+  if(!selIds.size)return;
+  copySelection();
+  if(!clipboard.length)return;
+  const payload=JSON.stringify({[MB_CLIP_MARKER]:1, comps:clipboard});
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(payload).then(()=>{ clipboardTextSeen=payload; }).catch(()=>{});
+  }
+  if(typeof mbToast==='function') mbToast('복사됨');
+}
+// Ctrl+V 전용 진입점. OS 클립보드를 먼저 시도하고, 실패/불일치 시 로컬 clipboard 로 대체한다.
+// 붙여넣기에는(스펙에 따라) 별도 토스트를 띄우지 않는다.
+async function pasteFromClipboard(){
+  if(navigator.clipboard&&navigator.clipboard.readText){
+    try{
+      const text=await navigator.clipboard.readText();
+      if(text&&text!==clipboardTextSeen){
+        const data=JSON.parse(text);
+        if(data&&data[MB_CLIP_MARKER]&&Array.isArray(data.comps)&&data.comps.length){
+          clipboard=data.comps.map(c=>JSON.parse(JSON.stringify(c)));
+          pasteSeq=0;
+          clipboardTextSeen=text;
+        }
+      }
+    }catch(err){ /* 권한 거부, JSON 아님, 마커 없음 등은 무시하고 로컬 clipboard 로 대체 */ }
+  }
+  pasteClipboard();
 }
 function pasteClipboard(){
   if(!clipboard.length)return;
@@ -3199,8 +3236,8 @@ document.addEventListener('keydown',e=>{
   const mod=e.ctrlKey||e.metaKey;
   if(mod&&(e.key==='z'||e.key==='Z')&&!e.shiftKey){e.preventDefault();undo();return;}
   if(mod&&((e.key==='y'||e.key==='Y')||((e.key==='z'||e.key==='Z')&&e.shiftKey))){e.preventDefault();redo();return;}
-  if(mod&&(e.key==='c'||e.key==='C')&&!typing){e.preventDefault();copySelection();return;}
-  if(mod&&(e.key==='v'||e.key==='V')&&!typing){e.preventDefault();pasteClipboard();return;}
+  if(mod&&(e.key==='c'||e.key==='C')&&!typing){e.preventDefault();copySelectionToSystem();return;}
+  if(mod&&(e.key==='v'||e.key==='V')&&!typing){e.preventDefault();pasteFromClipboard();return;}
   if((e.key==='Delete'||e.key==='Backspace')&&sel!==null&&!typing){
     e.preventDefault();
     delSel();
@@ -5871,6 +5908,9 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260908.001', date:'2026년 9월 8일', items:[
+    {t:'다른 브라우저(창·탭)로도 컴포넌트 복사/붙여넣기 가능', d:'① <b>Ctrl+C</b>로 복사하면 브라우저 내부 복사본과 함께 <b>OS 클립보드</b>에도 함께 기록됩니다.<br>② 그 덕분에 같은 브라우저의 다른 탭·창은 물론, <b>다른 브라우저</b>에서 열어둔 목업빌더에도 <b>Ctrl+V</b>로 그대로 붙여넣을 수 있습니다.<br>③ 복사에 성공하면 화면 하단에 <b>"복사됨"</b> 알림이 뜨고, 붙여넣기는 지금까지처럼 알림 없이 조용히 처리됩니다.<br>④ 클립보드 접근이 막혀 있거나 목업빌더가 아닌 다른 텍스트가 복사되어 있는 경우엔, 자동으로 기존 방식(브라우저 내부 복사본)으로 대체되어 항상 붙여넣기가 됩니다.'}
+  ]},
   {ver:'20260901.007', date:'2026년 9월 1일', items:[
     {t:'빠른 날짜 팝업에 "빈값" 토글 추가', d:'적용 버튼 왼쪽에 <b>빈값</b> 토글을 추가했습니다. 켜고 적용하면 날짜를 아예 선택하지 않고 비워둔 상태로 저장되며(즐겨찾기 칩·연월일 조합은 비활성화됨), 조회조건 필드·단독 날짜/기간 컴포넌트·그리드 날짜 컬럼 모두 동일하게 동작합니다. 팝업을 다시 열면 빈값이었는지도 토글이 켜진 채로 그대로 복원됩니다. 기간(날짜1)만 비우고 나머지(날짜2)는 값을 유지하는 것도 각각 독립적으로 가능합니다.'}
   ]},
@@ -6424,7 +6464,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260901.007';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260908.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
