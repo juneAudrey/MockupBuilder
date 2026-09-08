@@ -355,6 +355,18 @@
      in the renderer) so it can't drift between rows the way independent flex rows sometimes did. */
   .ax-grid .gh{display:grid;border-bottom:1px solid var(--ax-border);}
   .ax-grid .gh span{background:var(--ax-grid-head);min-width:0;padding:6px 8px;font-size:11px;font-weight:700;color:var(--ax-grid-head-fg);border-right:1px solid var(--ax-border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* 컬럼 개별 폭 조절: 헤더 셀 우측 가장자리를 드래그하면 그 컬럼만 폭이 바뀐다 (씬모드 캔버스 전용,
+     내보낸 화면에는 나타나지 않음). 평소엔 투명하고, 마우스를 올리면 파란 라인으로 표시된다. */
+  .ax-grid .gh .col-resize-handle{position:absolute;top:0;right:0;bottom:0;width:8px;cursor:col-resize;z-index:5;}
+  .ax-grid .gh .col-resize-handle::after{content:'';position:absolute;top:0;bottom:0;right:0;width:2px;background:transparent;}
+  .ax-grid .gh .col-resize-handle:hover::after{background:var(--ax-green);}
+  /* 컬럼 순서 드래그(디자인 캔버스 전용): [data-ci]가 붙은 헤더 셀이 손잡이. 드래그 중인 컬럼은
+     반투명하게, 놓을 위치는 좌/우 경계에 초록 세로선으로 표시한다(재렌더링 없이 mousemove에서
+     클래스만 토글하므로 매 프레임 그리드 전체를 다시 그리지 않는다). */
+  .ax-grid .gh span[data-ci]{cursor:grab;}
+  .ax-grid .gh span[data-ci].gcol-dragging{opacity:.35;}
+  .ax-grid .gh span[data-ci].gcol-drop-before::before{content:'';position:absolute;left:-2px;top:0;bottom:0;width:3px;background:var(--ax-green);z-index:6;}
+  .ax-grid .gh span[data-ci].gcol-drop-after::after{content:'';position:absolute;right:-2px;top:0;bottom:0;width:3px;background:var(--ax-green);z-index:6;}
   .ax-grid .gr{display:grid;border-bottom:1px solid #eef0f2;}
   .ax-grid .gr span{min-width:0;padding:6px 8px;font-size:11px;color:#6b7280;border-right:1px solid #f0f2f4;overflow:hidden;}
   .ax-grid .gr span:has(.ax-combo){overflow:visible;}
@@ -1007,7 +1019,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20260908.001)</span>
+      <span id="verText">by June (ver.20260909.001)</span>
     </div>
   </div>
 
@@ -1858,7 +1870,7 @@ const defaults={
   popup:{w:420,h:23,text:"",required:false,readonly:false,showLabel:true,labelText:"항목명",labelPos:"left",style:"code_name"},
   button:{w:80,h:32,text:"버튼",required:false,readonly:false,ghost:false},
   grid:{w:700,h:190,text:"컬럼1,컬럼2,컬럼3,컬럼4",required:false,readonly:false,rows:3,
-    gtitle:"그리드 제목",showToolbar:true,pagination:false,
+    gtitle:"그리드 제목",showToolbar:true,pagination:false,colSizeMode:'auto',
     stdAdd:true,stdCancel:true,stdCopy:true,stdDelete:true,
     userBtns:[]},
   chart:{w:440,h:260,text:"25,45,30,60,40,55",required:false,readonly:false,
@@ -2232,14 +2244,35 @@ function render(){
 }
 function drawCanvas(){
   scheduleAutosave();
+  // Every full canvas rebuild below recreates each component's DOM from scratch, which would
+  // reset any scrollable grid's horizontal scroll (.gbody.scrollLeft) back to 0 - regardless of
+  // *why* the rebuild happened: a column-resize/reorder drag, or just as easily an ordinary
+  // property panel edit (alignment, type, date settings, required/readonly, etc. all call
+  // render()/drawCanvas() too). Rather than special-case every call site that might disturb a
+  // scrolled grid, save every grid's current scroll position once here before tearing down the
+  // DOM, and restore it after rebuilding - so no future change anywhere can reintroduce this bug.
+  const gridScrolls=new Map();
+  canvas.querySelectorAll('.cmp[data-cid] .gbody').forEach(gb=>{
+    if(gb.scrollLeft){
+      const wrap=gb.closest('.cmp');
+      if(wrap)gridScrolls.set(wrap.dataset.cid,gb.scrollLeft);
+    }
+  });
   canvas.innerHTML='';
   const single = selIds.size===1;
   comps.filter(c=>!c.parent).forEach(c=>renderComp(c,canvas,single));
+  if(gridScrolls.size){
+    gridScrolls.forEach((sl,cid)=>{
+      const gb=canvas.querySelector('.cmp[data-cid="'+cid+'"] .gbody');
+      if(gb)gb.scrollLeft=sl;
+    });
+  }
 }
 function renderComp(c,container,single,locked){
   const on = isSel(c.id);
   const el=document.createElement('div');
   el.className='cmp'+(on?' selected':'')+(locked?' locked':'');
+  el.dataset.cid=c.id;  // lets column-drag/resize handlers on a grid's inner HTML find their way back to this wrapper without holding a stale DOM reference across re-renders
   el.style.left=c.x+'px'; el.style.top=c.y+'px';
   el.style.width=c.w+'px'; el.style.height=c.h+'px';
   // Z order follows the component's position in `comps` (that is what zorder() reorders).
@@ -2417,6 +2450,17 @@ function gridCellCtrl(ctype,opts,exp,dateVal,dateBlank,dateSpec){
       return '&nbsp;';
   }
 }
+// 자동 컬럼 폭 계산용 1회성 캔버스 컨텍스트 - 실제 DOM에 붙이지 않고도 그리드 헤더와 같은
+// 폰트로 텍스트 폭을 정확히 잴 수 있어, 렌더링마다 가볍게 재사용한다.
+let __gcMeasureCtx=null;
+function autoColWidth(text,required){
+  if(!__gcMeasureCtx) __gcMeasureCtx=document.createElement('canvas').getContext('2d');
+  __gcMeasureCtx.font='700 11px "Malgun Gothic","맑은 고딕",-apple-system,sans-serif'; // .ax-grid .gh span 과 동일한 폰트
+  const textW=__gcMeasureCtx.measureText(text||'').width;
+  const PAD=18;                    // 헤더 셀 좌우 padding(8px*2)+테두리 여유(2px) - 글자가 경계에 딱 붙어 잘려 보이지 않도록
+  const REQ_EXTRA=required?12:0;   // 필수(*) 표시가 앞에 붙는 만큼의 여유
+  return Math.max(28, Math.ceil(textW)+PAD+REQ_EXTRA);
+}
 function innerRaw(c,mode){
   mode=mode||'design';
   const exp=mode==='export';
@@ -2527,18 +2571,19 @@ function innerRaw(c,mode){
       const extraInnerHTML=d=>d.kind==='roworder'
         ? `<div class="grh-icons">${ROWORDER_ICON_GEAR}${ROWORDER_ICON_FILTER}${ROWORDER_ICON_PIN}</div>`
         : `<div class="gcell-check"><span class="box"></span></div>`;
-      // If columns can't all fit at their minimum width, suggest turning "좌우 스크롤 사용" on
+      // If columns can't all fit at their minimum width, suggest switching to 스크롤 mode
       // automatically - but only in response to a genuinely new structural change (column added/
-      // removed, grid resized). If the person just explicitly unchecked the box, _xscrollManual
-      // is set and this is skipped so their choice isn't instantly overridden on the next render.
-      // Only "date" columns have a real, unshrinkable native-widget minimum width (combo/check/input
-      // are all custom-styled and shrink fine) - so plain-text grids (e.g. every built-in template)
-      // never trigger this, and it only kicks in once a column is actually set to date and would clip.
-      if(mode==='design'&&!c.xscroll&&!c._xscrollManual){
+      // removed, grid resized). If the person already explicitly picked a mode themselves,
+      // _sizeModeManual is set and this is skipped so their choice isn't instantly overridden on
+      // the next render. Only "date" columns have a real, unshrinkable native-widget minimum
+      // width (combo/check/input are all custom-styled and shrink fine) - so plain-text grids
+      // (e.g. every built-in template) never trigger this, and it only kicks in once a column is
+      // actually set to date and would clip.
+      if(mode==='design'&&gridSizeMode(c)==='default'&&!c._sizeModeManual){
         const hasDateCol=cols.some((x,ci)=>((c.colTypes&&c.colTypes[ci])||'input')==='date');
         if(hasDateCol){
           const floorW=Math.max(60,+c.colMinW||120);
-          if(cols.length*floorW>c.w) c.xscroll=true;
+          if(cols.length*floorW>c.w) c.colSizeMode='scroll';
         }
       }
       let toolbar='';
@@ -2555,19 +2600,74 @@ function innerRaw(c,mode){
         });
         toolbar=`<div class="gtoolbar"><span class="gtitle">${esc(c.gtitle||'')}</span><span class="gspacer"></span><div class="gbtn-row">${btns}</div></div>`;
       }
-      const xs=!!c.xscroll;
-      const colW=Math.max(60,+c.colMinW||120);   // fixed per-column width when scrolling
-      const cellW=xs?` style="width:${colW}px"`:'';
+      // 헤더 텍스트 정렬 / 필수 / 읽기전용 - 컬럼별로 하나씩. autoColWidth() 계산에 필수(*) 여유가
+      // 필요하므로 폭 관련 값들보다 먼저 계산해둔다.
+      const colAligns=(c.colAligns||[]).slice(0,cols.length);
+      while(colAligns.length<cols.length)colAligns.push('left');
+      const colRequired=(c.colRequired||[]).slice(0,cols.length);
+      while(colRequired.length<cols.length)colRequired.push(false);
+      const colReadonly=(c.colReadonly||[]).slice(0,cols.length);
+      while(colReadonly.length<cols.length)colReadonly.push(false);
+      // 읽기전용·필수가 둘 다 켜진 컬럼은 읽기전용(회색)을 우선한다 - 데이터 행(바디 셀)에만
+      // 적용한다. 헤더는 색이 바뀌지 않고, 필수일 때 빨간 * 표시만 붙는다.
+      const colColorCls=ci=>colReadonly[ci]?'col-readonly':(colRequired[ci]?'col-required':'');
+      const colReqMark=ci=>colRequired[ci]?'<span class="col-req-mark">*</span>':'';
+      // 컬럼 폭 방식 3가지: 고정(균등분할, 스크롤 없음)·수동(고정폭+가로 스크롤, 컬럼 폭 슬라이더
+      // 사용 가능)·자동(글자가 안 잘리는 최소 크기로 딱 맞추고, 넘칠 때만 가로 스크롤). 레거시
+      // 목업에는 colSizeMode가 없으니 gridSizeMode()가 예전 xscroll 값으로 대신 판단한다.
+      const sizeMode=gridSizeMode(c);
+      const xs=sizeMode!=='default';   // scroll·auto 모두 가로 스크롤이 가능한 flex 레이아웃을 쓴다
+      const colW=Math.max(60,+c.colMinW||120);   // 스크롤 모드에서 슬라이더로 지정한 전체 컬럼 공통 폭
+      // 컬럼별 "기본" 폭(사용자가 드래그로 개별 조절하지 않았을 때의 값): 자동 모드는 그 컬럼
+      // 글자 길이에 맞춘 값, 스크롤 모드는 슬라이더 값(colW)을 모든 컬럼에 동일 적용.
+      const colBaseW=ci=>sizeMode==='auto'?autoColWidth(cols[ci].trim(),colRequired[ci]):colW;
+      // Per-column width overrides set by dragging a column's right border directly on the
+      // canvas (see startColResize/colresize drag mode). A column with no override falls back
+      // to colBaseW(ci) above. In 자동 mode, updGridColLabel() clears a column's override the
+      // moment its name changes, so a manual drag only "sticks" until the next rename.
+      const colWidths=(c.colWidths||[]).slice(0,cols.length);
+      const isDesign=mode==='design';
+      const cellW=ci=>{
+        const w=colWidths[ci];
+        return (xs||w)?` style="width:${w||colBaseW(ci)}px"`:'';
+      };
+      const resizeHandle=ci=>isDesign?`<div class="col-resize-handle" onmousedown="event.stopPropagation();startColResize(event,${c.id},${ci})" title="드래그하여 폭 조절"></div>`:'';
+      // 컬럼 순서를 드래그로 바꾸는 기능도 디자인 캔버스 전용. data-ci로 어느 컬럼인지 표시해두면
+      // 드래그 중 mousemove 핸들러가 마우스 아래 컬럼을 다시 찾을 때 (재렌더링을 거치지 않고도)
+      // 그 값만으로 바로 식별할 수 있다. resizeHandle과 달리 셀 전체가 손잡이이므로, 폭 조절
+      // 손잡이 위에서 누르면 그쪽 mousedown이 먼저 stopPropagation 해서 순서 변경은 걸리지 않는다.
+      const colDragAttrs=ci=>{
+        const cls=reorderCls(ci).trim();
+        const clsAttr=cls?` class="${cls}"`:'';
+        const dragAttr=isDesign?` data-ci="${ci}" onmousedown="event.stopPropagation();startColReorder(event,${c.id},${ci})"`:'';
+        return clsAttr+dragAttr;
+      };
+      // 컬럼 드래그 중일 때만(같은 그리드 인스턴스를 드래그하는 동안) 시각 표시 클래스를 붙인다.
+      // drag는 전역 변수라 재렌더링 때마다 여기서 최신 상태를 그대로 읽을 수 있다 - 이 값 자체를
+      // 바꾸는 곳은 mousemove의 updateColReorderHover() 뿐이고, 렌더링은 그 결과만 읽어 표시한다.
+      const reorderCls=ci=>{
+        if(!isDesign||!drag||drag.mode!=='colreorder'||drag.c!==c)return '';
+        let cls=[];
+        if(drag.ci===ci)cls.push('gcol-dragging');
+        if(drag.committed&&drag.hoverCi===ci)cls.push(drag.hoverSide==='after'?'gcol-drop-after':'gcol-drop-before');
+        return cls.length?` ${cls.join(' ')}`:'';
+      };
       const extraTrack=extraDefs.map(d=>d.w+'px').join(' ');
+      // One data-column's CSS Grid track: a dragged-to width always wins as a fixed px track;
+      // otherwise scroll/auto modes fix every column at colBaseW(ci), while default mode divides
+      // remaining space evenly (minmax(0,1fr)) exactly as before this feature existed.
+      const colTrack=ci=>colWidths[ci]?`${colWidths[ci]}px`:(xs?`${colBaseW(ci)}px`:'minmax(0,1fr)');
+      const dataTracks=()=>cols.map((_,ci)=>colTrack(ci)).join(' ');
       // Non-scroll mode: an explicit grid-template-columns (same string on header and every row)
       // guarantees identical column widths everywhere - unlike independent flex rows, which could
       // drift apart by a pixel or two between the header and body rows. minmax(0,1fr) means a true
-      // even split with no floor: once "좌우 스크롤 사용" is off, columns always divide evenly and
-      // the grid never scrolls, even if that squeezes a column very narrow. Row Order/CheckBox
-      // columns get a fixed px track prepended so they stay narrow no matter how many data columns
-      // exist; since they're also placed first in the DOM, grid auto-placement drops them straight
-      // into those leading tracks with no per-cell column index needed.
-      const gridColsStyle=xs?'':` style="grid-template-columns:${extraTrack?extraTrack+' ':''}repeat(${cols.length},minmax(0,1fr))"`;
+      // even split with no floor: in 기본 mode, columns always divide evenly and the grid never
+      // scrolls, even if that squeezes a column very narrow (unless individually resized - see
+      // colTrack above). Row Order/CheckBox columns get a fixed px track prepended so they stay
+      // narrow no matter how many data columns exist; since they're also placed first in the DOM,
+      // grid auto-placement drops them straight into those leading tracks with no per-cell column
+      // index needed.
+      const gridColsStyle=xs?'':` style="grid-template-columns:${extraTrack?extraTrack+' ':''}${dataTracks()}"`;
       // Merged header groups: c.colGroups[ci] holds an optional group label per column, set
       // from the property panel. Consecutive columns sharing the same non-empty label merge
       // into one centered cell spanning them on header row 1 (like 기준정보/재고정보 in the
@@ -2579,17 +2679,6 @@ function innerRaw(c,mode){
       const colGroups=(c.colGroups||[]).slice(0,cols.length);
       while(colGroups.length<cols.length)colGroups.push('');
       const hasGroups=colGroups.some(g=>g&&g.trim());
-      // 헤더 텍스트 정렬 / 필수 / 읽기전용 - 컬럼별로 하나씩, colGroups와 같은 방식으로 길이를 맞춘다.
-      const colAligns=(c.colAligns||[]).slice(0,cols.length);
-      while(colAligns.length<cols.length)colAligns.push('left');
-      const colRequired=(c.colRequired||[]).slice(0,cols.length);
-      while(colRequired.length<cols.length)colRequired.push(false);
-      const colReadonly=(c.colReadonly||[]).slice(0,cols.length);
-      while(colReadonly.length<cols.length)colReadonly.push(false);
-      // 읽기전용·필수가 둘 다 켜진 컬럼은 읽기전용(회색)을 우선한다 - 데이터 행(바디 셀)에만
-      // 적용한다. 헤더는 색이 바뀌지 않고, 필수일 때 빨간 * 표시만 붙는다.
-      const colColorCls=ci=>colReadonly[ci]?'col-readonly':(colRequired[ci]?'col-required':'');
-      const colReqMark=ci=>colRequired[ci]?'<span class="col-req-mark">*</span>':'';
       const ALIGN_JUSTIFY={left:'flex-start',center:'center',right:'flex-end'};
       let h;
       if(hasGroups){
@@ -2599,7 +2688,7 @@ function innerRaw(c,mode){
         // Row Order/CheckBox columns (if on) occupy the leading `off` tracks, so every data
         // column's explicit grid-column index is shifted right by `off`.
         const off=extraDefs.length;
-        const colTrackStyle=(extraTrack?extraTrack+' ':'')+(xs?`repeat(${cols.length},${colW}px)`:`repeat(${cols.length},minmax(0,1fr))`);
+        const colTrackStyle=(extraTrack?extraTrack+' ':'')+dataTracks();
         const headParts=[];
         extraDefs.forEach((d,ei)=>{
           headParts.push(`<span style="grid-column:${ei+1};grid-row:1/span 2;">${extraInnerHTML(d)}</span>`);
@@ -2614,9 +2703,9 @@ function innerRaw(c,mode){
               while(ci+span<cols.length&&(colGroups[ci+span]||'').trim()===g)span++;
               headParts.push(`<span style="grid-column:${ci+1+off}/span ${span};grid-row:1;text-align:center;border-bottom:1px solid var(--ax-border);">${esc(g)}</span>`);
             }
-            headParts.push(`<span style="grid-column:${ci+1+off};grid-row:2;text-align:${align};">${mark}${esc(cols[ci].trim())}</span>`);
+            headParts.push(`<span${colDragAttrs(ci)} style="grid-column:${ci+1+off};grid-row:2;text-align:${align};position:relative;">${mark}${esc(cols[ci].trim())}${resizeHandle(ci)}</span>`);
           }else{
-            headParts.push(`<span style="grid-column:${ci+1+off};grid-row:1/span 2;display:flex;align-items:center;justify-content:${ALIGN_JUSTIFY[align]||'flex-start'};">${mark}${esc(cols[ci].trim())}</span>`);
+            headParts.push(`<span${colDragAttrs(ci)} style="grid-column:${ci+1+off};grid-row:1/span 2;display:flex;align-items:center;justify-content:${ALIGN_JUSTIFY[align]||'flex-start'};position:relative;">${mark}${esc(cols[ci].trim())}${resizeHandle(ci)}</span>`);
           }
         }
         h=`<div class="gh" style="display:grid;grid-template-columns:${colTrackStyle};grid-template-rows:repeat(2,auto);">${headParts.join('')}</div>`;
@@ -2630,8 +2719,9 @@ function innerRaw(c,mode){
         }).join('');
         h='<div class="gh"'+gridColsStyle+'>'+extraHeadHtml+cols.map((x,ci)=>{
           const align=colAligns[ci]||'left';
-          const wStyle=xs?`width:${colW}px;`:'';
-          return `<span style="${wStyle}text-align:${align};">${colReqMark(ci)}${esc(x.trim())}</span>`;
+          const w=colWidths[ci];
+          const wStyle=(xs||w)?`width:${w||colBaseW(ci)}px;`:'';
+          return `<span${colDragAttrs(ci)} style="${wStyle}text-align:${align};position:relative;">${colReqMark(ci)}${esc(x.trim())}${resizeHandle(ci)}</span>`;
         }).join('')+'</div>';
       }
       for(let i=0;i<(c.rows||3);i++){
@@ -2652,7 +2742,7 @@ function innerRaw(c,mode){
           const colorCls=colColorCls(ci);
           const clsAttr=[editCls,colorCls].filter(Boolean).join(' ');
           const cls=clsAttr?` class="${clsAttr}"`:'';
-          return `<span${cellW}${cls}>${content}</span>`;
+          return `<span${cellW(ci)}${cls}>${content}</span>`;
         }).join('');
         h+='<div class="gr'+(exp?' hoverable':'')+'"'+gridColsStyle+'>'+extraCellsHtml+cells+'</div>';
       }
@@ -2930,6 +3020,75 @@ function startResize(e,c,dir){
   e.stopPropagation();selectSingle(c.id);render();
   drag={mode:'resize',dir,c,sx:e.clientX,sy:e.clientY,ow:c.w,oh:c.h,committed:false,pre:snapshot()};
 }
+// Dragging a grid column's own right border (the small handle rendered inside its header cell -
+// see resizeHandle() in innerRaw's 'grid' case) resizes just that one column, independent of the
+// property panel's global "컬럼 폭" slider. The handle's onmousedown calls this with the grid's
+// component id and the column index rather than closing over live objects, since the grid's
+// markup is built as an HTML string and inserted via innerHTML.
+function startColResize(e,compId,ci){
+  const c=comps.find(x=>x.id===compId); if(!c)return;
+  // Measure the column's current on-screen width (its header cell, the handle's parent) BEFORE
+  // selecting/rendering below - render() tears down and rebuilds the whole canvas, which would
+  // detach this element from the document and make getBoundingClientRect() report zeros.
+  const cell=e.target.closest('span');
+  const rect=cell?cell.getBoundingClientRect():null;
+  const ow=rect?rect.width/(zoom||1):Math.max(60,+c.colMinW||120);
+  if(!isSel(c.id)){ selectSingle(c.id); render(); }
+  drag={mode:'colresize',c,ci,sx:e.clientX,sy:e.clientY,ow,committed:false,pre:snapshot()};
+}
+// 그리드 헤더 셀 자체를 드래그해 컬럼 순서를 바꾼다 (Row Order/CheckBox 유틸리티 컬럼은 data-ci가
+// 없어 애초에 손잡이 대상이 아니므로 항상 맨 왼쪽에 고정된다). resizeHandle과 달리 이 드래그는
+// 매 mousemove마다 실제로 컬럼을 옮기지 않고 "어디에 놓일지"만 drag.hoverCi/hoverSide에 기록해
+// innerRaw()가 그 값을 읽어 점선 표시(class)만 그려주다가, mouseup에서 한 번에 실제로 옮긴다.
+function startColReorder(e,compId,ci){
+  const c=comps.find(x=>x.id===compId); if(!c)return;
+  if(!isSel(c.id)){ selectSingle(c.id); render(); }
+  drag={mode:'colreorder',c,ci,sx:e.clientX,sy:e.clientY,committed:false,pre:snapshot(),hoverCi:ci,hoverSide:'before'};
+  startColReorderAutoScroll(c.id);
+}
+// 현재 마우스 x좌표 아래에 있는 컬럼과, 그 컬럼의 왼쪽/오른쪽 중 어느 쪽에 놓일지를 계산해
+// drag에 기록한다. 매번 DOM에서 다시 찾는 이유는, 이 함수를 호출하는 mousemove 핸들러 끝에서
+// drawCanvas()가 매 프레임 캔버스를 통째로 다시 그리기 때문에(다른 drag 모드들도 동일) 이전
+// 프레임에서 잡아둔 엘리먼트 참조가 다음 프레임엔 이미 못 쓰게 되어 있다.
+function updateColReorderHover(clientX){
+  const gh=document.querySelector('.cmp[data-cid="'+drag.c.id+'"] .gh');
+  if(!gh)return;
+  const spans=Array.from(gh.querySelectorAll('[data-ci]'));
+  if(!spans.length)return;
+  for(const el of spans){
+    const r=el.getBoundingClientRect();
+    const ci=parseInt(el.dataset.ci,10);
+    if(clientX<=r.left){ drag.hoverCi=ci; drag.hoverSide='before'; return; }
+    if(clientX<r.right){ drag.hoverCi=ci; drag.hoverSide=clientX<(r.left+r.right)/2?'before':'after'; return; }
+  }
+  // 마지막 컬럼보다 더 오른쪽 - 맨 끝에 놓는다.
+  const last=spans[spans.length-1];
+  drag.hoverCi=parseInt(last.dataset.ci,10); drag.hoverSide='after';
+}
+// 좌우 스크롤이 있는 그리드에서 컬럼을 드래그해 화면 밖(왼쪽/오른쪽 끝)으로 가져가면, 마우스가
+// 가장자리 근처에 머무는 동안 계속 스크롤되어야 원하는 위치까지 옮길 수 있다. mousemove가 멈춰도
+// (가장자리에서 정지) 계속 스크롤되도록 별도 타이머를 둔다 - #props 세로 스크롤과 같은 패턴.
+// gbody를 직접 들고 있지 않고 매 tick마다 다시 찾는 이유도 위 updateColReorderHover와 동일하다.
+let colReorderScrollX=null, colReorderScrollTimer=null, colReorderCompId=null;
+function startColReorderAutoScroll(compId){
+  colReorderCompId=compId;
+  if(colReorderScrollTimer)return;
+  colReorderScrollTimer=setInterval(()=>{
+    if(colReorderScrollX==null||colReorderCompId==null)return;
+    const wrap=document.querySelector('.cmp[data-cid="'+colReorderCompId+'"] .gbody');
+    if(!wrap||wrap.scrollWidth<=wrap.clientWidth)return;
+    const rect=wrap.getBoundingClientRect();
+    const margin=40, maxSpeed=18;
+    let dx=0;
+    if(colReorderScrollX<rect.left+margin) dx=-maxSpeed*(1-Math.max(0,colReorderScrollX-rect.left)/margin);
+    else if(colReorderScrollX>rect.right-margin) dx=maxSpeed*(1-Math.max(0,rect.right-colReorderScrollX)/margin);
+    if(dx) wrap.scrollLeft+=dx;
+  },30);
+}
+function stopColReorderAutoScroll(){
+  if(colReorderScrollTimer){clearInterval(colReorderScrollTimer);colReorderScrollTimer=null;}
+  colReorderScrollX=null; colReorderCompId=null;
+}
 // Dragging a split container's divider bar: adjusts c.pos (0.15-0.85) live as the mouse moves.
 function startSplitDrag(e,c){
   e.stopPropagation(); e.preventDefault();
@@ -3016,7 +3175,16 @@ document.addEventListener('mousemove',e=>{
   else if(drag.mode==='resize'){
     if(drag.dir!=='s')drag.c.w=snap(Math.max(30,drag.ow+dx));
     if(drag.dir!=='e')drag.c.h=snap(Math.max(20,drag.oh+dy));
-    if(drag.c.type==='grid'&&drag.dir!=='s') drag.c._xscrollManual=false;
+    if(drag.c.type==='grid'&&drag.dir!=='s') drag.c._sizeModeManual=false;
+  }
+  else if(drag.mode==='colresize'){
+    const w=Math.round(Math.max(40,drag.ow+dx));
+    if(!Array.isArray(drag.c.colWidths))drag.c.colWidths=[];
+    drag.c.colWidths[drag.ci]=w;
+  }
+  else if(drag.mode==='colreorder'){
+    colReorderScrollX=e.clientX;
+    updateColReorderHover(e.clientX);
   }
   else if(drag.mode==='split'){
     const dim = drag.c.dir==='v' ? drag.c.h : drag.c.w;
@@ -3024,6 +3192,8 @@ document.addEventListener('mousemove',e=>{
     let pos = drag.opos + delta/dim;
     drag.c.pos = Math.min(0.85,Math.max(0.15,pos));
   }
+  // drawCanvas() itself now preserves every grid's horizontal scroll across the rebuild (see the
+  // comment there), so this can just be a plain call regardless of drag mode.
   drawCanvas();
   if(pendingGuides)drawGuides(pendingGuides);
   syncPropFields(drag.c);
@@ -3041,6 +3211,19 @@ document.addEventListener('mouseup',()=>{
       // divider was clicked but never actually dragged: select the split container itself
       selectSingle(drag.c.id);
     }
+    if(drag.mode==='colreorder'){
+      stopColReorderAutoScroll();
+      // Not moved at all (plain click) -> nothing to reorder, startColReorder() already selected
+      // the grid on mousedown. Otherwise commit the drop position recorded by the last
+      // updateColReorderHover() call: "놓일 컬럼 + before/after" converts to a single final index
+      // exactly the way gcDrop's drag-and-drop in the property panel already does.
+      if(drag.committed&&drag.hoverCi!=null){
+        const i=drag.hoverSide==='after'?drag.hoverCi+1:drag.hoverCi;
+        const insertAt=drag.ci<i?i-1:i;
+        moveGridColumn(drag.c,drag.ci,insertAt);
+      }
+    }
+    // render() -> drawCanvas() also preserves scroll here, same as above.
     drag=null;clearGuides();canvas.classList.remove('reparent-drag');render();
   }
 });
@@ -3464,10 +3647,14 @@ function renderProps(){
     if(!fatMode){
       html+=`<div class="prop"><label>그리드 제목</label><input value="${(c.gtitle||'').replace(/"/g,'&quot;')}" oninput="upd('gtitle',this.value)"></div>`;
     }
-    html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.xscroll?'checked':''} onchange="upd('xscroll',this.checked)"> 좌우 스크롤 사용${qh('컬럼마다 지정한 폭을 유지하고, 전체 폭이 그리드보다 넓어지면 <b>가로 스크롤바</b>가 나타납니다. 컬럼이 많아 글자가 짓눌리는 화면에 사용하세요.<br><br>끄면 기존처럼 컬럼이 그리드 폭에 맞춰 균등 분할되며, 컬럼이 너무 많아 폭이 부족할 때만 자동으로 가로 스크롤이 나타납니다.')}</label></div>`;
-    if(c.xscroll){
+    html+=`<div class="grp"><div class="grp-h">컬럼 폭 방식${qh('<b>자동</b>: 각 컬럼 폭이 글자가 잘리지 않는 가장 작은 크기로 자동 조절되고, 컬럼명을 바꾸면 실시간으로 다시 맞춰집니다. 전체 폭이 넘칠 때만 가로 스크롤이 나타납니다.<br><br><b>수동</b>: 모든 컬럼이 아래 슬라이더로 지정한 폭으로 고정되고, 전체 폭이 그리드보다 넓어지면 가로 스크롤바가 나타납니다.<br><br><b>고정</b>: 컬럼 폭이 그리드 너비에 맞춰 균등하게 나눠집니다(스크롤 없음).<br><br>세 방식 모두 그리드에서 컬럼 경계선을 직접 드래그해 폭을 자유롭게 바꿀 수 있습니다.')}</div>
+      <div class="prop"><label class="cbx"><input type="radio" name="colSizeMode${c.id}" ${gridSizeMode(c)==='auto'?'checked':''} onchange="updGridSizeMode('auto')"> 자동</label></div>
+      <div class="prop"><label class="cbx"><input type="radio" name="colSizeMode${c.id}" ${gridSizeMode(c)==='scroll'?'checked':''} onchange="updGridSizeMode('scroll')"> 수동</label></div>
+      <div class="prop"><label class="cbx"><input type="radio" name="colSizeMode${c.id}" ${gridSizeMode(c)==='default'?'checked':''} onchange="updGridSizeMode('default')"> 고정</label></div>
+    </div>`;
+    if(gridSizeMode(c)==='scroll'){
       html+=`<div class="prop"><label>컬럼 폭 (${Math.max(60,+c.colMinW||120)}px)</label>
-        <input type="range" min="60" max="300" step="10" value="${Math.max(60,+c.colMinW||120)}" oninput="upd('colMinW',+this.value)"></div>`;
+        <input type="range" min="60" max="300" step="10" value="${Math.max(60,+c.colMinW||120)}" oninput="updGridColMinW(+this.value)"></div>`;
     }
     if(!fatMode){
       html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.pagination?'checked':''} onchange="upd('pagination',this.checked)"> Pagination 사용${qh('그리드 하단에 페이지 이동 UI(페이지 번호·Show rows·Go to·전체 건수)를 표시합니다.<br><br>목업이므로 실제 페이지 이동은 되지 않고 항상 1페이지만 표시되며, 건수는 <b>표시 행 수</b> 값을 그대로 보여줍니다.<br><br>씬모드 전용 기능으로, 팻모드에서는 이 옵션과 하단 UI가 표시되지 않습니다.')}</label></div>`;
@@ -3777,8 +3964,7 @@ function upd(k,v){
     if(stacked){ c.h = v ? c.h+STACKED_EXTRA : Math.max(26,c.h-STACKED_EXTRA); }
   }
   c[k]=v;
-  if(k==='xscroll'&&c.type==='grid'){ c._xscrollManual=true; }
-  if(k==='w'&&c.type==='grid'){ c._xscrollManual=false; } // resizing is a fresh chance to re-suggest
+  if(k==='w'&&c.type==='grid'){ c._sizeModeManual=false; } // resizing is a fresh chance to re-suggest
   if(k==='collapsed'&&c.type==='searchbar'){
     // collapsed shows only a one-line notice; expanding restores the fitted height
     c.h = v ? 44 : searchbarHeight(c);
@@ -3874,6 +4060,9 @@ function togglePosSize(){
 function gridColsArr(c){
   return (c.text||'').split(',').map(s=>s.trim());
 }
+// 그리드 컬럼 폭 방식(고정/수동/자동)의 실제 적용값. colSizeMode가 아직 없는 그리드는(레거시
+// 목업 포함) 예전 xscroll 값이 있으면 그걸 따르고(수동), 그마저 없으면 새 기본값인 자동으로 본다.
+function gridSizeMode(c){ return c.colSizeMode || (c.xscroll ? 'scroll' : 'auto'); }
 // Keeps colTypes/colOptions the SAME length as the column list at all times. This matters because
 // a sparse array (shorter than cols) makes Array.splice's insert index silently clamp to the array's
 // current length when reordering, which can drop a type/option onto the wrong (unrelated) column.
@@ -3906,6 +4095,11 @@ function normGridColArrays(c){
   if(!Array.isArray(c.colDateSpec))c.colDateSpec=[];
   while(c.colDateSpec.length<n)c.colDateSpec.push('');
   if(c.colDateSpec.length>n)c.colDateSpec.length=n;
+  // 컬럼별 수동 폭(드래그로 조절한 값) - 다른 컬럼별 배열과 같은 길이로 맞춰야 컬럼 추가/삭제/
+  // 순서변경 시 엉뚱한 컬럼의 폭이 섞이지 않는다. 기본값은 "덮어쓰기 없음"을 뜻하는 undefined.
+  if(!Array.isArray(c.colWidths))c.colWidths=[];
+  while(c.colWidths.length<n)c.colWidths.push(undefined);
+  if(c.colWidths.length>n)c.colWidths.length=n;
 }
 function addGridCol(){
   const c=comps.find(x=>x.id===sel);if(!c)return;
@@ -3923,7 +4117,7 @@ function addGridCol(){
   c.colDateVals.push('');
   c.colDateBlank.push(false);
   c.colDateSpec.push('');
-  c._xscrollManual=false;
+  c.colWidths.push(undefined);
   render();
 }
 function updGridColLabel(i,v){
@@ -3931,6 +4125,30 @@ function updGridColLabel(i,v){
   const cols=gridColsArr(c);if(i<0||i>=cols.length)return;
   cols[i]=v;
   c.text=cols.join(',');
+  // 자동 폭 모드에서는 컬럼명이 바뀌면 드래그로 조절해둔 그 컬럼의 폭은 더 이상 의미가 없으므로
+  // 지워서, 새 이름 길이에 맞춰 실시간으로 다시 자동 계산되도록 한다.
+  const sizeMode=gridSizeMode(c);
+  if(sizeMode==='auto'&&Array.isArray(c.colWidths)) c.colWidths[i]=undefined;
+  drawCanvas();
+}
+// 그리드 컬럼 폭 방식(고정/수동/자동) 라디오 버튼 핸들러. 사람이 명시적으로 고른 값이므로
+// _sizeModeManual을 켜서, 컬럼이 안 맞아 자동으로 스크롤 모드를 제안하는 로직이 이 선택을
+// 다시 덮어쓰지 않게 한다. 드래그로 개별 조절해둔 컬럼 폭(colWidths)은 방식이 바뀌면 의미가
+// 없어지므로 - 예를 들어 자동으로 바꿨는데 예전에 수동으로 넓혀둔 컬럼만 그 폭 그대로 남으면
+// "자동으로 맞췄다"는 말과 안 맞다 - 전부 지워서 모든 컬럼이 새 방식 기준으로 다시 계산되게 한다.
+function updGridSizeMode(mode){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  c.colSizeMode=mode;
+  c._sizeModeManual=true;
+  c.colWidths=[];
+  render();
+}
+// 스크롤 모드의 "컬럼 폭" 슬라이더 - 개별 드래그로 조절해둔 컬럼 폭(colWidths)이 있어도
+// 슬라이더를 움직이면 전부 무시하고 모든 컬럼에 새 값을 균일하게 다시 적용한다.
+function updGridColMinW(v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  c.colMinW=v;
+  c.colWidths=[];
   drawCanvas();
 }
 function delGridCol(i){
@@ -3949,6 +4167,7 @@ function delGridCol(i){
   c.colDateVals.splice(i,1);
   c.colDateBlank.splice(i,1);
   c.colDateSpec.splice(i,1);
+  c.colWidths.splice(i,1);
   render();
 }
 function updGridColType(i,v){
@@ -4024,6 +4243,21 @@ function gcDragOver(e){
 function gcDragLeave(e){
   e.currentTarget.classList.remove('drag-over');
 }
+// 컬럼 순서 변경의 실제 배열 이동 로직 - 컬럼 텍스트와 그에 딸린 모든 배열(타입/옵션/그룹/정렬/
+// 필수/읽기전용/개별폭)을 같은 인덱스로 함께 옮긴다. gcDrop(드래그앤드롭)·gcMoveTo(순서번호 직접
+// 입력)·startColReorder(그리드 헤더 자체 드래그) 세 진입점이 모두 이 함수 하나를 공유한다.
+// to는 이동 후 최종 위치(0-based)를 그대로 받는다 - 호출부에서 이미 from<to 시프트를 보정해서 넘긴다.
+function moveGridColumn(c,from,to){
+  normGridColArrays(c);
+  const len=gridColsArr(c).length;
+  to=Math.max(0,Math.min(len-1,to));
+  if(to===from||from<0||from>=len)return false;
+  const cols=gridColsArr(c);
+  const move=arr=>{const [x]=arr.splice(from,1);arr.splice(to,0,x);};
+  move(cols);c.text=cols.join(',');
+  move(c.colTypes);move(c.colOptions);move(c.colGroups);move(c.colAligns);move(c.colRequired);move(c.colReadonly);move(c.colWidths);
+  return true;
+}
 function gcDrop(e,i){
   e.preventDefault();
   e.currentTarget.classList.remove('drag-over');
@@ -4031,18 +4265,8 @@ function gcDrop(e,i){
   const from=gcDragIdx; gcDragIdx=null;
   if(from===null||from===i)return;
   pushHistory();
-  normGridColArrays(c);
-  const cols=gridColsArr(c);
-  const [item]=cols.splice(from,1);
   const insertAt=from<i?i-1:i;
-  cols.splice(insertAt,0,item);
-  c.text=cols.join(',');
-  const [t]=c.colTypes.splice(from,1); c.colTypes.splice(insertAt,0,t);
-  const [o]=c.colOptions.splice(from,1); c.colOptions.splice(insertAt,0,o);
-  const [g]=c.colGroups.splice(from,1); c.colGroups.splice(insertAt,0,g);
-  const [a]=c.colAligns.splice(from,1); c.colAligns.splice(insertAt,0,a);
-  const [rq]=c.colRequired.splice(from,1); c.colRequired.splice(insertAt,0,rq);
-  const [ro]=c.colReadonly.splice(from,1); c.colReadonly.splice(insertAt,0,ro);
+  moveGridColumn(c,from,insertAt);
   render();
 }
 function gcDragEnd(e){
@@ -4061,10 +4285,7 @@ function gcMoveTo(i,valStr){
   const to=Math.max(1,Math.min(len,v))-1;
   if(to===i){render();return;}
   pushHistory();
-  const cols=gridColsArr(c);
-  const move=arr=>{const [x]=arr.splice(i,1);arr.splice(to,0,x);};
-  move(cols);c.text=cols.join(',');
-  move(c.colTypes);move(c.colOptions);move(c.colGroups);move(c.colAligns);move(c.colRequired);move(c.colReadonly);
+  moveGridColumn(c,i,to);
   render();
 }
 
@@ -5908,6 +6129,26 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260909.001', date:'2026년 9월 9일', items:[
+    {t:'그리드 컬럼 폭 방식: 자동 · 수동 · 고정', d:'① <b>자동</b>: 글자 안 잘리는 최소 크기로 실시간 조절.<br>② <b>수동</b>: 슬라이더 값 전체 컬럼 동일 적용.<br>③ <b>고정</b>: 그리드 너비 균등 분할.<br>④ 기본값 자동.'},
+    {t:'컬럼 폭 개별 드래그 조절', d:'① 방식 무관, 헤더 경계선 드래그로 해당 컬럼만 폭 조절.'},
+    {t:'컬럼 드래그앤드롭 순서 변경', d:'① 헤더 컬럼명 드래그로 순서 변경.<br>② Row Order·CheckBox 이동 불가(항상 맨 왼쪽).<br>③ 가로 스크롤 그리드는 화면 끝 이동 시 자동 스크롤.'}
+  ]},
+  {ver:'20260908.006', date:'2026년 9월 8일', items:[
+    {t:'그리드 컬럼 드래그 관련 마무리 수정', d:'컬럼을 드래그해 자동 스크롤로 화면 밖까지 옮긴 뒤 실제로 <b>놓는(drop) 순간</b>에도 스크롤이 맨 왼쪽으로 튕기던 문제를 마저 고쳤습니다(직전 버전은 드래그 도중에만 고쳐져 있었습니다).<br><br>또한 컬럼 폭을 드래그로 직접 조절해둔 뒤 <b>컬럼 폭 방식(자동/수동/고정)</b>을 바꾸면, 그 컬럼만 예전 폭이 남아있던 문제를 고쳤습니다. 이제 방식을 바꾸면 모든 컬럼이 - 직접 조절했던 컬럼도 포함해서 - 새 방식 기준으로 다시 균일하게 맞춰집니다.'}
+  ]},
+  {ver:'20260908.005', date:'2026년 9월 8일', items:[
+    {t:'그리드 컬럼 드래그 중 가로 스크롤이 튕기던 문제 수정', d:'컬럼을 드래그해 좌우 스크롤이 있는 그리드의 화면 밖으로 가져가면 자동으로 스크롤되는데, 그 상태에서 마우스를 다시 반대쪽(놓으려는 위치)으로 옮기면 스크롤이 갑자기 맨 처음 위치로 되돌아가던 문제를 고쳤습니다. 이제 자동 스크롤된 위치가 그대로 유지된 채로 원하는 곳에 놓을 수 있습니다.'}
+  ]},
+  {ver:'20260908.004', date:'2026년 9월 8일', items:[
+    {t:'그리드 컬럼, 헤더를 드래그해서 순서 변경', d:'그리드 헤더의 컬럼 이름 부분을 마우스로 눌러 좌우로 끌면, 속성 패널을 거치지 않고 그 자리에서 바로 컬럼 순서를 바꿀 수 있습니다. 놓일 위치는 초록색 세로선으로 표시됩니다.<br><br>맨 왼쪽의 <b>Row Order·CheckBox</b> 유틸리티 컬럼은 항상 고정이라 드래그 대상이 아니며, 다른 컬럼도 그 앞으로는 옮길 수 없습니다.<br><br><b>수동</b>·<b>자동</b> 모드처럼 가로 스크롤이 있는 그리드에서는, 컬럼을 화면 왼쪽/오른쪽 끝 가장자리로 가져가 잠시 멈추면 그리드가 자동으로 스크롤되어 화면 밖의 위치에도 놓을 수 있습니다.'}
+  ]},
+  {ver:'20260908.003', date:'2026년 9월 8일', items:[
+    {t:'그리드 컬럼 폭 방식: 기본 · 스크롤 · 자동', d:'그리드 속성의 <b>「좌우 스크롤 사용」</b> 체크박스가 라디오 버튼 3가지로 바뀌었습니다.<br><br>① <b>기본</b>(기존 체크 해제와 동일) - 그리드 너비에 맞춰 컬럼 폭이 균등 분할됩니다.<br>② <b>스크롤</b>(기존 체크와 동일) - 「컬럼 폭」 슬라이더로 모든 컬럼을 같은 폭으로 고정하고, 넘치면 가로 스크롤이 나타납니다.<br>③ <b>자동</b>(신규) - 각 컬럼 폭이 글자가 잘리지 않는 가장 작은 크기로 자동 조절되고, 컬럼명을 바꾸면 실시간으로 다시 맞춰집니다. 전체 폭이 넘칠 때만 가로 스크롤이 나타나고, 다시 짧아지면 스크롤이 사라집니다. 이 모드에서는 「컬럼 폭」 슬라이더가 숨겨집니다.<br><br>세 방식 모두 그리드 헤더에서 컬럼 경계선을 직접 드래그해 폭을 자유롭게 바꿀 수 있는 것은 공통입니다. 다만 <b>자동</b> 모드에서 드래그로 조절한 컬럼은 이름을 바꾸는 순간 다시 자동 계산되고, <b>스크롤</b> 모드에서 슬라이더를 움직이면 개별 드래그 조절값이 모두 초기화되고 새 값으로 통일됩니다. 기본값은 <b>기본</b>입니다.'}
+  ]},
+  {ver:'20260908.002', date:'2026년 9월 8일', items:[
+    {t:'그리드 컬럼 폭, 헤더에서 직접 드래그로 조절', d:'그리드 헤더의 각 컬럼 <b>우측 경계선에 마우스를 올리면 초록색 조절선</b>이 나타납니다. 이 선을 좌우로 드래그하면 속성 패널을 거치지 않고 그 컬럼만 원하는 폭으로 즉시 바꿀 수 있습니다.<br><br>병합 헤더(상위헤더로 묶인 컬럼)에서도 각 컬럼을 개별적으로 조절할 수 있고, <b>좌우 스크롤 사용</b>이 꺼진 그리드는 조절한 컬럼만 고정폭이 되고 나머지 컬럼이 남은 공간을 나눠 채웁니다. 켜진 그리드는 컬럼 폭 슬라이더가 정한 값을 컬럼별로 각각 덮어씁니다.'}
+  ]},
   {ver:'20260908.001', date:'2026년 9월 8일', items:[
     {t:'다른 브라우저(창·탭)로도 컴포넌트 복사/붙여넣기 가능', d:'① <b>Ctrl+C</b>로 복사하면 브라우저 내부 복사본과 함께 <b>OS 클립보드</b>에도 함께 기록됩니다.<br>② 그 덕분에 같은 브라우저의 다른 탭·창은 물론, <b>다른 브라우저</b>에서 열어둔 목업빌더에도 <b>Ctrl+V</b>로 그대로 붙여넣을 수 있습니다.<br>③ 복사에 성공하면 화면 하단에 <b>"복사됨"</b> 알림이 뜨고, 붙여넣기는 지금까지처럼 알림 없이 조용히 처리됩니다.<br>④ 클립보드 접근이 막혀 있거나 목업빌더가 아닌 다른 텍스트가 복사되어 있는 경우엔, 자동으로 기존 방식(브라우저 내부 복사본)으로 대체되어 항상 붙여넣기가 됩니다.'}
   ]},
@@ -6464,7 +6705,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260908.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260909.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 let _remoteVer = REMOTE_VER;
 
 // 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
