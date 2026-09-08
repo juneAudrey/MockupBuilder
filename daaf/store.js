@@ -23,6 +23,8 @@
       else {
         const ex = nodes.get(key);
         // 보강
+        if (!ex.id && n.id) ex.id = n.id; // '/wf/{uid}/execute' 등 id 없이 먼저 생성된 노드를
+                                           // 이후 실제 row 로 보강할 때 id 도 함께 채워준다.
         if (n.name && (!ex.name || ex.name === ex.id || n.menuNm)) ex.name = n.name;
         if (ex.uid == null && n.uid != null) ex.uid = n.uid;
         if (!ex.raw && n.raw) ex.raw = n.raw;
