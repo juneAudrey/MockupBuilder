@@ -6653,6 +6653,11 @@ function setAppSkin(fat){
   // 모바일/태블릿에서 스킨을 바꾸면 도크·레일의 컴포넌트 목록(조회조건↔팝업)도 다시 그려야
   // 데스크톱 도구상자와 일치한다. (없으면 조용히 무시)
   try{ if(window.mbRefreshForSkin) window.mbRefreshForSkin(); }catch(e){}
+  // 모드가 바뀔 때마다(로고로 직접 전환하든, 파일 불러오기로 그 파일의 저장된 모드에 맞춰
+  // 자동 전환되든) 접속 로그를 한 번 더 남겨서, 언제 어떤 모드로 사용했는지 로그만으로 알 수
+  // 있게 한다. 페이지를 막 열었을 때의 최초 모드 복원(applySavedSkin)은 이 함수를 거치지
+  // 않으므로 최초 접속 로그와 중복되지 않는다.
+  try{ if(window.mbLogAccess) window.mbLogAccess(); }catch(e){}
 }
 // 로고를 누르면 alert 대신 이미지(스와치) 2개짜리 팝업을 띄워 Thin/Fat 중 고르게 한다.
 function openSkinPicker(){
@@ -8265,6 +8270,7 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
    * - 외부(공인) IP·지역(도시,국가코드)은 ipapi.co(실패 시 ipify로 IP만 폴백)로, 앱 버전은 좌측 하단
    *   verText의 "ver.YYYYMMDD.NNN" 문자열을 그대로 사용.
    * - Supabase REST(mockup_access_log 테이블)로 INSERT 한다. RLS로 INSERT만 허용된 publishable 키 사용.
+   * - mode 컬럼(테이블 맨 마지막 컬럼)에는 접속 시점의 씬모드/팻모드를 'Thin'/'Fat' 문자열로 넣는다.
    * - 전송에 실패해도(사내망 차단 등) 페이지 동작에는 영향을 주지 않으며,
    *   실패 시 브라우저에는 파일 시스템이 없으므로 localStorage에 최근 50건까지 백업 기록한다.
    */
@@ -8331,6 +8337,17 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
     return 'unknown';
   }
 
+  // 씬모드/팻모드 - 팻모드는 <body>에 'skin-classic' 클래스가 붙는 것으로 판단한다(그리드 등
+  // 여러 컴포넌트가 렌더링 시점에 document.body.classList.contains('skin-classic')로 이미 같은
+  // 방식으로 구분하고 있어 그와 일치시킨다).
+  function readSkinMode(){
+    try{
+      return document.body.classList.contains('skin-classic') ? 'Fat' : 'Thin';
+    }catch(_){
+      return 'unknown';
+    }
+  }
+
   function fetchWithTimeout(url, opts, ms){
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), ms);
@@ -8379,7 +8396,8 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
       hostname: location.hostname || 'local-file',
       os_user: getDeviceEnvInfo(),
       app_ver: readAppVersion(),
-      location: geo.location // "도시, 국가코드" 형태. 조회 실패 시 null
+      location: geo.location, // "도시, 국가코드" 형태. 조회 실패 시 null
+      mode: readSkinMode() // 'Thin' 또는 'Fat' - 접속 시점의 씬모드/팻모드
     };
 
     // 키가 아직 채워지지 않았으면 전송하지 않음(로컬에만 남김)
@@ -8410,6 +8428,11 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
 
   function init(){ logMockupAccess(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+  // 모드(씬/팻)가 바뀔 때도 같은 로그를 한 번 더 남긴다 - setAppSkin()이 로고 클릭이든 파일
+  // 불러오기든 모드가 바뀌는 유일한 통로라서, 거기서 이 함수를 호출하면 "언제 어떤 모드였는지"의
+  // 타임라인이 접속 로그만으로 만들어진다. 최초 접속 로그(위 init)와 완전히 같은 형태의 행이라
+  // mode 컬럼만 보고 그 시점의 모드를 그대로 읽을 수 있다.
+  window.mbLogAccess = logMockupAccess;
 })();
 </script>
 
