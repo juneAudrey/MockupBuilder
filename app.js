@@ -7192,11 +7192,17 @@ async function mbCloudRenderSharedPreviewFrame(){
   // 자체는 pointer-events:none으로 완전히 죽여서 콤보박스가 열리거나 입력칸에 커서가 생기거나
   // 텍스트가 선택되는 일이 아예 없게 한다. 대신 그 위(정확히는 부모인 scale-wrap)에서
   // mousedown을 받아 드래그한 만큼 바깥 스크롤 영역을 이동시켜, 사진 뷰어처럼 손으로 잡고
-  // 끄는 느낌을 낸다. 확대해서 실제 크기(scale-wrap)가 보이는 영역보다 커질 때만 자연히
-  // 스크롤바가 생기고(outer는 overflow:auto), 딱 맞거나 더 작으면 스크롤도 드래그도 의미가
-  // 없으니 그냥 가만히 있는다.
-  outer.innerHTML=`<div class="cl-shared-preview-scale-wrap" onmousedown="mbCloudPreviewDragStart(event)">
-      <iframe id="cloudSharedPreviewFrame" data-item-id="${it.id}" data-cw="${cw}" data-ch="${ch}" sandbox="allow-scripts" scrolling="no" style="width:${cw}px;height:${ch}px;pointer-events:none;"></iframe>
+  // 이 작은 미리보기는 "실제로 조작해보는 화면"이 아니라 이미지 보듯 훑어보는 용도라, iframe
+  // 자체는 pointer-events:none으로 완전히 죽여서 콤보박스가 열리거나 입력칸에 커서가 생기거나
+  // 텍스트가 선택되는 일이 아예 없게 한다. 대신 그 위(정확히는 부모인 scale-wrap)에서
+  // mousedown을 받아 드래그한 만큼 스크롤 영역을 이동시켜, 사진 뷰어처럼 손으로 잡고 끄는
+  // 느낌을 낸다. 확대/축소 버튼(cl-shared-zoom-ctl)은 스크롤되는 영역(cl-shared-preview-scroll)
+  // 바깥의 outer에 직접 두어서, 아무리 확대해서 드래그로 이리저리 움직여도 화면에 늘 같은
+  // 자리에 고정돼 보인다(스크롤 안쪽에 있으면 콘텐츠와 같이 밀려버린다).
+  outer.innerHTML=`<div class="cl-shared-preview-scroll" id="cloudSharedPreviewScroll">
+      <div class="cl-shared-preview-scale-wrap" onmousedown="mbCloudPreviewDragStart(event)">
+        <iframe id="cloudSharedPreviewFrame" data-item-id="${it.id}" data-cw="${cw}" data-ch="${ch}" sandbox="allow-scripts" scrolling="no" style="width:${cw}px;height:${ch}px;pointer-events:none;"></iframe>
+      </div>
     </div>
     <div class="cl-shared-zoom-ctl">
       <button type="button" onclick="mbCloudSharedZoomStep(-1)" title="축소">－</button>
@@ -7207,20 +7213,20 @@ async function mbCloudRenderSharedPreviewFrame(){
   frame.srcdoc=html;
   mbCloudFitSharedPreview();
 }
-// 미리보기를 사진처럼 손으로 잡고 끄는 드래그 - 실제로는 바깥(outer, overflow:auto)의
+// 미리보기를 사진처럼 손으로 잡고 끄는 드래그 - 실제로는 스크롤 영역(cl-shared-preview-scroll)의
 // scrollLeft/Top을 마우스가 움직인 만큼 반대로 옮기는 것뿐이라, 확대해서 스크롤할 내용이
 // 있을 때만 의미가 있고 화면에 다 들어와 있으면(스크롤 자체가 없으면) 그냥 아무 일도 안 난다.
 function mbCloudPreviewDragStart(e){
-  const outer=document.getElementById('cloudSharedPreviewFrameOuter');
-  if(!outer) return;
+  const scroller=document.getElementById('cloudSharedPreviewScroll');
+  if(!scroller) return;
   e.preventDefault(); // 드래그 중 텍스트/이미지 선택 커서가 뜨는 것 방지
   const startX=e.clientX, startY=e.clientY;
-  const startLeft=outer.scrollLeft, startTop=outer.scrollTop;
+  const startLeft=scroller.scrollLeft, startTop=scroller.scrollTop;
   const wrap=e.currentTarget;
   wrap.classList.add('dragging');
   function onMove(ev){
-    outer.scrollLeft=startLeft-(ev.clientX-startX);
-    outer.scrollTop=startTop-(ev.clientY-startY);
+    scroller.scrollLeft=startLeft-(ev.clientX-startX);
+    scroller.scrollTop=startTop-(ev.clientY-startY);
   }
   function onUp(){
     wrap.classList.remove('dragging');
@@ -7236,19 +7242,22 @@ function mbCloudPreviewDragStart(e){
 // 스크롤은 생기지 않는다), "맞춤" 상태일 때만 남은 공간에 꽉 차도록 다시 계산한다.
 function mbCloudFitSharedPreview(){
   const outer=document.getElementById('cloudSharedPreviewFrameOuter');
-  const frame=outer&&outer.querySelector('iframe');
-  const wrap=outer&&outer.querySelector('.cl-shared-preview-scale-wrap');
-  if(!outer||!frame||!wrap) return;
+  const scroller=document.getElementById('cloudSharedPreviewScroll');
+  const frame=scroller&&scroller.querySelector('iframe');
+  const wrap=scroller&&scroller.querySelector('.cl-shared-preview-scale-wrap');
+  if(!outer||!scroller||!frame||!wrap) return;
   const cw=parseFloat(frame.dataset.cw), ch=parseFloat(frame.dataset.ch);
   if(!cw||!ch) return;
-  const availW=outer.clientWidth-16, availH=outer.clientHeight-16;
+  // 사용 가능한 공간은 확대/축소 버튼이 얹혀 있는 outer가 아니라, 실제로 스크롤되는 안쪽
+  // scroller의 크기를 기준으로 잰다(같은 크기지만, 의미상 이쪽이 맞다).
+  const availW=scroller.clientWidth-16, availH=scroller.clientHeight-16;
   if(availW<=0||availH<=0) return;
   mbSharedPreviewFitScale=Math.max(0.02, Math.min(availW/cw, availH/ch));
   const scale=(mbSharedPreviewZoom==null)?mbSharedPreviewFitScale:mbSharedPreviewZoom;
   frame.style.transform=`scale(${scale})`;
   // scale-wrap의 실제 박스 크기(width/height)를 확대된 픽셀 크기로 맞춰준다 - transform은 보이는
   // 크기만 바꿀 뿐 레이아웃 상 차지하는 공간은 그대로라서, 이렇게 실제 크기를 같이 키워줘야
-  // outer(overflow:auto)가 "지금 이 안에 다 안 들어가네" 하고 스크롤바를 내어준다. 맞춤 배율
+  // scroller(overflow:auto)가 "지금 이 안에 다 안 들어가네" 하고 스크롤바를 내어준다. 맞춤 배율
   // 이하로는(availW/availH 안에 딱 맞거나 더 작게) 절대 커지지 않으므로 이 상태에선 스크롤이
   // 아예 생기지 않는다.
   wrap.style.width=(cw*scale)+'px';
