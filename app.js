@@ -5901,14 +5901,14 @@ function mbFmtDate(s){ if(!s) return '-'; const d=new Date(s); const p=n=>String
 // ---- 상태 ----
 const mbCloud={ mode:'save', tab:'mine', folderId:null, folders:[], items:[], selectedId:null,
   searchQuery:'', includeSub:false, expanded:new Set(), tags:[], isPublic:true, filename:'', renamingFolderId:null, renamingItemId:null, fileCounts:{}, favCount:0, mineSort:'name',
-  treeWidth:(()=>{ try{ const v=parseInt(localStorage.getItem('mb_cloud_tree_w'),10); return (v>=120&&v<=400)?v:200; }catch(e){ return 200; } })(),
+  treeWidth:(()=>{ try{ const v=parseInt(localStorage.getItem('mb_cloud_tree_w'),10); return (v>=120&&v<=400)?v:400; }catch(e){ return 400; } })(),
   sharedQuery:'', sharedSort:'recent', sharedTag:'전체', sharedItems:[], sharedTags:['전체'], sharedSelectedId:null,
   sharedLineage:'originals', // '전체'가 아니라 '원본만'을 기본값으로 - 공유가 쌓일수록 목록이 리비전으로 뒤덮이지 않게 한다
   sharedOriginFilter:null, sharedOriginFilterTitle:'', // 특정 원본의 리비전만 보는 중이면 그 원본 id/제목
   sharedCounts:null, // {originals, revisions, all} - 지금 검색어/태그 조건 기준으로 각각 몇 개인지
   sharedOffset:0, sharedHasMore:true, sharedLoadingMore:false,
   sharedView:(()=>{ try{ return localStorage.getItem('mb_cloud_shared_view')||'grid'; }catch(e){ return 'grid'; } })(),
-  sharedListWidth:(()=>{ try{ const v=parseInt(localStorage.getItem('mb_cloud_shared_list_w'),10); return (v>=200&&v<=560)?v:300; }catch(e){ return 300; } })(),
+  sharedListWidth:(()=>{ try{ const v=parseInt(localStorage.getItem('mb_cloud_shared_list_w'),10); return (v>=200&&v<=560)?v:400; }catch(e){ return 400; } })(),
   tagbarExpanded:false,
   // 지금 편집 중인 캔버스가 「공유파일」에서 열어온 파생본이면, 그 최상위 원본 mockups.id를
   // 여기 담아둔다(눈에는 안 보이는 내부 추적용 값). null이면 파생 관계 없음(=원본이거나
