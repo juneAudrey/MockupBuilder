@@ -158,8 +158,8 @@
   body.skin-classic .toolbox .tool[data-type="searchbar"]{display:none;}
   /* 팝업은 팻모드 전용 컴포넌트라 씬모드 도구상자에서는 숨긴다. */
   body:not(.skin-classic) .toolbox .tool[data-type="popup"]{display:none;}
-  /* 팻모드에서는 상단바의 템플릿 버튼도 숨긴다. */
-  body.skin-classic #templateBtn{display:none;}
+  /* 상단바의 템플릿 버튼은 씬/팻 모드 모두에서 숨긴다. */
+  #templateBtn{display:none;}
   .toolbox.click-place-on .tool.armed{cursor:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'><g transform='translate(3,2)'><path d='M2 1 L2 15 L5.6 11.7 L8.2 17.6 L11 16.3 L8.4 10.6 L13 10.3 Z' fill='%23ffe680' stroke='%23111111' stroke-width='1.8' stroke-linejoin='round'/></g></svg>") 5 3, pointer;}
   #canvas.click-place-armed{cursor:crosshair;}
 
@@ -6516,8 +6516,6 @@ const TOUR_STEPS=[
     desc:'도구상자의 컴포넌트를 <b>끌어다 놓는 작업 공간</b>입니다. 클릭하면 선택되고, 드래그로 위치·크기를 조절할 수 있습니다. 패널·탭·스플릿 위에 놓으면 그 안의 <b>자식 컴포넌트</b>로 들어가 함께 움직입니다.'},
   {sel:'#props', title:'속성 패널',
     desc:'컴포넌트를 선택하면 여기서 <b>텍스트·크기·옵션 등 세부 속성</b>을 편집합니다. 그리드를 선택하면 컬럼 목록도 여기서 관리해요.'},
-  {sel:'#templateBtn', title:'템플릿',
-    desc:'자주 쓰는 화면 구조를 <b>미리 만들어둔 템플릿</b>으로 빠르게 시작할 수 있습니다. 불러온 뒤 자유롭게 추가·수정·삭제하세요.<br><br>⚠ 현재 캔버스 내용을 지우고 불러오니, 필요하면 먼저 저장해두세요.'},
   {sel:'#convertBtn', title:'이미지 변환',
     desc:'기존 화면을 <b>캡처한 이미지</b>를 올리면 컴포넌트로 자동 변환해줍니다. API 키 없이 쓸 수 있는 <b>JSON 붙여넣기(무료)</b> 방식과, AI가 직접 분석하는 방식을 지원합니다. 지금 켜져 있는 모드(Thin/Fat)에 맞춰 변환 방식도 자동으로 달라집니다.'},
   {sel:'#clearBtn', title:'전체 지우기',
