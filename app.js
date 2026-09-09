@@ -5847,7 +5847,7 @@ function mbUpdateAccountUI(){
   const area=document.getElementById('acctArea'); if(!area) return;
   const s=mbGetSession();
   if(!s){
-    area.innerHTML=`<button class="ghost" onclick="openLogin()">로그인</button><button class="signup-btn" onclick="openSignup()">회원가입</button>`;
+    area.innerHTML=`<button class="ghost" onclick="openLogin()">로그인</button>`;
     return;
   }
   const uname=mbCurrentUsername()||'사용자';

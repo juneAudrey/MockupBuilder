@@ -104,6 +104,10 @@
   .acct-primary-btn:hover{background:var(--ax-green-dark);}
   .acct-primary-btn:disabled{opacity:.6;cursor:default;}
   .acct-link{color:var(--ax-green-dark);font-weight:600;cursor:pointer;}
+  .acct-secondary-btn{width:100%;padding:13px;background:#fff;color:var(--ax-green-dark);border:1.5px solid var(--ax-green);border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;}
+  .acct-secondary-btn:hover{background:#eef8f2;}
+  .acct-divider{display:flex;align-items:center;gap:10px;margin:16px 0;color:#9ca3af;font-size:11.5px;}
+  .acct-divider::before,.acct-divider::after{content:'';flex:1;height:1px;background:#e5e9ed;}
   .acct-err{background:#fdecec;border:1px solid #f5c2c4;color:#a83232;font-size:12.5px;padding:9px 12px;border-radius:6px;margin-bottom:16px;}
   /* 피드백 모달 */
   .fb-toolbar{display:flex;align-items:center;gap:2px;padding:6px 8px;border:1px solid var(--ax-border);border-bottom:none;border-radius:8px 8px 0 0;background:#f9fafb;}
