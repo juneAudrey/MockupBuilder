@@ -5905,6 +5905,7 @@ const mbCloud={ mode:'save', tab:'mine', folderId:null, folders:[], items:[], se
   sharedQuery:'', sharedSort:'recent', sharedTag:'전체', sharedItems:[], sharedTags:['전체'], sharedSelectedId:null,
   sharedLineage:'originals', // '전체'가 아니라 '원본만'을 기본값으로 - 공유가 쌓일수록 목록이 리비전으로 뒤덮이지 않게 한다
   sharedOriginFilter:null, sharedOriginFilterTitle:'', // 특정 원본의 리비전만 보는 중이면 그 원본 id/제목
+  sharedCounts:null, // {originals, revisions, all} - 지금 검색어/태그 조건 기준으로 각각 몇 개인지
   sharedOffset:0, sharedHasMore:true, sharedLoadingMore:false,
   sharedView:(()=>{ try{ return localStorage.getItem('mb_cloud_shared_view')||'grid'; }catch(e){ return 'grid'; } })(),
   sharedListWidth:(()=>{ try{ const v=parseInt(localStorage.getItem('mb_cloud_shared_list_w'),10); return (v>=200&&v<=560)?v:300; }catch(e){ return 300; } })(),
@@ -6219,11 +6220,17 @@ function mbCloudSharedOrderClause(){
   const orderMap={ recent:'created_at.desc', oldest:'created_at.asc', title:'title.asc', author:'created_at.desc' };
   return orderMap[mbCloud.sharedSort] || orderMap.recent;
 }
-function mbCloudSharedBaseQuery(){
-  let q=`/mockups?is_public=eq.true&mode=eq.${mbCurrentMode()}&select=id,title,tags,created_at,owner_id,thumbnail,open_count,origin_id`;
-  q += '&order=' + mbCloudSharedOrderClause();
+// 검색어/태그 조건만 떼어낸 것 - 목록 조회와 원본/전체/리비전 개수 집계가 항상 같은 조건을
+// 쓰도록(검색하면 "검색된 결과 안에서의" 개수가 나오도록) 하나로 합쳐 둔다.
+function mbCloudSharedFilterClause(){
+  let q=`is_public=eq.true&mode=eq.${mbCurrentMode()}`;
   if(mbCloud.sharedQuery) q+=`&title=ilike.*${encodeURIComponent(mbCloud.sharedQuery)}*`;
   if(mbCloud.sharedTag && mbCloud.sharedTag!=='전체') q+=`&tags=cs.{${encodeURIComponent(mbCloud.sharedTag)}}`;
+  return q;
+}
+function mbCloudSharedBaseQuery(){
+  let q=`/mockups?${mbCloudSharedFilterClause()}&select=id,title,tags,created_at,owner_id,thumbnail,open_count,origin_id`;
+  q += '&order=' + mbCloudSharedOrderClause();
   // 특정 원본의 리비전만 콕 집어 보는 중이면(배지 클릭), 원본만/전체/리비전만 칩은 무시하고
   // 그 원본 id를 정확히 참조하는 것들만 가져온다 - 제목 검색이 아니라 실제 origin_id로 걸기
   // 때문에 이름이 같은 다른 원본과 섞일 일이 없다.
@@ -6232,9 +6239,38 @@ function mbCloudSharedBaseQuery(){
   else if(mbCloud.sharedLineage==='revisions') q+='&origin_id=not.is.null';
   return q;
 }
+// 실제 데이터는 안 받고 PostgREST의 Content-Range 헤더만으로 "몇 개인지"를 가볍게 물어본다
+// (HEAD + Prefer: count=exact). 목록을 통째로 내려받지 않아도 되니 개수가 아무리 많아도 가볍다.
+async function mbRestCount(path){
+  try{
+    const res=await fetch(`${MB_SUPABASE_URL}/rest/v1${path}`,{
+      method:'HEAD',
+      headers:{'apikey':MB_SUPABASE_KEY,'Authorization':`Bearer ${MB_SUPABASE_KEY}`,'Prefer':'count=exact'}
+    });
+    const range=res.headers.get('content-range'); // 예: "0-9/23" 또는 총 0개면 "*/0"
+    if(!range) return 0;
+    const total=range.split('/')[1];
+    return total==='*'?0:(parseInt(total,10)||0);
+  }catch(e){ return 0; }
+}
+// 원본만/전체/리비전만 칩에 붙는 "총 N개" 숫자 - 지금 검색어/태그 조건은 그대로 유지한 채
+// (즉 검색을 하면 그 검색 결과 범위 안에서의 개수로) 원본/리비전 개수만 따로 센 뒤 더해서 전체를
+// 계산한다. 드릴다운(특정 원본의 리비전만 보는 중) 모드에서는 세그먼트 바 자체가 안 뜨므로 호출하지 않는다.
+async function mbCloudLoadSharedLineageCounts(){
+  const base=mbCloudSharedFilterClause();
+  try{
+    const [originals,revisions]=await Promise.all([
+      mbRestCount(`/mockups?${base}&origin_id=is.null`),
+      mbRestCount(`/mockups?${base}&origin_id=not.is.null`)
+    ]);
+    mbCloud.sharedCounts={originals,revisions,all:originals+revisions};
+  }catch(e){ mbCloud.sharedCounts=null; }
+}
 async function mbCloudLoadShared(){
   mbCloud.sharedOffset=0; mbCloud.sharedHasMore=true;
   const q=mbCloudSharedBaseQuery()+`&limit=${MB_SHARED_PAGE_SIZE}&offset=0`;
+  // 특정 원본의 리비전만 보는 드릴다운 중에는 세그먼트 바 자체가 안 뜨니 개수를 새로 셀 필요 없다.
+  const countsTask=mbCloud.sharedOriginFilter?Promise.resolve():mbCloudLoadSharedLineageCounts();
   try{
     const rows=await mbRestFetch(q)||[];
     mbCloud.sharedItems=rows;
@@ -6247,6 +6283,7 @@ async function mbCloudLoadShared(){
     }
     await mbCloudLoadSharedTags();
   }catch(e){ mbCloud.sharedItems=[]; mbCloud.sharedHasMore=false; mbCloud.sharedTags=['전체']; }
+  await countsTask;
 }
 // 지금 화면에 보이는 원본들(origin_id가 없는 항목)에 한해서만, "여기서 파생된 리비전이 몇 개인지"를
 // mockup_derivative_counts 뷰에서 한 번에 물어와 각 항목에 derivative_count로 붙여준다. 목록 전체를
@@ -6879,21 +6916,23 @@ function mbCloudApplyData(d){
 // 씬모드/팻모드는 서로 컴포넌트 구성이 달라 호환되지 않으므로, 지금 켜져 있는 모드와 같은
 // 목업만 보여준다(mbCurrentMode()로 서버 쪽에서부터 걸러서 요청한다 - mbCloudLoadShared 참고).
 function mbCloudSharedSetView(v){ mbCloud.sharedView=v; try{ localStorage.setItem('mb_cloud_shared_view',v); }catch(e){} mbCloudRender(); }
-function mbCloudRenderShared(){
-  const gridIcon='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
-  const listIcon='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>';
-  const lineageBar = mbCloud.sharedOriginFilter
+function mbCloudRenderLineageBar(){
+  return mbCloud.sharedOriginFilter
     ? `<div class="cl-lineagebar cl-lineage-crumb">
         <span class="cl-lineage-back" onclick="mbCloudClearOriginFilter()">◀ 뒤로</span>
         <span class="cl-lineage-crumb-text">'${esc(mbCloud.sharedOriginFilterTitle)}'의 리비전</span>
       </div>`
     : `<div class="cl-lineagebar">
         <div class="cl-lineage-seg">
-          <span class="${mbCloud.sharedLineage==='originals'?'on':''}" onclick="mbCloudSharedLineageClick('originals')"><i class="cl-lineage-ic cl-lineage-ic-origin"></i>원본만</span>
-          <span class="${mbCloud.sharedLineage==='all'?'on':''}" onclick="mbCloudSharedLineageClick('all')">전체</span>
-          <span class="${mbCloud.sharedLineage==='revisions'?'on':''}" onclick="mbCloudSharedLineageClick('revisions')"><i class="cl-lineage-ic cl-lineage-ic-rev"></i>리비전만</span>
+          <span class="${mbCloud.sharedLineage==='originals'?'on':''}" onclick="mbCloudSharedLineageClick('originals')"><i class="cl-lineage-ic cl-lineage-ic-origin"></i>원본만${mbCloud.sharedCounts?`(${mbCloud.sharedCounts.originals})`:''}</span>
+          <span class="${mbCloud.sharedLineage==='all'?'on':''}" onclick="mbCloudSharedLineageClick('all')">전체${mbCloud.sharedCounts?`(${mbCloud.sharedCounts.all})`:''}</span>
+          <span class="${mbCloud.sharedLineage==='revisions'?'on':''}" onclick="mbCloudSharedLineageClick('revisions')"><i class="cl-lineage-ic cl-lineage-ic-rev"></i>리비전만${mbCloud.sharedCounts?`(${mbCloud.sharedCounts.revisions})`:''}</span>
         </div>
       </div>`;
+}
+function mbCloudRenderShared(){
+  const gridIcon='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
+  const listIcon='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>';
   const toolbar=`<div class="cl-toolbar">
     <div class="cl-search-box" style="flex:1;max-width:none;">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.3"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
@@ -6910,7 +6949,7 @@ function mbCloudRenderShared(){
       <span class="${mbCloud.sharedView==='list'?'on':''}" title="목록으로 보기" onclick="mbCloudSharedSetView('list')">${listIcon}</span>
     </div>
   </div>
-  ${lineageBar}
+  <div id="cloudSharedLineageBar">${mbCloudRenderLineageBar()}</div>
   <div class="cl-tagbar-wrap">
     <div class="cl-tagbar" id="cloudTagbar">
       ${mbCloud.sharedTags.map(t=>`<span class="cl-filterchip ${mbCloud.sharedTag===t?'on':''}" onclick="mbCloudSharedTagClick('${esc(t)}')">${esc(t)}</span>`).join('')}
@@ -7045,10 +7084,13 @@ function mbCloudSharedSearch(v){
   clearTimeout(mbSharedSearchDebounce);
   mbSharedSearchDebounce=setTimeout(()=>{
     mbCloudLoadShared().then(()=>{
-      // 검색 결과(목록+하단 바)만 다시 그린다 - 검색창이 있는 toolbar는 손대지 않아야 타이핑
-      // 중인 입력칸(그리고 한글 조합 중인 IME 상태)이 유지된다.
+      // 검색 결과(목록+하단 바)와 원본/전체/리비전 개수만 다시 그린다 - 검색창이 있는 toolbar
+      // 전체를 새로 그리면 타이핑 중인 입력칸(그리고 한글 조합 중인 IME 상태)이 끊기므로,
+      // 그 안의 개수 숫자 부분만 targeted하게 갈아 끼운다.
       const wrap=document.getElementById('cloudSharedResultsWrap');
       if(wrap) wrap.innerHTML=mbCloudRenderSharedResults();
+      const lineageEl=document.getElementById('cloudSharedLineageBar');
+      if(lineageEl) lineageEl.innerHTML=mbCloudRenderLineageBar();
       mbCloudCheckSharedFillViewport();
     });
   },250);
