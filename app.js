@@ -6924,9 +6924,9 @@ function mbCloudRenderLineageBar(){
       </div>`
     : `<div class="cl-lineagebar">
         <div class="cl-lineage-seg">
-          <span class="${mbCloud.sharedLineage==='originals'?'on':''}" onclick="mbCloudSharedLineageClick('originals')"><i class="cl-lineage-ic cl-lineage-ic-origin"></i>원본만${mbCloud.sharedCounts?`(${mbCloud.sharedCounts.originals})`:''}</span>
-          <span class="${mbCloud.sharedLineage==='all'?'on':''}" onclick="mbCloudSharedLineageClick('all')">전체${mbCloud.sharedCounts?`(${mbCloud.sharedCounts.all})`:''}</span>
-          <span class="${mbCloud.sharedLineage==='revisions'?'on':''}" onclick="mbCloudSharedLineageClick('revisions')"><i class="cl-lineage-ic cl-lineage-ic-rev"></i>리비전만${mbCloud.sharedCounts?`(${mbCloud.sharedCounts.revisions})`:''}</span>
+          <span class="${mbCloud.sharedLineage==='originals'?'on':''}" onclick="mbCloudSharedLineageClick('originals')"><i class="cl-lineage-ic cl-lineage-ic-origin"></i>원본만${mbCloud.sharedCounts?` (${mbCloud.sharedCounts.originals})`:''}</span>
+          <span class="${mbCloud.sharedLineage==='all'?'on':''}" onclick="mbCloudSharedLineageClick('all')">전체${mbCloud.sharedCounts?` (${mbCloud.sharedCounts.all})`:''}</span>
+          <span class="${mbCloud.sharedLineage==='revisions'?'on':''}" onclick="mbCloudSharedLineageClick('revisions')"><i class="cl-lineage-ic cl-lineage-ic-rev"></i>리비전만${mbCloud.sharedCounts?` (${mbCloud.sharedCounts.revisions})`:''}</span>
         </div>
       </div>`;
 }
