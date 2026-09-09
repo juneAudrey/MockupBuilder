@@ -7006,10 +7006,13 @@ function mbCloudRenderSharedResults(){
       // 진짜 화면 그대로(같은 컴포넌트 렌더링 결과)를 iframe으로 그린다 - mbCloudRenderSharedPreviewFrame()가
       // 이 컨테이너를 찾아서 채운다. 여기서는 자리와 "불러오는 중" 상태만 마련해둔다.
       previewInner=`<div class="cl-shared-preview-frame-outer" id="cloudSharedPreviewFrameOuter"><div class="cl-shared-preview-loading">불러오는 중...</div></div>
-        <div style="text-align:center;flex-shrink:0;">
-          <div style="font-size:14px;font-weight:700;color:#2c3e50;margin-bottom:4px;">${esc(selIt.title)}</div>
-          <div style="font-size:12px;color:#8a97a3;">${esc(author)} · ${mbFmtDate(selIt.created_at)}</div>
-          ${tag?`<div style="margin-top:8px;"><span class="cl-tagpill">${esc(tag)}</span></div>`:''}
+        <div class="cl-shared-preview-meta">
+          <span class="cl-shared-preview-meta-title">${esc(selIt.title)}</span>
+          <span class="cl-shared-preview-meta-sep">·</span>
+          <span>${esc(author)}</span>
+          <span class="cl-shared-preview-meta-sep">·</span>
+          <span>${mbFmtDate(selIt.created_at)}</span>
+          ${tag?`<span class="cl-shared-preview-meta-sep">·</span><span class="cl-tagpill">${esc(tag)}</span>`:''}
         </div>`;
     }else{
       previewInner=`<div class="cl-shared-preview-frame-outer"><div class="cl-shared-preview-empty">파일을 선택하면 미리보기가 여기에 표시됩니다.</div></div>`;
@@ -7185,10 +7188,16 @@ async function mbCloudRenderSharedPreviewFrame(){
   try{ html=mbCloudBuildPreviewHTML(it._previewData); }
   catch(e){ outer.innerHTML='<div class="cl-shared-preview-empty">미리보기를 그리지 못했습니다.</div>'; return; }
   const cw=parseFloat(it._previewData.cw)||1100, ch=parseFloat(it._previewData.ch)||700;
-  // scrolling="no" + iframe 자체에 overflow:hidden을 걸어 상하좌우 스크롤이 아예 생기지 않게
-  // 하고(내용이 넘치면 그냥 잘려 보이게), 그 대신 우측 하단의 확대/축소 버튼으로 배율을 직접
-  // 조절하게 한다 - mbCloudBuildPreviewHTML() 쪽에서도 문서 자체의 overflow를 숨겨 이중으로 막는다.
-  outer.innerHTML=`<iframe id="cloudSharedPreviewFrame" data-item-id="${it.id}" data-cw="${cw}" data-ch="${ch}" sandbox="allow-scripts" scrolling="no" style="width:${cw}px;height:${ch}px;overflow:hidden;"></iframe>
+  // 이 작은 미리보기는 "실제로 조작해보는 화면"이 아니라 이미지 보듯 훑어보는 용도라, iframe
+  // 자체는 pointer-events:none으로 완전히 죽여서 콤보박스가 열리거나 입력칸에 커서가 생기거나
+  // 텍스트가 선택되는 일이 아예 없게 한다. 대신 그 위(정확히는 부모인 scale-wrap)에서
+  // mousedown을 받아 드래그한 만큼 바깥 스크롤 영역을 이동시켜, 사진 뷰어처럼 손으로 잡고
+  // 끄는 느낌을 낸다. 확대해서 실제 크기(scale-wrap)가 보이는 영역보다 커질 때만 자연히
+  // 스크롤바가 생기고(outer는 overflow:auto), 딱 맞거나 더 작으면 스크롤도 드래그도 의미가
+  // 없으니 그냥 가만히 있는다.
+  outer.innerHTML=`<div class="cl-shared-preview-scale-wrap" onmousedown="mbCloudPreviewDragStart(event)">
+      <iframe id="cloudSharedPreviewFrame" data-item-id="${it.id}" data-cw="${cw}" data-ch="${ch}" sandbox="allow-scripts" scrolling="no" style="width:${cw}px;height:${ch}px;pointer-events:none;"></iframe>
+    </div>
     <div class="cl-shared-zoom-ctl">
       <button type="button" onclick="mbCloudSharedZoomStep(-1)" title="축소">－</button>
       <span class="cl-shared-zoom-pct" id="cloudSharedZoomPct" title="클릭하면 맞춤으로" onclick="mbCloudSharedZoomReset()">100%</span>
@@ -7198,6 +7207,29 @@ async function mbCloudRenderSharedPreviewFrame(){
   frame.srcdoc=html;
   mbCloudFitSharedPreview();
 }
+// 미리보기를 사진처럼 손으로 잡고 끄는 드래그 - 실제로는 바깥(outer, overflow:auto)의
+// scrollLeft/Top을 마우스가 움직인 만큼 반대로 옮기는 것뿐이라, 확대해서 스크롤할 내용이
+// 있을 때만 의미가 있고 화면에 다 들어와 있으면(스크롤 자체가 없으면) 그냥 아무 일도 안 난다.
+function mbCloudPreviewDragStart(e){
+  const outer=document.getElementById('cloudSharedPreviewFrameOuter');
+  if(!outer) return;
+  e.preventDefault(); // 드래그 중 텍스트/이미지 선택 커서가 뜨는 것 방지
+  const startX=e.clientX, startY=e.clientY;
+  const startLeft=outer.scrollLeft, startTop=outer.scrollTop;
+  const wrap=e.currentTarget;
+  wrap.classList.add('dragging');
+  function onMove(ev){
+    outer.scrollLeft=startLeft-(ev.clientX-startX);
+    outer.scrollTop=startTop-(ev.clientY-startY);
+  }
+  function onUp(){
+    wrap.classList.remove('dragging');
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('mouseup',onUp);
+  }
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseup',onUp);
+}
 // 스플리터를 끌거나 팝업 크기를 조절할 때마다 불리는, 가벼운 재조정 전용 함수 - iframe을 다시
 // 만들지 않고 CSS transform:scale()만 다시 계산한다. 확대/축소 버튼으로 배율을 직접 정해둔
 // 상태(맞춤이 아닌 상태)라면 그 배율을 그대로 유지하고(공간이 좁아지면 그만큼 잘려 보일 뿐,
@@ -7205,7 +7237,8 @@ async function mbCloudRenderSharedPreviewFrame(){
 function mbCloudFitSharedPreview(){
   const outer=document.getElementById('cloudSharedPreviewFrameOuter');
   const frame=outer&&outer.querySelector('iframe');
-  if(!outer||!frame) return;
+  const wrap=outer&&outer.querySelector('.cl-shared-preview-scale-wrap');
+  if(!outer||!frame||!wrap) return;
   const cw=parseFloat(frame.dataset.cw), ch=parseFloat(frame.dataset.ch);
   if(!cw||!ch) return;
   const availW=outer.clientWidth-16, availH=outer.clientHeight-16;
@@ -7213,6 +7246,13 @@ function mbCloudFitSharedPreview(){
   mbSharedPreviewFitScale=Math.max(0.02, Math.min(availW/cw, availH/ch));
   const scale=(mbSharedPreviewZoom==null)?mbSharedPreviewFitScale:mbSharedPreviewZoom;
   frame.style.transform=`scale(${scale})`;
+  // scale-wrap의 실제 박스 크기(width/height)를 확대된 픽셀 크기로 맞춰준다 - transform은 보이는
+  // 크기만 바꿀 뿐 레이아웃 상 차지하는 공간은 그대로라서, 이렇게 실제 크기를 같이 키워줘야
+  // outer(overflow:auto)가 "지금 이 안에 다 안 들어가네" 하고 스크롤바를 내어준다. 맞춤 배율
+  // 이하로는(availW/availH 안에 딱 맞거나 더 작게) 절대 커지지 않으므로 이 상태에선 스크롤이
+  // 아예 생기지 않는다.
+  wrap.style.width=(cw*scale)+'px';
+  wrap.style.height=(ch*scale)+'px';
   const pctEl=document.getElementById('cloudSharedZoomPct');
   if(pctEl) pctEl.textContent=Math.round(scale*100)+'%';
 }
