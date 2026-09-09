@@ -1,0 +1,43 @@
+이 화면 캡처를 분석해 UI 컴포넌트 JSON 배열만 출력(설명·코드블록 금지).
+형식:{"type","x","y","w","h","text"}·좌표=가로1100px정수·text=보이는값(없으면"")
+type:title section panel tabs label input combo date daterange(text="YYYY-MM-DD ~ YYYY-MM-DD") check radio popup button grid(text=컬럼헤더,쉼표) chart tree
+
+[필수규칙]
+-labelPos기본left(세로쌓임만top/bottom)
+-조회조건:searchbar금지,panel+input/combo/date자식(labelPos left).조회버튼·돋보기검색버튼·우측상단"조회조건 접기/펼치기"버튼모두출력안함
+-코드+명칭=popup1개(w380~460,코드만style:"code",w200~300)
+-별표안보임,진한배경=required:true
+-그리드행툴바(행추가등)button생성안함([grid]참고)
+-구형화면:경로마지막만title,조회칸모아panel1개
+예:{"type":"panel","_tempId":1,"x":20,"y":50,"w":1060,"h":90},{"type":"combo","parent":1,"x":30,"y":10,"w":300,"h":23,"text":"동아","showLabel":true,"labelText":"공장","labelPos":"left"}
+
+[입력형]
+input/combo/date/daterange/check/radio는label대신본체:showLabel:true,labelText,labelPos"left",required(색배경true).
+h=라벨+칸(left/right≈23,top/bottom≈52),w보통234(popup420안팎).없으면showLabel:false.radio=options쉼표+selected(0부터).combo=목록만options.색배경=readonly:true.
+⚠코드+숫자분리값만같은y2칸(왼쪽라벨,오른쪽showLabel:false),그외한줄1개씩.
+예:{"type":"combo","x":20,"y":100,"w":70,"h":23,"text":"KR","showLabel":true,"labelText":"환율","labelPos":"left","required":true},{"type":"input","x":96,"y":100,"w":110,"h":23,"text":"1","showLabel":false,"readonly":true}
+
+[chart] 카드그래프=chart1:{"type":"chart","x","y","w","h","ctitle":"제목","chartType":"donut|bar|line|area","color":"green|blue|yellow|mixed","text":"값1,값2..","showArrow":true}.text=순서값만,donut=중앙합계.
+
+[대시보드/Ref] 카드나열:title=페이지명,버튼=button,카드당chart/grid1,실좌표유지,›=showArrow.독립label:우상"~참조"=ref,우하"~조회"=jump.
+
+[tabs/panel] 강조탭2개=tabs(text=이름쉼표,active=번호0부터).겉모양이버튼(예"잔액|원장")이어도눌러서화면전체바뀌면button아닌tabs로처리.가로소구역=panel.컨테이너"_tempId",자식"parent"=값(tabs자식엔"tabIdx"도),좌표는컨테이너기준상대.
+[다중캡처-탭별화면] 이미지여러장=각각다른탭내용(예1번째잔액탭,2번째원장탭)이면tabs는1개만,각이미지컴포넌트에해당tabIdx붙여1개JSON으로합침(title·조회조건등공통요소는1회만).
+
+[tree] 계단목록=tree1,text줄바꿈(\n)+하위공백2칸.예:{"type":"tree","x":20,"y":80,"w":280,"h":300,"text":"본사\n  경영지원부문"}
+
+[grid]
+컬럼이핵심:{"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","rows":8}.필수="*컬럼명".
+-행추가·행취소·행복사·행삭제·저장(그리드CRUD툴바)는고정UI라button/attribute모두생성안함.button은무관한독립버튼만(예:확정,품목참조,폼하단저장)
+-다장캡처동일그리드는컬럼좌→우이어붙여grid1개(중복명뒤것버림1회),다른컴포넌트도1회만.
+-헤더2줄+위칸이여러컬럼걸침(병합헤더,예:"기준정보"가"품목"·"품목명"위)="colGroups":배열을text와동일개수·순서로추가(병합컬럼은동일그룹명반복,미병합컬럼은"").헤더1줄이면colGroups생략.
+예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목,품목명,출고창고,출고방법","colGroups":["기준정보","기준정보","재고정보","재고정보"],"rows":8}
+
+[레이아웃]
+폭1060재배치:
+1.순서:title→(tabs)→panel→입력→카드→버튼
+2.좌우2단:컬럼당1줄1필드순서유지(라벨동행금지,예외:[입력형])
+3.panel류가로나열만한줄2~4개
+4.x20여백,구획=section,넘으면줄바꿈
+5.장식생략(색상·별표자동적용)
+6.title/tabs바로아래(8~16px)에다음요소(panel등)를붙인다-브레드크럼·아이콘·"조회조건 접기"버튼처럼[필수규칙]로뺀공간은원본y값그대로베끼지말고좁혀없앤다.조회조건panel은항목수·줄바꿈에따라h가커질수있음(예상보다커지면그아래모든컴포넌트-tabs·section·chart·grid·button등-y를늘어난만큼반드시내려절대겹치지않게함)
