@@ -561,7 +561,8 @@ function moveDropGhost(clientX,clientY){
   const r=canvas.getBoundingClientRect();
   const d=defaultSizeFor(dropGhostType);
   const cxCanvas=(clientX-r.left)/zoom, cyCanvas=(clientY-r.top)/zoom;
-  let x=Math.max(0,snap(cxCanvas-d.w/2)), y=Math.max(0,snap(cyCanvas-d.h/2));
+  // 컴포넌트의 좌상단이 커서 위치가 되도록 배치(가운데 정렬 아님).
+  let x=Math.max(0,snap(cxCanvas)), y=Math.max(0,snap(cyCanvas));
   // 스마트 가이드가 켜져 있으면, 기존 컴포넌트/캔버스 기준선에 스냅하고 가이드라인 표시.
   // 단, 컨테이너(탭/스플릿/패널) 위에 놓는 경우는 부모 상대좌표라 캔버스 절대 가이드가 맞지 않으므로 제외.
   const smartOn=(()=>{ const e=document.getElementById('smartChk'); return e?e.checked:false; })();
@@ -620,8 +621,8 @@ function updateArmedUI(){
 }
 // Places a new top-level (or Tab-nested, if dropped/clicked inside a Tab's content area) component of `type`
 // at canvas-local coordinates (x,y). Shared by both drag-and-drop and click-to-place.
-// When `centered` is true (drag-and-drop), the component is centered on (x,y) so it lands
-// exactly where the drag ghost was shown; hit-testing still uses the raw cursor point.
+// (x,y) is always the component's top-left corner - matching where the drag ghost/cursor
+// was shown - so it lands exactly under the cursor; hit-testing still uses the raw cursor point.
 function placeNewComponent(type,x,y,centered,snapPos){
   pushHistory();
   const d=JSON.parse(JSON.stringify(defaults[type]));
@@ -633,9 +634,9 @@ function placeNewComponent(type,x,y,centered,snapPos){
   const sz=defaultSizeFor(type);
   d.w=sz.w; d.h=sz.h;
   if(type==='date'){ d.text=todayStr(); d.dateSpec='chip:today'; }
-  // px,py = where the component's top-left should go (centered on cursor for drag-drop)
-  const px = centered ? x-d.w/2 : x;
-  const py = centered ? y-d.h/2 : y;
+  // px,py = where the component's top-left should go (always the cursor/ghost position itself)
+  const px = x;
+  const py = y;
   const tabTarget=hitTestTabContainer(x,y);
   const splitTarget=!tabTarget ? hitTestSplitContainer(x,y) : null;
   const panelTarget=(!tabTarget&&!splitTarget) ? hitTestPanelContainer(x,y) : null;
@@ -698,9 +699,9 @@ canvas.addEventListener('drop',e=>{
   const r=canvas.getBoundingClientRect();
   if(snapPos){
     // 스마트 가이드로 스냅된 좌상단 좌표에 그대로 배치(컨테이너 히트테스트는 커서 위치 기준)
-    placeNewComponent(type, (e.clientX-r.left)/zoom, (e.clientY-r.top)/zoom, true, snapPos);
+    placeNewComponent(type, (e.clientX-r.left)/zoom, (e.clientY-r.top)/zoom, false, snapPos);
   }else{
-    placeNewComponent(type, (e.clientX-r.left)/zoom, (e.clientY-r.top)/zoom, true); // centered on cursor
+    placeNewComponent(type, (e.clientX-r.left)/zoom, (e.clientY-r.top)/zoom); // 좌상단이 커서 위치
   }
 });
 // Intercepts mousedown in the CAPTURE phase (before it reaches its target) whenever a tool is armed,
@@ -943,6 +944,11 @@ function renderComp(c,container,single,locked){
     const selFrame=document.createElement('div');
     selFrame.className='sel-frame';
     el.appendChild(selFrame);
+  } else if(c.type==='tabs'||c.type==='split'){
+    // Tabs/Split containers no longer move on a plain drag anywhere in their body - that area
+    // needs to be free for rubber-band selecting the components inside instead (see
+    // attachContainerBoxSelect below). Moving/selecting the container itself is done through
+    // its small "⧉" tag handle (tabs-tag / split-tag), same as Split already worked.
   } else {
     el.addEventListener('mousedown',ev=>startMove(ev,c));
   }
@@ -961,6 +967,31 @@ function renderComp(c,container,single,locked){
     el.appendChild(body);
     const active=c.active||0;
     comps.filter(k=>k.parent===c.id&&(k.tabIdx||0)===active).forEach(k=>renderComp(k,body,single));
+    // Rubber-band select the components on the current tab page when dragging the empty background.
+    attachContainerBoxSelect(body,c,null,()=>comps.filter(k=>k.parent===c.id&&(k.tabIdx||0)===(c.active||0)));
+    // Small always-on-top tag/handle: lets the Tabs container be selected AND dragged to move,
+    // mirroring the Split container's "⧉" tag (see renderSplitChildren) - necessary now that
+    // the header background and body no longer forward plain clicks up to the container.
+    const selfFillLocked = c.parent && c.dock==='fill'; // true when c itself is a dock:'fill' pane child
+    const moveOrSelect = selfFillLocked
+      ? (ev)=>{ ev.stopPropagation(); if(!isSel(c.id)){ selectSingle(c.id); render(); } }
+      : (ev)=>startMove(ev,c);
+    // Dragging the header's empty strip (beside/between the tab buttons) also moves the container,
+    // just like grabbing any other component's body - the tab buttons themselves already
+    // stopPropagation on their own mousedown (see the 'tabs' case in inner()), so this only ever
+    // fires on the header background, never hijacking a tab-switch click.
+    const head=el.querySelector(':scope > .ax-tabs-wrap > .ax-tabs-head');
+    if(head) head.addEventListener('mousedown',moveOrSelect);
+    const tag=document.createElement('div');
+    tag.className='split-tag tabs-tag';
+    tag.textContent='⧉';
+    if(selfFillLocked){
+      tag.title='탭 컨테이너 선택 (Fill 배치라 이동은 안 됩니다 - Dock을 None으로 바꾸면 이동 가능)';
+    } else {
+      tag.title='드래그: 탭 컨테이너 이동 · 클릭: 선택';
+    }
+    tag.addEventListener('mousedown',moveOrSelect);
+    el.appendChild(tag);
   }
   if(c.type==='split'){
     renderSplitChildren(c,el,single);
@@ -992,6 +1023,9 @@ function renderSplitChildren(c,el,single){
   el.appendChild(p0); el.appendChild(p1); el.appendChild(dv);
   comps.filter(k=>k.parent===c.id&&(k.pane||0)===0).forEach(k=>renderSplitChild(k,p0,r.pane0,single));
   comps.filter(k=>k.parent===c.id&&(k.pane||0)===1).forEach(k=>renderSplitChild(k,p1,r.pane1,single));
+  // Rubber-band select each pane's own components when dragging its empty background.
+  attachContainerBoxSelect(p0,c,0,()=>comps.filter(k=>k.parent===c.id&&(k.pane||0)===0));
+  attachContainerBoxSelect(p1,c,1,()=>comps.filter(k=>k.parent===c.id&&(k.pane||0)===1));
   // A small always-on-top tag/handle: lets the split container be selected AND dragged to move,
   // even when its panes are completely covered by dock:fill children (which would otherwise
   // intercept every click before it reaches the container's own move handler).
@@ -1956,7 +1990,6 @@ document.addEventListener('mousemove',e=>{
   // draw selection box on top (drawCanvas cleared canvas)
   const box=document.createElement('div');
   box.id='selbox';
-  box.style.cssText='position:absolute;border:1px solid var(--sel);background:rgba(38,128,235,.12);z-index:710;pointer-events:none;';
   box.style.left=x+'px';box.style.top=y+'px';box.style.width=w+'px';box.style.height=h+'px';
   canvas.appendChild(box);
 });
@@ -1964,6 +1997,79 @@ document.addEventListener('mouseup',()=>{
   if(boxSel){
     const box=document.getElementById('selbox'); if(box)box.remove();
     boxSel=null;
+    renderProps();
+  }
+});
+
+// ---- Rubber-band selection inside a Tab page / Split pane's content area ----
+// Mirrors the top-level canvas rubber-band above, but scoped to one container's own children
+// (a Tab's current page, or one Split pane), in that container's local content coordinates.
+// Needed because Tabs/Split no longer forward a plain body drag up to their own move handler
+// (see renderComp/renderSplitChildren) - that drag should rubber-band-select the components
+// inside instead, exactly like dragging on the empty canvas does at the top level.
+let localBoxSel=null;
+// contentEl: the .tabs-body-wrap or .split-pane div itself (its background, not a child, must
+// be the actual mousedown target). c: the tabs/split component. pane: 0/1 for split, null for tabs.
+// getMembers(): returns the live list of comps currently shown in that content area.
+function attachContainerBoxSelect(contentEl,c,pane,getMembers){
+  contentEl.addEventListener('mousedown',e=>{
+    if(e.target!==contentEl)return; // only when dragging the empty content background itself
+    e.stopPropagation();
+    const ctrl=e.ctrlKey||e.metaKey;
+    const r=contentEl.getBoundingClientRect();
+    localBoxSel={
+      compId:c.id, pane, getMembers,
+      sx:(e.clientX-r.left)/zoom+(contentEl.scrollLeft||0),
+      sy:(e.clientY-r.top)/zoom+(contentEl.scrollTop||0),
+      ctrl, base:ctrl?new Set(selIds):new Set(), moved:false
+    };
+    if(!ctrl){ selectSingle(null); render(); }
+  });
+}
+// The content <div> is torn down and rebuilt by every drawCanvas() call (including the ones this
+// very drag triggers on each mousemove), so it can never be held onto directly across the drag -
+// it's re-located each time via the stable data-cid its wrapper always carries.
+function findContainerContentEl(compId,pane){
+  const wrap=canvas.querySelector('.cmp[data-cid="'+compId+'"]');
+  if(!wrap)return null;
+  const c=comps.find(x=>x.id===compId);
+  if(!c)return null;
+  if(c.type==='tabs') return wrap.querySelector(':scope > .tabs-body-wrap');
+  if(c.type==='split'){
+    const panes=wrap.querySelectorAll(':scope > .split-pane');
+    return panes[pane||0]||null;
+  }
+  return null;
+}
+document.addEventListener('mousemove',e=>{
+  if(!localBoxSel)return;
+  const el=findContainerContentEl(localBoxSel.compId,localBoxSel.pane);
+  if(!el)return; // container got deleted, or its tab page is no longer the active one
+  const r=el.getBoundingClientRect();
+  const cx=(e.clientX-r.left)/zoom+(el.scrollLeft||0), cy=(e.clientY-r.top)/zoom+(el.scrollTop||0);
+  const x=Math.min(cx,localBoxSel.sx), y=Math.min(cy,localBoxSel.sy);
+  const w=Math.abs(cx-localBoxSel.sx), h=Math.abs(cy-localBoxSel.sy);
+  if(w>2||h>2)localBoxSel.moved=true;
+  const hit=new Set(localBoxSel.base);
+  localBoxSel.getMembers().forEach(k=>{
+    const inter = !(k.x > x+w || k.x+k.w < x || k.y > y+h || k.y+k.h < y);
+    if(inter) hit.add(k.id);
+  });
+  setSelection(hit);
+  drawCanvas();
+  // re-locate again post-rebuild (drawCanvas just replaced it) to append the box in the right place
+  const el2=findContainerContentEl(localBoxSel.compId,localBoxSel.pane);
+  if(el2){
+    const box=document.createElement('div');
+    box.id='selbox';
+    box.style.left=x+'px';box.style.top=y+'px';box.style.width=w+'px';box.style.height=h+'px';
+    el2.appendChild(box);
+  }
+});
+document.addEventListener('mouseup',()=>{
+  if(localBoxSel){
+    const box=document.getElementById('selbox'); if(box)box.remove();
+    localBoxSel=null;
     renderProps();
   }
 });

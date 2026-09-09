@@ -368,7 +368,7 @@
   .guideline{position:absolute;background:#ff3b7f;z-index:900;pointer-events:none;}
   .guideline.v{width:1px;top:0;bottom:0;box-shadow:0 0 0 .5px rgba(255,59,127,.3);}
   .guideline.h{height:1px;left:0;right:0;box-shadow:0 0 0 .5px rgba(255,59,127,.3);}
-  #selbox{position:absolute;border:1px solid var(--sel);background:rgba(38,128,235,.12);z-index:710;pointer-events:none;display:none;}
+  #selbox{position:absolute;border:1px dashed var(--sel);background:rgba(38,128,235,.10);z-index:710;pointer-events:none;}
   .gl-dist{position:absolute;background:#ff3b7f;color:#fff;font-size:10px;padding:1px 4px;border-radius:3px;z-index:901;pointer-events:none;white-space:nowrap;}
   /* Ghost preview shown while dragging a new component from the toolbox */
   #dropGhost{position:absolute;z-index:905;pointer-events:none;display:none;box-sizing:border-box;
@@ -452,6 +452,9 @@
     font-size:10px;background:#fff;border:1px solid var(--ax-border);border-radius:3px;color:var(--ax-green-dark);
     cursor:pointer;z-index:650;user-select:none;}
   .split-tag:hover{border-color:var(--ax-green);background:var(--ax-green-light);}
+  /* Tabs container's own move/select handle - same look as the Split tag, but pinned to the
+     top-right of the tab header (top-left would sit on top of the first tab's label). */
+  .tabs-tag{left:auto;right:2px;}
   .cmp.locked{cursor:default;}
   .ax-grid{width:100%;height:100%;border:1px solid var(--ax-border);border-radius:4px;overflow:hidden;background:#fff;display:flex;flex-direction:column;}
   .ax-grid .gtoolbar{display:flex;align-items:center;gap:5px;padding:6px 8px;border-bottom:1px solid var(--ax-border);background:#fff;flex-wrap:nowrap;min-height:41px;box-sizing:border-box;}
@@ -1020,6 +1023,7 @@
   body.skin-classic .mode-switch .msb,
   body.skin-classic .lp-btn,
   body.skin-classic .split-tag,
+  body.skin-classic .tabs-tag,
   body.skin-classic .ax-check .box,
   body.skin-classic .ax-grid .gr .gcell-check .box
   {border-radius:2px;}
