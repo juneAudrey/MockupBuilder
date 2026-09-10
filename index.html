@@ -165,6 +165,16 @@
     </div>
   </div>
 
+  <!-- 목업관리(관리자 전용) -->
+  <div class="modal-bg" id="adminBg">
+    <div class="modal" id="adminModal" style="width:1500px;height:760px;max-width:97vw;max-height:92vh;display:flex;flex-direction:column;position:relative;">
+      <div class="modal-h"><h2>🛠 목업관리</h2><span class="x" onclick="closeAdminPanel()">×</span></div>
+      <div id="adminBody"></div>
+      <div class="cl-resize-handle" onmousedown="mbAdminResizeStart(event)" title="드래그하여 크기 조절"></div>
+    </div>
+  </div>
+
+
   <!-- Toolbox -->
   <div class="toolbox" id="toolbox">
     <label class="chk click-place-toggle" title="켠 다음 아래 도구상자에서 컴포넌트를 클릭하고, 캔버스에서 원하는 위치를 클릭하면 그 자리에 생성됩니다. 같은 도구를 다시 클릭하거나 Esc로 해제할 수 있어요."><input type="checkbox" id="clickPlaceChk" onchange="onClickPlaceToggle()"> 클릭으로 배치</label>
@@ -280,7 +290,7 @@
     <div class="modal-b">
       <div id="paneJSON">
         <div class="cv-intro">
-          만들고 싶은 화면을 <b>사진(캡처)으로 찍어</b> Claude에게 보여주면, Claude가 그 화면을 이 도구에서 쓸 수 있는 <b>코드</b>로 바꿔 줍니다. 그 코드를 여기에 붙여넣기만 하면 화면이 자동으로 그려져요.<span class="cv-free">완전 무료 · 가입/결제 불필요</span>
+          <b>화면 캡처</b> → <b>Claude 전달</b> → <b>코드 변환</b> → <b>붙여넣기</b> → <b>자동 완성</b><span class="cv-free">완전 무료 · 가입/결제 불필요</span>
         </div>
 
         <div class="cv-steps">
@@ -289,16 +299,16 @@
             <div class="cv-step-num">1</div>
             <div class="cv-step-body">
               <div class="cv-step-title">🤖 Claude 열기</div>
-              <div class="cv-step-desc">아래 버튼을 누르면 새 창에 Claude가 열립니다. (질문은 이미 적혀 있어요 — 그대로 두세요.)</div>
+              <div class="cv-step-desc">버튼 클릭 → 새 창에 Claude 실행 (질문 자동 입력, 수정 불필요)</div>
               <div class="cv-step-actions">
                 <button type="button" class="cv-btn-claude" onclick="openInClaude()">🤖 Claude 열기</button>
                 <button type="button" class="cv-btn-copy" onclick="copyPrompt()"><span class="cv-btn-badge">권장</span>📋 질문만 복사</button>
               </div>
-              <div class="cv-copy-tip">💡 <b>질문만 복사</b> 후 Claude 채팅창에 직접 붙여넣으면, 더 상세한 요청을 담을 수 있어 <b>변환 품질이 더 좋아요.</b></div>
+              <div class="cv-copy-tip">💡 <b>질문만 복사</b> + 직접 붙여넣기 → 상세 요청 추가 가능, <b>변환 품질 향상</b></div>
               <details class="cv-detail">
                 <summary>Claude에 보내는 질문 미리 보기</summary>
                 <div class="cv-detail-body">
-                  이 질문은 화면을 코드로 바꿔 달라는 요청이에요(「질문만 복사」 기준). 손댈 필요 없이 <b>화면 캡처 이미지만 첨부</b>해서 보내면 됩니다.
+                  화면 → 코드 변환 요청 질문(「질문만 복사」 기준). 수정 불필요, <b>화면 캡처 이미지만 첨부</b>.
                   <textarea id="jsonPrompt" class="cv-prompt" readonly rows="3"></textarea>
                 </div>
               </details>
@@ -310,11 +320,11 @@
             <div class="cv-step-num">2</div>
             <div class="cv-step-body">
               <div class="cv-step-title">📎 캡처 이미지 붙이고 전송</div>
-              <div class="cv-step-desc">열린 Claude 화면에 만들고 싶은 <b>화면 캡처 이미지를 붙여넣거나 첨부</b>한 뒤 전송하세요. 잠시 뒤 Claude가 코드로 답해 줍니다.</div>
+              <div class="cv-step-desc">Claude 화면에 <b>화면 캡처 이미지 첨부</b> 후 전송 → 잠시 후 코드 답변</div>
               <details class="cv-detail">
                 <summary>그리드 컬럼이 많을 때 (가로 스크롤)</summary>
                 <div class="cv-detail-body">
-                  그리드 컬럼이 많아 가로 스크롤이 있으면 한 장에 다 안 담기니, <b>컬럼을 최소 1개씩 겹쳐가며 여러 장</b>으로 나눠 캡처해 순서대로 첨부하세요. Claude가 겹친 컬럼을 알아서 이어 붙여 <b>하나의 그리드</b>로 만들어 줍니다.
+                  가로 스크롤 그리드: <b>컬럼 1개씩 겹침</b> 기준으로 여러 장 분할 캡처, 순서대로 첨부 → 겹친 부분 자동 병합, <b>하나의 그리드</b>로 완성.
                 </div>
               </details>
             </div>
@@ -325,12 +335,12 @@
             <div class="cv-step-num">3</div>
             <div class="cv-step-body">
               <div class="cv-step-title">📋 Claude의 답을 여기에 붙여넣기</div>
-              <div class="cv-step-desc">Claude가 준 답(<b>[</b> 로 시작해서 <b>]</b> 로 끝나는 부분)을 <b>전체 복사</b>해서 아래 칸에 붙여넣으세요.</div>
-              <textarea id="jsonIn" class="cv-paste" rows="3" placeholder="여기에 Claude의 답을 붙여넣으면 화면이 자동으로 만들어집니다.&#10;( [ 로 시작해 ] 로 끝나는 부분 전체를 붙여넣으세요 )"></textarea>
+              <div class="cv-step-desc">Claude 답변(<b>[</b> ~ <b>]</b> 구간) 전체 복사 → 아래 칸에 붙여넣기</div>
+              <textarea id="jsonIn" class="cv-paste" rows="3" placeholder="Claude 답변 붙여넣기 → 화면 자동 생성&#10;( [ ~ ] 구간 전체 )"></textarea>
               <div class="cv-optrow">
                 <label>
-                  <input type="checkbox" id="jsonClearChk" checked> 지금 캔버스에 있는 내용을 지우고 새로 그리기
-                  <span style="color:#9aa4af;">(체크를 풀면 기존 화면에 이어서 추가돼요)</span>
+                  <input type="checkbox" id="jsonClearChk" checked> 캔버스 초기화 후 새로 그리기
+                  <span style="color:#9aa4af;">(해제 시 기존 화면에 이어서 추가)</span>
                 </label>
               </div>
             </div>

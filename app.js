@@ -4399,8 +4399,8 @@ async function loadCopyPrompt(){
 function copyPrompt(){
   loadCopyPrompt().then(text=>{
     navigator.clipboard&&navigator.clipboard.writeText(text).then(
-      ()=>{cvSetStep(2);setStatus('📋 질문을 복사했어요. Claude 채팅창에 붙여넣고, <b>화면 캡처 이미지도 함께 첨부</b>해서 보내세요.','ok');},
-      ()=>setStatus('복사가 안 됐어요.','err','위 미리 보기 칸의 글자를 직접 드래그해서 복사해 주세요.')
+      ()=>{cvSetStep(2);setStatus('📋 질문 복사 완료 → Claude 채팅창에 붙여넣기 + <b>화면 캡처 이미지 첨부</b> 후 전송','ok');},
+      ()=>setStatus('복사 실패','err','미리 보기 칸의 텍스트를 직접 드래그해서 복사하세요.')
     );
   });
 }
@@ -4411,7 +4411,7 @@ function openInClaude(){
   const url='https://claude.ai/new?q='+encodeURIComponent(prompt);
   window.open(url,'_blank','noopener');
   cvSetStep(2);
-  setStatus('🤖 Claude를 새 창에 열었어요. 그 화면에 <b>만들고 싶은 화면 캡처 이미지를 첨부</b>하고 전송하세요.','ok','새 창이 안 열렸다면 팝업 차단을 해제하거나, 왼쪽 「질문만 복사」로 직접 붙여넣어 주세요.');
+  setStatus('🤖 Claude 새 창 실행 완료 → <b>화면 캡처 이미지 첨부</b> 후 전송','ok','새 창 미실행 시: 팝업 차단 해제 또는 왼쪽 「질문만 복사」로 직접 붙여넣기.');
 }
 // 이미지 변환으로 만든 컴포넌트 기준으로 캔버스 폭/높이를 정확히 맞춘다(필요하면 늘리고,
 // 여유가 많이 남으면 줄인다). 배치 직후 comps 전체(기존+새로 추가된 것)의 최대 범위로 계산하므로
@@ -4434,7 +4434,7 @@ function fitCanvasToComponents(padRight,padBottom){
 function runJSON(){
   const raw=document.getElementById('jsonIn').value.trim();
   if(!raw){
-    setStatus('아직 붙여넣은 내용이 없어요.','err','3번 칸에 Claude가 준 답을 붙여넣은 뒤 다시 눌러 주세요.');
+    setStatus('붙여넣은 내용 없음','err','3번 칸에 Claude 답변 붙여넣기 후 다시 시도하세요.');
     return;
   }
   try{
@@ -4452,23 +4452,23 @@ function runJSON(){
     fitCanvasToComponents();
     fitZoomToViewport();
     cvSetStep(3);
-    setStatus(`✅ 완성! <b>${items.length}개</b>의 컴포넌트를 화면에 그렸어요.${clearFirst?' (기존 내용은 지웠어요)':' (기존 화면에 이어서 추가했어요)'}`,'ok');
+    setStatus(`✅ 완성! <b>${items.length}개</b> 컴포넌트 생성.${clearFirst?' (기존 내용 삭제 후 생성)':' (기존 화면에 이어서 추가)'}`,'ok');
     setTimeout(closeConvert,900);
   }catch(err){
     let fix;
     switch(err.message){
       case 'NO_BRACKET':
-        fix='Claude 답에서 <b>[</b> 로 시작해 <b>]</b> 로 끝나는 부분을 찾지 못했어요. 그 부분 전체를 다시 복사해 붙여넣어 주세요.';break;
+        fix='Claude 답변에서 <b>[</b> ~ <b>]</b> 구간을 찾지 못했습니다. 해당 구간 전체를 다시 복사해서 붙여넣으세요.';break;
       case 'PARSE':
-        fix='붙여넣은 코드 중간이 잘렸거나 일부만 복사된 것 같아요. Claude 답의 <b>[</b> 부터 <b>]</b> 까지를 빠짐없이 복사했는지 확인해 주세요.';break;
+        fix='붙여넣은 내용 일부 누락 또는 잘림 추정. Claude 답변의 <b>[</b> ~ <b>]</b> 구간 전체 복사 여부를 확인하세요.';break;
       case 'NOT_ARRAY':
-        fix='형식이 조금 달라요. Claude에게 "다시 [ ] 형태의 목록으로만 답해 줘"라고 요청한 뒤 그 답을 붙여넣어 보세요.';break;
+        fix='형식 불일치. Claude에게 "[ ] 형태의 목록으로만 답해줘"라고 요청 후 그 답변을 붙여넣으세요.';break;
       case 'EMPTY':
-        fix='내용이 비어 있어요. Claude가 화면을 인식하도록 캡처 이미지를 다시 첨부해 보세요.';break;
+        fix='내용 비어있음. 캡처 이미지를 다시 첨부해서 재요청하세요.';break;
       default:
-        fix='Claude 답 전체를 다시 복사해 붙여넣어 주세요.';
+        fix='Claude 답변 전체를 다시 복사해서 붙여넣으세요.';
     }
-    setStatus('붙여넣은 내용을 화면으로 바꾸지 못했어요.','err',fix);
+    setStatus('변환 실패','err',fix);
   }
 }
 
@@ -5657,6 +5657,17 @@ const MB_AUTH_KEY = 'mb_auth_session';
 function mbGetSession(){ try{ return JSON.parse(localStorage.getItem(MB_AUTH_KEY)||'null'); }catch(e){ return null; } }
 function mbSetSession(s){ try{ if(s) localStorage.setItem(MB_AUTH_KEY, JSON.stringify(s)); else localStorage.removeItem(MB_AUTH_KEY); }catch(e){} }
 function mbCurrentUsername(){ const s=mbGetSession(); return s?s.username:null; }
+// mb_users.auth_yn(목업빌더에서는 관리 못 하는, DB에서 직접 관리하는 컬럼)이 'Y'인지를 매번
+// 서버에 다시 물어본다 - 로그인 직후, 그리고 「목업관리」를 누르는 순간에도 한 번 더 확인해서,
+// 클라이언트에 남아있는 값만 믿고 관리자 화면을 열어주는 일이 없게 한다.
+let mbIsAdmin=false;
+async function mbCheckAdmin(userId){
+  if(!userId) return false;
+  try{
+    const r=await mbRestFetch('/rpc/mb_check_admin',{method:'POST',body:JSON.stringify({p_user_id:userId})});
+    return r===true || (Array.isArray(r)&&r[0]===true);
+  }catch(e){ return false; }
+}
 
 // PostgREST(테이블/함수) 얇은 래퍼 - 실제 로그인 토큰이 없으므로 매 요청 항상 anon publishable
 // 키만 사용한다. 무엇을 허용할지는 전부 각 테이블의 RLS 정책(아래 SQL)이 결정한다.
@@ -5712,13 +5723,370 @@ async function mbLogin(username,password){
   const session={id:row.id,username:row.username};
   mbSetSession(session);
   await mbLogAuthEvent('login',session.id,session.username);
+  mbIsAdmin=await mbCheckAdmin(session.id);
   return session;
 }
 async function mbLogout(){
   const s=mbGetSession();
   if(s) await mbLogAuthEvent('logout',s.id,s.username);
   mbSetSession(null);
+  mbIsAdmin=false;
   mbUpdateAccountUI();
+}
+
+// ============================================================================
+// ---- 목업관리(관리자 전용) ----
+// mb_users.auth_yn='Y'인 사람에게만 계정 메뉴에 노출되는 화면. 조회 전용(입력·수정·삭제 없음)
+// 이고, 접속 로그/회원 정보/Feedback 세 구분을 클라우드 열기의 「내 파일 | 공유파일」 탭 구조와
+// 같은 방식(cl-tabs)으로 나눈다. mb_users(비밀번호 해시 포함)·auth_logs·mockup_access_log·
+// mb_feedback 전부 anon 키로는 원래 SELECT가 막혀 있으므로(RLS), 아래 전용 RPC(mb_admin_list_*)를
+// 통해서만 읽어온다 - 그 RPC들은 매번 "이 p_admin_id가 진짜 관리자인가"를 자기 안에서 다시
+// 확인하고 나서야 데이터를 내어준다(클라이언트가 mbIsAdmin=true라고 우겨도 소용없다).
+// ----------------------------------------------------------------------------
+const mbAdmin={
+  tab:'logs', logsFilter:'all',
+  authLogs:[], authLogsLoaded:false,
+  accessLog:[], accessLogLoaded:false,
+  logsQuery:'', logsSort:'recent', logsShown:100,
+  users:[], usersLoaded:false, usersQuery:'', usersSort:'created_desc', usersShown:100,
+  feedback:[], feedbackLoaded:false, fbQuery:'', fbSort:'recent', fbExpanded:new Set(), fbShown:100,
+  usage:null, usageLoaded:false, usageTotal:0
+};
+const MB_ADMIN_PAGE_SIZE=100;
+async function mbAdminListUsers(){
+  const s=mbGetSession();
+  return await mbRestFetch('/rpc/mb_admin_list_users',{method:'POST',body:JSON.stringify({p_admin_id:s.id})});
+}
+async function mbAdminListAuthLogs(){
+  const s=mbGetSession();
+  return await mbRestFetch('/rpc/mb_admin_list_auth_logs',{method:'POST',body:JSON.stringify({p_admin_id:s.id})});
+}
+async function mbAdminListAccessLog(){
+  const s=mbGetSession();
+  return await mbRestFetch('/rpc/mb_admin_list_access_log',{method:'POST',body:JSON.stringify({p_admin_id:s.id})});
+}
+async function mbAdminListFeedback(){
+  const s=mbGetSession();
+  return await mbRestFetch('/rpc/mb_admin_list_feedback',{method:'POST',body:JSON.stringify({p_admin_id:s.id})});
+}
+async function mbAdminListStorageUsage(){
+  const s=mbGetSession();
+  return await mbRestFetch('/rpc/mb_admin_storage_usage',{method:'POST',body:JSON.stringify({p_admin_id:s.id})});
+}
+async function mbAdminGetDbTotalSize(){
+  const s=mbGetSession();
+  const r=await mbRestFetch('/rpc/mb_admin_db_total_size',{method:'POST',body:JSON.stringify({p_admin_id:s.id})});
+  return typeof r==='number'?r:(Array.isArray(r)?r[0]:0)||0;
+}
+async function openAdminPanel(){
+  const s=mbGetSession();
+  if(!s){ openLogin(); return; }
+  // 메뉴에 떠 있던 상태만 믿지 않고, 여는 바로 그 순간 서버에 다시 한번 확인한다.
+  const ok=await mbCheckAdmin(s.id);
+  mbIsAdmin=ok; // 그 사이 권한이 내려갔으면 다음 메뉴 렌더부터도 항목이 사라지도록 최신값 반영
+  if(!ok){ alert('관리자 권한이 없습니다.'); mbUpdateAccountUI(); return; }
+  Object.assign(mbAdmin,{ tab:'logs', logsFilter:'all',
+    authLogs:[], authLogsLoaded:false, accessLog:[], accessLogLoaded:false, logsQuery:'', logsSort:'recent', logsShown:100,
+    users:[], usersLoaded:false, usersQuery:'', usersSort:'created_desc', usersShown:100,
+    feedback:[], feedbackLoaded:false, fbQuery:'', fbSort:'recent', fbExpanded:new Set(), fbShown:100,
+    usage:null, usageLoaded:false, usageTotal:0 });
+  document.getElementById('adminBg').classList.add('on');
+  mbAdminApplySavedModalSize();
+  mbAdminRender();
+  mbAdminEnsureLoaded();
+}
+function closeAdminPanel(){ document.getElementById('adminBg').classList.remove('on'); }
+function mbAdminApplySavedModalSize(){
+  const modal=document.getElementById('adminModal'); if(!modal) return;
+  try{
+    const w=localStorage.getItem('mb_admin_modal_w'), h=localStorage.getItem('mb_admin_modal_h');
+    if(w) modal.style.width=w;
+    if(h) modal.style.height=h;
+  }catch(e){}
+}
+let mbAdminResizeDrag=null;
+function mbAdminResizeStart(e){
+  e.preventDefault();
+  const modal=document.getElementById('adminModal'); if(!modal) return;
+  const rect=modal.getBoundingClientRect();
+  mbAdminResizeDrag={startX:e.clientX,startY:e.clientY,startW:rect.width,startH:rect.height};
+  document.addEventListener('mousemove',mbAdminResizeMove);
+  document.addEventListener('mouseup',mbAdminResizeEnd);
+}
+function mbAdminResizeMove(e){
+  if(!mbAdminResizeDrag) return;
+  const modal=document.getElementById('adminModal'); if(!modal) return;
+  const w=Math.max(640,Math.min(window.innerWidth*0.97,mbAdminResizeDrag.startW+(e.clientX-mbAdminResizeDrag.startX)));
+  const h=Math.max(420,Math.min(window.innerHeight*0.92,mbAdminResizeDrag.startH+(e.clientY-mbAdminResizeDrag.startY)));
+  modal.style.width=w+'px';
+  modal.style.height=h+'px';
+}
+function mbAdminResizeEnd(){
+  mbAdminResizeDrag=null;
+  document.removeEventListener('mousemove',mbAdminResizeMove);
+  document.removeEventListener('mouseup',mbAdminResizeEnd);
+  const modal=document.getElementById('adminModal'); if(!modal) return;
+  try{ localStorage.setItem('mb_admin_modal_w',modal.style.width); localStorage.setItem('mb_admin_modal_h',modal.style.height); }catch(e){}
+}
+function mbAdminRender(){
+  const body=document.getElementById('adminBody'); if(!body) return;
+  const tabs=`<div class="cl-tabs"><div class="cl-tabs-group">
+    <div class="cl-tab ${mbAdmin.tab==='logs'?'on':''}" onclick="mbAdminSwitchTab('logs')">📊 접속 로그</div>
+    <div class="cl-tab ${mbAdmin.tab==='users'?'on':''}" onclick="mbAdminSwitchTab('users')">👤 회원 정보</div>
+    <div class="cl-tab ${mbAdmin.tab==='feedback'?'on':''}" onclick="mbAdminSwitchTab('feedback')">💬 Feedback</div>
+    <div class="cl-tab ${mbAdmin.tab==='usage'?'on':''}" onclick="mbAdminSwitchTab('usage')">💾 사용량</div>
+  </div></div>`;
+  let content;
+  if(mbAdmin.tab==='logs') content=mbAdminRenderLogs();
+  else if(mbAdmin.tab==='users') content=mbAdminRenderUsers();
+  else if(mbAdmin.tab==='feedback') content=mbAdminRenderFeedback();
+  else content=mbAdminRenderUsage();
+  body.innerHTML=tabs+content;
+}
+function mbAdminSwitchTab(t){ mbAdmin.tab=t; mbAdminRender(); mbAdminEnsureLoaded(); }
+async function mbAdminEnsureLoaded(){
+  if(mbAdmin.tab==='logs'){
+    // 필터와 상관없이 두 로그를 항상 같이 불러온다 - "전체"에서 시간순으로 합쳐 보여줘야 하므로.
+    const tasks=[];
+    if(!mbAdmin.authLogsLoaded) tasks.push((async()=>{ try{ mbAdmin.authLogs=await mbAdminListAuthLogs()||[]; }catch(e){ mbAdmin.authLogs=[]; } mbAdmin.authLogsLoaded=true; })());
+    if(!mbAdmin.accessLogLoaded) tasks.push((async()=>{ try{ mbAdmin.accessLog=await mbAdminListAccessLog()||[]; }catch(e){ mbAdmin.accessLog=[]; } mbAdmin.accessLogLoaded=true; })());
+    if(tasks.length){ await Promise.all(tasks); if(mbAdmin.tab==='logs') mbAdminRender(); }
+  } else if(mbAdmin.tab==='users' && !mbAdmin.usersLoaded){
+    try{ mbAdmin.users=await mbAdminListUsers()||[]; }catch(e){ mbAdmin.users=[]; }
+    mbAdmin.usersLoaded=true; if(mbAdmin.tab==='users') mbAdminRender();
+  } else if(mbAdmin.tab==='feedback' && !mbAdmin.feedbackLoaded){
+    try{ mbAdmin.feedback=await mbAdminListFeedback()||[]; }catch(e){ mbAdmin.feedback=[]; }
+    mbAdmin.feedbackLoaded=true; if(mbAdmin.tab==='feedback') mbAdminRender();
+  } else if(mbAdmin.tab==='usage' && !mbAdmin.usageLoaded){
+    try{
+      const [rows,total]=await Promise.all([mbAdminListStorageUsage(),mbAdminGetDbTotalSize()]);
+      mbAdmin.usage=rows||[]; mbAdmin.usageTotal=total||0;
+    }catch(e){ mbAdmin.usage=[]; mbAdmin.usageTotal=0; }
+    mbAdmin.usageLoaded=true; if(mbAdmin.tab==='usage') mbAdminRender();
+  }
+}
+function mbAdminLogsFilter(v){
+  mbAdmin.logsFilter=v; mbAdmin.logsShown=MB_ADMIN_PAGE_SIZE;
+  const el=document.getElementById('adm-logs-results');
+  if(el) el.innerHTML=mbAdminLogsRows();
+  else mbAdminRender();
+}
+function mbAdminSearch(tabKey,v){
+  if(tabKey==='logs'){ mbAdmin.logsQuery=v; mbAdmin.logsShown=MB_ADMIN_PAGE_SIZE; }
+  else if(tabKey==='users'){ mbAdmin.usersQuery=v; mbAdmin.usersShown=MB_ADMIN_PAGE_SIZE; }
+  else { mbAdmin.fbQuery=v; mbAdmin.fbShown=MB_ADMIN_PAGE_SIZE; }
+  const el=document.getElementById('adm-'+tabKey+'-results');
+  if(el) el.innerHTML = tabKey==='logs'?mbAdminLogsRows():tabKey==='users'?mbAdminUsersRows():mbAdminFeedbackRows();
+}
+function mbAdminSort(tabKey,v){
+  if(tabKey==='logs'){ mbAdmin.logsSort=v; mbAdmin.logsShown=MB_ADMIN_PAGE_SIZE; }
+  else if(tabKey==='users'){ mbAdmin.usersSort=v; mbAdmin.usersShown=MB_ADMIN_PAGE_SIZE; }
+  else { mbAdmin.fbSort=v; mbAdmin.fbShown=MB_ADMIN_PAGE_SIZE; }
+  const el=document.getElementById('adm-'+tabKey+'-results');
+  if(el) el.innerHTML = tabKey==='logs'?mbAdminLogsRows():tabKey==='users'?mbAdminUsersRows():mbAdminFeedbackRows();
+}
+// 클라우드 열기의 무한 스크롤과 같은 방식 - 목업관리 쪽은 서버에서 매번 새로 가져오는 대신,
+// RPC로 이미 한 번에 다 받아온 결과를 화면에는 100개씩만 순차적으로 더 그려 보여준다(데이터는
+// 이미 메모리에 있으니 스크롤할 때마다 네트워크 요청이 추가로 나가지는 않는다) - 그래도 한
+// 화면에 수천 줄을 한꺼번에 그리지 않아서 스크롤이 무겁거나 훑어보기 힘들어지는 것은 막아준다.
+function mbAdminLoadMore(tabKey){
+  if(tabKey==='logs') mbAdmin.logsShown+=MB_ADMIN_PAGE_SIZE;
+  else if(tabKey==='users') mbAdmin.usersShown+=MB_ADMIN_PAGE_SIZE;
+  else mbAdmin.fbShown+=MB_ADMIN_PAGE_SIZE;
+  const el=document.getElementById('adm-'+tabKey+'-results');
+  if(el) el.innerHTML = tabKey==='logs'?mbAdminLogsRows():tabKey==='users'?mbAdminUsersRows():mbAdminFeedbackRows();
+}
+function mbAdminScrollCheck(e){
+  const el=e.target;
+  if(!el||!el.classList||!el.classList.contains('adm-table-wrap')) return;
+  if(el.scrollTop+el.clientHeight<el.scrollHeight-300) return;
+  if(el.id==='adm-logs-results') mbAdminLoadMore('logs');
+  else if(el.id==='adm-users-results') mbAdminLoadMore('users');
+  else if(el.id==='adm-feedback-results') mbAdminLoadMore('feedback');
+}
+document.addEventListener('scroll', mbAdminScrollCheck, true);
+// 필터링 후 실제로 더 보여줄 게 남아있을 때만 붙이는 안내 줄 - 계속 스크롤하면 100개씩 더 보인다.
+function mbAdminMoreHint(totalFiltered,shown){
+  return shown<totalFiltered ? `<div class="cl-shared-loadmore">${totalFiltered-shown}개 더 있음 - 아래로 스크롤하세요</div>` : '';
+}
+const ADM_EVENT_LABEL={login:['로그인','#eaf6ef','#1a7a4c'],logout:['로그아웃','#eef1f4','#5f6c78'],signup:['가입','#eaf1fb','#2a5ea8'],login_failed:['로그인 실패','#fdecec','#c0392b'],page_access:['페이지 접속','#fff4e5','#a5650a']};
+function mbAdminRenderLogs(){
+  const f=mbAdmin.logsFilter;
+  return `<div class="cl-toolbar">
+    <div class="cl-lineage-seg" style="flex-shrink:0;">
+      <span class="${f==='all'?'on':''}" onclick="mbAdminLogsFilter('all')">전체</span>
+      <span class="${f==='auth'?'on':''}" onclick="mbAdminLogsFilter('auth')">로그인 이력</span>
+      <span class="${f==='access'?'on':''}" onclick="mbAdminLogsFilter('access')">페이지 접속</span>
+    </div>
+    <div class="cl-search-box" style="flex:1;max-width:none;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.3"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
+      <input type="text" placeholder="사용자명, IP, 위치, 환경으로 검색" value="${esc(mbAdmin.logsQuery)}" oninput="mbAdminSearch('logs',this.value)">
+    </div>
+    <select class="cl-sortselect" onchange="mbAdminSort('logs',this.value)">
+      <option value="recent" ${mbAdmin.logsSort==='recent'?'selected':''}>최신순</option>
+      <option value="oldest" ${mbAdmin.logsSort==='oldest'?'selected':''}>오래된순</option>
+    </select>
+  </div>
+  <div class="adm-table-wrap" id="adm-logs-results">${mbAdminLogsRows()}</div>`;
+}
+// auth_logs(로그인/로그아웃/가입 이벤트)와 mockup_access_log(페이지 접속 기록)는 서로 다른 목적의
+// 완전히 독립된 두 기록이라(둘 사이에 외래키로 묶을 만한 실제 관계가 없다 - 페이지 접속은 로그인
+// 여부와 무관하게 매번 남고, 로그인은 접속 없이 세션 복원만으로도 일어날 수 있다), DB에 새 컬럼을
+// 만들어 조인하는 대신 여기서 그냥 "시간순 타임라인"으로 합친다 - 화면에 같이 보여주는 목적에는
+// 이 편이 스키마를 안 건드리면서 더 간단하고, 필터(전체/로그인 이력/페이지 접속)로 언제든 나눠 볼 수도 있다.
+function mbAdminLogsRows(){
+  if(!mbAdmin.authLogsLoaded||!mbAdmin.accessLogLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
+  const f=mbAdmin.logsFilter;
+  let rows=[];
+  if(f!=='access') rows=rows.concat(mbAdmin.authLogs.map(r=>({...r, _kind:'auth'})));
+  if(f!=='auth') rows=rows.concat(mbAdmin.accessLog.map(r=>({...r, _kind:'access'})));
+  const q=mbAdmin.logsQuery.trim().toLowerCase();
+  if(q){
+    rows=rows.filter(r=> r._kind==='auth'
+      ? (r.username||'').toLowerCase().includes(q)
+      : [r.external_ip,r.location,r.hostname,r.os_user].some(v=>(v||'').toLowerCase().includes(q))
+    );
+  }
+  rows.sort((a,b)=>{ const d=new Date(b.created_at)-new Date(a.created_at); return mbAdmin.logsSort==='oldest'?-d:d; });
+  if(!rows.length) return `<div class="cl-empty">기록이 없습니다.</div>`;
+  const total=rows.length;
+  rows=rows.slice(0,mbAdmin.logsShown);
+  return `<table class="adm-table"><thead><tr><th style="width:180px;">시간</th><th style="width:110px;">유형</th><th style="width:140px;">사용자명</th><th>상세</th></tr></thead><tbody>`+
+    rows.map(r=>{
+      if(r._kind==='auth'){
+        const ev=ADM_EVENT_LABEL[r.event_type]||[r.event_type,'#eef1f4','#5f6c78'];
+        return `<tr><td>${mbFmtDate(r.created_at)}</td><td><span class="adm-badge" style="background:${ev[1]};color:${ev[2]};">${esc(ev[0])}</span></td><td>${esc(r.username||'-')}</td><td class="adm-mono">${esc(r.user_id||'-')}</td></tr>`;
+      }
+      const ev=ADM_EVENT_LABEL.page_access;
+      const detail=`${r.external_ip||'-'} · ${r.location||'-'} · ${r.os_user||'-'} · ${r.app_ver||'-'} · ${r.mode||'-'}`;
+      return `<tr><td>${mbFmtDate(r.created_at)}</td><td><span class="adm-badge" style="background:${ev[1]};color:${ev[2]};">${esc(ev[0])}</span></td><td>-</td><td class="adm-ellip" title="${esc(detail)}">${esc(detail)}</td></tr>`;
+    }).join('')+`</tbody></table>`+mbAdminMoreHint(total,rows.length);
+}
+function mbAdminRenderUsers(){
+  return `<div class="cl-toolbar">
+    <div class="cl-search-box" style="flex:1;max-width:none;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.3"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
+      <input type="text" placeholder="아이디, 메모로 검색" value="${esc(mbAdmin.usersQuery)}" oninput="mbAdminSearch('users',this.value)">
+    </div>
+    <select class="cl-sortselect" onchange="mbAdminSort('users',this.value)">
+      <option value="created_desc" ${mbAdmin.usersSort==='created_desc'?'selected':''}>가입일 최신순</option>
+      <option value="created_asc" ${mbAdmin.usersSort==='created_asc'?'selected':''}>가입일 오래된순</option>
+      <option value="username" ${mbAdmin.usersSort==='username'?'selected':''}>아이디순</option>
+      <option value="admin_first" ${mbAdmin.usersSort==='admin_first'?'selected':''}>관리자 먼저</option>
+    </select>
+  </div>
+  <div class="adm-table-wrap" id="adm-users-results">${mbAdminUsersRows()}</div>`;
+}
+function mbAdminUsersRows(){
+  if(!mbAdmin.usersLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
+  const q=mbAdmin.usersQuery.trim().toLowerCase();
+  let rows=mbAdmin.users.slice();
+  if(q) rows=rows.filter(u=>(u.username||'').toLowerCase().includes(q)||(u.note||'').toLowerCase().includes(q));
+  if(mbAdmin.usersSort==='created_asc') rows.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  else if(mbAdmin.usersSort==='username') rows.sort((a,b)=>(a.username||'').localeCompare(b.username||'','ko'));
+  else if(mbAdmin.usersSort==='admin_first') rows.sort((a,b)=>(b.auth_yn==='Y')-(a.auth_yn==='Y'));
+  else rows.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  if(!rows.length) return `<div class="cl-empty">가입한 사용자가 없습니다.</div>`;
+  const total=rows.length;
+  rows=rows.slice(0,mbAdmin.usersShown);
+  return `<table class="adm-table"><thead><tr><th style="width:180px;">아이디</th><th>메모</th><th style="width:90px;">권한</th><th style="width:180px;">가입일</th></tr></thead><tbody>`+
+    rows.map(u=>{
+      const admin=u.auth_yn==='Y';
+      return `<tr>
+        <td>${esc(u.username)}</td>
+        <td class="adm-ellip" title="${esc(u.note||'')}">${esc(u.note||'-')}</td>
+        <td><span class="adm-badge" style="background:${admin?'#fff4e5':'#eef1f4'};color:${admin?'#a5650a':'#5f6c78'};">${admin?'관리자':'일반'}</span></td>
+        <td>${mbFmtDate(u.created_at)}</td>
+      </tr>`;
+    }).join('')+`</tbody></table>`+mbAdminMoreHint(total,rows.length);
+}
+function mbAdminRenderFeedback(){
+  return `<div class="cl-toolbar">
+    <div class="cl-search-box" style="flex:1;max-width:none;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.3"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
+      <input type="text" placeholder="작성자, 내용으로 검색" value="${esc(mbAdmin.fbQuery)}" oninput="mbAdminSearch('feedback',this.value)">
+    </div>
+    <select class="cl-sortselect" onchange="mbAdminSort('feedback',this.value)">
+      <option value="recent" ${mbAdmin.fbSort==='recent'?'selected':''}>최신순</option>
+      <option value="oldest" ${mbAdmin.fbSort==='oldest'?'selected':''}>오래된순</option>
+    </select>
+  </div>
+  <div class="adm-table-wrap" id="adm-feedback-results">${mbAdminFeedbackRows()}</div>`;
+}
+function mbAdminFeedbackRows(){
+  if(!mbAdmin.feedbackLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
+  const q=mbAdmin.fbQuery.trim().toLowerCase();
+  let rows=mbAdmin.feedback.slice();
+  if(q) rows=rows.filter(f=>(f.username||'').toLowerCase().includes(q)||(f.content||'').toLowerCase().includes(q));
+  rows.sort((a,b)=>{ const d=new Date(b.created_at)-new Date(a.created_at); return mbAdmin.fbSort==='oldest'?-d:d; });
+  if(!rows.length) return `<div class="cl-empty">받은 의견이 없습니다.</div>`;
+  const total=rows.length;
+  rows=rows.slice(0,mbAdmin.fbShown);
+  return `<div class="adm-fb-list">`+rows.map(f=>{
+    const expanded=mbAdmin.fbExpanded.has(f.id);
+    return `<div class="adm-fb-card">
+      <div class="adm-fb-head">
+        <span class="adm-fb-author">${esc(f.username||'익명')}</span>
+        <span class="adm-fb-date">${mbFmtDate(f.created_at)}</span>
+      </div>
+      <div class="adm-fb-body ${expanded?'expanded':''}" onclick="mbAdminToggleFb('${f.id}')">${f.content||''}</div>
+    </div>`;
+  }).join('')+`</div>`+mbAdminMoreHint(total,rows.length);
+}
+function mbAdminToggleFb(id){
+  if(mbAdmin.fbExpanded.has(id)) mbAdmin.fbExpanded.delete(id); else mbAdmin.fbExpanded.add(id);
+  const el=document.getElementById('adm-feedback-results');
+  if(el) el.innerHTML=mbAdminFeedbackRows();
+}
+function mbFmtBytes(n){
+  n=Number(n)||0;
+  if(n<=0) return '0B';
+  const units=['B','KB','MB','GB','TB'];
+  let i=0,v=n;
+  while(v>=1024 && i<units.length-1){ v/=1024; i++; }
+  return (i===0?v:v.toFixed(v<10?2:1))+units[i];
+}
+// Supabase 무료플랜 DB 저장용량 한도(고정값, 500MB) - Management API 없이는 계정의 실제 플랜을
+// 조회할 수 없으므로, 무료플랜 기준으로 코드에 고정해 둔다. 유료플랜으로 바뀌면 이 상수만 바꾸면 된다.
+const ADM_DB_QUOTA_BYTES=500*1024*1024;
+const ADM_USAGE_COLORS=['#4285F4','#FBBC05','#EA4335','#34A853','#9C27B0','#00ACC1','#FF7043','#8D6E63'];
+// 범례에서 테이블명만 봐서는 용도가 바로 안 와닿을 수 있어 짧은 한글 설명을 같이 붙인다.
+const ADM_TABLE_DESC={
+  mockups:'목업 데이터', mockup_folders:'폴더 구조',
+  mockup_access_log:'페이지 접속 기록', auth_logs:'로그인 이력',
+  mb_users:'회원 계정', mb_feedback:'피드백'
+};
+function mbAdminRenderUsage(){
+  if(!mbAdmin.usageLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
+  const rows=(mbAdmin.usage||[]).filter(r=>Number(r.size_bytes)>0).sort((a,b)=>Number(b.size_bytes)-Number(a.size_bytes));
+  const knownSum=rows.reduce((s,r)=>s+Number(r.size_bytes),0);
+  const total=mbAdmin.usageTotal||knownSum;
+  // 테이블별 용량의 합은 시스템 카탈로그·WAL 등을 뺀 값이라 실제 DB 전체 용량보다 살짝 작을 수
+  // 있다 - 그 차이를 "기타" 구간으로 채워서, 막대 전체 길이가 항상 실제 DB 용량과 맞아떨어지게 한다.
+  const other=Math.max(0,total-knownSum);
+  const segs=rows.map((r,i)=>({name:r.table_name,bytes:Number(r.size_bytes),color:ADM_USAGE_COLORS[i%ADM_USAGE_COLORS.length]}));
+  if(other>0) segs.push({name:'기타(인덱스·시스템 등)',bytes:other,color:'#c9ced3'});
+  // 막대 전체 길이는 "한도 대비 지금 쓴 비율"만큼만 채운다(구글 드라이브 화면과 동일한 방식) -
+  // 나머지 빈 회색 트랙이 곧 "앞으로 더 쓸 수 있는 여유분"이 된다.
+  const usedPctOfQuota=total>0?Math.min(100,(total/ADM_DB_QUOTA_BYTES)*100):0;
+  const barSegs=segs.map(s=>{
+    const w=total>0?(s.bytes/total*usedPctOfQuota):0;
+    return `<div style="width:${w}%;background:${s.color};height:100%;" title="${esc(s.name)} ${mbFmtBytes(s.bytes)}"></div>`;
+  }).join('');
+  const legend=segs.map(s=>{
+    const p=total>0?(s.bytes/total*100):0;
+    const desc=ADM_TABLE_DESC[s.name];
+    return `<div class="adm-usage-row">
+      <span class="adm-usage-dot" style="background:${s.color};"></span>
+      <span class="adm-usage-name">${esc(s.name)}</span>${desc?`<span class="adm-usage-desc">${esc(desc)}</span>`:''}
+      <span class="adm-usage-size">${mbFmtBytes(s.bytes)} <span class="adm-usage-pct">(${p.toFixed(1)}%)</span></span>
+    </div>`;
+  }).join('');
+  return `<div class="adm-usage-wrap">
+    <div class="adm-usage-headline">${mbFmtBytes(total)}<span class="adm-usage-of">/${mbFmtBytes(ADM_DB_QUOTA_BYTES)} 사용 중</span></div>
+    <div class="adm-usage-bar">${barSegs||''}</div>
+    <div class="adm-usage-legend">${legend||'<div class="cl-empty">표시할 테이블이 없습니다.</div>'}</div>
+  </div>`;
 }
 
 // ---- 피드백 ----
@@ -5860,6 +6228,7 @@ function mbUpdateAccountUI(){
         <div class="item" onclick="closeAcctMenu();openCloudOpen();">📂 클라우드 열기</div>
         <div class="item logout" onclick="closeAcctMenu();mbLogout();">🚪 로그아웃</div>
         <div class="item" style="border-top:1px solid #eee;" onclick="closeAcctMenu();openFeedback();">💬 Feedback</div>
+        ${mbIsAdmin?'<div class="item" onclick="closeAcctMenu();openAdminPanel();">🛠 목업관리</div>':''}
       </div>
     </div>`;
 }
@@ -7287,11 +7656,15 @@ checkVersion();
 // 그냥 로그아웃 상태로 시작할 뿐, 화면에 에러를 띄우지는 않는다 - 저장된 비밀번호가 바뀐 뒤
 // 방치된 경우 등을 사용자가 접속하자마자 에러로 마주치지 않게 하기 위함).
 (async function(){
-  if(!mbGetSession()){
+  const s=mbGetSession();
+  if(!s){
     const saved=mbLoadLoginPrefs();
     if(saved.autoLogin&&saved.username&&saved.password){
       try{ await mbLogin(saved.username,saved.password); }catch(e){ /* 조용히 무시 - 필요하면 사용자가 직접 로그인 */ }
     }
+  } else {
+    // 이미 로그인 세션이 남아있는 경우 - mbLogin()을 안 거치므로 관리자 여부를 여기서 직접 확인한다.
+    mbIsAdmin=await mbCheckAdmin(s.id);
   }
   mbUpdateAccountUI();
 })();
