@@ -1510,9 +1510,9 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
 .adm-usage-of{font-size:15px;font-weight:400;color:#8a97a3;margin-left:4px;}
 .adm-usage-bar{display:flex;width:100%;height:8px;border-radius:5px;background:#eef1f4;overflow:hidden;margin-bottom:22px;}
 .adm-usage-legend{display:flex;flex-direction:column;max-width:520px;}
-.adm-usage-row{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid #f0f2f4;}
-.adm-usage-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
-.adm-usage-name{font-size:13.5px;color:#3a4552;}
-.adm-usage-desc{font-size:11.5px;color:#9ca3af;margin-left:8px;}
-.adm-usage-size{margin-left:auto;font-size:13px;color:#2c3e50;font-weight:600;white-space:nowrap;}
+.adm-usage-row{display:flex;align-items:center;padding:10px 2px;border-bottom:1px solid #f0f2f4;}
+.adm-usage-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-right:10px;}
+.adm-usage-name{font-size:13.5px;color:#3a4552;width:170px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.adm-usage-desc{font-size:11.5px;color:#9ca3af;flex:1;min-width:0;margin-left:0;}
+.adm-usage-size{margin-left:auto;padding-left:16px;font-size:13px;color:#2c3e50;font-weight:600;white-space:nowrap;flex-shrink:0;}
 .adm-usage-pct{color:#9ca3af;font-weight:400;}
