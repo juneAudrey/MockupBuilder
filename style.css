@@ -120,6 +120,7 @@
   /* 클라우드 저장/열기 모달 */
   #cloudBg .modal{overflow:visible;}
   #cloudBody{display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0;}
+  #adminBody{display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0;}
   .cl-resize-handle{position:absolute;right:2px;bottom:2px;width:16px;height:16px;cursor:nwse-resize;z-index:10;
     background:linear-gradient(135deg,transparent 45%,var(--ax-green) 45%,var(--ax-green) 55%,transparent 55%,transparent 70%,var(--ax-green) 70%,var(--ax-green) 80%,transparent 80%);
     border-radius:0 0 8px 0;}
@@ -1514,5 +1515,18 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
 .adm-usage-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-right:10px;}
 .adm-usage-name{font-size:13.5px;color:#3a4552;width:170px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .adm-usage-desc{font-size:11.5px;color:#9ca3af;flex:1;min-width:0;margin-left:0;}
+
+.cl-btn-primary-sm{padding:6px 16px;border:none;border-radius:8px;background:var(--ax-green);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;flex-shrink:0;}
+.cl-btn-primary-sm:hover{background:var(--ax-green-dark);}
+.cl-btn-primary-sm:disabled{opacity:.5;cursor:default;}
+.adm-prompt-wrap{flex:1;padding:0 18px 18px;display:flex;min-height:0;}
+.adm-prompt-textarea{flex:1;width:100%;resize:none;padding:14px 16px;border:1px solid #d9dee3;border-radius:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.6;color:#2c3e50;white-space:pre;}
+.adm-prompt-textarea:focus{outline:none;border-color:var(--ax-green);}
+.adm-prompt-status{font-size:12px;color:#9ca3af;margin-right:4px;}
+.adm-prompt-status.dirty{color:#a5650a;}
+.adm-prompt-status.ok{color:#1a7a4c;}
+.adm-prompt-status.err{color:#c0392b;}
+.adm-mode-seg span.on-thin{background:var(--ax-green)!important;color:#fff!important;box-shadow:none!important;}
+.adm-mode-seg span.on-fat{background:#2563eb!important;color:#fff!important;box-shadow:none!important;}
 .adm-usage-size{margin-left:auto;padding-left:16px;font-size:13px;color:#2c3e50;font-weight:600;white-space:nowrap;flex-shrink:0;}
 .adm-usage-pct{color:#9ca3af;font-weight:400;}

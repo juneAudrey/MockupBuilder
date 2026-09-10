@@ -4370,6 +4370,13 @@ const PROMPT_FILE_THIN_COPY='image-convert-thin.txt';
 const PROMPT_FILE_FAT_COPY='image-convert-fat.txt';
 async function loadCopyPrompt(){
   const fat=document.body.classList.contains('skin-classic');
+  const mode=fat?'Fat':'Thin';
+  // 1) DB - 관리자가 「목업관리 → AI프롬프트」에서 고친 최신 내용이 기준(source of truth)이다.
+  try{
+    const text=await mbRestFetch('/rpc/mb_get_prompt',{method:'POST',body:JSON.stringify({p_mode:mode})});
+    if(typeof text==='string' && text.trim()) return text;
+  }catch(e){ /* DB 조회 실패 시 조용히 아래 파일/내장 문구로 이어간다 */ }
+  // 2) 로컬 파일(DB 적용 전부터 있던 방식 - 안전망으로 계속 둔다)
   const file=fat?PROMPT_FILE_FAT_COPY:PROMPT_FILE_THIN_COPY;
   try{
     // no-store + 캐시버스터: 파일을 방금 고쳤어도 브라우저/디스크 캐시된 옛 내용이
@@ -4380,6 +4387,7 @@ async function loadCopyPrompt(){
     if(!text||!text.trim()) throw new Error('empty file');
     return text;
   }catch(e){
+    // 3) 내장 기본값(최종 안전망)
     return fat?JSON_PROMPT_FAT_COPY:JSON_PROMPT_THIN_COPY;
   }
 }
@@ -5745,29 +5753,31 @@ async function mbLogout(){
 // ----------------------------------------------------------------------------
 const mbAdmin={
   tab:'logs', logsFilter:'all',
-  authLogs:[], authLogsLoaded:false,
-  accessLog:[], accessLogLoaded:false,
-  logsQuery:'', logsSort:'recent', logsShown:100,
-  users:[], usersLoaded:false, usersQuery:'', usersSort:'created_desc', usersShown:100,
-  feedback:[], feedbackLoaded:false, fbQuery:'', fbSort:'recent', fbExpanded:new Set(), fbShown:100,
-  usage:null, usageLoaded:false, usageTotal:0
+  authLogs:[], authLogsLoaded:false, authLogsHasMore:true,
+  accessLog:[], accessLogLoaded:false, accessLogHasMore:true,
+  logsQuery:'', logsSort:'recent', logsLimit:100, logsLoadingMore:false,
+  users:[], usersLoaded:false, usersQuery:'', usersSort:'created_desc', usersLimit:100, usersHasMore:true, usersLoadingMore:false,
+  feedback:[], feedbackLoaded:false, fbQuery:'', fbSort:'recent', fbExpanded:new Set(), fbLimit:100, fbHasMore:true, fbLoadingMore:false,
+  usage:null, usageLoaded:false, usageTotal:0,
+  promptMode: document.body.classList.contains('skin-classic')?'Fat':'Thin',
+  promptCache:{}, promptLoaded:{}, promptSaving:false, promptDirty:false
 };
 const MB_ADMIN_PAGE_SIZE=100;
-async function mbAdminListUsers(){
+async function mbAdminListUsers(limit){
   const s=mbGetSession();
-  return await mbRestFetch('/rpc/mb_admin_list_users',{method:'POST',body:JSON.stringify({p_admin_id:s.id})});
+  return await mbRestFetch('/rpc/mb_admin_list_users',{method:'POST',body:JSON.stringify({p_admin_id:s.id,p_limit:limit})});
 }
-async function mbAdminListAuthLogs(){
+async function mbAdminListAuthLogs(limit){
   const s=mbGetSession();
-  return await mbRestFetch('/rpc/mb_admin_list_auth_logs',{method:'POST',body:JSON.stringify({p_admin_id:s.id})});
+  return await mbRestFetch('/rpc/mb_admin_list_auth_logs',{method:'POST',body:JSON.stringify({p_admin_id:s.id,p_limit:limit})});
 }
-async function mbAdminListAccessLog(){
+async function mbAdminListAccessLog(limit){
   const s=mbGetSession();
-  return await mbRestFetch('/rpc/mb_admin_list_access_log',{method:'POST',body:JSON.stringify({p_admin_id:s.id})});
+  return await mbRestFetch('/rpc/mb_admin_list_access_log',{method:'POST',body:JSON.stringify({p_admin_id:s.id,p_limit:limit})});
 }
-async function mbAdminListFeedback(){
+async function mbAdminListFeedback(limit){
   const s=mbGetSession();
-  return await mbRestFetch('/rpc/mb_admin_list_feedback',{method:'POST',body:JSON.stringify({p_admin_id:s.id})});
+  return await mbRestFetch('/rpc/mb_admin_list_feedback',{method:'POST',body:JSON.stringify({p_admin_id:s.id,p_limit:limit})});
 }
 async function mbAdminListStorageUsage(){
   const s=mbGetSession();
@@ -5778,6 +5788,16 @@ async function mbAdminGetDbTotalSize(){
   const r=await mbRestFetch('/rpc/mb_admin_db_total_size',{method:'POST',body:JSON.stringify({p_admin_id:s.id})});
   return typeof r==='number'?r:(Array.isArray(r)?r[0]:0)||0;
 }
+// AI프롬프트 조회는 관리자 전용이 아니다(질문만 복사 등 실제 사용 경로는 로그인 여부와 무관하게
+// 모든 사용자가 타는다) - 그래서 mb_get_prompt는 admin 검사 없는 공개 RPC. 반대로 수정은
+// mb_admin_update_prompt가 내부에서 auth_yn을 다시 확인해 관리자만 가능하다.
+async function mbAdminGetPrompt(mode){
+  return await mbRestFetch('/rpc/mb_get_prompt',{method:'POST',body:JSON.stringify({p_mode:mode})});
+}
+async function mbAdminSavePrompt(mode,content){
+  const s=mbGetSession();
+  return await mbRestFetch('/rpc/mb_admin_update_prompt',{method:'POST',body:JSON.stringify({p_admin_id:s.id,p_mode:mode,p_content:content})});
+}
 async function openAdminPanel(){
   const s=mbGetSession();
   if(!s){ openLogin(); return; }
@@ -5786,10 +5806,14 @@ async function openAdminPanel(){
   mbIsAdmin=ok; // 그 사이 권한이 내려갔으면 다음 메뉴 렌더부터도 항목이 사라지도록 최신값 반영
   if(!ok){ alert('관리자 권한이 없습니다.'); mbUpdateAccountUI(); return; }
   Object.assign(mbAdmin,{ tab:'logs', logsFilter:'all',
-    authLogs:[], authLogsLoaded:false, accessLog:[], accessLogLoaded:false, logsQuery:'', logsSort:'recent', logsShown:100,
-    users:[], usersLoaded:false, usersQuery:'', usersSort:'created_desc', usersShown:100,
-    feedback:[], feedbackLoaded:false, fbQuery:'', fbSort:'recent', fbExpanded:new Set(), fbShown:100,
-    usage:null, usageLoaded:false, usageTotal:0 });
+    authLogs:[], authLogsLoaded:false, authLogsHasMore:true,
+    accessLog:[], accessLogLoaded:false, accessLogHasMore:true,
+    logsQuery:'', logsSort:'recent', logsLimit:100, logsLoadingMore:false,
+    users:[], usersLoaded:false, usersQuery:'', usersSort:'created_desc', usersLimit:100, usersHasMore:true, usersLoadingMore:false,
+    feedback:[], feedbackLoaded:false, fbQuery:'', fbSort:'recent', fbExpanded:new Set(), fbLimit:100, fbHasMore:true, fbLoadingMore:false,
+    usage:null, usageLoaded:false, usageTotal:0,
+    promptMode: document.body.classList.contains('skin-classic')?'Fat':'Thin',
+    promptCache:{}, promptLoaded:{}, promptSaving:false, promptDirty:false });
   document.getElementById('adminBg').classList.add('on');
   mbAdminApplySavedModalSize();
   mbAdminRender();
@@ -5835,27 +5859,40 @@ function mbAdminRender(){
     <div class="cl-tab ${mbAdmin.tab==='users'?'on':''}" onclick="mbAdminSwitchTab('users')">👤 회원 정보</div>
     <div class="cl-tab ${mbAdmin.tab==='feedback'?'on':''}" onclick="mbAdminSwitchTab('feedback')">💬 Feedback</div>
     <div class="cl-tab ${mbAdmin.tab==='usage'?'on':''}" onclick="mbAdminSwitchTab('usage')">💾 사용량</div>
+    <div class="cl-tab ${mbAdmin.tab==='prompts'?'on':''}" onclick="mbAdminSwitchTab('prompts')">🤖 AI프롬프트</div>
   </div></div>`;
   let content;
   if(mbAdmin.tab==='logs') content=mbAdminRenderLogs();
   else if(mbAdmin.tab==='users') content=mbAdminRenderUsers();
   else if(mbAdmin.tab==='feedback') content=mbAdminRenderFeedback();
-  else content=mbAdminRenderUsage();
+  else if(mbAdmin.tab==='usage') content=mbAdminRenderUsage();
+  else content=mbAdminRenderPrompts();
   body.innerHTML=tabs+content;
+  if(mbAdmin.tab==='prompts') mbAdminFillPromptTextarea();
 }
 function mbAdminSwitchTab(t){ mbAdmin.tab=t; mbAdminRender(); mbAdminEnsureLoaded(); }
 async function mbAdminEnsureLoaded(){
   if(mbAdmin.tab==='logs'){
     // 필터와 상관없이 두 로그를 항상 같이 불러온다 - "전체"에서 시간순으로 합쳐 보여줘야 하므로.
     const tasks=[];
-    if(!mbAdmin.authLogsLoaded) tasks.push((async()=>{ try{ mbAdmin.authLogs=await mbAdminListAuthLogs()||[]; }catch(e){ mbAdmin.authLogs=[]; } mbAdmin.authLogsLoaded=true; })());
-    if(!mbAdmin.accessLogLoaded) tasks.push((async()=>{ try{ mbAdmin.accessLog=await mbAdminListAccessLog()||[]; }catch(e){ mbAdmin.accessLog=[]; } mbAdmin.accessLogLoaded=true; })());
+    if(!mbAdmin.authLogsLoaded) tasks.push((async()=>{
+      try{ const r=await mbAdminListAuthLogs(mbAdmin.logsLimit)||[]; mbAdmin.authLogs=r; mbAdmin.authLogsHasMore=r.length===mbAdmin.logsLimit; }
+      catch(e){ mbAdmin.authLogs=[]; mbAdmin.authLogsHasMore=false; }
+      mbAdmin.authLogsLoaded=true;
+    })());
+    if(!mbAdmin.accessLogLoaded) tasks.push((async()=>{
+      try{ const r=await mbAdminListAccessLog(mbAdmin.logsLimit)||[]; mbAdmin.accessLog=r; mbAdmin.accessLogHasMore=r.length===mbAdmin.logsLimit; }
+      catch(e){ mbAdmin.accessLog=[]; mbAdmin.accessLogHasMore=false; }
+      mbAdmin.accessLogLoaded=true;
+    })());
     if(tasks.length){ await Promise.all(tasks); if(mbAdmin.tab==='logs') mbAdminRender(); }
   } else if(mbAdmin.tab==='users' && !mbAdmin.usersLoaded){
-    try{ mbAdmin.users=await mbAdminListUsers()||[]; }catch(e){ mbAdmin.users=[]; }
+    try{ const r=await mbAdminListUsers(mbAdmin.usersLimit)||[]; mbAdmin.users=r; mbAdmin.usersHasMore=r.length===mbAdmin.usersLimit; }
+    catch(e){ mbAdmin.users=[]; mbAdmin.usersHasMore=false; }
     mbAdmin.usersLoaded=true; if(mbAdmin.tab==='users') mbAdminRender();
   } else if(mbAdmin.tab==='feedback' && !mbAdmin.feedbackLoaded){
-    try{ mbAdmin.feedback=await mbAdminListFeedback()||[]; }catch(e){ mbAdmin.feedback=[]; }
+    try{ const r=await mbAdminListFeedback(mbAdmin.fbLimit)||[]; mbAdmin.feedback=r; mbAdmin.fbHasMore=r.length===mbAdmin.fbLimit; }
+    catch(e){ mbAdmin.feedback=[]; mbAdmin.fbHasMore=false; }
     mbAdmin.feedbackLoaded=true; if(mbAdmin.tab==='feedback') mbAdminRender();
   } else if(mbAdmin.tab==='usage' && !mbAdmin.usageLoaded){
     try{
@@ -5863,38 +5900,79 @@ async function mbAdminEnsureLoaded(){
       mbAdmin.usage=rows||[]; mbAdmin.usageTotal=total||0;
     }catch(e){ mbAdmin.usage=[]; mbAdmin.usageTotal=0; }
     mbAdmin.usageLoaded=true; if(mbAdmin.tab==='usage') mbAdminRender();
+  } else if(mbAdmin.tab==='prompts'){
+    const m=mbAdmin.promptMode;
+    if(!mbAdmin.promptLoaded[m]){
+      try{
+        const text=await mbAdminGetPrompt(m);
+        mbAdmin.promptCache[m]=typeof text==='string'?text:'';
+      }catch(e){ mbAdmin.promptCache[m]=''; }
+      mbAdmin.promptLoaded[m]=true;
+      if(mbAdmin.tab==='prompts'){ mbAdminRender(); }
+    }
   }
 }
 function mbAdminLogsFilter(v){
-  mbAdmin.logsFilter=v; mbAdmin.logsShown=MB_ADMIN_PAGE_SIZE;
+  mbAdmin.logsFilter=v;
   const el=document.getElementById('adm-logs-results');
   if(el) el.innerHTML=mbAdminLogsRows();
   else mbAdminRender();
 }
 function mbAdminSearch(tabKey,v){
-  if(tabKey==='logs'){ mbAdmin.logsQuery=v; mbAdmin.logsShown=MB_ADMIN_PAGE_SIZE; }
-  else if(tabKey==='users'){ mbAdmin.usersQuery=v; mbAdmin.usersShown=MB_ADMIN_PAGE_SIZE; }
-  else { mbAdmin.fbQuery=v; mbAdmin.fbShown=MB_ADMIN_PAGE_SIZE; }
+  if(tabKey==='logs') mbAdmin.logsQuery=v;
+  else if(tabKey==='users') mbAdmin.usersQuery=v;
+  else mbAdmin.fbQuery=v;
   const el=document.getElementById('adm-'+tabKey+'-results');
   if(el) el.innerHTML = tabKey==='logs'?mbAdminLogsRows():tabKey==='users'?mbAdminUsersRows():mbAdminFeedbackRows();
 }
 function mbAdminSort(tabKey,v){
-  if(tabKey==='logs'){ mbAdmin.logsSort=v; mbAdmin.logsShown=MB_ADMIN_PAGE_SIZE; }
-  else if(tabKey==='users'){ mbAdmin.usersSort=v; mbAdmin.usersShown=MB_ADMIN_PAGE_SIZE; }
-  else { mbAdmin.fbSort=v; mbAdmin.fbShown=MB_ADMIN_PAGE_SIZE; }
+  if(tabKey==='logs') mbAdmin.logsSort=v;
+  else if(tabKey==='users') mbAdmin.usersSort=v;
+  else mbAdmin.fbSort=v;
   const el=document.getElementById('adm-'+tabKey+'-results');
   if(el) el.innerHTML = tabKey==='logs'?mbAdminLogsRows():tabKey==='users'?mbAdminUsersRows():mbAdminFeedbackRows();
 }
-// 클라우드 열기의 무한 스크롤과 같은 방식 - 목업관리 쪽은 서버에서 매번 새로 가져오는 대신,
-// RPC로 이미 한 번에 다 받아온 결과를 화면에는 100개씩만 순차적으로 더 그려 보여준다(데이터는
-// 이미 메모리에 있으니 스크롤할 때마다 네트워크 요청이 추가로 나가지는 않는다) - 그래도 한
-// 화면에 수천 줄을 한꺼번에 그리지 않아서 스크롤이 무겁거나 훑어보기 힘들어지는 것은 막아준다.
-function mbAdminLoadMore(tabKey){
-  if(tabKey==='logs') mbAdmin.logsShown+=MB_ADMIN_PAGE_SIZE;
-  else if(tabKey==='users') mbAdmin.usersShown+=MB_ADMIN_PAGE_SIZE;
-  else mbAdmin.fbShown+=MB_ADMIN_PAGE_SIZE;
+// RPC가 한 번에 다 받아오는 게 아니라 매번 "지금까지 보여준 개수 + 100"만큼 다시 서버에 물어보는
+// 방식이다(offset 페이징 대신 이 방식을 쓴 이유: 접속 로그는 로그인 이력·페이지 접속 두 소스를
+// 시간순으로 섞어서 보여줘야 하는데, 두 소스를 각각 독립적으로 offset 페이징하면 경계에서
+// 병합 순서가 어긋날 수 있다 - 매번 "지금까지 필요한 총량"으로 다시 받아오면 이 문제가 아예
+// 생기지 않는다). 데이터가 아주 많아져도 이 조회 자체는 가벼운 정렬+LIMIT라 부담 없다.
+async function mbAdminLoadMore(tabKey){
+  if(tabKey==='logs'){
+    if(mbAdmin.logsLoadingMore || (!mbAdmin.authLogsHasMore && !mbAdmin.accessLogHasMore)) return;
+    mbAdmin.logsLoadingMore=true; mbAdmin.logsLimit+=MB_ADMIN_PAGE_SIZE;
+    mbAdminRenderKeepListScroll(tabKey);
+    const tasks=[];
+    if(mbAdmin.authLogsHasMore) tasks.push((async()=>{
+      try{ const r=await mbAdminListAuthLogs(mbAdmin.logsLimit)||[]; mbAdmin.authLogs=r; mbAdmin.authLogsHasMore=r.length===mbAdmin.logsLimit; }catch(e){}
+    })());
+    if(mbAdmin.accessLogHasMore) tasks.push((async()=>{
+      try{ const r=await mbAdminListAccessLog(mbAdmin.logsLimit)||[]; mbAdmin.accessLog=r; mbAdmin.accessLogHasMore=r.length===mbAdmin.logsLimit; }catch(e){}
+    })());
+    await Promise.all(tasks);
+    mbAdmin.logsLoadingMore=false;
+  } else if(tabKey==='users'){
+    if(mbAdmin.usersLoadingMore || !mbAdmin.usersHasMore) return;
+    mbAdmin.usersLoadingMore=true; mbAdmin.usersLimit+=MB_ADMIN_PAGE_SIZE;
+    mbAdminRenderKeepListScroll(tabKey);
+    try{ const r=await mbAdminListUsers(mbAdmin.usersLimit)||[]; mbAdmin.users=r; mbAdmin.usersHasMore=r.length===mbAdmin.usersLimit; }catch(e){}
+    mbAdmin.usersLoadingMore=false;
+  } else {
+    if(mbAdmin.fbLoadingMore || !mbAdmin.fbHasMore) return;
+    mbAdmin.fbLoadingMore=true; mbAdmin.fbLimit+=MB_ADMIN_PAGE_SIZE;
+    mbAdminRenderKeepListScroll(tabKey);
+    try{ const r=await mbAdminListFeedback(mbAdmin.fbLimit)||[]; mbAdmin.feedback=r; mbAdmin.fbHasMore=r.length===mbAdmin.fbLimit; }catch(e){}
+    mbAdmin.fbLoadingMore=false;
+  }
+  mbAdminRenderKeepListScroll(tabKey);
+}
+// 스크롤 위치를 유지한 채로 결과 영역만 다시 그린다("더 불러오는 중..." 표시 → 실제 새 행 반영).
+function mbAdminRenderKeepListScroll(tabKey){
   const el=document.getElementById('adm-'+tabKey+'-results');
-  if(el) el.innerHTML = tabKey==='logs'?mbAdminLogsRows():tabKey==='users'?mbAdminUsersRows():mbAdminFeedbackRows();
+  if(!el) return;
+  const top=el.scrollTop;
+  el.innerHTML = tabKey==='logs'?mbAdminLogsRows():tabKey==='users'?mbAdminUsersRows():mbAdminFeedbackRows();
+  el.scrollTop=top;
 }
 function mbAdminScrollCheck(e){
   const el=e.target;
@@ -5905,9 +5983,12 @@ function mbAdminScrollCheck(e){
   else if(el.id==='adm-feedback-results') mbAdminLoadMore('feedback');
 }
 document.addEventListener('scroll', mbAdminScrollCheck, true);
-// 필터링 후 실제로 더 보여줄 게 남아있을 때만 붙이는 안내 줄 - 계속 스크롤하면 100개씩 더 보인다.
-function mbAdminMoreHint(totalFiltered,shown){
-  return shown<totalFiltered ? `<div class="cl-shared-loadmore">${totalFiltered-shown}개 더 있음 - 아래로 스크롤하세요</div>` : '';
+// 검색 중일 때는(이미 받아온 창 안에서만 걸러 보여주는 것이므로) "더 있음" 안내를 굳이 달지
+// 않는다 - 검색어에 걸리는 게 지금 창 밖에도 있을 수 있어 정확한 개수를 알 수 없기 때문이다.
+function mbAdminMoreHint(hasMore,loadingMore,hasQuery){
+  if(loadingMore) return `<div class="cl-shared-loadmore">더 불러오는 중...</div>`;
+  if(hasMore && !hasQuery) return `<div class="cl-shared-loadmore">아래로 스크롤하면 더 불러옵니다</div>`;
+  return '';
 }
 const ADM_EVENT_LABEL={login:['로그인','#eaf6ef','#1a7a4c'],logout:['로그아웃','#eef1f4','#5f6c78'],signup:['가입','#eaf1fb','#2a5ea8'],login_failed:['로그인 실패','#fdecec','#c0392b'],page_access:['페이지 접속','#fff4e5','#a5650a']};
 function mbAdminRenderLogs(){
@@ -5949,8 +6030,7 @@ function mbAdminLogsRows(){
   }
   rows.sort((a,b)=>{ const d=new Date(b.created_at)-new Date(a.created_at); return mbAdmin.logsSort==='oldest'?-d:d; });
   if(!rows.length) return `<div class="cl-empty">기록이 없습니다.</div>`;
-  const total=rows.length;
-  rows=rows.slice(0,mbAdmin.logsShown);
+  const hasMore=(f!=='access'&&mbAdmin.authLogsHasMore)||(f!=='auth'&&mbAdmin.accessLogHasMore);
   return `<table class="adm-table"><thead><tr><th style="width:180px;">시간</th><th style="width:110px;">유형</th><th style="width:140px;">사용자명</th><th>상세</th></tr></thead><tbody>`+
     rows.map(r=>{
       if(r._kind==='auth'){
@@ -5960,7 +6040,7 @@ function mbAdminLogsRows(){
       const ev=ADM_EVENT_LABEL.page_access;
       const detail=`${r.external_ip||'-'} · ${r.location||'-'} · ${r.os_user||'-'} · ${r.app_ver||'-'} · ${r.mode||'-'}`;
       return `<tr><td>${mbFmtDate(r.created_at)}</td><td><span class="adm-badge" style="background:${ev[1]};color:${ev[2]};">${esc(ev[0])}</span></td><td>-</td><td class="adm-ellip" title="${esc(detail)}">${esc(detail)}</td></tr>`;
-    }).join('')+`</tbody></table>`+mbAdminMoreHint(total,rows.length);
+    }).join('')+`</tbody></table>`+mbAdminMoreHint(hasMore,mbAdmin.logsLoadingMore,!!q);
 }
 function mbAdminRenderUsers(){
   return `<div class="cl-toolbar">
@@ -5987,8 +6067,6 @@ function mbAdminUsersRows(){
   else if(mbAdmin.usersSort==='admin_first') rows.sort((a,b)=>(b.auth_yn==='Y')-(a.auth_yn==='Y'));
   else rows.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
   if(!rows.length) return `<div class="cl-empty">가입한 사용자가 없습니다.</div>`;
-  const total=rows.length;
-  rows=rows.slice(0,mbAdmin.usersShown);
   return `<table class="adm-table"><thead><tr><th style="width:180px;">아이디</th><th>메모</th><th style="width:90px;">권한</th><th style="width:180px;">가입일</th></tr></thead><tbody>`+
     rows.map(u=>{
       const admin=u.auth_yn==='Y';
@@ -5998,7 +6076,7 @@ function mbAdminUsersRows(){
         <td><span class="adm-badge" style="background:${admin?'#fff4e5':'#eef1f4'};color:${admin?'#a5650a':'#5f6c78'};">${admin?'관리자':'일반'}</span></td>
         <td>${mbFmtDate(u.created_at)}</td>
       </tr>`;
-    }).join('')+`</tbody></table>`+mbAdminMoreHint(total,rows.length);
+    }).join('')+`</tbody></table>`+mbAdminMoreHint(mbAdmin.usersHasMore,mbAdmin.usersLoadingMore,!!q);
 }
 function mbAdminRenderFeedback(){
   return `<div class="cl-toolbar">
@@ -6020,8 +6098,6 @@ function mbAdminFeedbackRows(){
   if(q) rows=rows.filter(f=>(f.username||'').toLowerCase().includes(q)||(f.content||'').toLowerCase().includes(q));
   rows.sort((a,b)=>{ const d=new Date(b.created_at)-new Date(a.created_at); return mbAdmin.fbSort==='oldest'?-d:d; });
   if(!rows.length) return `<div class="cl-empty">받은 의견이 없습니다.</div>`;
-  const total=rows.length;
-  rows=rows.slice(0,mbAdmin.fbShown);
   return `<div class="adm-fb-list">`+rows.map(f=>{
     const expanded=mbAdmin.fbExpanded.has(f.id);
     return `<div class="adm-fb-card">
@@ -6031,7 +6107,7 @@ function mbAdminFeedbackRows(){
       </div>
       <div class="adm-fb-body ${expanded?'expanded':''}" onclick="mbAdminToggleFb('${f.id}')">${f.content||''}</div>
     </div>`;
-  }).join('')+`</div>`+mbAdminMoreHint(total,rows.length);
+  }).join('')+`</div>`+mbAdminMoreHint(mbAdmin.fbHasMore,mbAdmin.fbLoadingMore,!!q);
 }
 function mbAdminToggleFb(id){
   if(mbAdmin.fbExpanded.has(id)) mbAdmin.fbExpanded.delete(id); else mbAdmin.fbExpanded.add(id);
@@ -6050,12 +6126,6 @@ function mbFmtBytes(n){
 // 조회할 수 없으므로, 무료플랜 기준으로 코드에 고정해 둔다. 유료플랜으로 바뀌면 이 상수만 바꾸면 된다.
 const ADM_DB_QUOTA_BYTES=500*1024*1024;
 const ADM_USAGE_COLORS=['#4285F4','#FBBC05','#EA4335','#34A853','#9C27B0','#00ACC1','#FF7043','#8D6E63'];
-// 범례에서 테이블명만 봐서는 용도가 바로 안 와닿을 수 있어 짧은 한글 설명을 같이 붙인다.
-const ADM_TABLE_DESC={
-  mockups:'목업 데이터', mockup_folders:'폴더 구조',
-  mockup_access_log:'페이지 접속 기록', auth_logs:'로그인 이력',
-  mb_users:'회원 계정', mb_feedback:'피드백'
-};
 function mbAdminRenderUsage(){
   if(!mbAdmin.usageLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
   const rows=(mbAdmin.usage||[]).filter(r=>Number(r.size_bytes)>0).sort((a,b)=>Number(b.size_bytes)-Number(a.size_bytes));
@@ -6064,8 +6134,11 @@ function mbAdminRenderUsage(){
   // 테이블별 용량의 합은 시스템 카탈로그·WAL 등을 뺀 값이라 실제 DB 전체 용량보다 살짝 작을 수
   // 있다 - 그 차이를 "기타" 구간으로 채워서, 막대 전체 길이가 항상 실제 DB 용량과 맞아떨어지게 한다.
   const other=Math.max(0,total-knownSum);
-  const segs=rows.map((r,i)=>({name:r.table_name,bytes:Number(r.size_bytes),color:ADM_USAGE_COLORS[i%ADM_USAGE_COLORS.length]}));
-  if(other>0) segs.push({name:'기타(인덱스·시스템 등)',bytes:other,color:'#c9ced3'});
+  // 테이블 설명은 하드코딩하지 않고, RPC가 Postgres의 COMMENT ON TABLE 값을 그대로 실어 보내준다
+  // (mb_admin_storage_usage의 description 컬럼) - 그래서 새 테이블을 추가하고 설명을 달아도
+  // 앱 코드를 고칠 필요 없이 바로 반영된다.
+  const segs=rows.map((r,i)=>({name:r.table_name,desc:r.description,bytes:Number(r.size_bytes),color:ADM_USAGE_COLORS[i%ADM_USAGE_COLORS.length]}));
+  if(other>0) segs.push({name:'기타(인덱스·시스템 등)',desc:null,bytes:other,color:'#c9ced3'});
   // 막대 전체 길이는 "한도 대비 지금 쓴 비율"만큼만 채운다(구글 드라이브 화면과 동일한 방식) -
   // 나머지 빈 회색 트랙이 곧 "앞으로 더 쓸 수 있는 여유분"이 된다.
   const usedPctOfQuota=total>0?Math.min(100,(total/ADM_DB_QUOTA_BYTES)*100):0;
@@ -6075,10 +6148,9 @@ function mbAdminRenderUsage(){
   }).join('');
   const legend=segs.map(s=>{
     const p=total>0?(s.bytes/total*100):0;
-    const desc=ADM_TABLE_DESC[s.name];
     return `<div class="adm-usage-row">
       <span class="adm-usage-dot" style="background:${s.color};"></span>
-      <span class="adm-usage-name">${esc(s.name)}</span>${desc?`<span class="adm-usage-desc">${esc(desc)}</span>`:''}
+      <span class="adm-usage-name">${esc(s.name)}</span>${s.desc?`<span class="adm-usage-desc">${esc(s.desc)}</span>`:''}
       <span class="adm-usage-size">${mbFmtBytes(s.bytes)} <span class="adm-usage-pct">(${p.toFixed(1)}%)</span></span>
     </div>`;
   }).join('');
@@ -6087,6 +6159,67 @@ function mbAdminRenderUsage(){
     <div class="adm-usage-bar">${barSegs||''}</div>
     <div class="adm-usage-legend">${legend||'<div class="cl-empty">표시할 테이블이 없습니다.</div>'}</div>
   </div>`;
+}
+
+// ---- AI프롬프트(이미지 변환의 「질문만 복사」 문구, DB 기준으로 관리) ----
+// 씬모드/팻모드 프롬프트를 각각 DB 한 줄씩(mb_prompts.mode='Thin'/'Fat')에 저장해 두고, 여기서
+// 그대로 불러와 textarea에 채워 편집한 뒤 저장한다. 조회·수정을 굳이 나누지 않고 늘 편집
+// 가능한 하나의 칸으로 둔다(요청대로) - 저장을 눌러야만 실제로 반영된다.
+// 줄바꿈·따옴표 등 특수문자를 안전하게 다루기 위해, HTML 문자열로 채우지 않고(엔티티 이스케이프
+// 문제 소지) textarea를 빈 채로 그린 뒤 .value에 직접 대입한다(mbAdminFillPromptTextarea) -
+// DOM의 value 속성 대입은 HTML 파싱을 거치지 않아 어떤 문자가 들어있어도 그대로 보존된다.
+function mbAdminRenderPrompts(){
+  const m=mbAdmin.promptMode;
+  const loaded=!!mbAdmin.promptLoaded[m];
+  return `<div class="cl-toolbar">
+    <div class="cl-lineage-seg adm-mode-seg" style="flex-shrink:0;">
+      <span class="${m==='Thin'?'on on-thin':''}" onclick="mbAdminPromptModeSwitch('Thin')">Thin Mode</span>
+      <span class="${m==='Fat'?'on on-fat':''}" onclick="mbAdminPromptModeSwitch('Fat')">Fat Mode</span>
+    </div>
+    <div style="flex:1;"></div>
+    <span class="adm-prompt-status" id="adm-prompt-status"></span>
+    <button type="button" class="cl-btn-primary-sm" id="adm-prompt-savebtn" onclick="mbAdminSavePromptClick()" ${loaded?'':'disabled'}>💾 저장</button>
+  </div>
+  <div class="adm-prompt-wrap">
+    ${loaded
+      ? `<textarea id="adm-prompt-textarea" class="adm-prompt-textarea" spellcheck="false" oninput="mbAdminPromptDirty()"></textarea>`
+      : `<div class="cl-empty">불러오는 중...</div>`}
+  </div>`;
+}
+// 「AI프롬프트」 탭을 처음 그리거나(mbAdminRender) 모드를 바꿀 때(mbAdminPromptModeSwitch) 매번
+// 호출된다 - 위 설명대로 textarea.value에 직접 대입해서 채운다.
+function mbAdminFillPromptTextarea(){
+  const ta=document.getElementById('adm-prompt-textarea');
+  if(ta) ta.value=mbAdmin.promptCache[mbAdmin.promptMode]||'';
+}
+function mbAdminPromptModeSwitch(m){
+  if(mbAdmin.promptMode===m) return;
+  if(mbAdmin.promptDirty && !confirm('저장하지 않은 변경사항이 있습니다. 그래도 이동할까요?')) return;
+  mbAdmin.promptMode=m; mbAdmin.promptDirty=false;
+  mbAdminRender();
+  mbAdminEnsureLoaded();
+}
+function mbAdminPromptDirty(){
+  mbAdmin.promptDirty=true;
+  const st=document.getElementById('adm-prompt-status');
+  if(st){ st.textContent='저장하지 않은 변경사항 있음'; st.className='adm-prompt-status dirty'; }
+}
+async function mbAdminSavePromptClick(){
+  const ta=document.getElementById('adm-prompt-textarea'); if(!ta) return;
+  const m=mbAdmin.promptMode;
+  const content=ta.value; // .value을 그대로 읽으므로 줄바꿈·특수문자 전부 원본 그대로 전송된다
+  const btn=document.getElementById('adm-prompt-savebtn');
+  const st=document.getElementById('adm-prompt-status');
+  if(btn){ btn.disabled=true; btn.textContent='저장 중...'; }
+  try{
+    await mbAdminSavePrompt(m,content);
+    mbAdmin.promptCache[m]=content;
+    mbAdmin.promptDirty=false;
+    if(st){ st.textContent='✅ 저장했습니다 ('+(m==='Thin'?'씬모드':'팻모드')+')'; st.className='adm-prompt-status ok'; }
+  }catch(e){
+    if(st){ st.textContent='❌ 저장 실패: '+esc(e.message); st.className='adm-prompt-status err'; }
+  }
+  if(btn){ btn.disabled=false; btn.textContent='💾 저장'; }
 }
 
 // ---- 피드백 ----
@@ -6270,6 +6403,7 @@ function mbFmtDate(s){ if(!s) return '-'; const d=new Date(s); const p=n=>String
 // ---- 상태 ----
 const mbCloud={ mode:'save', tab:'mine', folderId:null, folders:[], items:[], selectedId:null,
   searchQuery:'', includeSub:false, expanded:new Set(), tags:[], isPublic:true, filename:'', renamingFolderId:null, renamingItemId:null, fileCounts:{}, favCount:0, mineSort:'name',
+  mineOffset:0, mineHasMore:true, mineLoadingMore:false,
   treeWidth:(()=>{ try{ const v=parseInt(localStorage.getItem('mb_cloud_tree_w'),10); return (v>=120&&v<=400)?v:400; }catch(e){ return 400; } })(),
   sharedQuery:'', sharedSort:'recent', sharedTag:'전체', sharedItems:[], sharedTags:['전체'], sharedSelectedId:null,
   sharedLineage:'originals', // '전체'가 아니라 '원본만'을 기본값으로 - 공유가 쌓일수록 목록이 리비전으로 뒤덮이지 않게 한다
@@ -6559,8 +6693,9 @@ async function mbCloudLoadFileCounts(){
 // "전체 파일"과 같은 레벨의 별도 항목으로 표시됨) - mbCloud.folderId에 이 값이 들어오면
 // 폴더 구분 없이 is_favorite=true인 파일만 모아서 보여준다.
 const MB_FAV_FOLDER='__fav__';
-async function mbCloudLoadItems(){
-  const s=mbGetSession(); if(!s){ mbCloud.items=[]; return; }
+const MB_MINE_PAGE_SIZE=100;
+function mbCloudMineBaseQuery(){
+  const s=mbGetSession();
   // 씬모드에서 저장한 파일과 팻모드에서 저장한 파일은 구조가 달라 서로 호환되지 않으므로,
   // "내 파일" 목록도 지금 켜진 모드에 해당하는 것만 보여준다(공유파일 탭과 같은 기준).
   let q=`/mockups?owner_id=eq.${s.id}&mode=eq.${mbCurrentMode()}&select=id,title,tags,is_public,mode,created_at,updated_at,folder_id,is_favorite&order=updated_at.desc`;
@@ -6575,8 +6710,57 @@ async function mbCloudLoadItems(){
     q += mbCloud.folderId==null ? '&folder_id=is.null' : `&folder_id=eq.${mbCloud.folderId}`;
   }
   if(mbCloud.searchQuery) q+=`&title=ilike.*${encodeURIComponent(mbCloud.searchQuery)}*`;
-  try{ mbCloud.items=await mbRestFetch(q)||[]; }catch(e){ mbCloud.items=[]; }
+  return q;
 }
+// 파일이 100개가 넘는 폴더/즐겨찾기/검색 결과에서는 서버(PostgREST)가 요청당 최대 반환 개수를
+// 두고 있어(우리가 limit을 안 걸어도) 조용히 상한선(대개 100개)에서 잘려 돌아온다 - 그래서 예전
+// 코드처럼 limit 없이 한 번에 다 받아오려 하면 100개 그 이후는 스크롤을 아무리 내려도 원래
+// 존재하지 않는 것처럼 보였다. 공유파일 탭과 동일하게 100개씩 명시적으로 나눠 받아오고, 스크롤로
+// 이어붙이는 방식으로 바꿔서 이 상한선과 무관하게 전체를 다 볼 수 있게 한다.
+async function mbCloudLoadItems(){
+  const s=mbGetSession(); if(!s){ mbCloud.items=[]; mbCloud.mineHasMore=false; return; }
+  mbCloud.mineOffset=0; mbCloud.mineHasMore=true;
+  const q=mbCloudMineBaseQuery()+`&limit=${MB_MINE_PAGE_SIZE}&offset=0`;
+  try{
+    const rows=await mbRestFetch(q)||[];
+    mbCloud.items=rows;
+    mbCloud.mineHasMore=rows.length===MB_MINE_PAGE_SIZE;
+    mbCloud.mineOffset=rows.length;
+  }catch(e){ mbCloud.items=[]; mbCloud.mineHasMore=false; }
+}
+async function mbCloudLoadItemsMore(){
+  if(mbCloud.mineLoadingMore || !mbCloud.mineHasMore) return;
+  mbCloud.mineLoadingMore=true;
+  mbCloudRenderKeepScroll();
+  try{
+    const q=mbCloudMineBaseQuery()+`&limit=${MB_MINE_PAGE_SIZE}&offset=${mbCloud.mineOffset}`;
+    const rows=await mbRestFetch(q)||[];
+    mbCloud.mineHasMore=rows.length===MB_MINE_PAGE_SIZE;
+    mbCloud.mineOffset+=rows.length;
+    if(rows.length) mbCloud.items=mbCloud.items.concat(rows);
+  }catch(e){ /* 실패하면 다음 스크롤/화면-채우기 시점에 다시 시도된다 */ }
+  finally{
+    mbCloud.mineLoadingMore=false;
+    mbCloudRenderKeepScroll();
+    mbCloudCheckMineFillViewport();
+  }
+}
+// 100개를 받아와도 팝업이 크면 스크롤 자체가 안 생겨 "스크롤하면 더 불러오기"가 발동할 기회가
+// 없을 수 있다 - 공유파일 탭과 동일하게, 다시 그린 뒤 목록이 아직 화면을 다 못 채웠고(스크롤 없음)
+// 더 있으면 곧바로 한 번 더 불러온다.
+function mbCloudCheckMineFillViewport(){
+  if(mbCloud.tab!=='mine'||!mbCloud.mineHasMore||mbCloud.mineLoadingMore) return;
+  const list=document.querySelector('#cloudBody .cl-list');
+  if(!list) return;
+  if(list.scrollHeight<=list.clientHeight+4) mbCloudLoadItemsMore();
+}
+function mbCloudMineScrollCheck(e){
+  const el=e.target;
+  if(!el||!el.classList||!el.classList.contains('cl-list')) return;
+  if(mbCloud.tab!=='mine'||!mbCloud.mineHasMore||mbCloud.mineLoadingMore) return;
+  if(el.scrollTop+el.clientHeight>=el.scrollHeight-300) mbCloudLoadItemsMore();
+}
+document.addEventListener('scroll', mbCloudMineScrollCheck, true);
 // 공유파일이 많아지면 한 번에 다 불러오는 건 느리고 낭비이므로, 100개씩 끊어서 불러온다
 // (처음 열 때 100개, 스크롤을 끝까지 내리면 다음 100개... 이런 식으로 이어붙인다).
 // 검색어/정렬/태그 필터처럼 "완전히 새로 불러와야 하는" 조건은 mbCloudLoadShared()가 처음부터
@@ -7179,8 +7363,9 @@ function mbCloudRenderMineResults(){
     </div>`;
   });
   if(!rows) rows=`<div class="cl-empty">${inFav?'즐겨찾기한 파일이 없습니다.':(searching?'검색 결과가 없습니다.':'이 폴더는 비어 있습니다.')}</div>`;
+  const loadMoreRow=mbCloud.mineLoadingMore?`<div class="cl-shared-loadmore">더 불러오는 중...</div>`:'';
   const listArea=`<div class="cl-body"><div class="cl-tree" style="width:${mbCloud.treeWidth}px">${mbCloudTreeHTML()}</div><div class="cl-split" onmousedown="mbCloudSplitStart(event)"></div><div class="cl-list">
-    <div class="cl-list-head" style="grid-template-columns:${cols}">${heads.map(h=>`<div>${h}</div>`).join('')}</div>${rows}
+    <div class="cl-list-head" style="grid-template-columns:${cols}">${heads.map(h=>`<div>${h}</div>`).join('')}</div>${rows}${loadMoreRow}
   </div></div>`;
   return listArea+(mbCloud.mode==='save'?mbCloudSaveFooter():mbCloudOpenFooter());
 }
@@ -7244,9 +7429,14 @@ async function mbCloudDoSave(){
   if(targetId){
     if(!confirm(`'${title}' 이름의 파일이 이미 있습니다. 덮어쓰시겠습니까?`)) return;
   }
+  // 안전장치: 어떤 경로로든 origin_id가 지금 덮어쓰려는 그 파일 자신을 가리키게 된 상태로
+  // 저장을 시도하면(자기 자신의 파생본이 되는 모순), DB 제약조건에 막혀 저장 자체가 실패해
+  // 버리므로, 여기서 미리 걸러서 null로 되돌린다 - 그 경우는 사실상 "이 파일은 원본"이라는
+  // 뜻이므로 null이 정확한 값이다.
+  const originIdToSave = (targetId && mbCloud.originId===targetId) ? null : (mbCloud.originId||null);
   const payload={ owner_id:s.id, folder_id:mbCloud.folderId, title, tags:mbCloud.tags, is_public:mbCloud.isPublic,
     mode:mbCurrentMode(), data:mbBuildSaveData(), thumbnail:mbBuildThumbnailSVG(), updated_at:new Date().toISOString(),
-    origin_id:mbCloud.originId||null };
+    origin_id:originIdToSave };
   try{
     if(targetId){
       await mbRestFetch(`/mockups?id=eq.${targetId}`,{method:'PATCH',body:JSON.stringify(payload),prefer:'return=minimal'});
@@ -7473,15 +7663,22 @@ function mbCloudSharedSelect(id){ mbCloud.sharedSelectedId=id; mbCloudRenderKeep
 async function mbCloudSharedOpen(id){
   if(!id) return;
   try{
-    const rows=await mbRestFetch(`/mockups?id=eq.${id}&select=data,title,origin_id`);
+    const rows=await mbRestFetch(`/mockups?id=eq.${id}&select=data,title,origin_id,owner_id`);
     const row=rows&&rows[0]; if(!row) throw new Error('파일을 찾을 수 없습니다.');
+    // 공유목록에는 "남이 만든 파일"뿐 아니라 "내가 공개로 올린 내 파일"도 같이 뜬다. 이게 내
+    // 파일이면(owner_id가 나) 파생시키는 게 아니라 그냥 이어서 작업하는 것이므로, 내 파일을
+    // 다시 열 때(mbCloudDoOpen)와 똑같이 이미 있던 원본 추적값을 그대로 이어받는다(원본
+    // 자체면 null 유지) - 그래야 원본을 다시 열어서 같은 이름으로 덮어써도 계속 원본으로 남는다.
+    // (안 그러면 origin_id가 자기 자신의 id가 돼버려 저장 시 DB 제약조건에 걸려 실패한다.)
+    const s=mbGetSession();
+    const isOwnFile = s && row.owner_id===s.id;
     // 이 화면은 이제부터 row(id)에서 파생된 파일이 된다. 단, row 자신이 이미 다른 원본의 파생본이면
     // (row.origin_id가 있으면) 그 "최상위 원본"을 그대로 물려받는다 - 파생의 파생이 늘어나도 항상
     // 맨 위 원본 하나만 가리키게 해서(체인이 아니라 평평한 구조), 나중에 "이 원본에서 몇 개나
     // 파생됐는지" 셀 때 중간 단계 없이 한 번에 집계할 수 있게 한다.
     // mbCloudApplyData()의 render()가 자동저장을 그 자리에서 바로 실행시킬 수도 있으므로,
     // 그 스냅샷에도 반영되도록 데이터를 적용하기 전에 먼저 세팅한다.
-    mbCloud.originId=row.origin_id||id;
+    mbCloud.originId = isOwnFile ? (row.origin_id||null) : (row.origin_id||id);
     mbCloudApplyData(row.data);
     closeCloud();
     // "복제해서 열기"(버튼 클릭이든 더블클릭이든)에 성공한 뒤에만 횟수를 올린다 - 핵심 동작(열기)은
