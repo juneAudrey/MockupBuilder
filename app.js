@@ -6273,8 +6273,15 @@ function mbAdminRenderUsage(){
   // 테이블 설명은 하드코딩하지 않고, RPC가 Postgres의 COMMENT ON TABLE 값을 그대로 실어 보내준다
   // (mb_admin_storage_usage의 description 컬럼) - 그래서 새 테이블을 추가하고 설명을 달아도
   // 앱 코드를 고칠 필요 없이 바로 반영된다.
-  const segs=rows.map((r,i)=>({name:r.table_name,desc:r.description,bytes:Number(r.size_bytes),color:ADM_USAGE_COLORS[i%ADM_USAGE_COLORS.length]}));
-  if(other>0) segs.push({name:'기타(인덱스·시스템 등)',desc:null,bytes:other,color:'#c9ced3'});
+  // "기타"를 항상 맨 끝에 붙이면, 정작 기타 용량이 개별 테이블보다 더 큰 경우(인덱스·시스템
+  // 오버헤드가 큰 경우 등)에도 목록 맨 아래에 깔려 "큰 순→작은 순" 정렬이 깨져 보인다.
+  // 그래서 기타도 다른 테이블과 똑같이 크기 비교 대상에 넣고 한 번에 내림차순 정렬한 뒤,
+  // 색상만 기타는 계속 고정 회색을 쓰고 나머지는 정렬된 순서대로 팔레트를 새로 배정한다.
+  const segs=rows.map(r=>({name:r.table_name,desc:r.description,bytes:Number(r.size_bytes),isOther:false}));
+  if(other>0) segs.push({name:'기타(인덱스·시스템 등)',desc:null,bytes:other,isOther:true});
+  segs.sort((a,b)=>b.bytes-a.bytes);
+  let admColorIdx=0;
+  segs.forEach(s=>{ s.color = s.isOther ? '#c9ced3' : ADM_USAGE_COLORS[admColorIdx++%ADM_USAGE_COLORS.length]; });
   // 막대 전체 길이는 "한도 대비 지금 쓴 비율"만큼만 채운다(구글 드라이브 화면과 동일한 방식) -
   // 나머지 빈 회색 트랙이 곧 "앞으로 더 쓸 수 있는 여유분"이 된다.
   const usedPctOfQuota=total>0?Math.min(100,(total/ADM_DB_QUOTA_BYTES)*100):0;
