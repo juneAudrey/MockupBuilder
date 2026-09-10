@@ -685,6 +685,13 @@
   .prop input,.prop select,.prop textarea{width:100%;padding:5px 7px;border:1px solid var(--ax-border);border-radius:4px;font-size:12px;font-family:inherit;}
   .prop-row{display:flex;gap:6px;}
   .prop-row .prop{flex:1;}
+  /* 조회조건 패널의 "한 줄 표시 개수" - 라벨과 숫자칸을 한 줄에 나란히 배치하고,
+     자주 조정하는 중요한 옵션임을 배경색·테두리로 강조한다. */
+  .prop.prop-perrow{display:flex;align-items:center;justify-content:space-between;gap:8px;
+    background:var(--ax-green-light);border:1.5px solid var(--ax-green);border-radius:6px;padding:7px 9px;}
+  .prop.prop-perrow label{display:flex;align-items:center;gap:4px;margin-bottom:0;color:var(--ax-green-dark);font-weight:700;}
+  .prop.prop-perrow input{width:44px;flex:none;text-align:center;font-weight:700;color:var(--ax-green-dark);border:1px solid var(--ax-green);background:#fff;}
+  .prop.prop-perrow input:focus{outline:none;border-color:var(--ax-green-dark);box-shadow:0 0 0 2px rgba(30,158,106,.2);}
   .prop .cbx{display:flex;align-items:center;gap:6px;font-size:12px;}
   .prop .cbx input{width:auto;}
   .empty-props{color:#9ca3af;font-size:12px;text-align:center;padding:30px 10px;line-height:1.6;}

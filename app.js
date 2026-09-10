@@ -510,7 +510,7 @@ const defaults={
     text:"아이템1\n  아이템1-1\n  아이템1-2\n    아이템1-2-1\n    아이템1-2-2\n  아이템1-3\n아이템2\n  아이템2-1\n  아이템2-2",
     selectedLine:0,showLines:true},
   searchbar:{w:1060,h:84,text:"",required:false,readonly:false,
-    collapsed:false,
+    collapsed:false,perRow:4,
     fields:[
       {label:"조건1",type:"text",required:false},
       {label:"조건2",type:"text",required:false}
@@ -1584,7 +1584,8 @@ function innerRaw(c,mode){
       return `<div class="ax-tree${c.showLines===false?' nolines':''}">${rows}</div>`;
     }
     case 'searchbar':{
-      const cells=sbLayoutCells(c.fields||[]);
+      const perRow=sbPerRow(c);
+      const cells=sbLayoutCells(c.fields||[],perRow);
       let sfIdx=0;
       const fields=cells.map(cell=>{
         if(cell.kind==='halfpair'){
@@ -1601,7 +1602,7 @@ function innerRaw(c,mode){
         }
         return `<div class="sfield${f.type==='radio'?' radio':''}" style="grid-column:span ${cell.units};">${sfFieldInner(f,fi,exp,c.id)}</div>`;
       }).join('');
-      const fullInner=`<div class="sfields">${fields}</div><div class="sactions"><span class="ssearch"><span class="sctl-search-ic"></span>조회</span></div>`;
+      const fullInner=`<div class="sfields" style="grid-template-columns:repeat(${perRow},1fr);">${fields}</div><div class="sactions"><span class="ssearch"><span class="sctl-search-ic"></span>조회</span></div>`;
       if(!exp){
         if(c.collapsed) return `<div class="ax-search collapsed"><span class="scollapsed-msg">🔍 조회조건이 접혀 있습니다 (헤더의 「조회조건 펼치기」로 표시)</span></div>`;
         return `<div class="ax-search">${fullInner}</div>`;
@@ -1623,7 +1624,8 @@ function escAttr(s){return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').
 // a single 1-column cell that's split 50/50, and a lone (unpaired) span===0.5 field
 // becomes its own 1-column cell with only the left half filled (right half stays blank
 // so a later field can't slide into that space).
-function sbLayoutCells(fields){
+function sbLayoutCells(fields,perRow){
+  const cols=Math.max(1,perRow||4);
   const arr=fields||[], cells=[];
   for(let i=0;i<arr.length;i++){
     const f=arr[i];
@@ -1632,10 +1634,15 @@ function sbLayoutCells(fields){
       if(next&&next.span===0.5){ cells.push({kind:'halfpair',a:f,b:next}); i++; }
       else cells.push({kind:'halfsolo',f});
     } else {
-      cells.push({kind:'field',f,units:Math.min(4,Math.max(1,f.span||1))});
+      cells.push({kind:'field',f,units:Math.min(cols,Math.max(1,f.span||1))});
     }
   }
   return cells;
+}
+// 한 행에 표시할 조건 갯수 - 컴포넌트별로 지정 가능(기본값 4), 비정상 값은 1~10 사이로 보정.
+function sbPerRow(c){
+  const n=parseInt(c&&c.perRow,10);
+  return Number.isFinite(n)?Math.max(1,Math.min(10,n)):4;
 }
 // Builds the label+control markup for one field (shared by full-width and half-width rendering).
 function sfFieldInner(f,fi,exp,cid){
@@ -2403,7 +2410,7 @@ function renderProps(){
       html+=`<div class="prop"><label>트리 항목${qh('한 줄에 하나씩 입력합니다. 앞에 <b>공백 2칸</b>을 넣을 때마다 한 단계씩 하위 항목이 됩니다.<br><br>하위가 있는 항목에는 자동으로 −/+ 접기 버튼이 표시됩니다.')}</label>
         <textarea class="tree-ta" rows="9" oninput="upd('text',this.value)" spellcheck="false">${esc(c.text||'')}</textarea></div>`;
 
-    } else if(c.type!=='grid'&&c.type!=='tabs'){
+    } else if(c.type!=='grid'&&c.type!=='tabs'&&c.type!=='searchbar'){
       if(c.type==='daterange'&&fatMode){
         const parts=(c.text||'').split('~').map(s=>s.trim());
         const tip=qh('두 날짜를 각각 입력합니다. "YYYY-MM-DD" 형식 권장(내보내기 결과물에서 실제 날짜 입력칸 두 개로 표시됩니다).');
@@ -2643,7 +2650,7 @@ function renderProps(){
 
   }
   if(c.type==='searchbar'){
-    html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.collapsed?'checked':''} onchange="upd('collapsed',this.checked)"> 접힘 상태(≫) 표시</label></div>`;
+    html+=`<div class="prop prop-perrow"><label>한 줄 표시 개수${qh('한 행(줄)에 표시할 조회 조건의 최대 개수입니다. 이 개수를 넘어가는 조건은 자동으로 다음 줄로 넘어갑니다.')}</label><input type="number" min="1" max="10" step="1" value="${sbPerRow(c)}" onchange="upd('perRow', Math.max(1,Math.min(10,parseInt(this.value,10)||4)))"></div>`;
     html+=`<div class="grp"><div class="grp-h">조회 조건 필드${qh('타입을 <b>빈값</b>으로 지정하면 라벨·입력칸 없이 해당 칸을 <b>비워둔 채</b> 그대로 자리만 차지합니다.<br><br>여러 칸짜리 레이아웃에서 특정 칸만 건너뛰고 싶을 때 사용하세요.<br><br>가로 폭을 <b>½칸</b>으로 지정하면, 바로 다음(또는 바로 앞) 필드도 ½칸일 때 두 필드가 한 칸을 <b>반반씩 나눠서</b> 표시됩니다(요청조직/구매조직처럼). 옆에 ½칸이 붙어있지 않으면 그 필드 혼자 한 칸의 <b>절반만</b> 채우고 나머지 절반은 비워둡니다.<br><br>타입이 <b>날짜</b>·<b>기간</b>이면 라벨 옆에 📅 아이콘이 나타나며, 클릭하면 뜨는 팝업에서 화면에 보여줄 날짜를 고를 수 있습니다(오늘/어제 등 원클릭 또는 연·월·일 조합). 비워두면 기본값(오늘 날짜)이 표시됩니다.')}</div><div class="sfield-list">`;
     (c.fields||[]).forEach((f,i)=>{
       html+=`<div class="sfield-row"
@@ -2843,6 +2850,10 @@ function upd(k,v){
     // collapsed shows only a one-line notice; expanding restores the fitted height
     c.h = v ? 44 : searchbarHeight(c);
   }
+  if(k==='perRow'&&c.type==='searchbar'){
+    // 한 줄 표시 개수가 바뀌면 줄바꿈 위치가 달라지므로 패널 높이를 다시 맞춘다.
+    fitSearchbar(c);
+  }
   if(k==='style'&&c.type==='popup'){
     // 명칭칸(.ax-popup-name)이 빠지는 만큼만 정확히 줄이기 위해, 아직 이전 렌더링이 남아있는
     // 실제 DOM에서 명칭칸의 화면 폭을 재서 뺀다(라벨 유무·위치에 따라 비율 계산이 달라지는 문제를 피함).
@@ -2862,7 +2873,7 @@ function upd(k,v){
       if(c._popupFullW!=null){ c.w=c._popupFullW; delete c._popupFullW; }
     }
   }
-  if(k==='showLabel'||k==='labelPos'||k==='collapsed'||k==='xscroll'||k==='style'){render();}else{drawCanvas();}
+  if(k==='showLabel'||k==='labelPos'||k==='collapsed'||k==='perRow'||k==='xscroll'||k==='style'){render();}else{drawCanvas();}
 }
 // 팻모드 기간(daterange) 속성 패널의 "날짜1"/"날짜2" 입력칸 - 두 값을 합쳐서 기존 text
 // 형식("YYYY-MM-DD ~ YYYY-MM-DD")으로 저장한다. idx는 0(날짜1) 또는 1(날짜2).
@@ -3166,22 +3177,24 @@ function gcMoveTo(i,valStr){
 }
 
 // ---- Search-bar field editors ----
-// Height of a searchbar is driven by how many rows of fields it needs (4 per row).
-// Keeps the panel from clipping a new row, and from leaving a gap when rows shrink.
-const SB_COLS=4, SB_ROW_H=52, SB_ROW_GAP=12, SB_PAD=28, SB_MIN_H=84;
+// Height of a searchbar is driven by how many rows of fields it needs (한 줄 표시 개수 = perRow,
+// component별로 지정 가능, 기본값 4). Keeps the panel from clipping a new row, and from leaving
+// a gap when rows shrink.
+const SB_ROW_H=52, SB_ROW_GAP=12, SB_PAD=28, SB_MIN_H=84;
 // Simulates the CSS grid's row-wrapping (grid-auto-flow: row) so the auto-height estimate
-// stays accurate even when some fields span 2-4 of the 4 columns at once.
-function searchbarRowCount(fields){
+// stays accurate even when some fields span multiple of the perRow columns at once.
+function searchbarRowCount(fields,perRow){
+  const cols=Math.max(1,perRow||4);
   let col=0, rows=1;
-  sbLayoutCells(fields).forEach(cell=>{
+  sbLayoutCells(fields,cols).forEach(cell=>{
     const span=cell.kind==='field'?cell.units:1; // halfpair/halfsolo always occupy exactly 1 column
-    if(col+span>SB_COLS){ rows++; col=0; }
+    if(col+span>cols){ rows++; col=0; }
     col+=span;
   });
   return rows;
 }
 function searchbarHeight(c){
-  const rows=Math.max(1,searchbarRowCount(c.fields||[]));
+  const rows=Math.max(1,searchbarRowCount(c.fields||[],sbPerRow(c)));
   return Math.max(SB_MIN_H, SB_PAD + rows*SB_ROW_H + (rows-1)*SB_ROW_GAP);
 }
 function fitSearchbar(c){
@@ -4655,7 +4668,7 @@ function placeItems(items,scale,clearFirst){
   const fieldTypes=['text','combo','date','daterange','search','radio','empty'];
   // Properties (beyond type/x/y/w/h/text/required) that a JSON item may set directly; copied through as-is.
   const passthroughKeys=['gtitle','userBtns','stdAdd','stdCancel','stdCopy','stdDelete','rows','showToolbar',
-    'options','readonly','ghost','active','collapsed','ctitle','chartType','color','showArrow','selected','selectedLine','showLines','colGroups',
+    'options','readonly','ghost','active','collapsed','perRow','ctitle','chartType','color','showArrow','selected','selectedLine','showLines','colGroups',
     'colAligns','colRequired','colReadonly','rowOrderCol','checkboxCol',
     'showLabel','labelText','labelPos','required','checked','style'];
   const idMap={}; // _tempId (author-assigned, only needed for Tab parent/child references) -> real comp id
