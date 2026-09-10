@@ -375,7 +375,7 @@ function pasteClipboard(){
       return; // relative x/y unchanged, it moves with its new parent automatically
     }
     // this item is a "root" of the copied selection: decide where it lands
-    if(targetParent&&nc.type!=='tabs'){
+    if(targetParent){
       nc.parent=targetParent; nc.tabIdx=targetTabIdx;
     } else {
       delete nc.parent; delete nc.tabIdx;
@@ -566,7 +566,7 @@ function moveDropGhost(clientX,clientY){
   // 스마트 가이드가 켜져 있으면, 기존 컴포넌트/캔버스 기준선에 스냅하고 가이드라인 표시.
   // 단, 컨테이너(탭/스플릿/패널) 위에 놓는 경우는 부모 상대좌표라 캔버스 절대 가이드가 맞지 않으므로 제외.
   const smartOn=(()=>{ const e=document.getElementById('smartChk'); return e?e.checked:false; })();
-  const overContainer = hitTestTabContainer(cxCanvas,cyCanvas) || hitTestSplitContainer(cxCanvas,cyCanvas) || hitTestPanelContainer(cxCanvas,cyCanvas);
+  const overContainer = hitTestContainer(cxCanvas,cyCanvas);
   if(smartOn && !overContainer){
     try{
       const gRes=computeGuides({id:null, w:d.w, h:d.h}, x, y);
@@ -637,14 +637,12 @@ function placeNewComponent(type,x,y,centered,snapPos){
   // px,py = where the component's top-left should go (always the cursor/ghost position itself)
   const px = x;
   const py = y;
-  const tabTarget=hitTestTabContainer(x,y);
-  const splitTarget=!tabTarget ? hitTestSplitContainer(x,y) : null;
-  const panelTarget=(!tabTarget&&!splitTarget) ? hitTestPanelContainer(x,y) : null;
-  if(tabTarget && type!=='tabs'){ // don't allow nesting a tab inside another tab
-    const nx=snap(px-tabTarget.cx), ny=snap(py-tabTarget.cy);
-    comps.push({id:uid++,type,x:Math.max(0,nx),y:Math.max(0,ny),parent:tabTarget.c.id,tabIdx:tabTarget.c.active||0,...d});
-  } else if(splitTarget){
-    const paneRect=splitTarget.pane===0?splitTarget.rects.pane0:splitTarget.rects.pane1;
+  const target=hitTestContainer(x,y);
+  if(target&&target.kind==='tab'){
+    const nx=snap(px-target.cx), ny=snap(py-target.cy);
+    comps.push({id:uid++,type,x:Math.max(0,nx),y:Math.max(0,ny),parent:target.c.id,tabIdx:target.c.active||0,...d});
+  } else if(target&&target.kind==='split'){
+    const paneRect=target.pane===0?target.rects.pane0:target.rects.pane1;
     const newId=uid++;
     // Fill only makes sense as the automatic default for a nested split container itself
     // (so it tiles the parent pane); any other component defaults to None - placed at its
@@ -652,23 +650,23 @@ function placeNewComponent(type,x,y,centered,snapPos){
     const dock = type==='split' ? 'fill' : 'none';
     let nx=0, ny=0, nw=paneRect.w, nh=paneRect.h;
     if(dock==='none'){
-      nx=Math.max(0,snap(px-splitTarget.cx)); ny=Math.max(0,snap(py-splitTarget.cy));
+      nx=Math.max(0,snap(px-target.cx)); ny=Math.max(0,snap(py-target.cy));
       nw=d.w; nh=d.h;
     }
-    comps.push({id:newId,type,...d,x:nx,y:ny,w:nw,h:nh,parent:splitTarget.c.id,pane:splitTarget.pane,dock});
+    comps.push({id:newId,type,...d,x:nx,y:ny,w:nw,h:nh,parent:target.c.id,pane:target.pane,dock});
     if(type==='split'){
       // that pane may already have content - move it into the new nested split's first
       // pane instead of letting it silently overlap the new split
       comps.forEach(k=>{
-        if(k.id!==newId&&k.parent===splitTarget.c.id&&(k.pane||0)===splitTarget.pane){
+        if(k.id!==newId&&k.parent===target.c.id&&(k.pane||0)===target.pane){
           k.parent=newId; k.pane=0; if(!k.dock)k.dock='fill';
         }
       });
     }
-  } else if(panelTarget){
+  } else if(target&&target.kind==='panel'){
     // 패널/그룹박스 안에 놓으면 탭·스플릿과 마찬가지로 그 패널의 자식이 된다(상대좌표 저장).
-    const nx=snap(px-panelTarget.cx), ny=snap(py-panelTarget.cy);
-    comps.push({id:uid++,type,x:Math.max(0,nx),y:Math.max(0,ny),parent:panelTarget.c.id,...d});
+    const nx=snap(px-target.cx), ny=snap(py-target.cy);
+    comps.push({id:uid++,type,x:Math.max(0,nx),y:Math.max(0,ny),parent:target.c.id,...d});
   } else {
     // 스마트 가이드로 스냅된 좌표가 있으면 그대로 사용, 없으면 격자 snap.
     const fx = snapPos ? Math.max(0, Math.round(snapPos.x)) : Math.max(0,snap(px));
@@ -716,12 +714,57 @@ canvas.addEventListener('mousedown',e=>{
   const r=canvas.getBoundingClientRect();
   placeNewComponent(armedType, (e.clientX-r.left)/zoom, (e.clientY-r.top)/zoom);
 },true);
-// hit test against the content area of any top-level 'tabs' component (topmost/last match wins)
+// depth in the parent chain - used to resolve "which container did the cursor actually land
+// in" when containers are nested inside each other (a split's pane sitting inside a tab's
+// content area, etc): the geometrically innermost/deepest container should always win over
+// an ancestor that merely happens to also contain that point, regardless of container type.
+function containerDepth(c){
+  let d=0, cur=c;
+  while(cur&&cur.parent){ cur=comps.find(x=>x.id===cur.parent); if(!cur)break; d++; }
+  return d;
+}
+// Single hit-test covering tabs/split/panel together, at any nesting depth and in any
+// combination (tab-in-split, split-in-tab, tab-in-tab, split-in-split, ...). Every visible
+// container whose content area contains (px,py) is a candidate; the one with the greatest
+// ancestor-chain depth wins (ties broken by later `comps` array position, i.e. created more
+// recently) so a nested container is always preferred over the ancestor(s) it sits inside.
+// Returns null, or {kind:'tab'|'split'|'panel', c, cx, cy, pane, rects} - cx/cy is always the
+// content area's own absolute top-left, ready to convert a drop point into local coordinates.
+function hitTestContainer(px,py){
+  const cands=[];
+  comps.forEach(c=>{
+    if(!isVisible(c))return;
+    if(c.type==='tabs'){
+      const abs=absPos(c);
+      const cx=abs.x, cy=abs.y+TAB_HEADER_H, cw=c.w, ch=c.h-TAB_HEADER_H;
+      if(px>=cx&&px<=cx+cw&&py>=cy&&py<=cy+ch) cands.push({kind:'tab',c,cx,cy,depth:containerDepth(c)});
+    } else if(c.type==='split'){
+      const abs=absPos(c);
+      const r=splitPaneRects(c);
+      const p0={x:abs.x+r.pane0.x,y:abs.y+r.pane0.y,w:r.pane0.w,h:r.pane0.h};
+      const p1={x:abs.x+r.pane1.x,y:abs.y+r.pane1.y,w:r.pane1.w,h:r.pane1.h};
+      if(px>=p0.x&&px<=p0.x+p0.w&&py>=p0.y&&py<=p0.y+p0.h) cands.push({kind:'split',c,cx:p0.x,cy:p0.y,pane:0,rects:r,depth:containerDepth(c)});
+      else if(px>=p1.x&&px<=p1.x+p1.w&&py>=p1.y&&py<=p1.y+p1.h) cands.push({kind:'split',c,cx:p1.x,cy:p1.y,pane:1,rects:r,depth:containerDepth(c)});
+    } else if(c.type==='panel'){
+      const abs=absPos(c);
+      if(px>=abs.x&&px<=abs.x+c.w&&py>=abs.y&&py<=abs.y+c.h) cands.push({kind:'panel',c,cx:abs.x,cy:abs.y,depth:containerDepth(c)});
+    }
+  });
+  if(!cands.length) return null;
+  cands.sort((a,b)=> a.depth-b.depth || comps.indexOf(a.c)-comps.indexOf(b.c));
+  return cands[cands.length-1];
+}
+// hit test against the content area of any 'tabs' component, including ones nested inside
+// another tab's content area, a split's pane, or a panel (mirrors hitTestSplitContainer/
+// hitTestPanelContainer below - isVisible() walks the whole ancestor chain, so a tab nested
+// several levels deep is only a valid target while every ancestor tab page it sits on is
+// actually the one currently showing).
 function hitTestTabContainer(px,py){
   let found=null;
   comps.forEach(c=>{
-    if(c.parent||c.type!=='tabs')return;
-    const cx=c.x, cy=c.y+TAB_HEADER_H, cw=c.w, ch=c.h-TAB_HEADER_H;
+    if(c.type!=='tabs'||!isVisible(c))return;
+    const abs=absPos(c);
+    const cx=abs.x, cy=abs.y+TAB_HEADER_H, cw=c.w, ch=c.h-TAB_HEADER_H;
     if(px>=cx&&px<=cx+cw&&py>=cy&&py<=cy+ch){ found={c,cx,cy}; }
   });
   return found;
@@ -876,6 +919,70 @@ function render(){
   drawCanvas();
   renderProps();
 }
+// ---- 겹치는 최상위 컴포넌트 자동 가림(occlusion clip) ----
+// 두 컴포넌트를 자유롭게 겹쳐 놓으면(도킹된 자식이 아니라 캔버스 위 형제 관계일 때), 뒤에 있는
+// 컴포넌트가 앞에 있는 컴포넌트와 "겹치는 부분만" 안 보이도록 clip-path로 도려낸다. 배경색/투명도를
+// 바꾸는 방식이 아니라 실제로 그 사각형만 잘라내는 것이므로, 겹치지 않는 나머지 부분의 모양(반투명
+// 배경, 격자 비침 등)은 전혀 건드리지 않는다. 도킹된 자식은 이미 부모 pane의 overflow로 잘려
+// 표시되므로 대상에서 제외한다(comps.filter(c=>!c.parent)와 동일한 최상위 컴포넌트만 대상).
+function occlusionZRank(c){
+  // renderComp()가 실제로 매기는 z-index 규칙과 동일해야 "화면에 보이는 순서"와 클리핑 결과가
+  // 일치한다: 컨테이너(panel/tabs/split)는 항상 낮은 대역, 그 외는 항상 높은 대역이고, 같은
+  // 대역 안에서는 comps 배열에서 더 뒤에 있는(나중에 만들었거나 "맨 앞"으로 옮긴) 쪽이 위에 온다.
+  const ord=Math.min(comps.findIndex(x=>x.id===c.id),299);
+  const isContainer=(c.type==='panel'||c.type==='tabs'||c.type==='split');
+  return isContainer?(1+ord):(310+ord);
+}
+function occlusionRectsOverlap(a,b){
+  return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y;
+}
+// r을 h만큼 도려낸 결과를 최대 4개의 사각형으로 반환한다(겹치지 않으면 r 그대로 1개).
+// 위/아래/좌/우 4조각으로 정확히 나누는 표준적인 방법이라, 여러 개의 h를 순서대로 계속
+// 적용해도(2차 이상 겹침) 조각들끼리 서로 겹치지 않게 유지된다.
+function occlusionSubtractOne(r,h){
+  if(h.x2<=r.x1||h.x1>=r.x2||h.y2<=r.y1||h.y1>=r.y2) return [r];
+  const out=[];
+  if(h.y1>r.y1) out.push({x1:r.x1,y1:r.y1,x2:r.x2,y2:h.y1});
+  if(h.y2<r.y2) out.push({x1:r.x1,y1:h.y2,x2:r.x2,y2:r.y2});
+  const midY1=Math.max(r.y1,h.y1), midY2=Math.min(r.y2,h.y2);
+  if(h.x1>r.x1) out.push({x1:r.x1,y1:midY1,x2:h.x1,y2:midY2});
+  if(h.x2<r.x2) out.push({x1:h.x2,y1:midY1,x2:r.x2,y2:midY2});
+  return out;
+}
+function occlusionSubtractRects(rect,holes){
+  let list=[rect];
+  holes.forEach(h=>{
+    const next=[];
+    list.forEach(r=>next.push(...occlusionSubtractOne(r,h)));
+    list=next;
+  });
+  return list.filter(r=>r.x2-r.x1>0.5 && r.y2-r.y1>0.5);
+}
+function applyOcclusionClips(){
+  const items=comps.filter(c=>!c.parent).map(c=>{
+    const el=canvas.querySelector(':scope > .cmp[data-cid="'+c.id+'"]');
+    return el?{c,el,x:c.x,y:c.y,w:c.w,h:c.h,z:occlusionZRank(c)}:null;
+  }).filter(Boolean);
+  items.forEach(info=>{
+    // 지금 선택된 컴포넌트는 클리핑 대상에서 뺀다 - 안 그러면 가려진 모서리에 있는 크기조절
+    // 핸들이나 ⧉ 이동 태그까지 같이 잘려서, 선택은 됐는데 정작 손잡이를 못 잡는 상황이 생긴다.
+    if(isSel(info.c.id)){ info.el.style.clipPath=''; return; }
+    // 나(info)보다 z가 높으면서(=위에 그려지면서) 실제로 겹치는 컴포넌트들만 "가리는 쪽"이다.
+    // "일시적으로 투명하게(ghost)" 처리된 컴포넌트는 제외한다 - 그 기능 자체가 뒤에 있는 걸
+    // 보이게/클릭되게 하려고 켜는 것인데, 여기서 뒤엣것을 오려내 버리면 정반대 효과가 난다.
+    const occluders=items.filter(o=>o!==info && !o.c.ghost && o.z>info.z && occlusionRectsOverlap(info,o));
+    if(!occluders.length){ info.el.style.clipPath=''; return; }
+    // 클립 좌표는 이 요소(info) 기준 로컬 좌표라서, 가리는 사각형도 info의 좌상단을 원점으로 변환한다.
+    const holes=occluders.map(o=>({
+      x1:Math.max(0,o.x-info.x), y1:Math.max(0,o.y-info.y),
+      x2:Math.min(info.w,o.x+o.w-info.x), y2:Math.min(info.h,o.y+o.h-info.y)
+    }));
+    const visible=occlusionSubtractRects({x1:0,y1:0,x2:info.w,y2:info.h},holes);
+    if(!visible.length){ info.el.style.clipPath='polygon(0 0,0 0,0 0)'; return; } // 완전히 다 가려짐
+    const d=visible.map(r=>`M ${r.x1} ${r.y1} L ${r.x2} ${r.y1} L ${r.x2} ${r.y2} L ${r.x1} ${r.y2} Z`).join(' ');
+    info.el.style.clipPath="path('"+d+"')";
+  });
+}
 function drawCanvas(){
   scheduleAutosave();
   // Every full canvas rebuild below recreates each component's DOM from scratch, which would
@@ -901,6 +1008,7 @@ function drawCanvas(){
       if(gb)gb.scrollLeft=sl;
     });
   }
+  applyOcclusionClips();
 }
 function renderComp(c,container,single,locked){
   const on = isSel(c.id);
@@ -962,6 +1070,27 @@ function renderComp(c,container,single,locked){
     });
   }
   container.appendChild(el);
+  // "일시 투명" 편집 보조 - 다른 컴포넌트 위에 겹쳐서 그 아래 있는 걸 선택·이동할 수 없을 때,
+  // 이 컴포넌트를 반투명 + 클릭 통과(pointer-events:none) 상태로 만들어 아래 것을 건드릴 수
+  // 있게 한다. 저장·미리보기·내보내기는 이 renderComp를 안 쓰고 항상 별도 함수로 정상
+  // 렌더하므로 전혀 영향받지 않는다 - 순수 편집 화면 전용 보조 기능이다. 클릭이 다 통과해
+  // 버리면 다시 선택할 방법이 없어지므로, 항상 클릭 가능한 작은 배지를 하나 얹어 그걸 누르면
+  // 즉시 투명 해제 + 선택되게 한다.
+  if(c.ghost){
+    el.style.opacity='0.25';
+    el.style.pointerEvents='none';
+    const badge=document.createElement('div');
+    badge.className='ghost-badge';
+    badge.title='클릭하면 투명 해제';
+    badge.textContent='◐';
+    badge.addEventListener('mousedown',ev=>{
+      ev.stopPropagation();
+      c.ghost=false;
+      selectSingle(c.id);
+      render();
+    });
+    el.appendChild(badge);
+  }
   if(c.type==='tabs'){
     const body=document.createElement('div');
     body.className='tabs-body-wrap tabs-body-hint';
@@ -1901,32 +2030,32 @@ function finalizeReparentDrag(d){
   const movingIds = new Set(items.map(x=>x.id));
   // Which tab/pane/panel the drop lands in is decided ONCE, from the actual cursor position -
   // not from each dragged component's own center - so grabbing a large component by a
-  // corner still drops it wherever the mouse visually is.
+  // corner still drops it wherever the mouse visually is. hitTestContainer() already resolves
+  // ties by nesting depth, so a split sitting inside a tab (or any other combination) is
+  // matched correctly instead of the outer container always winning.
   const hitX = d.curX!=null ? d.curX : (d.c.x+d.c.w/2);
   const hitY = d.curY!=null ? d.curY : (d.c.y+d.c.h/2);
-  const tabTarget=hitTestTabContainer(hitX,hitY);
-  const splitTargetShared=!tabTarget ? hitTestSplitContainer(hitX,hitY) : null;
-  const panelTargetShared=(!tabTarget&&!splitTargetShared) ? hitTestPanelContainer(hitX,hitY) : null;
+  const targetShared=hitTestContainer(hitX,hitY);
   items.forEach(comp=>{
-    if(!comp || comp.type==='tabs') return; // tab containers themselves are never nested
+    if(!comp) return;
     if(comp.parent && movingIds.has(comp.parent)) return; // moves together with its own container automatically
     // comp's current absolute position (before reparenting) - reuses the same parent-chain
     // math as absPos() so panel/tabs/split parents are all handled consistently.
     const {x:absX,y:absY}=absPos(comp);
-    let splitTarget=splitTargetShared;
-    let panelTarget=panelTargetShared;
-    // don't allow a split/panel container to be dropped inside itself or one of its own descendants
-    if(splitTarget&&comp.type==='split'&&(splitTarget.c.id===comp.id||isDescendantOf(splitTarget.c,comp.id))) splitTarget=null;
-    if(panelTarget&&comp.type==='panel'&&(panelTarget.c.id===comp.id||isDescendantOf(panelTarget.c,comp.id))) panelTarget=null;
-    if(tabTarget){
-      comp.parent=tabTarget.c.id;
-      comp.tabIdx=tabTarget.c.active||0;
+    let target=targetShared;
+    // don't allow a tab/split/panel container to be dropped inside itself or one of its own descendants
+    if(target&&
+       ((target.kind==='tab'&&comp.type==='tabs')||(target.kind==='split'&&comp.type==='split')||(target.kind==='panel'&&comp.type==='panel'))&&
+       (target.c.id===comp.id||isDescendantOf(target.c,comp.id))) target=null;
+    if(target&&target.kind==='tab'){
+      comp.parent=target.c.id;
+      comp.tabIdx=target.c.active||0;
       delete comp.pane; delete comp.dock;
-      comp.x=Math.max(0,snap(absX-tabTarget.cx));
-      comp.y=Math.max(0,snap(absY-tabTarget.cy));
-    } else if(splitTarget){
-      const paneRect=splitTarget.pane===0?splitTarget.rects.pane0:splitTarget.rects.pane1;
-      const oldParent=splitTarget.c.id, oldPane=splitTarget.pane;
+      comp.x=Math.max(0,snap(absX-target.cx));
+      comp.y=Math.max(0,snap(absY-target.cy));
+    } else if(target&&target.kind==='split'){
+      const paneRect=target.pane===0?target.rects.pane0:target.rects.pane1;
+      const oldParent=target.c.id, oldPane=target.pane;
       comp.parent=oldParent;
       comp.pane=oldPane;
       if(!comp.dock) comp.dock = comp.type==='split' ? 'fill' : 'none';
@@ -1935,8 +2064,8 @@ function finalizeReparentDrag(d){
         comp.x=0; comp.y=0; comp.w=paneRect.w; comp.h=paneRect.h;
       } else {
         // None: keep its own size, just re-anchor its position relative to the new pane's origin
-        comp.x=Math.max(0,snap(absX-splitTarget.cx));
-        comp.y=Math.max(0,snap(absY-splitTarget.cy));
+        comp.x=Math.max(0,snap(absX-target.cx));
+        comp.y=Math.max(0,snap(absY-target.cy));
       }
       if(comp.type==='split'){
         // that pane may already have content - move it into the newly-nested split's
@@ -1947,12 +2076,12 @@ function finalizeReparentDrag(d){
           }
         });
       }
-    } else if(panelTarget){
+    } else if(target&&target.kind==='panel'){
       // 패널/그룹박스 위에 놓으면 탭·스플릿처럼 그 패널의 자식이 된다(상대좌표로 재계산).
-      comp.parent=panelTarget.c.id;
+      comp.parent=target.c.id;
       delete comp.tabIdx; delete comp.pane; delete comp.dock;
-      comp.x=Math.max(0,snap(absX-panelTarget.cx));
-      comp.y=Math.max(0,snap(absY-panelTarget.cy));
+      comp.x=Math.max(0,snap(absX-target.cx));
+      comp.y=Math.max(0,snap(absY-target.cy));
     } else if(comp.parent){
       // dropped outside every container's content area: promote back to a top-level component
       comp.x=Math.max(0,snap(absX));
@@ -2416,11 +2545,11 @@ function renderProps(){
         const calign=(c.colAligns&&c.colAligns[gi])||'left';
         const creq=!!(c.colRequired&&c.colRequired[gi]);
         const cro=!!(c.colReadonly&&c.colReadonly[gi]);
-        html+=`<div class="sfield-row" draggable="true"
-          ondragstart="gcDragStart(event,${gi})" ondragover="gcDragOver(event)"
-          ondragleave="gcDragLeave(event)" ondrop="gcDrop(event,${gi})" ondragend="gcDragEnd(event)">
+        html+=`<div class="sfield-row"
+          ondragover="gcDragOver(event)"
+          ondragleave="gcDragLeave(event)" ondrop="gcDrop(event,${gi})">
           <div class="sf-row1">
-            <span class="sf-handle" title="드래그해서 순서 변경">⠿</span>
+            <span class="sf-handle" draggable="true" ondragstart="gcDragStart(event,${gi})" ondragend="gcDragEnd(event)" title="드래그해서 순서 변경">⠿</span>
             <input type="number" class="sf-pos" title="순서 번호 (직접 입력하면 그 위치로 이동)" min="1" max="${gcols.length}" value="${gi+1}" onchange="gcMoveTo(${gi},this.value)">
             <input class="sf-label" value="${colName.replace(/"/g,'&quot;')}" oninput="updGridColLabel(${gi},this.value)" placeholder="컬럼명">
             <select class="sf-type gcol-type" onchange="updGridColType(${gi},this.value)">
@@ -2517,11 +2646,11 @@ function renderProps(){
     html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.collapsed?'checked':''} onchange="upd('collapsed',this.checked)"> 접힘 상태(≫) 표시</label></div>`;
     html+=`<div class="grp"><div class="grp-h">조회 조건 필드${qh('타입을 <b>빈값</b>으로 지정하면 라벨·입력칸 없이 해당 칸을 <b>비워둔 채</b> 그대로 자리만 차지합니다.<br><br>여러 칸짜리 레이아웃에서 특정 칸만 건너뛰고 싶을 때 사용하세요.<br><br>가로 폭을 <b>½칸</b>으로 지정하면, 바로 다음(또는 바로 앞) 필드도 ½칸일 때 두 필드가 한 칸을 <b>반반씩 나눠서</b> 표시됩니다(요청조직/구매조직처럼). 옆에 ½칸이 붙어있지 않으면 그 필드 혼자 한 칸의 <b>절반만</b> 채우고 나머지 절반은 비워둡니다.<br><br>타입이 <b>날짜</b>·<b>기간</b>이면 라벨 옆에 📅 아이콘이 나타나며, 클릭하면 뜨는 팝업에서 화면에 보여줄 날짜를 고를 수 있습니다(오늘/어제 등 원클릭 또는 연·월·일 조합). 비워두면 기본값(오늘 날짜)이 표시됩니다.')}</div><div class="sfield-list">`;
     (c.fields||[]).forEach((f,i)=>{
-      html+=`<div class="sfield-row" draggable="true"
-        ondragstart="sfDragStart(event,${i})" ondragover="sfDragOver(event)"
-        ondragleave="sfDragLeave(event)" ondrop="sfDrop(event,${i})" ondragend="sfDragEnd(event)">
+      html+=`<div class="sfield-row"
+        ondragover="sfDragOver(event)"
+        ondragleave="sfDragLeave(event)" ondrop="sfDrop(event,${i})">
         <div class="sf-row1">
-          <span class="sf-handle" title="드래그해서 순서 변경">⠿</span>
+          <span class="sf-handle" draggable="true" ondragstart="sfDragStart(event,${i})" ondragend="sfDragEnd(event)" title="드래그해서 순서 변경">⠿</span>
           <input type="number" class="sf-pos" title="순서 번호 (직접 입력하면 그 위치로 이동)" min="1" max="${(c.fields||[]).length}" value="${i+1}" onchange="sfMoveTo(${i},this.value)">
           <input class="sf-label" value="${(f.label||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'label',this.value)" placeholder="라벨"${f.type==='empty'?' disabled style="opacity:.5;"':''}>
           ${f.type==='date'?`<button class="sf-datebtn" title="빠른 날짜 선택 (현재: ${f.blank?'빈값':sfDateCurrent(f,'single')})" onclick="openQuickDate(this,${i},'single')">📅</button>`:''}
@@ -2565,6 +2694,7 @@ function renderProps(){
 
   }
   html+=`<div class="prop"><label>정렬 (Z순서)</label><div class="zi-row"><button onclick="zorder('front')">맨 앞</button><button onclick="zorder('back')">맨 뒤</button></div></div>`;
+  html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.ghost?'checked':''} onchange="upd('ghost',this.checked)"> 일시적으로 투명하게${qh('겹쳐서 아래 컴포넌트를 클릭할 수 없을 때 체크하세요. 편집 화면에서만 흐리게·클릭 통과 상태가 되고, 저장·미리보기·내보내기에는 전혀 영향 없습니다.<br><br>다시 선택하려면 화면에 남는 작은 <b>◐</b> 아이콘을 클릭하세요.')}</label></div>`;
   html+=`<button class="del-btn" onclick="delSel()">삭제 (Del)</button>`;
   html+=`<div class="grp possize-grp${posSizeExpanded?'':' collapsed'}" style="margin-top:12px;"><div class="grp-h gcol-grp-h">
       <span>위치 · 크기</span>
@@ -2593,11 +2723,11 @@ function itemListEditor(c,prop,itemLabel,tip,ph){
     <span>${itemLabel} (${items.length})${tip||''}</span></div>`;
   h+=`<div class="sfield-list">`;
   items.forEach((name,i)=>{
-    h+=`<div class="sfield-row" draggable="true"
-      ondragstart="ilDragStart(event,${i})" ondragover="ilDragOver(event)"
-      ondragleave="ilDragLeave(event)" ondrop="ilDrop(event,'${prop}',${i})" ondragend="ilDragEnd(event)">
+    h+=`<div class="sfield-row"
+      ondragover="ilDragOver(event)"
+      ondragleave="ilDragLeave(event)" ondrop="ilDrop(event,'${prop}',${i})">
       <div class="sf-row1">
-        <span class="sf-handle" title="드래그해서 순서 변경">⠿</span>
+        <span class="sf-handle" draggable="true" ondragstart="ilDragStart(event,${i})" ondragend="ilDragEnd(event)" title="드래그해서 순서 변경">⠿</span>
         <input class="sf-label" value="${name.replace(/"/g,'&quot;')}" oninput="ilUpd('${prop}',${i},this.value)" placeholder="${ph||itemLabel}명">
         <button class="ubtn-del" title="삭제" onclick="ilDel('${prop}',${i})">×</button>
       </div>
@@ -2655,7 +2785,9 @@ function ilDragStart(e,i){
   ilDragIdx=i;
   e.dataTransfer.effectAllowed='move';
   e.dataTransfer.setData('text/plain',String(i));
-  e.currentTarget.classList.add('dragging');
+  // draggable="true"는 손잡이(⠿)에만 있으므로(라벨 입력칸 안에서 마우스로 텍스트를 드래그
+  // 선택할 때 행 전체가 끌려가 버리는 것을 막기 위함), 스타일은 그 조상인 행에 입혀야 한다.
+  e.currentTarget.closest('.sfield-row')?.classList.add('dragging');
 }
 function ilDragOver(e){ e.preventDefault(); e.dataTransfer.dropEffect='move'; e.currentTarget.classList.add('drag-over'); }
 function ilDragLeave(e){ e.currentTarget.classList.remove('drag-over'); }
@@ -2687,7 +2819,7 @@ function ilDrop(e,prop,i){
   render();
 }
 function ilDragEnd(e){
-  e.currentTarget.classList.remove('dragging');
+  e.currentTarget.closest('.sfield-row')?.classList.remove('dragging');
   document.querySelectorAll('.sfield-row.drag-over').forEach(el=>el.classList.remove('drag-over'));
   ilDragIdx=null;
 }
@@ -2973,7 +3105,9 @@ function gcDragStart(e,i){
   gcDragIdx=i;
   e.dataTransfer.effectAllowed='move';
   e.dataTransfer.setData('text/plain',String(i));
-  e.currentTarget.classList.add('dragging');
+  // draggable="true"는 손잡이(⠿)에만 있으므로(컬럼명 입력칸 안에서 마우스로 텍스트를 드래그
+  // 선택할 때 행 전체가 끌려가 버리는 것을 막기 위함), 스타일은 그 조상인 행에 입혀야 한다.
+  e.currentTarget.closest('.sfield-row')?.classList.add('dragging');
   startDragAutoScroll();
 }
 function gcDragOver(e){
@@ -3012,7 +3146,7 @@ function gcDrop(e,i){
   render();
 }
 function gcDragEnd(e){
-  e.currentTarget.classList.remove('dragging');
+  e.currentTarget.closest('.sfield-row')?.classList.remove('dragging');
   document.querySelectorAll('.sfield-row.drag-over').forEach(el=>el.classList.remove('drag-over'));
   gcDragIdx=null;
   stopDragAutoScroll();
@@ -3353,7 +3487,9 @@ function sfDragStart(e,i){
   sfDragIdx=i;
   e.dataTransfer.effectAllowed='move';
   e.dataTransfer.setData('text/plain',String(i));
-  e.currentTarget.classList.add('dragging');
+  // draggable="true"는 손잡이(⠿)에만 있으므로(라벨 입력칸 안에서 마우스로 텍스트를 드래그
+  // 선택할 때 행 전체가 끌려가 버리는 것을 막기 위함), 스타일은 그 조상인 행에 입혀야 한다.
+  e.currentTarget.closest('.sfield-row')?.classList.add('dragging');
   startDragAutoScroll();
 }
 function sfDragOver(e){
@@ -3379,7 +3515,7 @@ function sfDrop(e,i){
   render();
 }
 function sfDragEnd(e){
-  e.currentTarget.classList.remove('dragging');
+  e.currentTarget.closest('.sfield-row')?.classList.remove('dragging');
   document.querySelectorAll('.sfield-row.drag-over').forEach(el=>el.classList.remove('drag-over'));
   sfDragIdx=null;
   stopDragAutoScroll();

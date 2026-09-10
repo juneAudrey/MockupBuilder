@@ -1528,5 +1528,8 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
 .adm-prompt-status.err{color:#c0392b;}
 .adm-mode-seg span.on-thin{background:var(--ax-green)!important;color:#fff!important;box-shadow:none!important;}
 .adm-mode-seg span.on-fat{background:#2563eb!important;color:#fff!important;box-shadow:none!important;}
+
+.ghost-badge{position:absolute;top:2px;left:2px;width:16px;height:16px;line-height:14px;text-align:center;font-size:11px;background:#fff;border:1.5px solid #9ca3af;border-radius:3px;color:#5f6c78;cursor:pointer;pointer-events:auto;opacity:1;z-index:99999;}
+.ghost-badge:hover{background:#eef1f4;border-color:#6b7280;}
 .adm-usage-size{margin-left:auto;padding-left:16px;font-size:13px;color:#2c3e50;font-weight:600;white-space:nowrap;flex-shrink:0;}
 .adm-usage-pct{color:#9ca3af;font-weight:400;}
