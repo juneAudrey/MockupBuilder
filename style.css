@@ -25,6 +25,11 @@
       linear-gradient(96deg, #12a178 0%, #0f9670 52%, #14a67c 100%);
     --topbar-ghost-border:#2f6b53; --topbar-ghost-hover:#1c7350;
     --autosave-fg:#8ee9c3;
+    /* 변경상태 표시(기본/추가/변경/삭제/이동) 공통 색상 */
+    --diff-add:#2680eb; --diff-add-bg:#eaf2fe;
+    --diff-chg:#d97706; --diff-chg-bg:#fdf3e3;
+    --diff-del:#e5484d; --diff-del-bg:#fdecec;
+    --diff-mov:#7c5cff; --diff-mov-bg:#f1edff;
   }
   /* 상단 로고를 누르면 body에 이 클래스가 토글되어 두 번째 톤앤매너(Fat Mode)로
      전환된다. 색상은 위 변수를 재정의하는 것만으로 컴포넌트 전반에 반영되고,
@@ -1540,3 +1545,91 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
 .ghost-badge:hover{background:#eef1f4;border-color:#6b7280;}
 .adm-usage-size{margin-left:auto;padding-left:16px;font-size:13px;color:#2c3e50;font-weight:600;white-space:nowrap;flex-shrink:0;}
 .adm-usage-pct{color:#9ca3af;font-weight:400;}
+
+/* ===== 변경상태 표시(기본/추가/변경/삭제/이동) =====
+   세 레벨에서 재사용한다:
+   1) 컴포넌트 전체(그리드/조회조건패널 포함) - 속성패널 최상단 세그먼트 버튼(.status-seg) +
+      캔버스/내보내기 박스 전체에 점선 테두리+코너 라벨(.mb-diffst)
+   2) 그리드 개별 컬럼 - 속성패널 콤보(.sf-status) + 헤더 셀 코너 라벨(.gcol-diffst)
+   3) 조회조건 개별 필드 - 속성패널 콤보(.sf-status) + 필드 박스 점선 테두리+코너 라벨(.sfield.mb-diffst) */
+
+/* ---- 속성패널: 컴포넌트 전체 상태 세그먼트 버튼 ---- */
+.status-seg{display:flex;border:1px solid var(--ax-border);border-radius:6px;overflow:hidden;margin-bottom:14px;}
+.status-seg-btn{flex:1;padding:6px 0;border:none;border-right:1px solid var(--ax-border);background:#fff;font-size:11px;font-weight:600;color:#888;cursor:pointer;}
+.status-seg-btn:last-child{border-right:none;}
+.status-seg-btn:hover{background:#f6f8fa;}
+.status-seg-btn.st-base.on{background:var(--ax-green-light);color:var(--ax-green-dark);}
+.status-seg-btn.st-add.on{background:var(--diff-add-bg);color:var(--diff-add);}
+.status-seg-btn.st-chg.on{background:var(--diff-chg-bg);color:var(--diff-chg);}
+.status-seg-btn.st-del.on{background:var(--diff-del-bg);color:var(--diff-del);}
+.status-seg-btn.st-mov.on{background:var(--diff-mov-bg);color:var(--diff-mov);}
+
+/* ---- 속성패널: 그리드 컬럼 / 조회조건 필드 콤보(글자+색상) ---- */
+.sf-status{padding:4px 2px;border:1px solid var(--ax-border);border-radius:4px;font-size:11px;background:#fff;flex:none;width:52px;font-weight:700;color:#888;}
+.sf-status[data-v="add"]{color:var(--diff-add);border-color:var(--diff-add);background:var(--diff-add-bg);}
+.sf-status[data-v="chg"]{color:var(--diff-chg);border-color:var(--diff-chg);background:var(--diff-chg-bg);}
+.sf-status[data-v="del"]{color:var(--diff-del);border-color:var(--diff-del);background:var(--diff-del-bg);}
+.sf-status[data-v="mov"]{color:var(--diff-mov);border-color:var(--diff-mov);background:var(--diff-mov-bg);}
+
+/* ---- 캔버스/내보내기: 컴포넌트 전체 박스 점선 테두리 + 코너 라벨 ----
+   .cmp/.mockup-item은 이미 position:absolute이므로 여기서 position을 다시 지정하지 않는다
+   (지정하면 절대좌표 배치 자체가 깨진다). 테두리는 outline이 아니라 ::after 가상요소로 그려서
+   선택 시 표시되는 .cmp.selected의 outline과 서로 겹치거나 밀어내지 않게 한다. */
+.mb-diffst::after{content:"";position:absolute;inset:-4px;border:1.5px dashed transparent;border-radius:6px;pointer-events:none;z-index:1;}
+.mb-diffst::before{content:attr(data-difflabel);position:absolute;top:-9px;right:6px;left:auto;font-size:10px;font-weight:700;line-height:14px;padding:0 5px;background:#fff;border-radius:3px;pointer-events:none;z-index:2;white-space:nowrap;}
+.mb-diffst-add::after{border-color:var(--diff-add);}
+.mb-diffst-add::before{color:var(--diff-add);}
+.mb-diffst-chg::after{border-color:var(--diff-chg);}
+.mb-diffst-chg::before{color:var(--diff-chg);}
+.mb-diffst-del::after{border-color:var(--diff-del);background:repeating-linear-gradient(135deg, rgba(229,72,77,.06) 0 8px, rgba(229,72,77,0) 8px 16px);}
+.mb-diffst-del::before{color:var(--diff-del);}
+.mb-diffst-mov::after{border-color:var(--diff-mov);}
+.mb-diffst-mov::before{color:var(--diff-mov);}
+
+/* ---- 캔버스/내보내기: 그리드 개별 컬럼 헤더 태그 ----
+   .ax-grid 자체가 overflow:hidden(+헤더 셀도 overflow:hidden)이라 헤더 밖으로 튀어나오는 절대배치
+   라벨은 그대로 잘린다. 그래서 상위헤더(그룹) 기능과 똑같은 "헤더를 2행으로 나누는" 방식을 재사용해,
+   상태가 있는 컬럼만 1행에 작은 색상 텍스트를 넣는다(상위헤더가 없을 때만 - 있으면 그 행을 그대로 씀).
+   태그 셀(1행)과 컬럼명 셀(2행)에 위/아래로 나눠 점선 테두리를 그려 붙이면, 절대배치 없이도
+   다른 컴포넌트와 똑같이 "점선 박스 + 색상"으로 보인다.
+   주의: 아래 색상·테두리 규칙은 반드시 ".ax-grid .gh span..." 형태로 그리드 헤더 셀 기본 규칙
+   (.ax-grid .gh span{color:...;border-right:1px solid ...})보다 CSS 우선순위(specificity)가
+   높게 적어야 한다 - 그냥 .gcol-diffst-add 한 클래스로만 적으면 그 기본 규칙에 밀려 색이 그대로
+   회색으로 나온다(실제로 한 번 이렇게 밀려서 무색으로 보였던 버그가 있었음). */
+.ax-grid .gh .gcol-difftag-row{font-size:9px;font-weight:700;line-height:13px;padding:3px 6px 1px!important;text-align:left;box-sizing:border-box;
+  border-left:1.5px dashed transparent;border-right:1.5px dashed transparent;border-top:1.5px dashed transparent;border-bottom:none;}
+.ax-grid .gh span.gcol-diffst{box-sizing:border-box;border-left:1.5px dashed transparent;border-right:1.5px dashed transparent;border-bottom:1.5px dashed transparent;border-top:none;}
+.ax-grid .gh .gcol-difftag-row.gcol-diffst-add,.ax-grid .gh span.gcol-diffst-add{border-color:var(--diff-add);}
+.ax-grid .gh .gcol-difftag-row.gcol-diffst-chg,.ax-grid .gh span.gcol-diffst-chg{border-color:var(--diff-chg);}
+.ax-grid .gh .gcol-difftag-row.gcol-diffst-del,.ax-grid .gh span.gcol-diffst-del{border-color:var(--diff-del);}
+.ax-grid .gh .gcol-difftag-row.gcol-diffst-mov,.ax-grid .gh span.gcol-diffst-mov{border-color:var(--diff-mov);}
+.ax-grid .gh .gcol-difftag-row.gcol-diffst-add{color:var(--diff-add);background:var(--diff-add-bg);}
+.ax-grid .gh .gcol-difftag-row.gcol-diffst-chg{color:var(--diff-chg);background:var(--diff-chg-bg);}
+.ax-grid .gh .gcol-difftag-row.gcol-diffst-del{color:var(--diff-del);background:var(--diff-del-bg);}
+.ax-grid .gh .gcol-difftag-row.gcol-diffst-mov{color:var(--diff-mov);background:var(--diff-mov-bg);}
+/* 삭제 컬럼은 헤더 이름 자체도 옅게 + 취소선으로 "삭제 예정"임을 강조 */
+.gcol-diffst-del{opacity:.55;text-decoration:line-through;}
+.gcol-diffst-del-cell{opacity:.55;text-decoration:line-through;}
+
+/* ---- 캔버스/내보내기: 조회조건 개별 필드 박스 점선 테두리 + 코너 라벨 ---- */
+.sfield.mb-diffst{position:relative;}
+.sfield.mb-diffst::after{content:"";position:absolute;inset:-6px;border:1.5px dashed transparent;border-radius:6px;pointer-events:none;z-index:1;}
+.sfield.mb-diffst::before{content:attr(data-difflabel);position:absolute;top:-16px;right:-2px;left:auto;font-size:9px;font-weight:700;line-height:12px;padding:0 4px;background:#fff;border-radius:2px;pointer-events:none;z-index:2;white-space:nowrap;}
+.sfield.mb-diffst-add::after{border-color:var(--diff-add);}
+.sfield.mb-diffst-add::before{color:var(--diff-add);}
+.sfield.mb-diffst-chg::after{border-color:var(--diff-chg);}
+.sfield.mb-diffst-chg::before{color:var(--diff-chg);}
+.sfield.mb-diffst-del::after{border-color:var(--diff-del);background:repeating-linear-gradient(135deg, rgba(229,72,77,.06) 0 8px, rgba(229,72,77,0) 8px 16px);}
+.sfield.mb-diffst-del::before{color:var(--diff-del);}
+.sfield.mb-diffst-mov::after{border-color:var(--diff-mov);}
+.sfield.mb-diffst-mov::before{color:var(--diff-mov);}
+
+/* ---- 내보낸(저장된) HTML: Alt+O로 위 표시 전부 토글. 기본은 표시(ON). ---- */
+body.mb-diffhide .mb-diffst::after,body.mb-diffhide .mb-diffst::before,
+body.mb-diffhide .sfield.mb-diffst::after,body.mb-diffhide .sfield.mb-diffst::before{visibility:hidden!important;}
+/* 그리드 컬럼 태그: 텍스트만 숨기면 테두리·배경·위쪽 빈 줄이 그대로 남아 더 어색해지므로,
+   태그 셀 자체를 display:none으로 완전히 없애고(다른 컬럼에 상위헤더가 없다면 1행 자체가
+   0높이로 줄어들어 원래 단일행 헤더로 돌아간다) 컬럼명 셀의 점선 테두리도 투명 처리한다. */
+body.mb-diffhide .ax-grid .gh .gcol-difftag-row{display:none!important;}
+body.mb-diffhide .ax-grid .gh span.gcol-diffst{border-color:transparent!important;}
+body.mb-diffhide .gcol-diffst-del,body.mb-diffhide .gcol-diffst-del-cell{opacity:1!important;text-decoration:none!important;}
