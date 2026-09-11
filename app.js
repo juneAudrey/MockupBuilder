@@ -7458,6 +7458,7 @@ function mbUpdateAccountUI(){
         <div class="who">${esc(uname)} 님</div>
         <div class="item" onclick="closeAcctMenu();openCloudSave();">☁ 클라우드 저장</div>
         <div class="item" onclick="closeAcctMenu();openCloudOpen();">📂 클라우드 열기</div>
+        <div class="item" onclick="closeAcctMenu();openSharedGallery();">🌐 목업마켓</div>
         <div class="item logout" onclick="closeAcctMenu();mbLogout();">🚪 로그아웃</div>
         <div class="item" style="border-top:1px solid #eee;" onclick="closeAcctMenu();openFeedback();">💬 Feedback</div>
         ${mbIsAdmin?'<div class="item" onclick="closeAcctMenu();openAdminPanel();">🛠 목업관리</div>':''}
@@ -7725,6 +7726,17 @@ function openCloudOpen(){
   document.getElementById('cloudBg').classList.add('on');
   mbCloudApplySavedModalSize();
   Promise.all([mbCloudLoadFolders(),mbCloudLoadItems(),mbCloudLoadFileCounts()]).then(mbCloudRender);
+}
+// 「공유파일」은 이제 클라우드 열기 팝업의 탭이 아니라, 계정 메뉴에서 바로 들어오는 별도의
+// 팝업("목업마켓")이다 - 열기/저장과 같은 모달(cloudBg/cloudModal/cloudBody)을 그대로
+// 재사용하되, mode를 'shared'로 두어 mbCloudRender()가 탭 없이 공유 목록만 그리게 한다.
+function openSharedGallery(){
+  if(!mbGetSession()){ openLogin(); return; }
+  Object.assign(mbCloud,{mode:'shared',tab:'shared'});
+  document.getElementById('cloudTitle').textContent='🌐 목업마켓';
+  document.getElementById('cloudBg').classList.add('on');
+  mbCloudApplySavedModalSize();
+  mbCloudLoadShared().then(mbCloudRenderAndFillShared);
 }
 function closeCloud(){ document.getElementById('cloudBg').classList.remove('on'); }
 // 클라우드 저장/열기 팝업 크기 조절 - 우측 하단 손잡이를 드래그(캔버스 크기 조절과 같은 방식).
@@ -8040,20 +8052,11 @@ async function mbCloudAttachUsernames(items){
 
 function mbCloudRender(){
   const body=document.getElementById('cloudBody');
-  // 저장할 때는 "공유파일"이 의미가 없다(내 폴더에 저장하는 것뿐, 남의 공개 목업을 볼 이유가
-  // 없음) - 저장 모드에서는 탭 자체를 아예 숨긴다. openCloudSave()가 tab을 항상 'mine'으로
-  // 고정해두므로 여기서 별도 처리 없이 그냥 탭 줄만 생략하면 된다.
-  let tabs='';
-  if(mbCloud.mode==='open'){
-    const folderTabIcon='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
-    const sharedTabIcon='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="10.6" x2="15.4" y2="6.4"/><line x1="8.6" y1="13.4" x2="15.4" y2="17.6"/></svg>';
-    tabs=`<div class="cl-tabs"><div class="cl-tabs-group">
-      <div class="cl-tab ${mbCloud.tab==='mine'?'on':''}" onclick="mbCloudSwitchTab('mine')">${folderTabIcon}내 파일</div>
-      <div class="cl-tab ${mbCloud.tab==='shared'?'on':''}" onclick="mbCloudSwitchTab('shared')">${sharedTabIcon}공유파일</div>
-    </div></div>`;
-  }
-  body.innerHTML = tabs + (mbCloud.tab==='mine' ? mbCloudRenderMine() : mbCloudRenderShared());
-  if(mbCloud.tab==='shared'){ mbCloudInitTagBar(); mbCloudRenderSharedPreviewFrame(); }
+  // 「공유파일」이 목업마켓으로 분리되면서, 클라우드 열기 팝업에는 이제 '내 파일'만 남는다 -
+  // 예전에 내 파일/공유파일을 고르던 상단 탭 버튼은 더 이상 필요 없다. mode==='shared'면
+  // 목업마켓이므로 공유 목록을, 그 외(save/open)는 항상 내 파일 목록을 그린다.
+  body.innerHTML = (mbCloud.mode==='shared') ? mbCloudRenderShared() : mbCloudRenderMine();
+  if(mbCloud.mode==='shared'){ mbCloudInitTagBar(); mbCloudRenderSharedPreviewFrame(); }
 }
 // mbCloudRender()는 body.innerHTML을 통째로 새로 만들기 때문에, 스크롤을 내려서 보고 있던
 // 목록/트리 요소도 매번 새 엘리먼트로 바뀌면서 스크롤 위치가 0으로 초기화된다. 폴더 이동처럼
@@ -8081,12 +8084,6 @@ function mbCloudRenderAndFillShared(){
   mbCloudRender();
   mbCloudCheckSharedFillViewport();
 }
-function mbCloudSwitchTab(tab){
-  mbCloud.tab=tab;
-  if(tab==='shared') mbCloudLoadShared().then(mbCloudRenderAndFillShared);
-  else mbCloudRender();
-}
-
 // ---- 내 파일 탭 ----
 function mbCloudTreeChildren(parentId,depth){
   let html='';
