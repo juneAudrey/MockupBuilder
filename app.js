@@ -8761,20 +8761,20 @@ async function mbCloudSharedOpen(id){
   try{
     const rows=await mbRestFetch(`/mockups?id=eq.${id}&select=data,title,origin_id,owner_id`);
     const row=rows&&rows[0]; if(!row) throw new Error('파일을 찾을 수 없습니다.');
-    // 공유목록에는 "남이 만든 파일"뿐 아니라 "내가 공개로 올린 내 파일"도 같이 뜬다. 이게 내
-    // 파일이면(owner_id가 나) 파생시키는 게 아니라 그냥 이어서 작업하는 것이므로, 내 파일을
-    // 다시 열 때(mbCloudDoOpen)와 똑같이 이미 있던 원본 추적값을 그대로 이어받는다(원본
-    // 자체면 null 유지) - 그래야 원본을 다시 열어서 같은 이름으로 덮어써도 계속 원본으로 남는다.
-    // (안 그러면 origin_id가 자기 자신의 id가 돼버려 저장 시 DB 제약조건에 걸려 실패한다.)
-    const s=mbGetSession();
-    const isOwnFile = s && row.owner_id===s.id;
     // 이 화면은 이제부터 row(id)에서 파생된 파일이 된다. 단, row 자신이 이미 다른 원본의 파생본이면
     // (row.origin_id가 있으면) 그 "최상위 원본"을 그대로 물려받는다 - 파생의 파생이 늘어나도 항상
     // 맨 위 원본 하나만 가리키게 해서(체인이 아니라 평평한 구조), 나중에 "이 원본에서 몇 개나
     // 파생됐는지" 셀 때 중간 단계 없이 한 번에 집계할 수 있게 한다.
+    // 공유목록에는 "남이 만든 파일"뿐 아니라 "내가 공개로 올린 내 파일"도 같이 뜬다. 예전에는
+    // 이게 내 파일이면(owner_id가 나) 아예 파생 추적을 하지 않았는데, 그러면 내가 공유한 A를
+    // 마켓에서 받아 A1이라는 새 이름으로 저장해도 A1이 A의 리비전으로 잡히지 않는 문제가 있었다.
+    // 그래서 소유 여부와 관계없이 항상 origin_id를 세팅하도록 바꿨다 - "같은 파일을 그대로
+    // 다시 덮어쓰는" 경우(자기 자신의 파생본이 되는 모순)는 저장 시점(mbCloudDoSave)의 안전장치가
+    // targetId===mbCloud.originId일 때 null로 되돌려 걸러주므로, 여기서는 소유자를 가리지 않고
+    // "마켓/공유목록에서 가져왔다"는 사실 그대로 origin_id를 기록해도 안전하다.
     // mbCloudApplyData()의 render()가 자동저장을 그 자리에서 바로 실행시킬 수도 있으므로,
     // 그 스냅샷에도 반영되도록 데이터를 적용하기 전에 먼저 세팅한다.
-    mbCloud.originId = isOwnFile ? (row.origin_id||null) : (row.origin_id||id);
+    mbCloud.originId = row.origin_id||id;
     mbCloudApplyData(row.data);
     closeCloud();
     // "복제해서 열기"(버튼 클릭이든 더블클릭이든)에 성공한 뒤에만 횟수를 올린다 - 핵심 동작(열기)은
