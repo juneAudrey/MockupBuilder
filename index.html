@@ -375,6 +375,17 @@
   </div>
 </div>
 
+<!-- 임시 작업 목록 (로그인 상태에서, 최종 저장을 안 한 최근 작업을 DB에 안전장치로 자동 보관) -->
+<div class="modal-bg" id="draftListBg">
+  <div class="modal" style="width:440px;max-width:92vw;max-height:80vh;display:flex;flex-direction:column;">
+    <div class="modal-h">
+      <h2>📝 임시 작업 목록</h2>
+      <span class="x" onclick="closeDraftList()">×</span>
+    </div>
+    <div class="modal-b" id="draftListBody" style="overflow-y:auto;flex:1;padding:0;"></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="patchBg">
   <div class="modal" style="width:620px;max-width:94vw;">
     <div class="modal-h">

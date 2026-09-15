@@ -458,17 +458,32 @@
   .ax-check .box{width:14px;height:14px;border:1.5px solid var(--ax-border);border-radius:3px;}
   .ax-date{width:100%;height:100%;border:1px solid var(--ax-border);border-radius:4px;background:#fff;padding:0 8px;font-size:12px;display:flex;align-items:center;justify-content:space-between;color:#111;}
   .ax-date.readonly{background:var(--ax-readonly-bg);color:#555;}
+  /* 내보내기(저장/미리보기) 결과물에서도 "표시 방법"이 그대로 보이게 하는 실제 장치 - 진짜 값은
+     화면에 아예 안 보이는(0크기) 진짜 <input type="date">가 그대로 들고 있고(오늘/어제 등 상대
+     날짜 재계산은 이 input의 data-relspec을 그대로 쓴다 - 기존 로직 그대로), 눈에 보이는 텍스트는
+     그 값을 표시 방법대로 바꿔 보여주는 바로 다음 형제 .ax-date-disp/.sctl-date-disp다. .ax-date
+     클래스를 그대로 재사용해서 디자인 화면과 완전히 같은 박스+달력 아이콘(::after) 모양이 된다.
+     클릭하면(mbOpenDatePicker) 바로 앞 형제인 이 hidden input의 네이티브 달력이 뜨고, 고르면
+     change 이벤트로 다시 표시 텍스트를 갱신한다(런타임 스크립트, buildExportHTML 참고). */
+  .ax-date-el,.sctl-date-el{width:0;height:0;padding:0;margin:0;border:0;opacity:0;pointer-events:none;overflow:hidden;}
+  .ax-date-disp,.sctl-date-disp{cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* 기간(daterange) 내보내기 - 시작일/종료일 두 hidden input과 그 표시용 글자, "~" 구분자를 전부
+     하나의 span(.dr-combo)으로 묶는다. 안 묶으면 이 여러 조각들이 부모(.sctl.daterange/.ax-date)의
+     justify-content:space-between 규칙에 각각 개별 flex 아이템으로 걸려, 원래 "글자- - - 달력
+     아이콘" 한 쌍이어야 할 배치가 아이템 개수만큼 사이사이에 큰 여백이 생기며 흐트러진다. 하나로
+     묶으면 다시 원래 그 한 쌍(글자뭉치, 아이콘)만 남아 디자인 캔버스와 같은 간격으로 보인다. */
+  .dr-combo{display:inline-flex;align-items:center;min-width:0;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
   .ax-date::after{content:"📅";font-size:11px;}
   /* 팻모드 전용: 기간(daterange) 편집 화면도 내보내기처럼 날짜 두 칸+물결(~)로 보여준다.
      .ax-date 하나로 합쳐 보여주던 기존(씬모드) 표현과 달리, 실제 사용 화면과 똑같은 모양이 된다. */
   .ax-daterange{width:100%;height:100%;display:flex;align-items:center;gap:5px;}
-  .ax-daterange .ax-date-part{flex:1;min-width:0;height:100%;border:1px solid var(--ax-border);border-radius:4px;background:#fff;padding:0 8px;font-size:12px;display:flex;align-items:center;justify-content:space-between;color:#111;}
+  .ax-daterange .ax-date-part,.ax-daterange-x .ax-date-part{flex:1;min-width:0;height:100%;border:1px solid var(--ax-border);border-radius:4px;background:#fff;padding:0 8px;font-size:12px;display:flex;align-items:center;justify-content:space-between;color:#111;}
   .ax-daterange.readonly .ax-date-part{background:var(--ax-readonly-bg);color:#555;}
   .ax-daterange.required .ax-date-part{background:var(--ax-required-bg);}
   /* 날짜1/날짜2 개별 필수·읽기전용 */
-  .ax-daterange .ax-date-part.ro{background:var(--ax-readonly-bg);color:#555;}
-  .ax-daterange .ax-date-part.is-req{background:var(--ax-required-bg);}
-  .ax-daterange .ax-date-part::after{content:"📅";font-size:11px;}
+  .ax-daterange .ax-date-part.ro,.ax-daterange-x .ax-date-part.ro{background:var(--ax-readonly-bg);color:#555;}
+  .ax-daterange .ax-date-part.is-req,.ax-daterange-x .ax-date-part.is-req{background:var(--ax-required-bg);}
+  .ax-daterange .ax-date-part::after,.ax-daterange-x .ax-date-part::after{content:"📅";font-size:11px;}
   .ax-section{width:100%;height:100%;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--ax-navy);border-bottom:1px solid var(--ax-border);padding-bottom:4px;}
   .ax-section::before{content:"⌃";transform:rotate(180deg);color:var(--ax-green);font-weight:700;}
   .ax-panel-c{width:100%;height:100%;border:1px solid var(--ax-border);border-radius:5px;background:rgba(250,251,252,.5);}
@@ -977,6 +992,16 @@
   .preview{margin-top:12px;text-align:center;}
   .preview img{max-width:100%;max-height:220px;border:1px solid var(--ax-border);border-radius:6px;}
   .modal-f{display:flex;gap:8px;justify-content:flex-end;padding:14px 18px;border-top:1px solid #eee;}
+  /* 임시 작업 목록(draftListBg) - 저장하지 않고 남겨둔 작업들을 한 줄씩 보여준다. 목록 자체는
+     modal-b를 그대로 쓰되(위에서 padding:0으로 비워둠) 각 줄이 자기 몫의 여백을 갖는다. */
+  .draft-row{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid #f0f2f4;}
+  .draft-row:hover{background:#f7f9fb;}
+  .draft-row-main{flex:1;min-width:0;cursor:pointer;}
+  .draft-row-title{font-size:13px;color:#1f2937;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .draft-row-time{font-size:11px;color:#9aa4ad;margin-top:2px;}
+  .draft-row-del{font-size:11px;padding:4px 8px;border:1px solid var(--ax-border);background:#fff;border-radius:4px;color:#6b7280;cursor:pointer;flex:none;}
+  .draft-row-del:hover{background:#fdecec;border-color:#f0c9c9;color:#c0392b;}
+  .draft-empty{padding:32px 16px;text-align:center;color:#9aa4ad;font-size:13px;}
   .modal-f button{padding:8px 18px;border-radius:5px;font-size:13px;cursor:pointer;font-weight:600;border:none;}
   .btn-primary{background:var(--ax-green);color:#fff;}
   .btn-primary:hover{background:var(--ax-green-dark);}
@@ -1035,19 +1060,19 @@
 
   /* ---- Export-mode interactive component states (only used by exported HTML markup) ---- */
   .ax-input-x,.ax-date-x{width:100%;height:100%;display:flex;align-items:center;gap:3px;}
-  .ax-input-el,.ax-date-el{flex:1;min-width:0;height:100%;border:1px solid var(--ax-border);border-radius:4px;background:#fff;padding:0 8px;font-size:12px;color:#111;outline:none;font-family:inherit;transition:border-color .12s,box-shadow .12s;}
-  .ax-input-el:hover,.ax-date-el:hover{border-color:#9fb8ce;}
-  .ax-input-el:focus,.ax-date-el:focus{border-color:var(--ax-green);box-shadow:0 0 0 2px rgba(30,158,106,.12);}
-  .ax-input-x.ro .ax-input-el,.ax-date-x.ro .ax-date-el{background:var(--ax-readonly-bg);color:#555;cursor:not-allowed;}
-  .ax-input-x.required .ax-input-el,.ax-date-x.required .ax-date-el{background:var(--ax-required-bg);}
+  .ax-input-el{flex:1;min-width:0;height:100%;border:1px solid var(--ax-border);border-radius:4px;background:#fff;padding:0 8px;font-size:12px;color:#111;outline:none;font-family:inherit;transition:border-color .12s,box-shadow .12s;}
+  .ax-input-el:hover{border-color:#9fb8ce;}
+  .ax-input-el:focus{border-color:var(--ax-green);box-shadow:0 0 0 2px rgba(30,158,106,.12);}
+  .ax-input-x.ro .ax-input-el{background:var(--ax-readonly-bg);color:#555;cursor:not-allowed;}
+  .ax-input-x.required .ax-input-el{background:var(--ax-required-bg);}
+  /* 날짜(.ax-date-el)는 이제 항상 숨김(위쪽 .ax-date-el,.sctl-date-el 규칙) - 실제로 보이는 건
+     .ax-date-disp(디자인 화면과 같은 .ax-date 박스+달력 아이콘 모양)이므로, 그 disp가 이 flex
+     줄에서 남는 폭을 정확히 차지하도록 flex:1만 추가로 지정한다. ro/필수 배경색은 .ax-date-disp에
+     이미 readonly/required 클래스를 그대로 붙여서 .ax-date.readonly/.ax-date.required(디자인
+     화면과 같은 규칙)로 처리되므로 여기서 따로 지정할 게 없다. */
+  .ax-date-x .ax-date-disp{flex:1;min-width:0;}
   .ax-daterange-x{width:100%;height:100%;display:flex;align-items:center;gap:5px;}
-  .ax-daterange-x .ax-date-el{flex:1;min-width:0;}
   .dr-sep{color:var(--ax-gray);font-size:12px;flex:none;}
-  .ax-daterange-x.ro .ax-date-el{background:var(--ax-readonly-bg);color:#555;cursor:not-allowed;}
-  .ax-daterange-x.required .ax-date-el{background:var(--ax-required-bg);}
-  /* 날짜1/날짜2 개별 필수·읽기전용 */
-  .ax-daterange-x .ax-date-el.ro{background:var(--ax-readonly-bg);color:#555;cursor:not-allowed;}
-  .ax-daterange-x .ax-date-el.is-req{background:var(--ax-required-bg);}
   .ax-combo.interactive,.sctl.combo.interactive{cursor:pointer;transition:border-color .12s;}
   .ax-combo.interactive:hover,.sctl.combo.interactive:hover{border-color:#9fb8ce;}
   .ax-combo.interactive.open,.sctl.combo.interactive.open{border-color:var(--ax-green);}
@@ -1084,9 +1109,16 @@
   .ax-search .sexpand{cursor:pointer;transition:background .12s;}
   .ax-search .sexpand:hover{background:var(--ax-green-light);}
   .sctl.date-x,.sctl.text-x{padding:0;}
-  .sctl-date-el,.sctl-text-el{width:100%;height:100%;border:none;outline:none;background:transparent;font-size:12px;color:#111;padding:0 8px;font-family:inherit;}
+  .sctl-text-el{width:100%;height:100%;border:none;outline:none;background:transparent;font-size:12px;color:#111;padding:0 8px;font-family:inherit;}
+  /* .sctl-date-el도 위쪽(.ax-date-el,.sctl-date-el)에서 이미 항상 숨겨두었다 - 실제로 보이는 건
+     바로 다음 형제인 .sctl-date-disp(디자인 화면과 같은 .sctl.date 박스+달력 아이콘 모양)다.
+     이 disp가 두 칸(시작일/종료일)에서 남는 폭을 정확히 나눠 갖도록 flex:1을 줘야 한다 - 예전엔
+     이 규칙이 보이는 요소였던 .sctl-date-el에 걸려 있었는데, 숨김 처리로 바꾸면서 새로 생긴
+     .sctl-date-disp에 옮겨 다는 걸 깜빡해서 폭 계산이 전혀 안 되고 있었다(그 결과 글자가 좁은
+     칸 안에서 줄바꿈되어 두 줄로 깨져 보였다 - 조회조건 패널 기간 필드 버그).
+  */
+  .ax-search .sctl.daterange-x .sctl-date-disp{flex:1;min-width:0;}
   .ax-search .sctl.daterange-x{padding:0 8px;display:flex;align-items:center;gap:5px;}
-  .ax-search .sctl.daterange-x .sctl-date-el{padding:0;flex:1;min-width:0;}
   .ax-search .sctl.search-x{padding:0 8px;display:flex;align-items:center;gap:8px;}
   .ax-search .sctl.search-x .sctl-text-el{flex:1;min-width:0;padding:0;}
   .ax-radio-group{display:flex;align-items:center;gap:14px;height:100%;flex-wrap:wrap;}
@@ -1590,6 +1622,9 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
 .adm-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;color:#5f6c78;}
 .adm-ellip{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .adm-badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;}
+.adm-draftlim-input{width:60px;padding:4px 6px;border:1px solid var(--ax-border);border-radius:4px;font-size:12px;font-family:inherit;}
+.adm-pwreset-btn{padding:4px 10px;border:1px solid var(--ax-border);border-radius:4px;background:#fff;font-size:11.5px;color:#6b7280;cursor:pointer;}
+.adm-pwreset-btn:hover{background:#fdecec;border-color:#f0c9c9;color:#c0392b;}
 .adm-pwcell{display:flex;align-items:center;gap:8px;}
 .adm-pwtext{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .adm-eye-btn{cursor:pointer;flex-shrink:0;font-size:13px;user-select:none;opacity:.75;}
