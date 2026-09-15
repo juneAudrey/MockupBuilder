@@ -508,14 +508,18 @@
      position:sticky를 써봤지만 .gbody가 overflow-y:hidden이라 스크롤 자체가 없는 상자라서
      "고정될 스크롤 동작"이 없어 그냥 순서대로 그려지다 넘치면 합계까지 통째로 잘렸다. 그래서
      순수 flexbox 크기 배분으로 바꿨다: 헤더(.gh)와 합계(.gr-total)는 flex:none(항상 자기 몫의
-     자리를 그대로 차지)이고, 데이터 행들만 담는 .grows가 flex:1 + overflow:hidden이라 넘치는
-     행만 거기서 잘리고 합계는 그 바깥(형제)이라 절대 안 잘린다. min-height:0은 flex 아이템의
-     기본 min-height:auto(내용물만큼 커지려는 성질)를 꺼서 overflow:hidden이 실제로 작동하게
-     하는 필수 값 - 이게 없으면 grows가 내용물 높이만큼 그냥 늘어나 버려 잘림 자체가 안 생긴다. */
+     자리를 그대로 차지)이고, 데이터 행들만 담는 .grows가 넘칠 때만 그 안에서 잘린다.
+     .grows는 반드시 flex:0 1 auto(성장은 0, 축소만 1)여야 한다 - flex:1(성장 포함)을 썼더니
+     그리드 높이가 실제 필요한 것보다 넉넉할 때(흔한 경우) .grows가 남는 공간까지 억지로
+     차지하면서 행1과 합계 사이에 빈 틈이 생기는 버그가 있었다(행 개수를 줄이거나 캡쳐의
+     "컬럼 줄바꿈"으로 높이를 압축했을 때 특히 두드러짐). flex-grow를 0으로 두면 평소엔 내용물
+     (보이는 행들) 높이만큼만 차지해 합계가 바로 붙고, 행이 넘칠 때는 flex-shrink:1 덕분에
+     여전히 남은 공간만큼 축소되어(min-height:0이 있어야 실제로 줄어든다) overflow:hidden이
+     초과분을 잘라낸다. */
   .ax-grid .gbody-track{display:flex;flex-direction:column;flex:1;min-height:0;}
   .ax-grid .gbody.xscroll .gbody-track{width:max-content;min-width:100%;}
   .ax-grid .gbody-track>.gh,.ax-grid .gbody-track>.gr-total{flex:none;}
-  .ax-grid .grows{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;}
+  .ax-grid .grows{flex:0 1 auto;min-height:0;overflow:hidden;display:flex;flex-direction:column;}
   /* Horizontal scroll mode: the body scrolls sideways and header/rows become a single
      min-width track so columns keep a readable minimum instead of being squeezed. */
   .ax-grid .gbody.xscroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;}
