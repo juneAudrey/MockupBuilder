@@ -449,14 +449,15 @@
   .ax-popup-ic{flex:none;width:22px;height:22px;box-sizing:border-box;border:1px solid var(--ax-border);border-radius:2px;
     background:var(--ax-green-light);color:var(--ax-green);display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1;}
   .ax-popup-name{flex:1.6 1 0;height:100%;min-width:0;box-sizing:border-box;border:1px solid var(--ax-border);border-radius:2px;background:var(--ax-readonly-bg);}
-  .ax-combo{width:100%;height:100%;border:1px solid var(--ax-border);border-radius:4px;background:#fff;padding:0 8px;font-size:12px;display:flex;align-items:center;justify-content:space-between;color:#111;}
+  .ax-combo{width:100%;height:100%;min-width:0;box-sizing:border-box;border:1px solid var(--ax-border);border-radius:4px;background:#fff;padding:0 8px;font-size:12px;display:flex;align-items:center;justify-content:space-between;color:#111;}
+  .ax-combo span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
   .ax-combo.readonly{background:var(--ax-readonly-bg);color:#555;}
   .ax-combo::after{content:"▾";color:var(--ax-gray);font-size:11px;}
   .ax-btn{width:100%;height:100%;border-radius:4px;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;border:1px solid var(--ax-green);background:var(--ax-green);color:#fff;}
   .ax-btn.outline{background:#fff;color:var(--ax-green);}
   .ax-check{display:flex;align-items:center;gap:5px;font-size:12px;height:100%;}
   .ax-check .box{width:14px;height:14px;border:1.5px solid var(--ax-border);border-radius:3px;}
-  .ax-date{width:100%;height:100%;border:1px solid var(--ax-border);border-radius:4px;background:#fff;padding:0 8px;font-size:12px;display:flex;align-items:center;justify-content:space-between;color:#111;}
+  .ax-date{width:100%;height:100%;min-width:0;box-sizing:border-box;border:1px solid var(--ax-border);border-radius:4px;background:#fff;padding:0 8px;font-size:12px;display:flex;align-items:center;justify-content:space-between;color:#111;}
   .ax-date.readonly{background:var(--ax-readonly-bg);color:#555;}
   /* 내보내기(저장/미리보기) 결과물에서도 "표시 방법"이 그대로 보이게 하는 실제 장치 - 진짜 값은
      화면에 아예 안 보이는(0크기) 진짜 <input type="date">가 그대로 들고 있고(오늘/어제 등 상대
@@ -565,7 +566,15 @@
      조회조건 필드(.sf-selected)와 같은 색(var(--sel))으로, 속성패널의 .sf-row-selected 강조와
      짝을 이룬다. inset box-shadow라 인접 컬럼 셀의 레이아웃(폭·경계선)에 영향을 주지 않는다. */
   .ax-grid .gh span[data-ci].gcol-selected{box-shadow:inset 0 0 0 2px var(--sel);z-index:2;}
-  .ax-grid .gr{display:grid;border-bottom:1px solid #eef0f2;}
+  .ax-grid .gr{display:grid;border-bottom:1px solid #eef0f2;height:32px;}
+  /* 컬럼 종류(콤보/날짜/체크박스/첨부 등)마다 높이가 제각각이던 문제 - 행 높이가 원래 정해져
+     있지 않고 그 행에서 가장 큰 칸의 내용에 맞춰 자동으로 늘어나다 보니, 콤보/날짜 박스(테두리·
+     줄간격 조합)가 기본 텍스트 칸보다 조금 더 크게 계산되면 그 행 전체가 그만큼 늘어나 버렸다.
+     행 높이를 32px로 고정하고, 칸 자체도 flex로 세로 중앙 정렬해서 어떤 컬럼 종류가 섞여 있어도
+     항상 같은 높이로 보이게 한다. white-space:nowrap은 날짜처럼 값이 길 때 줄바꿈으로 칸/행이
+     늘어나는 걸 막는다(넘치면 잘라서 보여줌).
+  */
+  .ax-grid .gr span{min-width:0;padding:0 8px;font-size:11px;color:#6b7280;border-right:1px solid #f0f2f4;overflow:hidden;box-sizing:border-box;display:flex;align-items:center;white-space:nowrap;text-overflow:ellipsis;}
   /* 그리드 합계 행 - 데이터 행 맨 아래에 옅은 초록 배경으로 강조해서 붙는다. 셀 자체는 일반 데이터
      셀과 똑같은 grid-template(gridColsStyle)을 쓰므로 컬럼 폭·정렬이 항상 위 행들과 그대로 맞는다. */
   .ax-grid .gr.gr-total{background:var(--ax-green-light);font-weight:700;}
@@ -574,8 +583,6 @@
      때문에 뒷부분이 잘리거나(줄바꿈은 위에서 이미 막음) 보이지 않는다 - 이 칸은 어차피 옆(체크박스)
      칸이 합계 행에서는 비어 있으므로, 넘치는 부분이 그쪽으로 자연스럽게 삐져나와 보이게 둔다. */
   .ax-grid .gr.gr-total>span:first-child{overflow:visible;}
-  .ax-grid .gr span{min-width:0;padding:6px 8px;font-size:11px;color:#6b7280;border-right:1px solid #f0f2f4;overflow:hidden;}
-  .ax-grid .gr span:has(.ax-combo){overflow:visible;}
   .ax-grid .gr span.gcell-edit{padding:0;}
   .ax-grid .gr .gcell-input{width:100%;height:100%;box-sizing:border-box;border:0;background:transparent;padding:6px 8px;font-size:11px;font-family:inherit;color:#1f2937;outline:none;min-width:0;}
   .ax-grid .gr .gcell-input:focus{background:#eef6f1;box-shadow:inset 0 0 0 1px var(--ax-green);}
@@ -995,6 +1002,8 @@
   /* 임시 작업 목록(draftListBg) - 저장하지 않고 남겨둔 작업들을 한 줄씩 보여준다. 목록 자체는
      modal-b를 그대로 쓰되(위에서 padding:0으로 비워둠) 각 줄이 자기 몫의 여백을 갖는다. */
   .draft-row{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid #f0f2f4;}
+  .draft-row-current{background:var(--ax-green-light);}
+  .draft-current-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700;background:var(--ax-green);color:#fff;vertical-align:middle;}
   .draft-row:hover{background:#f7f9fb;}
   .draft-row-main{flex:1;min-width:0;cursor:pointer;}
   .draft-row-title{font-size:13px;color:#1f2937;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -1435,7 +1444,7 @@ body.mb-mobile .modal-bg, body.mb-tablet .modal-bg{ z-index:2200!important; }
 #mbConfirmBg.show{display:flex;}
 #mbConfirmCard{background:var(--mb-surface);border-radius:18px;padding:22px 20px;max-width:340px;width:100%;box-shadow:var(--mb-shadow);}
 #mbConfirmCard h3{font-size:17px;font-weight:800;color:var(--mb-ink);margin-bottom:8px;}
-#mbConfirmCard p{font-size:14px;color:var(--mb-ink-soft);line-height:1.6;margin-bottom:18px;}
+#mbConfirmCard p{font-size:14px;color:var(--mb-ink-soft);line-height:1.6;margin-bottom:18px;white-space:pre-line;}
 #mbConfirmCard .mbc-btns{display:flex;gap:10px;}
 #mbConfirmCard .mbc-btns button{flex:1;padding:13px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;border:none;}
 #mbConfirmCard .mbc-cancel{background:#f1f4f6;color:var(--mb-ink);}
