@@ -4454,6 +4454,10 @@ function safeName(s,fallback){
 // Saves a blob. Where supported (Chrome/Edge over http/https) this opens a
 // "Save as" dialog so the user picks the folder and file name; otherwise it falls
 // back to a normal download. The picker is unavailable on file:// pages.
+// Returns the actual saved file name (string) on success, or false if the user
+// cancelled - never a bare boolean on success, so callers can mirror the real
+// name elsewhere (e.g. the cloud auto-backup) even when the user renamed the
+// suggested name inside the "Save as" dialog.
 async function saveBlob(blob,filename,desc,mime,ext){
   if(window.showSaveFilePicker){
     try{
@@ -4464,7 +4468,7 @@ async function saveBlob(blob,filename,desc,mime,ext){
       const ws=await handle.createWritable();
       await ws.write(blob);
       await ws.close();
-      return true;
+      return handle.name||filename; // 대화상자에서 이름을 바꿨을 수 있으므로 실제 저장된 이름을 돌려준다
     }catch(err){
       if(err&&err.name==='AbortError')return false; // user cancelled
       // Any other failure (e.g. blocked on file://) falls through to download.
@@ -4473,7 +4477,7 @@ async function saveBlob(blob,filename,desc,mime,ext){
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download=filename; a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  return true;
+  return filename;
 }
 // Clears the autosave snapshot. Called once work has been written to a real file,
 // so reopening the tool starts clean instead of offering to restore.
@@ -4548,7 +4552,15 @@ function exportHTML(){
   const b=new Blob([out],{type:'text/html'});
   const baseName=`${safeName(t,'mockup_export')}_${fileStamp()}`;
   saveBlob(b,`${baseName}.html`,'HTML 파일','text/html','.html')
-    .then(saved=>{ if(saved){ clearAutosave(); mbLocalAutoSaveToCloud(baseName); } });
+    .then(saved=>{
+      if(!saved)return;
+      clearAutosave();
+      // saved 는 실제로 저장된 파일명이다 - 저장 대화상자에서 사용자가 제안된 이름을
+      // 바꿨을 수 있으므로, 클라우드 자동 백업도 baseName이 아니라 이 실제 이름을 그대로
+      // 따라가야 로컬 파일명과 클라우드의 표시 이름이 어긋나지 않는다.
+      const cloudName=String(saved).replace(/\.html?$/i,'');
+      mbLocalAutoSaveToCloud(cloudName);
+    });
 }
 // Opens the same interactive HTML the export produces in a new browser tab,
 // so every component behaves exactly as it will in the saved file (tabs switch,
