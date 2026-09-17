@@ -9804,8 +9804,11 @@ function mbCloudBuildPreviewHTML(data){
     // html,body{overflow:visible!important} 규칙) - 미리보기 iframe에서는 스크롤 대신 확대/축소
     // 버튼으로 배율만 조절하게 할 것이므로, </head> 바로 앞에 그 여백을 걷어내고 스크롤 자체를
     // 막는 스타일을 하나 더 끼워 넣는다(마지막에 위치해 !important끼리는 뒤에 오는 규칙이 이겨서,
-    // 원본 내용은 그대로 둔 채 이 부분만 안전하게 덮어쓴다).
-    const override='<style>html,body{overflow:hidden!important;}body{background:#fff!important;margin:0!important;padding:0!important;}.mockup{margin:0!important;border:none!important;box-shadow:none!important;}</style></head>';
+    // 원본 내용은 그대로 둔 채 이 부분만 안전하게 덮어쓴다). 우측 상단 고정 바(Alt+O/Alt+P
+    // 뱃지, .mb-topbar)도 여기서만 숨긴다 - 실제로 내려받는 파일/미리보기(previewHTML)에는
+    // 그대로 남아야 하므로 buildExportHTML() 자체는 건드리지 않고, 목업마켓 미리보기 iframe에
+    // 주입되는 이 스타일에서만 감춘다.
+    const override='<style>html,body{overflow:hidden!important;}body{background:#fff!important;margin:0!important;padding:0!important;}.mockup{margin:0!important;border:none!important;box-shadow:none!important;}.mb-topbar{display:none!important;}</style></head>';
     return full.replace('</head>', override);
   } finally {
     comps=origComps; cwEl.value=origCw; chEl.value=origCh;
