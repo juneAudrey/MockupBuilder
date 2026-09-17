@@ -14,6 +14,18 @@ const DIFF_ORDER=['base','add','chg','del','mov'];
 // 컴포넌트/필드/컬럼 "박스" 전체에 점선 테두리+코너 라벨을 씌우는 클래스 문자열. base면 빈 문자열.
 function diffBoxCls(status){ const st=status||'base'; return st==='base'?'':' mb-diffst mb-diffst-'+st; }
 function diffBoxAttr(status){ const st=status||'base'; return st==='base'?'':' data-difflabel="'+DIFF_LABEL[st]+'"'; }
+// 속성패널 "타입" 콤보(입력 컴포넌트 타입 변경)에서 오갈 수 있는 7종. 우측 도구상자의 같은
+// 컴포넌트들과 순서·아이콘·라벨을 동일하게 맞춘다(index.html 도구상자 markup 참고).
+const INPUT_TYPES=['label','input','combo','date','daterange','check','radio'];
+const INPUT_TYPE_META={
+  label:{icon:'A',label:'라벨'},
+  input:{icon:'▭',label:'텍스트박스'},
+  combo:{icon:'▾',label:'콤보박스'},
+  date:{icon:'📅',label:'날짜선택'},
+  daterange:{icon:'📅',label:'기간'},
+  check:{icon:'☑',label:'체크박스'},
+  radio:{icon:'◉',label:'라디오'}
+};
 let comps=[]; let sel=null; let uid=1;
 let selIds=new Set(); // multi-selection
 function setSelection(ids){ selIds=new Set(ids); sel = selIds.size===1 ? [...selIds][0] : (selIds.size===0?null:sel); if(selIds.size!==1) sel = (selIds.size===0? null : ([...selIds].includes(sel)?sel:[...selIds][selIds.size-1])); }
@@ -529,6 +541,42 @@ function todayStr(){
   const d=new Date();
   const p=n=>String(n).padStart(2,'0');
   return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+
+// 입력 컴포넌트 타입 변경(속성패널의 "타입" 콤보) - 텍스트박스를 콤보박스로, 라디오를 체크박스로
+// 바꾸는 등, 컴포넌트를 지우고 새로 만드는 대신 그 자리에서 종류만 바꾼다.
+// - 위치·크기(x/y/w/h)와 컨테이너 소속(parent/tabIdx/pane/dock), 변경상태(diffStatus)는 그대로 유지.
+// - 내용은 placeNewComponent()가 새 컴포넌트를 놓을 때와 동일하게 defaults[newType]으로 완전히
+//   새로 시작한다(날짜 타입의 오늘 날짜 초기화도 동일하게 재현) - 그래야 이전 타입 전용 속성
+//   (예: 날짜의 dateSpec, 콤보/라디오의 options)이 맞지 않는 타입에 죽은 값으로 남지 않는다.
+// - 다만 두 타입 모두에 실제로 있는 공통 속성(라벨 문구/위치/표시여부, 필수, 읽기전용, 콤보·라디오의
+//   보기 목록)만은 기존 값을 그대로 옮겨, 사용자가 입력해둔 내용이 불필요하게 날아가지 않게 한다.
+function changeCompType(id,newType){
+  const c=comps.find(x=>x.id===id);
+  if(!c||!INPUT_TYPES.includes(c.type)||!INPUT_TYPES.includes(newType)||c.type===newType)return;
+  // 이 컴포넌트를 대상으로 열려 있던 텍스트 서식 팝업(볼드/기울임 등)이 있으면 먼저 닫는다 -
+  // 타입이 바뀌면 그 팝업이 읽고 쓰던 속성 구조도 같이 바뀌므로, 그리드 컬럼 삭제 시와 동일한
+  // 방식으로 먼저 정리한다(위 updGridColStatus 등 근처의 기존 lf 정리 패턴과 동일).
+  if(lf&&lf.compId===c.id) closeLabelFormat();
+  pushHistory();
+  const fatMode=document.body.classList.contains('skin-classic');
+  const d=JSON.parse(JSON.stringify(defaults[newType]));
+  if(d.labelPos && fatMode) d.labelPos='left';
+  if(newType==='date'){ d.text=todayStr(); d.dateSpec='chip:today'; }
+  ['required','readonly','showLabel','labelText','labelPos','options'].forEach(k=>{
+    if(Object.prototype.hasOwnProperty.call(d,k)&&Object.prototype.hasOwnProperty.call(c,k)) d[k]=c[k];
+  });
+  const keep={id:c.id,type:newType,x:c.x,y:c.y,w:c.w,h:c.h};
+  if(c.parent!=null) keep.parent=c.parent;
+  if(c.tabIdx!=null) keep.tabIdx=c.tabIdx;
+  if(c.pane!=null) keep.pane=c.pane;
+  if(c.dock!=null) keep.dock=c.dock;
+  if(c.diffStatus!=null) keep.diffStatus=c.diffStatus;
+  const idx=comps.indexOf(c);
+  if(idx<0)return;
+  comps[idx]=Object.assign(keep,d);
+  selectSingle(comps[idx].id);
+  render();
 }
 
 function snap(v){
@@ -1080,7 +1128,8 @@ function renderComp(c,container,single,locked){
     el.addEventListener('mousedown',ev=>startMove(ev,c));
   }
   if(single && on && !locked){
-    ['se','e','s'].forEach(dir=>{
+    // 파워포인트 방식 8방향 리사이즈 핸들: 네 변(상하좌우) + 네 모서리(대각선).
+    ['n','s','e','w','ne','nw','se','sw'].forEach(dir=>{
       const h=document.createElement('div');h.className='handle '+dir;
       h.addEventListener('mousedown',ev=>startResize(ev,c,dir));
       el.appendChild(h);
@@ -1973,7 +2022,7 @@ function startMove(e,c){
 }
 function startResize(e,c,dir){
   e.stopPropagation();selectSingle(c.id);render();
-  drag={mode:'resize',dir,c,sx:e.clientX,sy:e.clientY,ow:c.w,oh:c.h,committed:false,pre:snapshot()};
+  drag={mode:'resize',dir,c,sx:e.clientX,sy:e.clientY,ow:c.w,oh:c.h,ox:c.x,oy:c.y,committed:false,pre:snapshot()};
 }
 // Dragging a grid column's own right border (the small handle rendered inside its header cell -
 // see resizeHandle() in innerRaw's 'grid' case) resizes just that one column, independent of the
@@ -2166,7 +2215,26 @@ document.addEventListener('mousemove',e=>{
       // (skip comps whose parent container is also in this group - they move automatically since their x/y are relative to the parent)
       const groupIdSet=new Set(group.map(g=>g.c.id));
       let sdx=dx, sdy=dy;
-      if(document.getElementById('snapChk').checked){const s=parseInt(document.getElementById('snapSize').value)||10;sdx=Math.round(sdx/s)*s;sdy=Math.round(sdy/s)*s;}
+      // Smart guides for multi-select move (PowerPoint style): guide against the bounding box of
+      // the selected group's outermost top/bottom/left/right edges. Only top-level (non-nested)
+      // members count toward that box - guides are canvas-relative, same reasoning as single-move
+      // skipping nested Tab children above.
+      const topLevel=group.filter(g=>!g.c.parent);
+      const smart=document.getElementById('smartChk').checked&&topLevel.length>0;
+      let snappedX=false, snappedY=false;
+      if(smart){
+        const bx=Math.min(...topLevel.map(g=>g.ox+dx));
+        const by=Math.min(...topLevel.map(g=>g.oy+dy));
+        const bx2=Math.max(...topLevel.map(g=>g.ox+dx+g.c.w));
+        const by2=Math.max(...topLevel.map(g=>g.oy+dy+g.c.h));
+        const excludeIds=new Set(topLevel.map(g=>g.c.id));
+        const gg=computeGuides({w:bx2-bx,h:by2-by},bx,by,excludeIds);
+        snappedX=gg.x!==bx; snappedY=gg.y!==by;
+        if(snappedX) sdx=Math.round(gg.x-bx+dx);
+        if(snappedY) sdy=Math.round(gg.y-by+dy);
+        if(gg.lines.length) pendingGuides=gg.lines;
+      }
+      if(document.getElementById('snapChk').checked){const s=parseInt(document.getElementById('snapSize').value)||10;if(!snappedX)sdx=Math.round(sdx/s)*s;if(!snappedY)sdy=Math.round(sdy/s)*s;}
       group.forEach(g=>{
         if(g.c.parent&&groupIdSet.has(g.c.parent))return;
         const gnx=g.ox+sdx, gny=g.oy+sdy;
@@ -2189,9 +2257,29 @@ document.addEventListener('mousemove',e=>{
     }
   }
   else if(drag.mode==='resize'){
-    if(drag.dir!=='s')drag.c.w=snap(Math.max(30,drag.ow+dx));
-    if(drag.dir!=='e')drag.c.h=snap(Math.max(20,drag.oh+dy));
-    if(drag.c.type==='grid'&&drag.dir!=='s') drag.c._sizeModeManual=false;
+    // 파워포인트 방식 8방향 리사이즈: 핸들 방향에 따라 활성화된 변만 움직이고, 반대편 변은
+    // 고정된다(예: 'w' 핸들은 왼쪽만 움직이고 오른쪽 변 위치는 그대로 유지).
+    const dir=drag.dir;
+    const activeE=dir.includes('e'), activeW=dir.includes('w'), activeN=dir.includes('n'), activeS=dir.includes('s');
+    let nx=drag.ox, ny=drag.oy, nw=drag.ow, nh=drag.oh;
+    if(activeE) nw=Math.max(30,drag.ow+dx);
+    if(activeW){ nw=Math.max(30,drag.ow-dx); nx=drag.ox+(drag.ow-nw); }
+    if(activeS) nh=Math.max(20,drag.oh+dy);
+    if(activeN){ nh=Math.max(20,drag.oh-dy); ny=drag.oy+(drag.oh-nh); }
+
+    const smart=document.getElementById('smartChk').checked&&!drag.c.parent;
+    let snappedX=false, snappedY=false;
+    if(smart&&(activeE||activeW||activeN||activeS)){
+      const g=computeResizeGuides(drag.c,dir,nx,ny,nw,nh);
+      nx=g.nx; ny=g.ny; nw=g.nw; nh=g.nh;
+      snappedX=g.snappedX; snappedY=g.snappedY;
+      if(g.lines.length) pendingGuides=g.lines;
+    }
+    drag.c.w=snappedX?Math.round(nw):snap(nw);
+    drag.c.h=snappedY?Math.round(nh):snap(nh);
+    if(activeW) drag.c.x=snappedX?Math.round(nx):snap(nx);
+    if(activeN) drag.c.y=snappedY?Math.round(ny):snap(ny);
+    if(drag.c.type==='grid'&&(activeE||activeW)) drag.c._sizeModeManual=false;
   }
   else if(drag.mode==='colresize'){
     const w=Math.round(Math.max(40,drag.ow+dx));
@@ -2439,7 +2527,10 @@ document.addEventListener('mouseup',()=>{
 
 // ---- Smart guides (PowerPoint-style) ----
 const SNAP_TOL=6; // px snapping threshold
-function computeGuides(moving,x,y){
+// excludeIds: which comps to leave out of the target set (defaults to just the moving comp itself -
+// group-move passes every selected top-level comp's id so the whole group is excluded, not just one).
+function computeGuides(moving,x,y,excludeIds){
+  const ex=excludeIds||new Set([moving.id]);
   const w=moving.w, h=moving.h;
   const cw=canvas.offsetWidth, ch=canvas.offsetHeight;
   // moving edges (candidate)
@@ -2448,7 +2539,7 @@ function computeGuides(moving,x,y){
   // build target edge sets from other comps + canvas
   const vTargets=[], hTargets=[];
   comps.forEach(c=>{
-    if(c.id===moving.id)return;
+    if(ex.has(c.id))return;
     vTargets.push({pos:c.x,span:[c.y,c.y+c.h]},{pos:c.x+c.w/2,span:[c.y,c.y+c.h]},{pos:c.x+c.w,span:[c.y,c.y+c.h]});
     hTargets.push({pos:c.y,span:[c.x,c.x+c.w]},{pos:c.y+c.h/2,span:[c.x,c.x+c.w]},{pos:c.y+c.h,span:[c.x,c.x+c.w]});
   });
@@ -2481,6 +2572,61 @@ function computeGuides(moving,x,y){
     lines.push({dir:'h',pos:bestHLine.pos,a:s0,b:s1});
   }
   return {x,y,lines};
+}
+// Resize guides: unlike a move (which snaps the whole box's left/center/right against targets),
+// a resize only snaps the edge(s) actually being dragged - e.g. dragging the right edge only
+// checks the right edge against other comps' edges, never the left edge or center.
+function computeResizeGuides(c,dir,nx,ny,nw,nh){
+  const activeE=dir.includes('e'), activeW=dir.includes('w'), activeN=dir.includes('n'), activeS=dir.includes('s');
+  const cw=canvas.offsetWidth, ch=canvas.offsetHeight;
+  const vTargets=[], hTargets=[];
+  comps.forEach(o=>{
+    if(o.id===c.id)return;
+    vTargets.push({pos:o.x,span:[o.y,o.y+o.h]},{pos:o.x+o.w/2,span:[o.y,o.y+o.h]},{pos:o.x+o.w,span:[o.y,o.y+o.h]});
+    hTargets.push({pos:o.y,span:[o.x,o.x+o.w]},{pos:o.y+o.h/2,span:[o.x,o.x+o.w]},{pos:o.y+o.h,span:[o.x,o.x+o.w]});
+  });
+  vTargets.push({pos:cw/2,span:[0,ch]},{pos:0,span:[0,ch]},{pos:cw,span:[0,ch]});
+  hTargets.push({pos:ch/2,span:[0,cw]},{pos:0,span:[0,cw]},{pos:ch,span:[0,cw]});
+
+  const lines=[];
+  let snappedX=false, snappedY=false;
+  if(activeW){
+    let best=null,bestD=SNAP_TOL+1;
+    vTargets.forEach(t=>{const d=Math.abs(nx-t.pos);if(d<bestD){bestD=d;best=t;}});
+    if(best){
+      const delta=nx-best.pos; nw=nw+delta; nx=best.pos; snappedX=true;
+      const s0=Math.min(best.span[0],ny),s1=Math.max(best.span[1],ny+nh);
+      lines.push({dir:'v',pos:best.pos,a:s0,b:s1});
+    }
+  } else if(activeE){
+    let best=null,bestD=SNAP_TOL+1;
+    const right=nx+nw;
+    vTargets.forEach(t=>{const d=Math.abs(right-t.pos);if(d<bestD){bestD=d;best=t;}});
+    if(best){
+      nw=best.pos-nx; snappedX=true;
+      const s0=Math.min(best.span[0],ny),s1=Math.max(best.span[1],ny+nh);
+      lines.push({dir:'v',pos:best.pos,a:s0,b:s1});
+    }
+  }
+  if(activeN){
+    let best=null,bestD=SNAP_TOL+1;
+    hTargets.forEach(t=>{const d=Math.abs(ny-t.pos);if(d<bestD){bestD=d;best=t;}});
+    if(best){
+      const delta=ny-best.pos; nh=nh+delta; ny=best.pos; snappedY=true;
+      const s0=Math.min(best.span[0],nx),s1=Math.max(best.span[1],nx+nw);
+      lines.push({dir:'h',pos:best.pos,a:s0,b:s1});
+    }
+  } else if(activeS){
+    let best=null,bestD=SNAP_TOL+1;
+    const bottom=ny+nh;
+    hTargets.forEach(t=>{const d=Math.abs(bottom-t.pos);if(d<bestD){bestD=d;best=t;}});
+    if(best){
+      nh=best.pos-ny; snappedY=true;
+      const s0=Math.min(best.span[0],nx),s1=Math.max(best.span[1],nx+nw);
+      lines.push({dir:'h',pos:best.pos,a:s0,b:s1});
+    }
+  }
+  return {nx,ny,nw,nh,snappedX,snappedY,lines};
 }
 function drawGuides(lines){
   clearGuides();
@@ -2640,6 +2786,13 @@ function renderProps(){
       return `<button type="button" class="status-seg-btn st-${v}${dst===v?' on':''}" onclick="upd('diffStatus','${v}')">${lbl}</button>`;
     }).join('');
     html+=`<div class="status-seg">${seg}</div>`;
+  }
+  // 입력 컴포넌트 타입 변경 - 라벨|텍스트박스|콤보박스|날짜선택|기간|체크박스|라디오 7종 사이를
+  // 콤보박스로 즉시 전환한다(예: 텍스트박스→콤보박스, 라디오→체크박스). 변경상태 선택과 아래
+  // 텍스트/라벨 속성 사이에 위치. changeCompType()이 실제 변환을 담당.
+  if(INPUT_TYPES.includes(c.type)){
+    const tOpts=INPUT_TYPES.map(t=>{const m=INPUT_TYPE_META[t];return `<option value="${t}"${c.type===t?' selected':''}>${m.icon} ${m.label}</option>`;}).join('');
+    html+=`<div class="prop"><label>타입${qh('다른 입력 컴포넌트 종류로 바로 바꿉니다. 위치·크기는 그대로 유지되고, 라벨 문구·필수·읽기전용 등 공통 속성은 옮겨집니다.')}</label><select onchange="changeCompType(${c.id},this.value)">${tOpts}</select></div>`;
   }
   if(c.type!=='panel'&&c.type!=='split'){
     if(c.type==='tree'){
@@ -7644,6 +7797,7 @@ const mbAdmin={
   users:[], usersLoaded:false, usersQuery:'', usersSort:'created_desc', usersLimit:100, usersHasMore:true, usersLoadingMore:false, draftLimits:{},
   feedback:[], feedbackLoaded:false, fbQuery:'', fbSort:'recent', fbExpanded:new Set(), fbLimit:100, fbHasMore:true, fbLoadingMore:false,
   usage:null, usageLoaded:false, usageTotal:0,
+  userUsageLoaded:false, userBytes:{}, userBytesTotal:0,
   promptMode: document.body.classList.contains('skin-classic')?'Fat':'Thin',
   promptCache:{}, promptLoaded:{}, promptSaving:false, promptDirty:false
 };
@@ -7702,6 +7856,7 @@ async function openAdminPanel(){
     users:[], usersLoaded:false, usersQuery:'', usersSort:'created_desc', usersLimit:100, usersHasMore:true, usersLoadingMore:false, draftLimits:{},
     feedback:[], feedbackLoaded:false, fbQuery:'', fbSort:'recent', fbExpanded:new Set(), fbLimit:100, fbHasMore:true, fbLoadingMore:false,
     usage:null, usageLoaded:false, usageTotal:0,
+  userUsageLoaded:false, userBytes:{}, userBytesTotal:0,
     promptMode: document.body.classList.contains('skin-classic')?'Fat':'Thin',
     promptCache:{}, promptLoaded:{}, promptSaving:false, promptDirty:false });
   document.getElementById('adminBg').classList.add('on');
@@ -7761,6 +7916,42 @@ function mbAdminRender(){
   if(mbAdmin.tab==='prompts') mbAdminFillPromptTextarea();
 }
 function mbAdminSwitchTab(t){ mbAdmin.tab=t; mbAdminRender(); mbAdminEnsureLoaded(); }
+// 회원 목록+임시저장 한도를 불러온다. 「회원 정보」 탭과 「사용량」 탭(사용자별 사용량 패널)이
+// 똑같이 이 데이터가 필요하므로 한 곳으로 뽑아 공유한다 - 둘 중 어느 쪽을 먼저 열어도 한 번만
+// 받아오고, usersLoaded 플래그로 재요청을 막는다.
+async function mbAdminEnsureUsersLoaded(){
+  if(mbAdmin.usersLoaded) return;
+  try{ const r=await mbAdminListUsers(mbAdmin.usersLimit)||[]; mbAdmin.users=r; mbAdmin.usersHasMore=r.length===mbAdmin.usersLimit; }
+  catch(e){ mbAdmin.users=[]; mbAdmin.usersHasMore=false; }
+  // 임시 작업 목록 한도(mockup_draft_limits)는 회원 목록 RPC에 없으므로 따로 한 번에 불러와
+  // owner_id -> max_drafts 표로 만들어둔다(행이 없는 사용자는 기본값 30으로 표시).
+  try{ const lim=await mbRestFetch('/mockup_draft_limits?select=owner_id,max_drafts')||[]; mbAdmin.draftLimits={}; lim.forEach(r=>{ mbAdmin.draftLimits[r.owner_id]=r.max_drafts; }); }
+  catch(e){ mbAdmin.draftLimits={}; }
+  mbAdmin.usersLoaded=true;
+}
+// 사용자별 "실제 용량"(KB/MB) - 한도(개수)와는 무관하게, 그 사용자가 mockups(저장한 목업)와
+// mockup_drafts(임시 작업)에 실제로 얼마나 바이트를 차지하고 있는지를 잰다. 두 테이블 모두
+// mockup_draft_limits와 같은 수준으로 RLS가 열려 있어(관리자 RPC 없이) owner_id 필터 없이 전체를
+// 받아올 수 있다 - 어차피 두 테이블을 합쳐도 사용량 탭의 테이블별 용량 목록 기준 수백 KB
+// 수준이라 전체를 내려받아 클라이언트에서 재는 것으로 충분하다. 바이트 수는 실제로 저장되는
+// JSON 문자열(+목업의 SVG 썸네일)을 UTF-8로 인코딩한 길이로 근사한다(TextEncoder) - Postgres
+// 저장소의 인덱스·페이지 오버헤드까지 정확히 맞추는 값은 아니지만, 사용자 간 상대 비교에는
+// 충분하다.
+async function mbAdminLoadUserBytes(){
+  const bytesOf=v=>{ try{ return new TextEncoder().encode(typeof v==='string'?v:JSON.stringify(v||'')).length; }catch(e){ return 0; } };
+  const totals={};
+  try{
+    const [mockups,drafts]=await Promise.all([
+      mbRestFetch('/mockups?select=owner_id,data,thumbnail'),
+      mbRestFetch('/mockup_drafts?select=owner_id,data')
+    ]);
+    (mockups||[]).forEach(r=>{ totals[r.owner_id]=(totals[r.owner_id]||0)+bytesOf(r.data)+bytesOf(r.thumbnail); });
+    (drafts||[]).forEach(r=>{ totals[r.owner_id]=(totals[r.owner_id]||0)+bytesOf(r.data); });
+    mbAdmin.userBytes=totals;
+    mbAdmin.userBytesTotal=Object.values(totals).reduce((s,v)=>s+v,0);
+  }catch(e){ mbAdmin.userBytes={}; mbAdmin.userBytesTotal=0; }
+  mbAdmin.userUsageLoaded=true;
+}
 async function mbAdminEnsureLoaded(){
   if(mbAdmin.tab==='logs'){
     // 필터와 상관없이 두 로그를 항상 같이 불러온다 - "전체"에서 시간순으로 합쳐 보여줘야 하므로.
@@ -7777,23 +7968,27 @@ async function mbAdminEnsureLoaded(){
     })());
     if(tasks.length){ await Promise.all(tasks); if(mbAdmin.tab==='logs') mbAdminRender(); }
   } else if(mbAdmin.tab==='users' && !mbAdmin.usersLoaded){
-    try{ const r=await mbAdminListUsers(mbAdmin.usersLimit)||[]; mbAdmin.users=r; mbAdmin.usersHasMore=r.length===mbAdmin.usersLimit; }
-    catch(e){ mbAdmin.users=[]; mbAdmin.usersHasMore=false; }
-    // 임시 작업 목록 한도(mockup_draft_limits)는 회원 목록 RPC에 없으므로 따로 한 번에 불러와
-    // owner_id -> max_drafts 표로 만들어둔다(행이 없는 사용자는 기본값 30으로 표시).
-    try{ const lim=await mbRestFetch('/mockup_draft_limits?select=owner_id,max_drafts')||[]; mbAdmin.draftLimits={}; lim.forEach(r=>{ mbAdmin.draftLimits[r.owner_id]=r.max_drafts; }); }
-    catch(e){ mbAdmin.draftLimits={}; }
-    mbAdmin.usersLoaded=true; if(mbAdmin.tab==='users') mbAdminRender();
+    await mbAdminEnsureUsersLoaded();
+    if(mbAdmin.tab==='users') mbAdminRender();
   } else if(mbAdmin.tab==='feedback' && !mbAdmin.feedbackLoaded){
     try{ const r=await mbAdminListFeedback(mbAdmin.fbLimit)||[]; mbAdmin.feedback=r; mbAdmin.fbHasMore=r.length===mbAdmin.fbLimit; }
     catch(e){ mbAdmin.feedback=[]; mbAdmin.fbHasMore=false; }
     mbAdmin.feedbackLoaded=true; if(mbAdmin.tab==='feedback') mbAdminRender();
-  } else if(mbAdmin.tab==='usage' && !mbAdmin.usageLoaded){
-    try{
-      const [rows,total]=await Promise.all([mbAdminListStorageUsage(),mbAdminGetDbTotalSize()]);
-      mbAdmin.usage=rows||[]; mbAdmin.usageTotal=total||0;
-    }catch(e){ mbAdmin.usage=[]; mbAdmin.usageTotal=0; }
-    mbAdmin.usageLoaded=true; if(mbAdmin.tab==='usage') mbAdminRender();
+  } else if(mbAdmin.tab==='usage'){
+    // 사용량 탭은 세 가지를 함께 채운다 - 테이블별 용량(usage), 사용자 목록+임시저장 한도
+    // (users/draftLimits, 회원 정보 탭과 공유), 사용자별 실제 저장 용량(userBytes, KB/MB).
+    // 이미 불러온 것은 각자의 플래그로 건너뛰므로, 다른 탭에서 먼저 봤다면 다시 받지 않는다.
+    const tasks=[];
+    if(!mbAdmin.usageLoaded) tasks.push((async()=>{
+      try{
+        const [rows,total]=await Promise.all([mbAdminListStorageUsage(),mbAdminGetDbTotalSize()]);
+        mbAdmin.usage=rows||[]; mbAdmin.usageTotal=total||0;
+      }catch(e){ mbAdmin.usage=[]; mbAdmin.usageTotal=0; }
+      mbAdmin.usageLoaded=true;
+    })());
+    if(!mbAdmin.usersLoaded) tasks.push(mbAdminEnsureUsersLoaded());
+    if(!mbAdmin.userUsageLoaded) tasks.push(mbAdminLoadUserBytes());
+    if(tasks.length){ await Promise.all(tasks); if(mbAdmin.tab==='usage') mbAdminRender(); }
   } else if(mbAdmin.tab==='prompts'){
     const m=mbAdmin.promptMode;
     if(!mbAdmin.promptLoaded[m]){
@@ -8141,19 +8336,58 @@ function mbAdminRenderUsage(){
     const w=total>0?(s.bytes/total*usedPctOfQuota):0;
     return `<div style="width:${w}%;background:${s.color};height:100%;" title="${esc(s.name)} ${mbFmtBytes(s.bytes)}"></div>`;
   }).join('');
-  const legend=segs.map(s=>{
+  const tableRows=segs.map(s=>{
     const p=total>0?(s.bytes/total*100):0;
-    return `<div class="adm-usage-row">
-      <span class="adm-usage-dot" style="background:${s.color};"></span>
-      <span class="adm-usage-name">${esc(s.name)}</span>${s.desc?`<span class="adm-usage-desc">${esc(s.desc)}</span>`:''}
-      <span class="adm-usage-size">${mbFmtBytes(s.bytes)} <span class="adm-usage-pct">(${p.toFixed(1)}%)</span></span>
-    </div>`;
+    return `<tr><td class="adm-usage-namecell">
+        <span class="adm-usage-dot" style="background:${s.color};"></span><span class="adm-usage-name">${esc(s.name)}</span>
+        ${s.desc?`<span class="adm-usage-desc">${esc(s.desc)}</span>`:''}
+      </td><td class="adm-usage-size">${mbFmtBytes(s.bytes)} <span class="adm-usage-pct">(${p.toFixed(1)}%)</span></td></tr>`;
   }).join('');
+  const tableBody=tableRows
+    ? `<table class="adm-table"><thead><tr><th>테이블</th><th style="width:130px;">용량 (%)</th></tr></thead><tbody>${tableRows}</tbody></table>`
+    : `<div class="cl-empty">표시할 테이블이 없습니다.</div>`;
+  // 막대 아래는 좌(테이블별 용량)·우(사용자별 사용량) 두 영역으로 나눈다. 둘 다 같은 모양의
+  // 박스(헤더 행 + 테두리, adm-usage-table-wrap)에 표를 담아 시각적으로 짝을 맞춘다. 각자
+  // 내용이 길어지면(테이블이 많거나 회원이 많으면) 그 박스 안에서만 스크롤되도록, 위
+  // 헤드라인·막대는 고정폭(adm-usage-top)에 두고 두 칸(adm-usage-split)만 남은 세로 공간을
+  // 나눠 채운다.
   return `<div class="adm-usage-wrap">
-    <div class="adm-usage-headline">${mbFmtBytes(total)}<span class="adm-usage-of">/${mbFmtBytes(ADM_DB_QUOTA_BYTES)} 사용 중</span></div>
-    <div class="adm-usage-bar">${barSegs||''}</div>
-    <div class="adm-usage-legend">${legend||'<div class="cl-empty">표시할 테이블이 없습니다.</div>'}</div>
+    <div class="adm-usage-top">
+      <div class="adm-usage-headline">${mbFmtBytes(total)}<span class="adm-usage-of">/${mbFmtBytes(ADM_DB_QUOTA_BYTES)} 사용 중</span></div>
+      <div class="adm-usage-bar">${barSegs||''}</div>
+    </div>
+    <div class="adm-usage-split">
+      <div class="adm-usage-col">
+        <div class="adm-usage-col-title">테이블별 사용량</div>
+        <div class="adm-usage-table-wrap">${tableBody}</div>
+      </div>
+      <div class="adm-usage-col">
+        <div class="adm-usage-col-title">사용자별 사용량</div>
+        <div class="adm-usage-table-wrap">${mbAdminUsageUserRows()}</div>
+      </div>
+    </div>
   </div>`;
+}
+// 「사용자별 사용량」 패널 - 아이디 | 임시저장한도 | 사용량 세 컬럼. 회원 정보 탭과 같은
+// users/draftLimits를 그대로 쓰고, 임시저장한도는 그 컬럼 그대로 개수 한도를 보여준다.
+// 사용량 칸은 한도와 무관하게 - 왼쪽 테이블별 사용량과 완전히 같은 뜻으로, 그 사용자가 실제로
+// 차지하는 KB/MB 용량과 (전체 사용자 용량 합 대비) 비율이다. 용량이 큰 사용자가 위로 오도록
+// 내림차순 정렬한다.
+function mbAdminUsageUserRows(){
+  if(!mbAdmin.usersLoaded || !mbAdmin.userUsageLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
+  if(!mbAdmin.users.length) return `<div class="cl-empty">가입한 사용자가 없습니다.</div>`;
+  const bytesOf=u=>mbAdmin.userBytes[u.id]||0;
+  const rows=mbAdmin.users.slice().sort((a,b)=>bytesOf(b)-bytesOf(a) || (a.username||'').localeCompare(b.username||'','ko'));
+  const total=mbAdmin.userBytesTotal||0;
+  const trs=rows.map(u=>{
+    const admin=u.auth_yn==='Y';
+    const lim=admin?'무제한':String((mbAdmin.draftLimits&&mbAdmin.draftLimits[u.id]!=null)?mbAdmin.draftLimits[u.id]:30);
+    const bytes=bytesOf(u);
+    const p=total>0?(bytes/total*100):0;
+    const usageCell=`${mbFmtBytes(bytes)} <span class="adm-usage-pct">(${p.toFixed(1)}%)</span>`;
+    return `<tr><td>${esc(u.username)}</td><td>${esc(lim)}</td><td class="adm-usage-size">${usageCell}</td></tr>`;
+  }).join('');
+  return `<table class="adm-table"><thead><tr><th>아이디</th><th style="width:100px;">임시저장한도</th><th style="width:130px;">사용량</th></tr></thead><tbody>${trs}</tbody></table>`;
 }
 
 // ---- AI프롬프트(이미지 변환의 「질문만 복사」 문구, DB 기준으로 관리) ----

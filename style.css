@@ -426,9 +426,15 @@
   .cmp.locked.selected{outline:none;}
   .cmp .sel-frame{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 2px var(--sel);display:none;}
   .cmp.locked.selected .sel-frame{display:block;}
+  /* 8방향 리사이즈 핸들(파워포인트 방식) - 네 모서리(대각선) + 네 변(상하좌우) 전부. */
   .handle.se{right:-5px;bottom:-5px;cursor:se-resize;}
+  .handle.sw{left:-5px;bottom:-5px;cursor:sw-resize;}
+  .handle.ne{right:-5px;top:-5px;cursor:ne-resize;}
+  .handle.nw{left:-5px;top:-5px;cursor:nw-resize;}
   .handle.e{right:-5px;top:50%;transform:translateY(-50%);cursor:e-resize;}
+  .handle.w{left:-5px;top:50%;transform:translateY(-50%);cursor:w-resize;}
   .handle.s{bottom:-5px;left:50%;transform:translateX(-50%);cursor:s-resize;}
+  .handle.n{top:-5px;left:50%;transform:translateX(-50%);cursor:n-resize;}
 
   /* Component looks */
   .ax-label{font-size:12px;color:var(--ax-label-fg);display:flex;align-items:center;height:100%;}
@@ -1604,11 +1610,16 @@ body.mb-preview.mb-preview-live .canvas-scroll{display:none!important;}
 body.mb-portrait #mbToast{bottom:172px;}
 body.mb-landscape #mbToast{bottom:20px;}
 
-/* 큰 손가락용: 선택 컴포넌트 핸들 확대 */
+/* 큰 손가락용: 선택 컴포넌트 핸들 확대 - 데스크톱과 같은 8방향 모두 적용 */
 body.mb-mobile .cmp.selected .handle,body.mb-tablet .cmp.selected .handle{width:20px;height:20px;border-width:2px;border-radius:4px;}
 body.mb-mobile .cmp.selected .handle.se,body.mb-tablet .cmp.selected .handle.se{right:-10px;bottom:-10px;}
+body.mb-mobile .cmp.selected .handle.sw,body.mb-tablet .cmp.selected .handle.sw{left:-10px;bottom:-10px;}
+body.mb-mobile .cmp.selected .handle.ne,body.mb-tablet .cmp.selected .handle.ne{right:-10px;top:-10px;}
+body.mb-mobile .cmp.selected .handle.nw,body.mb-tablet .cmp.selected .handle.nw{left:-10px;top:-10px;}
 body.mb-mobile .cmp.selected .handle.e,body.mb-tablet .cmp.selected .handle.e{right:-10px;}
+body.mb-mobile .cmp.selected .handle.w,body.mb-tablet .cmp.selected .handle.w{left:-10px;}
 body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bottom:-10px;}
+body.mb-mobile .cmp.selected .handle.n,body.mb-tablet .cmp.selected .handle.n{top:-10px;}
 
 /* 첫 진입 코치마크 */
 #mbCoach{
@@ -1648,15 +1659,29 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
 .adm-fb-body{font-size:13px;color:#3a4552;line-height:1.6;max-height:3.2em;overflow:hidden;cursor:pointer;}
 .adm-fb-body.expanded{max-height:none;}
 
-.adm-usage-wrap{padding:20px 24px;overflow:auto;flex:1;}
+/* 헤드라인·막대는 고정 높이(adm-usage-top)로 위에 두고, 그 아래 좌(테이블별)·우(사용자별)
+   두 칸(adm-usage-split)만 남은 세로 공간을 나눠 가진다. 각 칸은 자기 안에서만 스크롤되도록
+   min-height:0 + overflow:auto를 안쪽 박스(adm-usage-table-wrap)에 준다 - 한쪽이 길어져도
+   다른 쪽 스크롤 위치나 헤드라인은 그대로 있다. */
+.adm-usage-wrap{padding:20px 24px;flex:1;min-height:0;display:flex;flex-direction:column;}
+.adm-usage-top{flex:none;}
 .adm-usage-headline{font-size:28px;font-weight:700;color:#1a1a1a;margin-bottom:14px;}
 .adm-usage-of{font-size:15px;font-weight:400;color:#8a97a3;margin-left:4px;}
 .adm-usage-bar{display:flex;width:100%;height:8px;border-radius:5px;background:#eef1f4;overflow:hidden;margin-bottom:22px;}
-.adm-usage-legend{display:flex;flex-direction:column;max-width:520px;}
-.adm-usage-row{display:flex;align-items:center;padding:10px 2px;border-bottom:1px solid #f0f2f4;}
-.adm-usage-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-right:10px;}
-.adm-usage-name{font-size:13.5px;color:#3a4552;width:170px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.adm-usage-desc{font-size:11.5px;color:#9ca3af;flex:1;min-width:0;margin-left:0;}
+.adm-usage-split{display:flex;gap:28px;flex:1;min-height:0;}
+.adm-usage-col{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;}
+.adm-usage-col-title{font-size:12.5px;font-weight:700;color:#5f6c78;margin:0 0 8px;flex:none;}
+/* 좌(테이블별)·우(사용자별) 두 칸 모두 같은 박스(테두리+고정 헤더+스크롤) 모양을 쓴다 -
+   둘 다 이 안에 <table class="adm-table">를 넣어 헤더 행과 테두리가 동일하게 보이게 한다. */
+.adm-usage-table-wrap{flex:1;min-height:0;overflow:auto;border:1px solid #e5e9ed;border-radius:8px;}
+.adm-usage-table-wrap .adm-table{font-size:12.5px;}
+/* 이름+설명을 한 줄로 - 표를 table-layout:fixed로 고정해 나머지(용량 %) 컬럼은 th의 지정
+   폭만큼만 차지하게 하고, 이름 칸은 남는 폭을 다 가져가되 넘치면 말줄임표로 자른다. */
+.adm-usage-table-wrap .adm-table{table-layout:fixed;}
+.adm-usage-table-wrap td.adm-usage-namecell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.adm-usage-dot{display:inline-block;vertical-align:middle;width:9px;height:9px;border-radius:50%;flex-shrink:0;margin-right:8px;}
+.adm-usage-name{display:inline;vertical-align:middle;font-size:13px;color:#3a4552;}
+.adm-usage-desc{display:inline;margin-left:8px;font-size:11.5px;color:#9ca3af;}
 
 .cl-btn-primary-sm{padding:6px 16px;border:none;border-radius:8px;background:var(--ax-green);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;flex-shrink:0;}
 .cl-btn-primary-sm:hover{background:var(--ax-green-dark);}
@@ -1673,7 +1698,7 @@ body.mb-mobile .cmp.selected .handle.s,body.mb-tablet .cmp.selected .handle.s{bo
 
 .ghost-badge{position:absolute;top:2px;left:2px;width:16px;height:16px;line-height:14px;text-align:center;font-size:11px;background:#fff;border:1.5px solid #9ca3af;border-radius:3px;color:#5f6c78;cursor:pointer;pointer-events:auto;opacity:1;z-index:99999;}
 .ghost-badge:hover{background:#eef1f4;border-color:#6b7280;}
-.adm-usage-size{margin-left:auto;padding-left:16px;font-size:13px;color:#2c3e50;font-weight:600;white-space:nowrap;flex-shrink:0;}
+.adm-usage-size{font-size:13px;color:#2c3e50;font-weight:600;white-space:nowrap;}
 .adm-usage-pct{color:#9ca3af;font-weight:400;}
 
 /* ===== 변경상태 표시(기본/추가/변경/삭제/이동) =====
