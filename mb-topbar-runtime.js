@@ -667,6 +667,7 @@
       revert = gridMode==='expand' ? applyExpandModeFitted() : (gridMode==='wrap' ? applyColumnWrapModeFitted() : applyFitMode());
     }
     await nextFrame();
+    document.body.classList.add('mb-capturing');
     try{
       var blob=await rasterize(captureRect());
       if(mode==='save'){
@@ -690,6 +691,7 @@
     }catch(err){
       alert('캡처에 실패했습니다: '+(err&&err.message?err.message:err));
     } finally {
+      document.body.classList.remove('mb-capturing');
       revert();
       canvas.style.margin=canvasPrevMargin;
       if(topbar) topbar.style.visibility=topbarPrevVis;
@@ -827,9 +829,11 @@
       revert = gridMode==='expand' ? applyExpandModeFitted() : (gridMode==='wrap' ? applyColumnWrapModeFitted() : applyFitMode());
     }
     await nextFrame();
+    document.body.classList.add('mb-capturing');
     try{
       return await rasterize(captureRect());
     } finally {
+      document.body.classList.remove('mb-capturing');
       revert();
       canvas.style.margin=canvasPrevMargin;
       if(topbar) topbar.style.visibility=topbarPrevVis;

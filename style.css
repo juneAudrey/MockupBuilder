@@ -718,6 +718,14 @@
   .sctl-search-ic{width:14px;height:14px;flex:none;background-color:#6b7280;
     -webkit-mask:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
     mask:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");}
+  /* html2canvas(화면 캡처가 쓰는 라이브러리)는 CSS mask/-webkit-mask를 렌더링하지 못해서, 위
+     돋보기 아이콘(mask 방식)이 캡처 결과물에는 그냥 회색 네모로 나온다 - 실제 화면·미리보기에서는
+     멀쩡히 보이는데 "캡처했을 때만" 깨지는 이유가 이거다. 캡처하는 그 순간에만(mbCapture가 캔버스에
+     .mb-capturing 클래스를 잠깐 붙였다 뗀다) mask를 지우고 이모지(📅 날짜 아이콘과 같은 방식 -
+     이건 html2canvas가 문제없이 그려낸다)로 잠깐 바꿔치기해서, 캡처 결과물에서만 정상적인 돋보기
+     모양이 나오게 한다. 평소 화면·미리보기 모양(mask 방식, 색상 자유자재)은 그대로 유지된다. */
+  .mb-capturing .sctl-search-ic{background:none!important;-webkit-mask:none!important;mask:none!important;}
+  .mb-capturing .sctl-search-ic::after{content:"🔍";font-size:11px;line-height:14px;display:block;text-align:center;}
   .ax-search .sctl.ro .sctl-search-ic{opacity:.45;}
   .ax-search .ssearch .sctl-search-ic{background-color:#fff;}
   .ax-search .sctl.text{color:#111;}
