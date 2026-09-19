@@ -849,6 +849,32 @@
     });
   }
 
+  // 로컬 저장(saveBlob, app.js)과 똑같은 방식 - 이 파일은 app.js와 별도 파일이라 그 함수를
+  // 직접 가져다 쓸 수 없으므로, 같은 동작을 여기 그대로 옮겨왔다. 지원하는 브라우저에서는
+  // "다른 이름으로 저장" 대화상자가 떠서 저장 위치·파일명을 직접 고를 수 있고, 취소하면
+  // false를 돌려준다(다운로드 없이 조용히 끝난다). 대화상자 자체를 지원 안 하는 브라우저에서는
+  // 지금까지처럼 기본 다운로드 폴더로 바로 받는다.
+  async function mbSaveBlobWithPicker(blob,filename,desc,mime,ext){
+    if(window.showSaveFilePicker){
+      try{
+        const handle=await window.showSaveFilePicker({
+          suggestedName:filename,
+          types:[{description:desc,accept:{[mime]:[ext]}}]
+        });
+        const ws=await handle.createWritable();
+        await ws.write(blob);
+        await ws.close();
+        return handle.name||filename;
+      }catch(err){
+        if(err&&err.name==='AbortError') return false;
+        // 그 외 실패(예: file:// 로 연 경우)는 기본 다운로드로 넘어간다.
+      }
+    }
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download=filename; a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
+    return filename;
+  }
   window.mbOpenSpecExport=async function(){
     const badge=document.getElementById('mbBadgeS');
     const badgeOrigHtml=badge?badge.innerHTML:'';
@@ -997,12 +1023,9 @@
 
       const buf=await wb.xlsx.writeBuffer();
       const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(blob);
-      a.download='화면레이아웃_'+(spec.title||'mockup').replace(/[\/:*?"<>|]/g,'_')+'.xlsx';
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(function(){URL.revokeObjectURL(a.href);},30000);
-      showMbToast('사양서 매핑 템플릿(.xlsx)이 저장되었습니다');
+      const suggestedName='화면레이아웃_'+(spec.title||'mockup').replace(/[\/:*?"<>|]/g,'_')+'.xlsx';
+      const saved=await mbSaveBlobWithPicker(blob,suggestedName,'Excel 파일','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.xlsx');
+      if(saved) showMbToast('사양서 매핑 템플릿(.xlsx)이 저장되었습니다');
     }catch(err){
       alert('사양서 템플릿을 만들지 못했습니다.\n\n'+(err&&err.message?err.message:err));
     } finally {
