@@ -153,6 +153,7 @@
   function apiFormValues() {
     return {
       endpoint: el('apiEndpoint').value.trim(),
+      webOrigin: el('apiWebOrigin') ? el('apiWebOrigin').value.trim() : '',
       userId: el('apiUserId') ? el('apiUserId').value.trim() : '',
       // 체크돼 있으면 '직접 호출'(Node가 서버-서버로 직접 부름), 꺼져 있으면(기본) '세션'
       // (로그인해둔 Electron 창 안에서 실제 fetch 실행) — apiClient.js DEFAULTS.authMode 참고.
@@ -187,6 +188,7 @@
     }
     saved = saved || {};
     if (el('apiEndpoint')) el('apiEndpoint').value = saved.endpoint || 'https://daaf.bizentro.net:9443';
+    if (el('apiWebOrigin')) el('apiWebOrigin').value = saved.webOrigin || 'https://daaf.bizentro.net/user/Login';
     if (el('apiUserId')) el('apiUserId').value = saved.userId || '';
     if (el('apiCookie')) el('apiCookie').value = saved.cookie || '';
     if (el('apiTokenHeader')) el('apiTokenHeader').value = saved.tokenHeaderName || '';
@@ -236,6 +238,9 @@
         const prevLabel = sessionLoginBtn.textContent;
         sessionLoginBtn.textContent = '로그인 창 열림 — 로그인 후 창을 닫아주세요…';
         try {
+          // 로그인 창은 "저장된" 엔드포인트/로그인주소를 쓰므로, 아직 [저장]을 안 눌렀어도
+          // 지금 입력칸에 있는 값 그대로 로그인 창이 뜨도록 먼저 조용히 저장해둔다.
+          if (window.api.apiSettingsSet) { try { await window.api.apiSettingsSet(apiFormValues()); } catch (e) {} }
           await window.api.apiSessionLogin();
         } catch (e) { /* 창을 그냥 닫아도 여기로 올 수 있음 — 무시하고 상태만 다시 확인 */ }
         sessionLoginBtn.disabled = false;

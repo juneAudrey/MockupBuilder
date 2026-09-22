@@ -767,14 +767,21 @@
 
           <div class="settings-field" style="background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:10px 12px">
             <label style="margin-bottom:6px">🔐 세션 로그인 <span class="settings-optional">(권장 — 대부분의 경우 이것만 하면 됩니다)</span></label>
+
+            <div style="margin-bottom:8px">
+              <label style="font-size:11.5px">로그인 페이지 주소 <span class="settings-optional">(직접 입력 — 한 번 저장하면 다음부터 기본값으로 쓰이고, 주소가 바뀌면 여기서 언제든 수정)</span></label>
+              <input id="apiWebOrigin" type="text" class="settings-input" placeholder="예: https://daaf.bizentro.net/user/Login">
+            </div>
+
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <span id="apiSessionStatus" style="font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:10px;background:#e2e8f0;color:var(--mut)">확인 중…</span>
-              <button id="apiSessionLoginBtn" type="button" class="btn ghost sm">daaf.bizentro.net 로그인</button>
+              <button id="apiSessionLoginBtn" type="button" class="btn ghost sm">위 주소로 로그인</button>
               <button id="apiSessionLogoutBtn" type="button" class="btn ghost sm">로그아웃</button>
             </div>
             <div class="settings-hint" style="margin-top:6px">
-              누르면 로그인 창이 뜹니다 — 평소 쓰던 대로 로그인(2차인증 포함)하고 <b>창을 닫으면</b> 완료됩니다.
+              누르면 위 주소로 로그인 창이 뜹니다 — 평소 쓰던 대로 로그인(2차인증 포함)하고 <b>창을 닫으면</b> 완료됩니다.
               한 번 로그인해두면 앱을 껐다 켜도 유지됩니다(세션이 실제로 만료되기 전까지 다시 할 필요 없음).
+              입력칸을 비운 채로 저장하면 API 엔드포인트의 호스트로 자동 추정합니다(안전망일 뿐이라, 확실한 주소를 직접 넣는 걸 권장합니다).
             </div>
           </div>
 
