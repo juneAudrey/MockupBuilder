@@ -287,41 +287,6 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .iv-live-result.iv-live-ok{color:#166534}
 .iv-live-result.iv-live-error{color:#b91c1c}
 
-/* 디자인 미리보기의 "🔒"(권한체크) 배지 클릭 시 뜨는 상세패널 — .flow-stepbox 뼈대를 그대로 쓰되,
-   요약 체크리스트 + 접이식 코드뷰까지 같이 보여줄 수 있어 IV 패널보다 살짝 더 넓게 잡는다. */
-.vw-auth-box{width:420px;height:auto;max-height:calc(100% - 24px)}
-.vw-auth-box .auth-body{overflow:auto}
-.auth-card{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#fef2f2}
-.auth-card-head{font-weight:700;font-size:12px;margin-bottom:6px;color:#b91c1c}
-
-/* "권한이 없으면 이렇게 됩니다" 요약 체크리스트 — 초보자가 코드를 안 봐도 결과를 바로 이해하게 하는
-   목적이라, 아이콘 + 짧은 문장 위주로 여백을 넉넉히 준다. */
-.auth-summary{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
-.auth-summary li{display:flex;align-items:flex-start;gap:6px;font-size:12px;line-height:1.5;color:#1f2937}
-.auth-summary-icon{flex:0 0 auto;font-size:13px;line-height:1.4}
-.auth-chip-row{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 0 0;width:100%}
-.auth-chip{display:inline-block;font-size:10.5px;background:#fff;border:1px solid #fecaca;color:#991b1b;
-  border-radius:999px;padding:1px 8px}
-
-/* 원본 코드 — 기본은 접혀 있고(개발자용), 펼치면 에디터에서 보는 것처럼 정돈된 들여쓰기 +
-   최소한의 문법 강조(키워드/문자열/숫자/주석/$pageObjects)로 보여준다. */
-.auth-code-details{margin-top:8px;border-top:1px dashed #fecaca;padding-top:6px}
-.auth-code-details summary{cursor:pointer;font-size:11px;font-weight:600;color:#991b1b;list-style:none;user-select:none}
-.auth-code-details summary::-webkit-details-marker{display:none}
-.auth-code-details summary::before{content:'▸ ';display:inline-block;transition:transform .1s}
-.auth-code-details[open] summary::before{content:'▾ '}
-.auth-code-label{font-size:10.5px;font-weight:700;color:#6b7280;margin:8px 0 2px}
-.auth-code-pre{display:block;white-space:pre;overflow:auto;background:#0f172a;color:#e2e8f0;
-  font-family:'D2Coding','Consolas','Courier New',monospace;font-size:11px;line-height:1.55;
-  padding:8px 10px;border-radius:6px;margin:0;max-height:260px;tab-size:2}
-.auth-code-pre code{white-space:inherit;background:none;padding:0;font:inherit;color:inherit}
-/* 아주 가벼운 신택스 하이라이팅 팔레트 — VSCode 다크 테마와 비슷한 톤으로 맞춰 눈에 익게 했다. */
-.auth-code-pre .js-keyword{color:#c586c0}
-.auth-code-pre .js-string{color:#ce9178}
-.auth-code-pre .js-number{color:#b5cea8}
-.auth-code-pre .js-comment{color:#6a9955;font-style:italic}
-.auth-code-pre .js-pageobj{color:#4fc1ff}
-
 /* 흐름도 미니맵 — 쿼리 상세 팝업(.flow-stepbox, 우측 상단~하단 대부분을 차지)과 겹치지 않도록
    기본은 좌상단에 둔다(범례는 좌하단이라 그 쪽도 피한다). 드래그로 옮길 수 있고 옮긴 위치는
    localStorage 에 저장해 다음에 열어도 유지된다. z-index 는 쿼리 팝업(5)보다 낮게 둬서, 사용자가
@@ -362,6 +327,9 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .chip{background:#eef2f7;border:1px solid var(--line);border-radius:5px;padding:2px 7px;font-size:11px}
 .chip.s{background:#e6f4ee;border-color:#c9e8d8}
 .warn{color:#b45309;background:#fef3c7;border-radius:6px;padding:6px 8px;margin-top:8px;font-size:11px}
+.warn.warn-err{color:#b42318;background:#fee4e2}
+.info-ok{color:#0e7a4d;background:#dcfce7;border-radius:6px;padding:6px 8px;margin-top:8px;font-size:11px}
+.warn .btn.sm,.info-ok .btn.sm{margin-top:6px}
 .muted{color:var(--mut)}
 
 /* 상세 하단 액션 버튼: 스크롤 영역(.detail) 밖에 고정되어 항상 보임 */
@@ -413,6 +381,24 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .pw-eye:hover{opacity:1}
 .pw-eye.on{opacity:1}
 
+/* WF API 조회 스위치 (헤더, DB 연결 패널 옆) */
+.wf-api-group{display:flex;align-items:center;gap:6px;background:rgba(14,46,66,.9);border:1px solid rgba(56,178,172,.55);border-radius:9px;padding:4px 8px 4px 10px}
+.wf-api-lock{font-size:12px}
+.wf-api-label{font-size:12px;font-weight:700;color:#e6f6f4;white-space:nowrap}
+.wf-api-gear{padding:3px 7px !important;font-size:12px}
+.wf-api-badge{font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:10px;white-space:nowrap}
+.wf-api-badge.ok{background:rgba(34,197,94,.18);color:#86efac;border:1px solid rgba(34,197,94,.4)}
+.wf-api-badge.err{background:rgba(239,68,68,.18);color:#fca5a5;border:1px solid rgba(239,68,68,.4)}
+
+/* 체크박스를 스위치 모양으로 (dbEncrypt 등 기존 체크박스는 그대로 두고, 이 클래스를 쓴 곳만 적용) */
+.switch{position:relative;display:inline-flex;align-items:center;cursor:pointer}
+.switch input{position:absolute;opacity:0;width:1px;height:1px}
+.switch .switch-track{width:34px;height:18px;border-radius:10px;background:#3a4a5c;transition:background .15s;flex:none;position:relative}
+.switch .switch-knob{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .15s}
+.switch input:checked + .switch-track{background:#2dbe96}
+.switch input:checked + .switch-track .switch-knob{left:18px}
+.switch input:focus-visible + .switch-track{outline:2px solid #fbbf24;outline-offset:2px}
+
 /* 오프라인 모달 */
 .modal{position:fixed;inset:0;background:rgba(11,18,32,.55);display:flex;align-items:center;justify-content:center;z-index:100}
 .modal-box{background:#fff;border-radius:12px;width:720px;max-width:94vw;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35)}
@@ -429,12 +415,6 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .off-mode{display:flex;align-items:center;gap:16px;margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px}
 .off-modeopt{font-size:12px;display:flex;align-items:center;gap:5px;cursor:pointer}
 .off-tables{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:12px}
-.off-tables-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;
-  background:#eef2f7;border:none;padding:9px 12px;font-size:12px;font-weight:700;color:var(--nv);
-  cursor:pointer;text-align:left}
-.off-tables-toggle:hover{background:#e4eaf2}
-.off-toggle-arrow{font-weight:600;color:var(--mut)}
-.off-tables-body{border-top:1px solid var(--line)}
 .off-th,.off-tr{display:grid;grid-template-columns:1.6fr 1fr 1.6fr 60px;gap:6px;padding:8px 10px;font-size:12px;align-items:center}
 .off-th{background:#eef2f7;color:var(--nv);font-weight:700}
 .off-tr{border-top:1px solid #f1f5f9}
@@ -451,9 +431,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .off-msg{font-size:12px;min-height:18px}
 .off-msg.err{color:#dc2626;font-weight:600}
 .off-msg.ok{color:#0e7a4d;font-weight:600}
-.off-note{font-size:12px;color:#475569;background:#f1f5f9;border-radius:8px;padding:10px 12px;margin-bottom:12px;line-height:1.6}
-.off-note-line{margin-bottom:4px}
-.off-note-line:last-child{margin-bottom:0}
+.off-note{font-size:12px;color:#475569;background:#f1f5f9;border-radius:8px;padding:8px 12px;margin-bottom:12px}
 /* 다운로드용 DB 접속정보 선택 다이얼로그 */
 .dlc-note{font-size:12px;color:#475569;background:#f1f5f9;border-radius:8px;padding:8px 12px;margin-bottom:14px;line-height:1.5}
 .dlc-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
@@ -562,7 +540,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .chip.c-maj{background:#eef2ff;color:#4338ca;border-color:#c7d2fe}
 .chip.c-min{background:#f0fdf4;color:#15803d;border-color:#bbf7d0}
 /* 코드/디자인 뷰어 */
-.viewer-box{width:90vw;max-width:1500px;height:85vh;min-width:420px;min-height:300px;display:flex;flex-direction:column;position:relative}
+.viewer-box{width:90vw;max-width:1100px;height:85vh;min-width:420px;min-height:300px;display:flex;flex-direction:column;position:relative}
 /* 제목 표시줄 드래그로 창 이동: 드래그 시작 시 절대좌표로 고정 */
 .viewer-box.dragged{position:absolute;margin:0}
 .viewer-box .modal-head{cursor:move;user-select:none}
@@ -685,6 +663,18 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .settings-zoom-ico-lg{font-size:17px}
 .settings-zoom-val{min-width:44px;text-align:right;font-size:13px;font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums}
 .settings-zoom-actions{display:flex;justify-content:flex-end;margin-top:12px}
+
+/* WF API 설정(엔드포인트/쿠키/토큰) 입력 필드들 */
+.settings-field{margin-bottom:12px}
+.settings-field label{display:block;font-size:11.5px;font-weight:700;color:var(--ink);margin-bottom:4px}
+.settings-optional{font-weight:400;color:var(--mut)}
+.settings-input,.settings-textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;background:#fff}
+.settings-textarea{resize:vertical;min-height:44px;font-family:monospace;font-size:11.5px}
+.settings-field-row{display:flex;gap:10px}
+.settings-field-col{flex:1;min-width:0}
+.api-test-result{font-size:11.5px;color:var(--mut);flex:1}
+.api-test-result.ok{color:#0e7a4d;font-weight:600}
+.api-test-result.err{color:#b42318;font-weight:600}
 
 /* 트래킹바(range) 커스텀 스타일 — 직관적으로 드래그해서 배율을 조절할 수 있게 */
 .settings-range{flex:1;-webkit-appearance:none;appearance:none;height:6px;border-radius:999px;

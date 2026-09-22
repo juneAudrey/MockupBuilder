@@ -49,6 +49,21 @@
         </select>
         <button id="btnDbDisconnect" class="btn ghost sm" title="연결 끊기">접속 해제</button>
       </span>
+
+      <!-- WF API 조회: DB의 RESOURCE_WF(WF 본문)가 암호화되어 있을 때, 같은 SERVICE_UID로
+           daaf.bizentro.net API를 호출해 그 값만 복호화된 내용으로 대체한다. UI/Rp/Mo와
+           검색/필터는 지금처럼 DB를 그대로 쓰고, WF 본문만 이 스위치의 영향을 받는다.
+           OFF가 기본값이라 이 기능을 모르는 사용자는 기존과 완전히 동일하게 동작한다. -->
+      <span class="wf-api-group" id="wfApiGroup" title="암호화된 WF는 DB 대신 API로 조회합니다 (WF에만 적용, UI/Rp/Mo는 지금처럼 DB에서 조회)">
+        <span class="wf-api-lock">🔒</span>
+        <span class="wf-api-label">WF API 조회</span>
+        <label class="switch sm">
+          <input id="wfApiToggle" type="checkbox">
+          <span class="switch-track"><span class="switch-knob"></span></span>
+        </label>
+        <button type="button" id="wfApiGear" class="btn ghost sm wf-api-gear" title="API 접속정보 설정 (엔드포인트 · 쿠키 · 토큰)">⚙</button>
+        <span id="wfApiBadge" class="wf-api-badge" style="display:none"></span>
+      </span>
     </div>
 
     <!-- 오프라인 패널 -->
@@ -178,7 +193,6 @@
           <button id="tabTable" class="tab">테이블</button>
           <button id="tabFlow" class="tab">흐름도</button>
         </div>
-        <button id="btnRefreshContent" class="tab" style="margin-left:auto" title="앱을 재시작하지 않고, GitHub Pages에 올라간 최신 UI 코드(parser.js/app.js 등)를 다시 받아옵니다.">🔄 새로고침</button>
       </div>
 
       <!-- 검색은 그래프·테이블 둘 다에 적용되므로(그래프 강조 + 테이블 행 강조) 두 탭에서 공통으로
@@ -309,8 +323,6 @@
             <div id="uiTabEmpty" class="empty flow-empty">왼쪽에서 프로그램을 검색해 더블클릭하면 여기에 디자인이 표시됩니다.</div>
             <!-- 컴포넌트의 "IV"(초기값) 배지 상세 — 모달의 #vwInitBox 와 동일한 기능. -->
             <div id="uiTabInitBox" class="flow-stepbox vw-init-box" style="display:none"></div>
-            <!-- 컴포넌트의 "🔒"(권한체크) 배지 상세 — 모달의 #vwAuthBox 와 동일한 기능. -->
-            <div id="uiTabAuthBox" class="flow-stepbox vw-init-box vw-auth-box" style="display:none"></div>
           </div>
           <!-- 리포트(Rp)를 볼 때만 옆에 나타나는 SQL 사이드 패널 — 모달의 #vwSqlView 와 동일. -->
           <div id="uiTabSqlView" class="viewer-sql" style="display:none"></div>
@@ -342,7 +354,7 @@
     <div id="basketList" class="bk-list"></div>
     <div class="status-row">
       <div id="status" class="status">준비됨</div>
-      <div class="credit">by June (ver.20260908.003)</div>
+      <div class="credit">by June (ver.20260904.001)</div>
     </div>
   </footer>
 
@@ -362,21 +374,16 @@
         </div>
 
         <div class="off-note">
-          <div class="off-note-line">① 데이터를 다운로드한 뒤, 상단의 <b>[오프라인]</b> 스위치를 누르면 로컬 데이터로 조회합니다.</div>
-          <div class="off-note-line">② <b>메뉴</b>는 상단 검색 패널의 <b>제품</b> 선택값과 무관하게, 등록된 <b>모든 제품(ERP·BC)</b>을 동기화할 때마다 자동으로 순회하며 폴더 구조까지 함께 저장합니다.</div>
-          <div class="off-note-line">③ 오프라인에서도 <b>상위 폴더로 찾아보기</b>를 그대로 쓸 수 있고, DB 접속 모드처럼 모든 제품이 오프라인 파일 하나에 함께 공존합니다.</div>
+          💡 데이터를 다운로드한 뒤, 상단의 <b>[오프라인]</b> 스위치를 누르면 로컬 데이터로 조회합니다.
+          <b>메뉴</b>는 상단 검색 패널의 <b>제품</b> 선택값과 무관하게, 등록된 <b>모든 제품(ERP·BC)</b>을
+          동기화할 때마다 자동으로 순회하며 폴더 구조까지 함께 저장합니다 — 오프라인에서도
+          <b>상위 폴더로 찾아보기</b>를 그대로 쓸 수 있고, DB 접속 모드처럼 모든 제품이 오프라인 파일 하나에 함께 공존합니다.
         </div>
         <div id="offFileSize" class="off-note" style="display:none"></div>
 
         <div class="off-tables">
-          <button type="button" id="offTablesToggle" class="off-tables-toggle">
-            <span id="offTablesSummary">테이블 정보</span>
-            <span id="offTablesArrow" class="off-toggle-arrow">▸ 펼치기</span>
-          </button>
-          <div id="offTablesBody" class="off-tables-body" style="display:none">
-            <div class="off-th"><span>테이블</span><span>행수</span><span>최근 갱신</span><span>선택</span></div>
-            <div id="offTableRows"></div>
-          </div>
+          <div class="off-th"><span>테이블</span><span>행수</span><span>최근 갱신</span><span>선택</span></div>
+          <div id="offTableRows"></div>
         </div>
 
         <div class="off-actions">
@@ -470,8 +477,6 @@
           <!-- 컴포넌트의 "IV"(초기값) 배지를 클릭하면 여기에 정적/스크립트/체인 추적 결과를 보여준다.
                흐름도의 #flowStepBox 와 동일하게 닫기 없이 접기/펼치기만 지원(항상 화면에 남음). -->
           <div id="vwInitBox" class="flow-stepbox vw-init-box" style="display:none"></div>
-          <!-- 컴포넌트의 "🔒"(권한체크) 배지를 클릭하면 여기에 useAuthGuard/hasPermission 코드를 보여준다. -->
-          <div id="vwAuthBox" class="flow-stepbox vw-init-box vw-auth-box" style="display:none"></div>
         </div>
         <div id="vwSqlView" class="viewer-sql" style="display:none"></div>
         <!-- 디자인 미리보기에서 WF/UI 배지를 눌렀는데 대상 노드가 현재 파도타기 결과에
@@ -748,6 +753,51 @@
             <button id="settingsZoomReset" class="btn ghost sm">기본값(100%)으로</button>
           </div>
         </div>
+
+        <div class="settings-group" id="settingsWfApiGroup" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line)">
+          <div class="settings-group-title">🔒 WF API 조회 (암호화된 WF 우회)</div>
+          <div class="settings-hint">
+            일부 환경은 <b>z_wf_deploy_info.RESOURCE_WF</b>(WF 본문)가 DB에 암호화되어 저장되어 있어 그대로 읽으면 파싱할 수 없습니다.
+            상단 헤더의 <b>[WF API 조회]</b> 스위치를 켜면, 해당 WF의 <b>SERVICE_UID</b>로 아래 API를 호출해 복호화된 본문을 대신 받아옵니다.
+            UI/Rp/Mo 및 검색은 영향받지 않고 지금처럼 DB에서 조회됩니다.
+          </div>
+
+          <div class="settings-field">
+            <label>API 엔드포인트</label>
+            <input id="apiEndpoint" type="text" class="settings-input" placeholder="https://daaf.bizentro.net:9443">
+          </div>
+
+          <div class="settings-field">
+            <label>Cookie <span class="settings-optional">(선택 — 필요할 때만 입력, 평소엔 비워도 동작)</span></label>
+            <textarea id="apiCookie" class="settings-textarea" rows="2" placeholder="401/403 오류가 나면 브라우저 개발자도구에서 Cookie 값을 복사해 붙여넣으세요."></textarea>
+          </div>
+
+          <div class="settings-field settings-field-row">
+            <div class="settings-field-col">
+              <label>인증 헤더 이름 <span class="settings-optional">(선택)</span></label>
+              <input id="apiTokenHeader" type="text" class="settings-input" placeholder="예: Authorization">
+            </div>
+            <div class="settings-field-col">
+              <label>토큰 값 <span class="settings-optional">(선택)</span></label>
+              <span class="pw-wrap" style="display:flex">
+                <input id="apiTokenValue" type="password" class="settings-input" placeholder="Bearer xxxxx...">
+                <button id="apiTokenShow" type="button" class="pw-eye" title="토큰 보기">👁</button>
+              </span>
+            </div>
+          </div>
+
+          <label class="chk sm" style="margin:10px 0" title="사내 자체 서명 인증서 등으로 TLS 인증서 검증이 실패할 때만 켜세요">
+            <input id="apiInsecureTls" type="checkbox"> 인증서 검증 건너뛰기 (사내 자체 서명 인증서일 때만)
+          </label>
+
+          <div class="settings-zoom-actions" style="justify-content:space-between;align-items:center">
+            <span id="apiTestResult" class="api-test-result"></span>
+            <span style="display:flex;gap:8px">
+              <button id="apiTestBtn" class="btn ghost sm">연결 테스트</button>
+              <button id="apiSaveBtn" class="btn primary sm">저장</button>
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -828,19 +878,13 @@
   </div>
 
   <script src="cytoscape.min.js"></script>
-  <script>
-    // 앱 소유 스크립트들의 캐시버스팅 토큰. 배포마다 사람이 ?v=번호를 손으로 올려야 새로고침
-    // 버튼이 실제로 새 파일을 받아오던 문제를 없애기 위해, 페이지를 열 때마다(=새로고침 버튼을
-    // 누를 때마다) 현재 시각으로 매번 새 토큰을 만든다 — 항상 네트워크에서 새로 받아온다.
-    // document.write는 지금처럼 최초 HTML 파싱 중 <script src> 를 순서대로 나열하던 자리를
-    // 그대로 대체하는 용도라 로드 순서/차단(blocking) 동작이 기존과 동일하게 유지된다.
-    (function () {
-      var cb = Date.now();
-      ['demo-data.js', 'parser.js', 'store.js', 'graph.js', 'flowchart.js', 'offline.js', 'app.js', 'tour.js']
-        .forEach(function (f) {
-          document.write('<scr' + 'ipt src="' + f + '?_cb=' + cb + '"></scr' + 'ipt>');
-        });
-    })();
-  </script>
+  <script src="demo-data.js"></script>
+  <script src="parser.js"></script>
+  <script src="store.js"></script>
+  <script src="graph.js"></script>
+  <script src="flowchart.js"></script>
+  <script src="offline.js"></script>
+  <script src="app.js"></script>
+  <script src="tour.js"></script>
 </body>
 </html>

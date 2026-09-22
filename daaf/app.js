@@ -48,23 +48,8 @@
   let _tenantCoCdSig = '';       // 캐시 유효성 판단용 서명
   let _tenantCoCdLoading = false;
 
-  // 이 웹컨텐츠(GitHub Pages)의 실제 credit 버전(ver.YYYYMMDD.NNN)을 main 프로세스에
-  // 알린다. main은 접속 로그(Supabase access_log)의 app_ver 컬럼에 exe 로컬 번들
-  // 버전 대신 이 값을 우선 사용한다 — 웹컨텐츠만 자주 갱신하는 현재 운영 방식에서
-  // 로그에 남는 버전이 실제 배포된 화면 버전과 일치하게 하기 위함.
-  function reportAppVersion() {
-    if (!window.api || !window.api.reportAppVersion) return; // 웹 미리보기 등 방어
-    try {
-      const creditEl = document.querySelector('.credit');
-      const text = creditEl ? creditEl.textContent : '';
-      const m = text && text.match(/ver\.\d{8}\.\d{3}/);
-      if (m) window.api.reportAppVersion(m[0]).catch(() => {});
-    } catch (_) { /* 무시 — 보고 실패해도 앱 동작에는 영향 없음(로컬 버전으로 폴백됨) */ }
-  }
-
   /* ---------- 초기화 ---------- */
   window.addEventListener('DOMContentLoaded', () => {
-    reportAppVersion();   // 다른 초기화보다 먼저: 접속 로그 전송 타이밍과 최대한 안 겹치게
     G.init(el('graph'), { onNodeTap: onNodeTap, onNodeDblTap: onNodeDblTap });
     F.init(el('flowchart'), { onStepTap: onFlowStepTap, onServiceJump: jumpToServiceFlow, onContainerJump: jumpToContainerScope });
     bindEvents();
@@ -86,6 +71,7 @@
     setStatus('준비됨 · DB에 연결하거나 오프라인 데이터를 불러오세요.');
     refreshBasket();
     initFontScaleSetting();  // 저장된 화면 배율을 즉시 적용 + 설정 모달 바인딩
+    initWfApiSetting();      // WF API 조회(암호화 우회) 스위치 + 설정 모달 바인딩
     consentGate();   // 최초 실행 시 사용 동의 확인 (미동의 시 종료)
   });
 
@@ -154,7 +140,128 @@
     }
   }
 
+  /* ---------- 설정: WF API 조회(암호화 우회) ---------- */
+  // 헤더의 스위치(wfApiToggle)는 "지금 켜져 있는지"만 담당하고, 설정 모달의 나머지 필드
+  // (엔드포인트/쿠키/토큰/인증서 검증)는 settings.json(main 프로세스)에 저장된다.
+  // fetchWave()/fetchWfByUids() 는 이 스위치를 호출 시점마다 직접 읽으므로(아래 두 함수 참고)
+  // DB 재접속 없이 토글 즉시 다음 조회부터 반영된다.
+  function isWfApiOn() {
+    const t = el('wfApiToggle');
+    return !!(t && t.checked);
+  }
 
+  function apiFormValues() {
+    return {
+      endpoint: el('apiEndpoint').value.trim(),
+      cookie: el('apiCookie').value,
+      tokenHeaderName: el('apiTokenHeader').value.trim(),
+      tokenValue: el('apiTokenValue').value,
+      insecureTls: el('apiInsecureTls').checked
+    };
+  }
+
+  function setApiTestResult(msg, kind) {
+    const box = el('apiTestResult');
+    if (!box) return;
+    box.textContent = msg || '';
+    box.className = 'api-test-result' + (kind ? (' ' + kind) : '');
+  }
+
+  async function initWfApiSetting() {
+    const toggle = el('wfApiToggle');
+    const gearBtn = el('wfApiGear');
+    const modal = el('settingsModal');
+    const badge = el('wfApiBadge');
+
+    // 저장된 값 불러오기(엔드포인트 기본값은 apiClient.js의 DEFAULTS와 동일하게 맞춰둠)
+    let saved = null;
+    if (window.api && window.api.apiSettingsGet) {
+      try {
+        const r = await window.api.apiSettingsGet();
+        if (r && r.ok) saved = r.settings;
+      } catch (e) { /* 무시 — 기본값으로 진행 */ }
+    }
+    saved = saved || {};
+    if (el('apiEndpoint')) el('apiEndpoint').value = saved.endpoint || 'https://daaf.bizentro.net:9443';
+    if (el('apiCookie')) el('apiCookie').value = saved.cookie || '';
+    if (el('apiTokenHeader')) el('apiTokenHeader').value = saved.tokenHeaderName || '';
+    if (el('apiTokenValue')) el('apiTokenValue').value = saved.tokenValue || '';
+    if (el('apiInsecureTls')) el('apiInsecureTls').checked = !!saved.insecureTls;
+    if (toggle) toggle.checked = !!saved.enabled;
+    updateWfApiBadge();
+
+    function updateWfApiBadge() {
+      if (!badge) return;
+      if (toggle && toggle.checked) {
+        badge.style.display = '';
+        badge.className = 'wf-api-badge ok';
+        badge.textContent = 'ON';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    if (toggle) {
+      toggle.addEventListener('change', () => {
+        updateWfApiBadge();
+        setStatus(toggle.checked
+          ? '🔒 WF API 조회 켜짐 · 이제부터 WF는 DB 대신 API로 조회합니다(연결 상태에서만 동작).'
+          : 'WF API 조회 꺼짐 · WF를 다시 DB에서 직접 조회합니다.');
+        if (window.api && window.api.apiSettingsSet) {
+          window.api.apiSettingsSet({ enabled: toggle.checked }).catch(() => {});
+        }
+      });
+    }
+    if (gearBtn && modal) {
+      gearBtn.addEventListener('click', () => {
+        modal.style.display = 'flex';
+        const grp = el('settingsWfApiGroup');
+        if (grp && grp.scrollIntoView) grp.scrollIntoView({ block: 'nearest' });
+      });
+    }
+
+    const tokenShowBtn = el('apiTokenShow');
+    if (tokenShowBtn) {
+      tokenShowBtn.addEventListener('click', () => {
+        const inp = el('apiTokenValue');
+        if (inp.type === 'password') { inp.type = 'text'; tokenShowBtn.classList.add('on'); }
+        else { inp.type = 'password'; tokenShowBtn.classList.remove('on'); }
+      });
+    }
+
+    const testBtn = el('apiTestBtn');
+    if (testBtn) {
+      testBtn.addEventListener('click', async () => {
+        testBtn.disabled = true;
+        setApiTestResult('테스트 중…', '');
+        try {
+          const r = await window.api.apiTestConnection(apiFormValues());
+          if (r.ok) setApiTestResult('✔ ' + r.message, 'ok');
+          else setApiTestResult('✘ ' + (r.message || (r.error && r.error.reason) || '연결 실패'), 'err');
+        } catch (e) {
+          setApiTestResult('✘ 테스트 중 오류: ' + (e && e.message ? e.message : e), 'err');
+        } finally {
+          testBtn.disabled = false;
+        }
+      });
+    }
+
+    const saveBtn = el('apiSaveBtn');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async () => {
+        saveBtn.disabled = true;
+        try {
+          const r = await window.api.apiSettingsSet(apiFormValues());
+          if (r && r.ok) setApiTestResult('저장했습니다.', 'ok');
+          else setApiTestResult('저장 실패', 'err');
+        } catch (e) {
+          setApiTestResult('저장 실패: ' + (e && e.message ? e.message : e), 'err');
+        } finally {
+          saveBtn.disabled = false;
+        }
+      });
+    }
+  }
 
   // 사용 동의 게이트: 아직 동의하지 않았으면 모달을 띄우고 그 전까지 앱 사용을 막는다.
   // [동의] → 메인에서 동의 저장 + 접속 로그 전송, [동의 안 함] → 앱 종료(로그 전송 없음).
@@ -236,16 +343,6 @@
     el('tabTable').addEventListener('click', () => switchTab('table'));
     el('tabFlow').addEventListener('click', () => switchTab('flow'));
     el('tabUi').addEventListener('click', () => switchTab('ui'));
-    el('btnRefreshContent').addEventListener('click', () => {
-      try {
-        const u = new URL(location.href);
-        u.searchParams.set('_r', Date.now());
-        location.href = u.toString();
-      } catch (e) {
-        // URL 파싱 실패 등 예외 상황의 최후 수단 — 그냥 강제 재로드
-        location.reload();
-      }
-    });
     // [◀ 뒤로]: UI 탭에서 UI/Mo 뱃지를 눌러 다른 화면으로 이동했던 이력을 하나씩 되짚는다
     // (코드·디자인 보기 모달의 [◀ 뒤로]와 완전히 동일한 패턴/코드 구조).
     el('uiTabBack').addEventListener('click', () => {
@@ -1607,12 +1704,6 @@
         // 노드 보강
         const node = store.addNode({ type: 'WF', id: row.SERVICE_ID, uid: String(row.SERVICE_UID),
                                      name: row.SERVICE_NAME || row.SERVICE_ID, depth: n.depth, raw: row });
-        // '/wf/{uid}/execute' 직접호출(파서 주석: "id 없음")로 처음 큐잉된 노드는 uid만 있고
-        // id=null 상태로 store 에 생성된다. addNode() 가 이미 존재하는 노드에 병합될 때 id 를
-        // 갱신하지 않는 케이스가 있어(예: MMPOPUI0001의 Grid2 "/wf/4685/execute" → SERVICE_ID
-        // "MMPOPUI0001_SELECT2"), row 를 방금 조회해왔는데도 흐름도/화면에서 id 가 null 로
-        // 영구히 남아 해당 WF 만 흐름도 렌더링이 실패하는 버그가 있었다. 실측 DB 값으로 직접 보정.
-        if (!node.id && row.SERVICE_ID) node.id = row.SERVICE_ID;
         // 순환감지: 이미 방문한 uid 를 다시 참조하면 cycle 표시
         const parsed = P.parseWf(row);
         parsed.refs.forEach(ref => {
@@ -1773,8 +1864,10 @@
       return r.rows;
     }
     if (demoMode) return demoFetchWave(wave, keyType, keyValue);
-    const r = await window.api.fetchWave({ cfg, wave, tenantId, coCd, keyType, keyValue, relaxed });
+    const apiUse = wave === 'WF' && isWfApiOn();
+    const r = await window.api.fetchWave({ cfg, wave, tenantId, coCd, keyType, keyValue, relaxed, apiUse });
     if (!r.ok) throw new Error(r.error);
+    if (apiUse) reportWfApiRowOutcome(r.rows);
     return r.rows;
   }
   async function fetchWfByUids(uids, tenantId, coCd) {
@@ -1784,9 +1877,22 @@
       return r.rows;
     }
     if (demoMode) return demoFetchWfByUids(uids);
-    const r = await window.api.fetchWfByUids({ cfg, tenantId, coCd, uids });
+    const apiUse = isWfApiOn();
+    const r = await window.api.fetchWfByUids({ cfg, tenantId, coCd, uids, apiUse });
     if (!r.ok) throw new Error(r.error);
+    if (apiUse) reportWfApiRowOutcome(r.rows);
     return r.rows;
+  }
+
+  // WF API 조회 결과를 상태표시줄에 요약한다 — 실패한 WF가 있으면 몇 건인지, 어떤 종류의
+  // 오류가 가장 많은지 바로 알 수 있게(개별 사유는 각 WF 노드의 상세 패널에서 확인).
+  function reportWfApiRowOutcome(rows) {
+    const list = (rows || []).filter(r => r && r.__apiError);
+    if (!list.length) return;
+    const first = list[0].__apiError;
+    const more = list.length > 1 ? (' 외 ' + (list.length - 1) + '건') : '';
+    setStatus('⚠ WF API 조회 실패: ' + (first.reason || first.detail || '알 수 없는 오류') + more +
+      ' — 실패한 WF 노드를 클릭하면 상세 사유와 재시도 버튼을 볼 수 있습니다.', true);
   }
 
   function demoFetchWave(wave, keyType, keyValue) {
@@ -2019,6 +2125,23 @@
         + ') 검색 화면의 Wave 선택에서 <b>WF</b> 를 체크하고 다시 실행하면 내용을 볼 수 있습니다.</div>';
     }
 
+    // WF API 조회(암호화 우회) 상태 표시 — 실패 시 원인(사람이 읽을 수 있는 한국어 진단)과
+    // [🔁 재시도] 버튼을, 성공 시에는 API로 대체된 내용임을 알려준다.
+    if (n.type === 'WF' && n.raw) {
+      if (n.raw.__apiError) {
+        const err = n.raw.__apiError;
+        html += '<div class="warn warn-err">⚠ WF API 조회 실패'
+          + (err.code ? ' <span class="muted">[' + esc(err.code) + ']</span>' : '') + '<br>'
+          + esc(err.reason || err.detail || '알 수 없는 오류')
+          + '<br><button type="button" class="btn ghost xs wf-api-retry" data-uid="' + esc(n.uid || '') + '" style="margin-top:6px">🔁 API 재시도</button>'
+          + '</div>';
+      } else if (n.raw.__apiUsed) {
+        html += '<div class="info-ok">🔒 이 WF는 API로 조회한 내용입니다'
+          + (n.raw.__apiInsecure ? ' (인증서 검증 건너뜀)' : '')
+          + ' — DB에 저장된 암호화 값 대신 사용됨.</div>';
+      }
+    }
+
     // 원본 테이블의 지정 컬럼 표시 (접기): 컬럼이 원본 행에 존재하면 표시(값이 없으면 빈값).
     if (n.raw) {
       const wantCols = [
@@ -2174,6 +2297,41 @@
 
     box.innerHTML = html;
 
+    // WF API 재시도 — DB를 다시 읽지 않고 그 WF의 SERVICE_UID만 다시 API로 조회한다.
+    // 성공하면 노드의 RESOURCE_WF를 갱신하고(그래프/흐름도는 해당 WF를 다시 열면 새 내용
+    // 반영), 실패하면 새 진단 사유로 배너를 갱신한다.
+    box.querySelectorAll('.wf-api-retry').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const uid = btn.getAttribute('data-uid');
+        if (!uid) return;
+        btn.disabled = true; btn.textContent = '조회 중…';
+        try {
+          // data-uid는 DOM 속성이라 항상 문자열이다. DB에서 오는 SERVICE_UID는 보통 숫자
+          // 타입이라(overlayWfApiContent 경로) 서버가 타입을 엄격히 볼 수 있으니 숫자 형태면
+          // 숫자로 변환해 보낸다(fetchManyByUid에서 실제로 이 차이 때문에 문제가 될 뻔한 걸
+          // 테스트로 확인해서 여기도 동일하게 맞춤).
+          const uidValue = /^\d+$/.test(uid) ? Number(uid) : uid;
+          const r = await window.api.apiRefetchOne({ serviceUid: uidValue });
+          if (n.raw) {
+            if (r.ok) {
+              n.raw.RESOURCE_WF = r.row.RESOURCE_WF;
+              n.raw.__apiUsed = true;
+              n.raw.__apiInsecure = !!r.insecureUsed;
+              n.raw.__apiError = null;
+              setStatus('✔ WF API 재조회 성공 (SERVICE_UID=' + uid + ')');
+            } else {
+              n.raw.__apiError = r.error;
+              setStatus('✘ WF API 재조회 실패 (SERVICE_UID=' + uid + '): ' + (r.error && r.error.reason), true);
+            }
+          }
+          showDetail(key); // 배너/내용 갱신을 위해 상세 패널 다시 그림
+        } catch (e) {
+          btn.disabled = false; btn.textContent = '🔁 API 재시도';
+          setStatus('✘ 재시도 중 오류: ' + (e && e.message ? e.message : e), true);
+        }
+      });
+    });
+
     // 접기 섹션 토글(공통 바인딩)
     box.querySelectorAll('.d-toggle').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -2258,7 +2416,6 @@
   let _viewerGridColumnPopupMap = {}; // 현재 뷰어 화면의 gridId → {컬럼제목 -> {programId,label}}(컬럼 액션버튼 UI 팝업, RESOURCE_HTML 모드에서 컬럼 표 오버레이용)
   let _viewerInlineReportMap = {}; // 현재 뷰어 화면의 컴포넌트id → 그 컴포넌트에 통째로 박혀 있는 reportJsonData(별도 Rp 배포 레코드 없이 자체 미리보기가 가능한 리포트 컴포넌트용)
   let _viewerInitMap = {}; // 현재 뷰어 화면의 id → 초기값 추적 정보(정적/리터럴/스크립트→WF→테이블 체인)
-  let _viewerAuthMap = {}; // 현재 뷰어 화면의 id → 권한체크(useAuthGuard/hasPermission) 로직 정보
   let _vwCodeRaw = '';    // "코드" 탭에 지금 표시 중인 원본 텍스트(검색/하이라이트 재계산용)
   let _vwCodeHitIdx = -1; // 코드 검색 결과 중 현재 포커스된(강조색이 다른) 일치 인덱스
   let _vwZoom = 1;        // 리포트 디자인 미리보기 확대/축소 배율(1 = 100%). 새 노드를 열 때 초기화.
@@ -2279,7 +2436,6 @@
   let _uiTabGridColumnPopupMap = {};
   let _uiTabInlineReportMap = {}; // 탭 버전 — 위 _viewerInlineReportMap 과 동일한 용도
   let _uiTabInitMap = {};
-  let _uiTabAuthMap = {}; // 탭 버전 — 위 _viewerAuthMap 과 동일한 용도
   let _uiTabDict = { single: {}, col: {} }; // 이 탭 전용 다국어 라벨 사전(모달의 _viewerDict 와 공유하지 않음 — 서로 다른 노드를 동시에 볼 수 있어야 하므로)
   let _uiTabZoom = 1;             // 이 탭의 리포트 미리보기 확대/축소 배율(모달의 _vwZoom 과 별개)
   let _uiTabReportDocHtml = '';   // 이 탭에 지금 표시 중인 리포트 문서 원문(PDF/이미지 내보내기용, 모달의 _vwReportDocHtml 과 별개)
@@ -2685,9 +2841,7 @@
       _designLinksBoundModal = null;   // 새 문서를 그리므로 링크 바인딩 상태 초기화
       _designTabsBoundModal = null;    // 탭 바인딩 상태도 함께 초기화
       _initBadgesBoundModal = null;    // 초기값 배지 바인딩 상태도 함께 초기화
-      _authBadgesBoundModal = null;    // 권한체크 배지 바인딩 상태도 함께 초기화
       { const ivBox = el('vwInitBox'); if (ivBox) ivBox.style.display = 'none'; } // 다른 화면 정보가 남아있지 않도록 숨김
-      { const abBox = el('vwAuthBox'); if (abBox) abBox.style.display = 'none'; } // 다른 화면 정보가 남아있지 않도록 숨김
       const raw = _viewerRaw || {};
       // 리포트(Rp): REPORT_JSON 좌표/스타일로 재구성한 "레이아웃 추정 미리보기".
       // 실제 ActiveReportsJS 뷰어(CDN)는 라이선스/네트워크 이슈로 제거하고, 이 방식만 사용한다.
@@ -2735,14 +2889,11 @@
       // 초기값 추적 맵(정적/리터럴/스크립트→WF→테이블 체인) — html/json 두 렌더 경로 모두에서 필요하므로
       // 모드가 정해지기 전에 한 번만 계산해 둔다.
       const initMapForNode = (rj && P.computeInitValueMap) ? P.computeInitValueMap(rj) : {};
-      // 권한체크(AUTH) 맵 — useAuthGuard/hasPermission 패턴이 있는 버튼 정보. initMap 과 동일하게
-      // html/json 두 렌더 경로 모두에서 필요하므로 모드가 정해지기 전에 한 번만 계산해 둔다.
-      const authMapForNode = (rj && P.computeAuthGuardMap) ? P.computeAuthGuardMap(rj) : {};
       if (htmlRes && htmlRes.text) { bodyHtml = translateHtmlLabels(htmlRes.text, _viewerDict); mode = 'html'; }
       // 2) 폴백: RESOURCE_HTML 이 없으면 RESOURCE_JSON 으로 근사 재구성
       if (!bodyHtml && rj) {
         try {
-          const built = P.buildDesignHtml(rj, raw.RESOURCE_HTML || '', _viewerDict, (navKey) => store.nodes.get(navKey), initMapForNode, raw.RESOURCE_JS, authMapForNode);
+          const built = P.buildDesignHtml(rj, raw.RESOURCE_HTML || '', _viewerDict, (navKey) => store.nodes.get(navKey), initMapForNode, raw.RESOURCE_JS);
           if (built) { bodyHtml = built; mode = 'json'; }
         } catch (e) { /* 렌더 불가 */ }
       }
@@ -2767,10 +2918,6 @@
       // 초기값 배지: html 모드는 DOM 오버레이로 붙이고(applyInitValueOverlay), json 모드는 buildDesignHtml 이
       // 이미 마크업에 직접 심어 준다. bindInitBadges 는 클릭 핸들러 바인딩용이라 모드에 상관없이 항상 채워둔다.
       _viewerInitMap = rj ? initMapForNode : {};
-      // 권한체크(AUTH) 배지: html 모드는 DOM 오버레이로 붙이고(applyAuthGuardOverlay), json 모드는
-      // buildDesignHtml 이 이미 마크업에 직접 심어 준다. bindAuthBadges 는 클릭 핸들러 바인딩용이라
-      // 모드에 상관없이 항상 채워둔다(bindInitBadges 와 동일한 패턴).
-      _viewerAuthMap = rj ? authMapForNode : {};
       if (bodyHtml) {
         // 검증 메시지 토글 기본 상태(_vwShowValMsg=false)를 최초 렌더부터 반영 — 껐다 켤 때 깜빡이지 않게
         const wrapCls = (mode === 'json' ? 'daaf-preview dz-root' : 'daaf-preview') + (_vwShowValMsg ? '' : ' dz-hide-valmsg');
@@ -2795,14 +2942,11 @@
           // 초기값(IV) 배지: html 모드는 DOM 오버레이로 붙여야 하고, json 모드는 buildDesignHtml 이 이미
           // 마크업에 심어뒀으므로 바인딩만 하면 된다.
           if (mode === 'html') { try { applyInitValueOverlay(iframe, _viewerInitMap); } catch (e) { /* 무시 */ } }
-          // 권한체크(AUTH) 배지: html 모드만 오버레이가 필요(json 모드는 buildDesignHtml 이 이미 심어둠).
-          if (mode === 'html') { try { applyAuthGuardOverlay(iframe, _viewerAuthMap); } catch (e) { /* 무시 */ } }
           try { applyValidationMsgOverlay(iframe); } catch (e) { /* 무시 */ }
           try { preventDesignNavigation(iframe); } catch (e) { /* 무시 */ }
           try { bindDesignTabs(iframe); } catch (e) { /* 무시 */ }
           bindDesignLinks(iframe);
           try { bindInitBadges(iframe, _viewerInitMap); } catch (e) { /* 무시 */ }
-          try { bindAuthBadges(iframe, _viewerAuthMap); } catch (e) { /* 무시 */ }
           // 그리드가 있으면(모드 무관 — json 은 data-grid-id, html 은 _viewerGridIds) 배포
           // 스냅샷 컬럼 표를 z_grid_columns 실시간 값으로 백그라운드에서 업그레이드한다.
           try {
@@ -3272,62 +3416,6 @@
     elm.appendChild(wrap.firstChild);
   }
 
-  // HTML 모드 그리드 라벨: colsMap(z_grid_columns/options 스냅샷)에 title 이 있으면 그걸 쓰고,
-  // 없을 때만 "그리드"로 폴백한다 — 지금까지는 무조건 "그리드"로 고정돼 있어서 국내/해외/반품/LOT
-  // 처럼 실제로 지정된 제목이 있는 그리드도 전부 똑같이 "그리드"로만 보였다.
-  // data-grid-label 은 CSS content:attr() 로 그대로 출력되는 순수 텍스트 속성이라 HTML 태그는
-  // 못 쓴다(넣어도 태그 글자 그대로 보임) — 일반 텍스트만 반환한다.
-  function gridLabelFor(id, colsMap) {
-    const title = colsMap && colsMap[id] && colsMap[id].title;
-    return '📊 ' + (title || '그리드') + ' (' + id + ')';
-  }
-
-  // HTML 모드 미리보기는 RESOURCE_HTML(실제 운영 마크업)을 그대로 iframe 에 넣고 브라우저가
-  // 진짜로 렌더링하는 방식이라, 국내/해외/반품/LOT 처럼 런타임에만 조건부로 보이는 영역이
-  // 마크업 자체에 style="display:none" 으로 박혀있으면 브라우저가 정말로 안 그려버린다(JSON
-  // 모드의 isDisplay:false 와 동일한 의도인데 표현 방식만 다름). 분석 도구 목적상 숨겨진
-  // 부분도 배지를 보고 클릭할 수 있어야 하므로, display:none 을 강제로 풀고 "숨겨짐" 배지를 붙인다.
-  // HTML 모드에서 강제로 펼칠 가치가 있는 숨김 요소인지 판단한다: 그리드(구조 파악용, 뱃지 없어도
-  // 항상 펼침) 이거나, 자기 자신 또는 후손 중 하나라도 WF/UI/Rp 뱃지 연결(linkMap)이 있는 경우만
-  // 대상으로 삼는다. 그 외(예: 안 쓰이는 숨김 버튼처럼 뱃지도 없고 그리드도 아닌 것)는 분석 가치가
-  // 없으니 그대로 안 보이게 둬서 화면이 불필요하게 복잡해지는 걸 막는다.
-  function isRevealWorthy(el, linkMap, gridIds) {
-    if (el.id && gridIds && gridIds.has(el.id)) return true;
-    if (el.id && linkMap && linkMap[el.id] && linkMap[el.id].length) return true;
-    if (gridIds && gridIds.size) {
-      for (const gid of gridIds) { if (el.querySelector('#' + CSS.escape(gid))) return true; }
-    }
-    if (linkMap) {
-      for (const lid of Object.keys(linkMap)) {
-        if (linkMap[lid] && linkMap[lid].length && el.querySelector('#' + CSS.escape(lid))) return true;
-      }
-    }
-    return false;
-  }
-
-  function revealHiddenElements(doc, linkMap, gridIds) {
-    if (!doc) return;
-    let all = [];
-    try { all = Array.prototype.slice.call(doc.querySelectorAll('[style*="display:none"], [style*="display: none"]')); }
-    catch (e) { return; }
-    all.forEach(el => {
-      if (el.getAttribute('data-dz-revealed') === '1') return;
-      if (!isRevealWorthy(el, linkMap, gridIds)) return;
-      el.setAttribute('data-dz-revealed', '1');
-      el.classList.add('dz-hidden-wrap');
-      // 인라인 style 에서 display:none 부분만 제거(다른 style 선언은 그대로 유지 — 예:
-      // colRightLot 의 max-width:31% 는 살려야 레이아웃이 원래 의도대로 나온다).
-      const cur = el.getAttribute('style') || '';
-      el.setAttribute('style', cur.replace(/display\s*:\s*none\s*;?/i, ''));
-      if (!el.querySelector(':scope > .dz-hidden-banner')) {
-        const banner = doc.createElement('div');
-        banner.className = 'dz-hidden-banner';
-        banner.textContent = '🔒 숨겨짐 (조건부 표시 영역)';
-        el.insertBefore(banner, el.firstChild);
-      }
-    });
-  }
-
   function applyHtmlLinkOverlay(iframe, linkMap, gridIds, buttonListMap, colsMap, popupMap, dict) {
     const hasLinks = linkMap && Object.keys(linkMap).length;
     const hasGrids = gridIds && gridIds.size;
@@ -3336,7 +3424,6 @@
     try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
     catch (e) { return; }
     if (!doc || !doc.body) return;
-    revealHiddenElements(doc, linkMap, gridIds);
     const clsOf = { wf: 'lk-wf', ui: 'lk-ui', rp: 'lk-rp' };
     const badgeOf = { wf: 'WF', ui: 'UI', rp: 'Rp' };
     Object.keys(linkMap || {}).forEach(id => {
@@ -3368,7 +3455,7 @@
       // 허공에 떠 있는 것처럼 보이므로, 실제 그리드로 확인된 id 는 박스(테두리+헤더)를 씌워준다.
       if (isGridId) {
         elm.classList.add('dz-grid-box');
-        elm.setAttribute('data-grid-label', gridLabelFor(id, colsMap));
+        elm.setAttribute('data-grid-label', '📊 그리드 (' + id + ')');
       }
       elm.classList.add(links.length > 1 ? 'dz-linked-multi' : 'dz-linked');
       // 조회/저장/재계산 등 서로 다른 버튼이 같은 그리드를 각각 다른 WF 로 채우는 경우가 흔해서,
@@ -3424,7 +3511,7 @@
         if (!elm) return;
         if (!elm.classList.contains('dz-grid-box')) {
           elm.classList.add('dz-grid-box');
-          elm.setAttribute('data-grid-label', gridLabelFor(id, colsMap));
+          elm.setAttribute('data-grid-label', '📊 그리드 (' + id + ')');
         }
         // 헤더 배지가 없어(위 루프를 안 거쳐) 버튼도 아직 안 그려졌을 수 있는 그리드까지 마저 채운다.
         renderGridToolbarInto(doc, elm, id, buttonListMap);
@@ -3684,223 +3771,6 @@
     resultElm.classList.add('iv-live-ok');
   }
 
-  // RESOURCE_HTML(원본 마크업) 모드에서 "권한체크"(AUTH) 배지를 오버레이로 붙인다.
-  // applyInitValueOverlay 와 동일한 구조({compId: info})를 쓰고, navKey 없이 data-auth-id 만
-  // 심어 클릭 시 그래프 이동이 아니라 코드 상세패널을 띄운다(bindAuthBadges 참고).
-  function applyAuthGuardOverlay(iframe, authMap) {
-    if (!authMap || !Object.keys(authMap).length) return;
-    let doc = null;
-    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
-    catch (e) { return; }
-    if (!doc || !doc.body) return;
-    Object.keys(authMap).forEach(id => {
-      const info = authMap[id];
-      if (!info) return;
-      const elm = resolveOverlayTarget(doc, id);
-      if (!elm || elm.getAttribute('data-dz-auth') === '1') return;
-      elm.setAttribute('data-dz-auth', '1');
-      // IV 배지(applyInitValueOverlay)와 같은 슬롯을 공유한다 — 같은 컨트롤에 WF 조회 + 권한체크가
-      // 동시에 있는 경우, 라벨 오른쪽 한 자리에 배지들이 나란히 모여 보이게 하기 위함.
-      const overlay = getOrCreateLabelBadgeSlot(doc, elm, id);
-      if (!overlay) return;
-      const badge = doc.createElement('span');
-      badge.className = 'dz-link-tag dz-auth-tag';
-      badge.textContent = '🔒';
-      badge.title = '권한체크 로직 보기 (클릭)';
-      badge.setAttribute('data-auth-id', id);
-      overlay.appendChild(badge);
-    });
-  }
-
-  // 디자인 미리보기(iframe) 안의 권한체크(AUTH) 배지에 클릭 핸들러를 건다.
-  // WF/UI/Rp 배지(data-navkey, bindDesignLinks)와 달리 그래프로 이동하지 않고, IV 배지와 같은 방식으로
-  // 상세패널(모달은 #vwAuthBox, UI 탭은 #uiTabAuthBox)에 그 버튼의 usrEventFn 코드를 보여준다.
-  let _authBadgesBoundModal = null;
-  let _authBadgesBoundTab = null;
-  function bindAuthBadges(iframe, authMap, hostKind) {
-    hostKind = hostKind === 'tab' ? 'tab' : 'modal';
-    let doc = null;
-    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
-    catch (e) { return; }
-    if (!doc || !doc.body) return;
-    if (hostKind === 'tab') {
-      if (_authBadgesBoundTab === doc) return;
-      _authBadgesBoundTab = doc;
-    } else {
-      if (_authBadgesBoundModal === doc) return;
-      _authBadgesBoundModal = doc;
-    }
-    doc.querySelectorAll('[data-auth-id]').forEach(elm => {
-      elm.style.cursor = 'pointer';
-      elm.addEventListener('click', (e) => {
-        e.preventDefault(); e.stopPropagation();
-        const id = elm.getAttribute('data-auth-id');
-        if (!id) return;
-        // IV 배지와 동일하게, 같은 AUTH 배지를 다시 누르면(이미 그 버튼의 정보가 열려 있는 상태)
-        // 팝업을 닫는다(토글).
-        const box = el(hostKind === 'tab' ? 'uiTabAuthBox' : 'vwAuthBox');
-        const isOpen = box && box.style.display !== 'none' && box.getAttribute('data-current-id') === id;
-        if (isOpen) {
-          box.style.display = 'none';
-          box.removeAttribute('data-current-id');
-          return;
-        }
-        showAuthDetail(id, (authMap && authMap[id]) || null, hostKind);
-      });
-    });
-  }
-
-  // usrEventFn/authCode 원본 문자열은 화면 JSON 안에 들어있던 그대로라 들여쓰기가 들쭉날쭉하다
-  // (탭/스페이스 혼용, 개발자마다 다른 습관 등). 괄호 깊이 기준으로 다시 들여써서 실제 코드
-  // 에디터에서 보는 것처럼 정돈해 보여준다 — 문자열 리터럴 안의 괄호까지 완벽히 구분하는 실제 JS
-  // 파서는 아니지만(이 코드 특성상 그런 케이스가 거의 없어), 표시용 정리로는 충분하다.
-  function reindentJs(code) {
-    if (!code) return '';
-    const rawLines = code.replace(/\r\n/g, '\n').split('\n').map(l => l.trim());
-    // 원본에 있던 의미 없는 빈 줄(연속 공백 줄)은 하나로 합쳐 너무 늘어지지 않게 한다.
-    const lines = [];
-    rawLines.forEach(l => { if (l !== '' || lines[lines.length - 1] !== '') lines.push(l); });
-    while (lines.length && lines[0] === '') lines.shift();
-    while (lines.length && lines[lines.length - 1] === '') lines.pop();
-    const OPEN = /[{([]/g, CLOSE = /[)\]}]/g;
-    let depth = 0;
-    const out = [];
-    lines.forEach(line => {
-      if (line === '') { out.push(''); return; }
-      // 이 줄만 한 단계 얕게 보여줄지(줄 맨 앞이 닫는 괄호로 시작하는 경우) 결정 — depth 자체는
-      // 아래에서 이 줄의 전체 순증감(open-close)으로 갱신하므로 여기서 미리 깎지 않는다
-      // (미리 깎고 나중에 또 반영하면 두 번 깎이는 버그가 남).
-      const displayDepth = /^[)\]}]/.test(line) ? Math.max(0, depth - 1) : depth;
-      out.push('  '.repeat(displayDepth) + line);
-      const opens = (line.match(OPEN) || []).length;
-      const closes = (line.match(CLOSE) || []).length;
-      depth = Math.max(0, depth + opens - closes);
-    });
-    return out.join('\n');
-  }
-
-  // 아주 가벼운 JS 신택스 하이라이터(문자열/주석/숫자/키워드/$pageObjects 만 색으로 구분).
-  // 완전한 토크나이저는 아니지만, 이 화면들의 usrEventFn 정도 규모에서는 충분히 잘 작동한다.
-  const JS_KEYWORD_RE = /^(const|let|var|function|return|if|else|true|false|null|undefined|new|typeof|while|for|break|continue|in|of|this|await|async|debugger)$/;
-  function highlightJs(code) {
-    if (!code) return '';
-    const tokenRe = /(\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`|\b\d+(?:\.\d+)?\b|\$pageObjects\b|\b[A-Za-z_][A-Za-z0-9_]*\b)/g;
-    let out = '', last = 0, m;
-    while ((m = tokenRe.exec(code)) !== null) {
-      out += escHtmlLite(code.slice(last, m.index));
-      const tok = m[0];
-      let cls = null;
-      if (tok.startsWith('//') || tok.startsWith('/*')) cls = 'js-comment';
-      else if (/^['"`]/.test(tok)) cls = 'js-string';
-      else if (/^\d/.test(tok)) cls = 'js-number';
-      else if (tok === '$pageObjects') cls = 'js-pageobj';
-      else if (JS_KEYWORD_RE.test(tok)) cls = 'js-keyword';
-      out += cls ? ('<span class="' + cls + '">' + escHtmlLite(tok) + '</span>') : escHtmlLite(tok);
-      last = tokenRe.lastIndex;
-    }
-    out += escHtmlLite(code.slice(last));
-    return out;
-  }
-  // 정돈(reindentJs) + 하이라이트(highlightJs)를 합쳐 "코드 보기" 영역에 바로 꽂을 수 있는 HTML을 만든다.
-  function renderCodeBlock(rawCode) {
-    return highlightJs(reindentJs(rawCode));
-  }
-
-  // 권한체크 코드를 정규식으로 훑어 "권한이 없으면 벌어지는 일"을 사람이 읽는 체크리스트로 뽑는다.
-  // 100% 정확한 코드 분석이 아니라 실무에서 자주 쓰는 패턴 몇 가지(경고/폼잠금/그리드초기화/버튼
-  // 비활성화/실행중단)만 잡는 "요약 추정" — 패턴에 없는 코드는 그냥 "코드 보기"로 직접 확인하면 된다.
-  function summarizeAuthGuardCode(code) {
-    if (!code) return [];
-    const items = [];
-    const alertCodes = Array.from(code.matchAll(/message\.alert\(\s*['"]?([\w.]+)['"]?\s*\)/g)).map(m => m[1]);
-    if (alertCodes.length) {
-      items.push({ icon: '🚫', text: '경고 메시지 표시' + (alertCodes.length ? ' (메시지 코드: ' + alertCodes.join(', ') + ')' : '') });
-    }
-    const formNames = Array.from(new Set(Array.from(code.matchAll(/\b([A-Za-z_][\w]*(?:Form|Frm))\.disable\(\)/g)).map(m => m[1])));
-    if (formNames.length) {
-      items.push({ icon: '🔒', text: '입력 폼 비활성화', chips: formNames });
-    }
-    const gridNames = Array.from(new Set(Array.from(code.matchAll(/\b([A-Za-z_][\w]*[Gg]rid[\w]*)\.resetData\(/g)).map(m => m[1])));
-    if (gridNames.length) {
-      items.push({ icon: '🔄', text: '그리드 초기화 (' + gridNames.length + '개)', chips: gridNames });
-    }
-    const btnIds = [];
-    const disableBtnRe = /page\.\$\(\s*["']([^"']+)["']\s*\)\s*\.addClass\(\s*['"]wj-state-disabled['"]\s*\)/g;
-    let dbm;
-    while ((dbm = disableBtnRe.exec(code)) !== null) {
-      dbm[1].split(',').forEach(s => { const id = s.trim().replace(/^#/, ''); if (id) btnIds.push(id); });
-    }
-    if (btnIds.length) {
-      items.push({ icon: '⛔', text: '버튼 ' + btnIds.length + '개 비활성화', chips: btnIds });
-    }
-    if (/return\s+false\b/.test(code)) {
-      items.push({ icon: '⏹️', text: '이후 로직 실행 중단 — 즉, 권한이 없으면 조회/저장 등 이 버튼의 본래 동작 자체가 실행되지 않습니다' });
-    }
-    return items;
-  }
-
-  // 권한체크 정보 한 건을 렌더. 초보자용 "권한이 없으면 이렇게 됩니다" 체크리스트를 먼저 보여주고,
-  // 원본 코드는 <details>(기본 접힘)로 접어 넣어 개발자가 필요할 때만 펼쳐 보게 한다.
-  function renderAuthInfoCard(id, info) {
-    if (!info) return '<div class="mut" style="padding:8px 0">권한체크 로직을 찾지 못했습니다.</div>';
-    const summary = summarizeAuthGuardCode(info.authCode || '');
-    const summaryHtml = summary.length
-      ? '<ul class="auth-summary">' + summary.map(it =>
-          '<li><span class="auth-summary-icon">' + it.icon + '</span><span>' + escHtmlLite(it.text) + '</span>'
-          + (it.chips && it.chips.length
-              ? ('<div class="auth-chip-row">' + it.chips.map(c => '<span class="auth-chip">' + escHtmlLite(c) + '</span>').join('') + '</div>')
-              : '')
-          + '</li>').join('') + '</ul>'
-      : '<div class="mut" style="padding:2px 0 6px">자동 요약할 수 있는 패턴을 찾지 못했습니다 — 아래 코드를 직접 확인해주세요.</div>';
-
-    const hasFull = info.fullEventFn && info.fullEventFn !== info.authCode;
-    return '<div class="auth-card">'
-      + '<div class="auth-card-head">🔒 권한이 없으면 이렇게 됩니다</div>'
-      + summaryHtml
-      + '<details class="auth-code-details">'
-      + '<summary>코드 보기 (개발자용)</summary>'
-      + '<div class="auth-code-label">권한체크 블록</div>'
-      + '<pre class="auth-code-pre"><code>' + renderCodeBlock(info.authCode || '') + '</code></pre>'
-      + (hasFull
-          ? ('<div class="auth-code-label">버튼 전체 스크립트 (usrEventFn)</div>'
-             + '<pre class="auth-code-pre"><code>' + renderCodeBlock(info.fullEventFn) + '</code></pre>')
-          : '')
-      + '</details>'
-      + '</div>';
-  }
-
-  // 권한체크(AUTH) 상세패널(#vwAuthBox / #uiTabAuthBox) 표시/갱신. showInitDetail 과 동일하게
-  // "닫기" 없이 접기/펼치기만 지원 — 화면을 옮기며 계속 참고할 일이 많아 항상 화면에 남겨둔다.
-  let _authBoxCollapsed = false;
-  function showAuthDetail(compId, info, hostKind) {
-    hostKind = hostKind === 'tab' ? 'tab' : 'modal';
-    const box = el(hostKind === 'tab' ? 'uiTabAuthBox' : 'vwAuthBox');
-    if (!box) return;
-    box.setAttribute('data-current-id', compId); // 같은 배지 재클릭 시 닫기(토글) 판단용
-    if (!box.hasAttribute('data-positioned')) {
-      const pane = el(hostKind === 'tab' ? 'uiTabDesignPane' : 'vwDesignPane');
-      const paneW = (pane && pane.clientWidth) || 900;
-      const w = box.offsetWidth || 420;
-      box.style.left = Math.max(12, paneW - w - 12) + 'px';
-      box.style.right = 'auto';
-      box.style.top = '12px';
-      box.setAttribute('data-positioned', '1');
-    }
-    box.innerHTML = '<div class="fsb-head"><b>🔒 권한체크 로직 · ' + escHtmlLite((info && info.label) || compId) + '</b>'
-      + '<button id="abMin" class="fsb-min" title="' + (_authBoxCollapsed ? '펼치기' : '접기') + '">'
-      + (_authBoxCollapsed ? '▸ 펼치기' : '▾ 접기') + '</button></div>'
-      + '<div class="auth-body">' + renderAuthInfoCard(compId, info) + '</div>';
-    box.classList.toggle('collapsed', _authBoxCollapsed);
-    box.style.display = 'flex';
-    const minBtn = box.querySelector('#abMin');
-    if (minBtn) minBtn.addEventListener('click', () => {
-      _authBoxCollapsed = !_authBoxCollapsed;
-      box.classList.toggle('collapsed', _authBoxCollapsed);
-      minBtn.textContent = _authBoxCollapsed ? '▸ 펼치기' : '▾ 접기';
-      minBtn.title = _authBoxCollapsed ? '펼치기' : '접기';
-    });
-  }
-
   // 디자인 미리보기(iframe) 안의 연결 객체(data-navkey)에 클릭 핸들러를 건다.
   // hostKind: 'modal'(코드·디자인 보기 팝업, 기본값) | 'tab'(그래프 왼쪽 새 UI 탭에 도킹된 미리보기).
   // 두 호스트 모두 배지 클릭 동작은 동일해야 한다는 요구사항에 따라 분기만 다르게 태운다:
@@ -4056,9 +3926,7 @@
     _designLinksBoundTab = null;
     _designTabsBoundTab = null;
     _initBadgesBoundTab = null;
-    _authBadgesBoundTab = null;
     { const ivBox = el('uiTabInitBox'); if (ivBox) ivBox.style.display = 'none'; } // 다른 화면 정보가 남아있지 않도록 숨김
-    { const abBox = el('uiTabAuthBox'); if (abBox) abBox.style.display = 'none'; } // 다른 화면 정보가 남아있지 않도록 숨김
     const raw = (n && n.raw) || {};
     if (emptyEl) emptyEl.style.display = 'none';
     const toolbar = el('uiTabDesignToolbar');
@@ -4098,11 +3966,10 @@
     let bodyHtml = null, mode = '';
     const rj = raw.RESOURCE_JSON;
     const initMapForNode = (rj && P.computeInitValueMap) ? P.computeInitValueMap(rj) : {};
-    const authMapForNode = (rj && P.computeAuthGuardMap) ? P.computeAuthGuardMap(rj) : {};
     if (raw.RESOURCE_HTML) { bodyHtml = translateHtmlLabels(raw.RESOURCE_HTML, _uiTabDict); mode = 'html'; }
     if (!bodyHtml && rj) {
       try {
-        const built = P.buildDesignHtml(rj, raw.RESOURCE_HTML || '', _uiTabDict, (navKey) => store.nodes.get(navKey), initMapForNode, raw.RESOURCE_JS, authMapForNode);
+        const built = P.buildDesignHtml(rj, raw.RESOURCE_HTML || '', _uiTabDict, (navKey) => store.nodes.get(navKey), initMapForNode, raw.RESOURCE_JS);
         if (built) { bodyHtml = built; mode = 'json'; }
       } catch (e) { /* 렌더 불가 */ }
     }
@@ -4113,7 +3980,6 @@
     _uiTabGridColumnPopupMap = (rj && P.computeGridColumnPopups) ? P.computeGridColumnPopups(rj, raw.RESOURCE_JS) : {};
     _uiTabInlineReportMap = (rj && P.computeInlineReportMap) ? P.computeInlineReportMap(rj) : {};
     _uiTabInitMap = rj ? initMapForNode : {};
-    _uiTabAuthMap = rj ? authMapForNode : {};
     if (bodyHtml) {
       // 검증 메시지는 탭에는 토글 UI가 없으므로 항상 숨김 상태로 고정한다(모달의 기본값과 동일).
       const wrapCls = (mode === 'json' ? 'daaf-preview dz-root' : 'daaf-preview') + ' dz-hide-valmsg';
@@ -4128,13 +3994,11 @@
         if (mode === 'html') { try { insertValidationMessages(fdoc, _uiTabDict); } catch (e) { /* 무시 */ } }
         try { applyHtmlLinkOverlay(iframe, _uiTabLinkMap, _uiTabGridIds, _uiTabGridButtonMap, _uiTabGridColsMap, _uiTabGridColumnPopupMap, _uiTabDict.single); } catch (e) { /* 무시 */ }
         if (mode === 'html') { try { applyInitValueOverlay(iframe, _uiTabInitMap); } catch (e) { /* 무시 */ } }
-        if (mode === 'html') { try { applyAuthGuardOverlay(iframe, _uiTabAuthMap); } catch (e) { /* 무시 */ } }
         try { applyValidationMsgOverlay(iframe); } catch (e) { /* 무시 */ }
         try { preventDesignNavigation(iframe); } catch (e) { /* 무시 */ }
         try { bindDesignTabs(iframe, 'tab'); } catch (e) { /* 무시 */ }
         bindDesignLinks(iframe, 'tab');
         try { bindInitBadges(iframe, _uiTabInitMap, 'tab'); } catch (e) { /* 무시 */ }
-        try { bindAuthBadges(iframe, _uiTabAuthMap, 'tab'); } catch (e) { /* 무시 */ }
         try {
           const programId = raw && raw.PROGRAM_ID;
           if (programId && fdoc) {
@@ -4375,19 +4239,11 @@
       'body.sirius .page-footer-wrapper{position:sticky!important;top:auto!important;left:auto!important;bottom:0!important;margin-top:14px!important;background:#fff!important;border-top:solid 1px #dfdfdf!important;z-index:11!important}',
       // ===== JSON 컴포넌트 트리 기반 디자인(dz-*) =====
       '.dz-root{padding:4px}',
-      '.dz-form{padding:8px 0;min-width:0}',
+      '.dz-form{padding:8px 0}',
       '.dz-search{border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:12px;background:#fafcff}',
       '.dz-row{display:flex;flex-wrap:wrap;gap:14px;margin:6px 0;align-items:flex-end}',
       '.dz-row.dz-border{border-top:1px solid #e8edf3;padding-top:12px;margin-top:4px}',
-      '.dz-col{flex:1 1 0;min-width:0;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}',
-      // isDisplay:false 컬럼(런타임 조건부 표시): 점선 테두리+옅은 배경으로 "지금은 안 보이는 영역"임을
-      // 시각적으로 구분한다. 일반 dz-col과 똑같이 그려버리면 다른 그리드들 사이에 붕 뜬 것처럼 보인다.
-      '.dz-col-hidden{border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;padding:8px;opacity:.72}',
-      '.dz-col-hidden-badge{width:100%;font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px}',
-      // HTML 모드(RESOURCE_HTML 원본 마크업)에서 강제로 펼친 display:none 영역 — JSON 모드의
-      // dz-col-hidden 과 같은 톤(점선 테두리 + 옅은 배경)으로 맞춘다.
-      '.dz-hidden-wrap{border:1px dashed #cbd5e1!important;border-radius:8px;background:#f8fafc;padding:8px;opacity:.85}',
-      '.dz-hidden-banner{font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px}',
+      '.dz-col{flex:1 1 0;min-width:120px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}',
       '.dz-container{display:flex;flex-wrap:wrap;gap:10px;width:100%}',
       // ===== 서브탭 네비게이션(신청대상/상신내역/미신청 등, JSON tabContainer) =====
       // 클릭 전환은 구현하지 않고(다른 dz-* 섹션과 동일 방침) 모든 탭 내용을 펼쳐서 보여주되,
@@ -4401,8 +4257,8 @@
       '.dz-tab-active{color:#0f9d58;border-bottom-color:#0f9d58}',
       '.dz-tab-panel{margin-bottom:14px;padding:10px;border:1px solid #eef2f7;border-radius:8px;background:#fbfdff}',
       '.dz-tab-panel-head{font-weight:700;font-size:12.5px;color:#334155;margin-bottom:8px;display:flex;align-items:center;gap:5px}',
-      '.dz-field{display:flex;flex-direction:column;gap:3px;flex:1 1 auto;min-width:70px}',
-      '.dz-field label{font-size:12px;font-weight:600;color:#334155;max-width:100%;word-break:keep-all}',
+      '.dz-field{display:flex;flex-direction:column;gap:3px;flex:1 1 auto;min-width:110px}',
+      '.dz-field label{font-size:12px;font-weight:600;color:#334155;white-space:nowrap}',
       '.dz-field .req{color:#ef4444;margin-left:2px}',
       '.req{color:#ef4444;margin-left:2px}',
       // ===== 뱃지(WF/UI/IV/숨김)는 라벨 텍스트 오른쪽에 붙인다 =====
@@ -4414,13 +4270,6 @@
       '.dz-label-badges .dz-link-tag{margin-left:0}',
       '.dz-badge-host{position:relative}',
       '.dz-ctrl{width:100%}',
-      // InputGroup(예: 발주번호 입력창 + 옆의 팝업검색 아이콘버튼) — 가로로 나란히 배치.
-      // 안의 input은 개별 컴포넌트라 자기 자신도 .dz-field로 한번 더 감싸져 나오는데(중첩),
-      // 바깥 그룹 라벨과 안쪽 필드 라벨이 이중으로 보이지 않도록 중첩된 필드는 라벨/세로여백을 죽인다.
-      '.dz-inputgroup{display:flex;align-items:center;gap:4px}',
-      '.dz-inputgroup .dz-field{flex:1;gap:0}',
-      '.dz-inputgroup .dz-field label{display:none}',
-      '.dz-inputgroup .dz-btn{align-self:auto}',
       '.dz-badge-overlay{position:absolute;top:50%;left:6px;transform:translateY(-50%);display:flex;align-items:center;gap:3px;z-index:3;pointer-events:auto;max-width:calc(100% - 12px);overflow:hidden}',
       '.dz-badge-overlay .dz-link-tag,.dz-badge-overlay .dz-hidden-tag{margin-left:0;flex:0 0 auto}',
       // 버튼 안에 자연스러운 내용으로 이어붙는 뱃지(그리드 툴바 버튼과 동일한 방식) — 절대배치가
@@ -4429,19 +4278,16 @@
       '.dz-badge-inline{display:inline-flex;align-items:center;gap:3px;margin-left:6px;vertical-align:middle}',
       '.dz-badge-inline .dz-link-tag{margin-left:0}',
       '.dz-inp{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;width:100%}',
-      '.dz-sel{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;display:flex;align-items:center;justify-content:space-between;color:#94a3b8;min-width:70px}',
+      '.dz-sel{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;display:flex;align-items:center;justify-content:space-between;color:#94a3b8;min-width:90px}',
       '.dz-sel i{font-style:normal;color:#94a3b8}',
-      '.dz-date{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;display:flex;align-items:center;justify-content:space-between;color:#94a3b8;min-width:90px}',
+      '.dz-date{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;display:flex;align-items:center;justify-content:space-between;color:#94a3b8;min-width:120px}',
       '.dz-date i{font-style:normal}',
       '.dz-radios{display:flex;gap:12px;align-items:center;height:30px}',
       '.dz-radio{font-size:12.5px;color:#334155;font-weight:400;display:flex;align-items:center;gap:3px}',
       '.dz-btn{border:1px solid #cbd5e1;background:#f1f5f9;border-radius:6px;height:30px;padding:4px 14px;font-size:12px;color:#334155;white-space:nowrap;cursor:default;align-self:flex-end}',
-      // 라벨/이름 없이 아이콘만 있는 버튼(검색창 옆 팝업조회 아이콘 등) — 넓은 텍스트 버튼처럼 보이면
-      // 실제 화면과 다르고 자리도 많이 차지해서, 정사각형에 가깝게 작고 컴팩트하게 보이게 한다.
-      '.dz-btn-icon-only{padding:4px 8px;min-width:30px;justify-content:center;font-size:13px}',
       '.dz-heading{font-size:13px;font-weight:700;color:#0f172a;padding:8px 0 4px;border-bottom:2px solid #e8edf3;margin:8px 0 4px;width:100%}',
       '.dz-text{font-size:12.5px;color:#475569;align-self:center}',
-      '.dz-grid{border:1px solid #cbd5e1;border-radius:8px;margin:10px 0;min-height:120px;background:#fff;min-width:0;max-width:100%}',
+      '.dz-grid{border:1px solid #cbd5e1;border-radius:8px;margin:10px 0;min-height:120px;background:#fff}',
       '.dz-grid-head{background:#f8fafc;border-bottom:1px solid #cbd5e1;padding:8px 12px;font-size:12px;font-weight:700;color:#475569;border-radius:8px 8px 0 0}',
       // ===== 그리드 컬럼 표(z_grid_columns/z_grid_options 기반 헤더+뱃지+샘플 행 재현) =====
       // 이 표(및 뱃지)의 실제 스타일은 parser.js buildGridColumnsTableHtml() 안에서 전부 인라인
@@ -4456,12 +4302,9 @@
       '.dz-checkbox{display:inline-flex;align-items:center;height:30px}',
       '.dz-checkbox input{width:auto;margin:0}',
       '.dz-textarea{border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:12.5px;background:#fff;width:100%;resize:none;color:#94a3b8}',
-      '.dz-daterange{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;display:flex;align-items:center;gap:6px;color:#94a3b8;min-width:130px}',
-      '.dz-daterange i{font-style:normal;flex:0 0 auto}',
-      // 날짜 두 개(YYYY-MM-DD ~ YYYY-MM-DD)를 담는 span들 — 컨테이너가 좁아지면 서로 겹치는 대신
-      // 각자 줄어들면서 말줄임(ellipsis)되게 한다(실제 화면도 좁아지면 날짜가 잘려 보임).
-      '.dz-daterange span{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.dz-daterange .dz-date-ico{margin-left:auto;flex:0 0 auto}',
+      '.dz-daterange{border:1px solid #cbd5e1;border-radius:6px;height:30px;padding:4px 8px;font-size:12.5px;background:#fff;display:flex;align-items:center;gap:6px;color:#94a3b8;min-width:190px}',
+      '.dz-daterange i{font-style:normal}',
+      '.dz-daterange .dz-date-ico{margin-left:auto}',
       '.dz-tree{border:1px solid #cbd5e1;border-radius:8px;margin:10px 0;background:#fff;min-height:100px}',
       '.dz-tree-head{background:#f8fafc;border-bottom:1px solid #cbd5e1;padding:8px 12px;font-size:12px;font-weight:700;color:#475569;border-radius:8px 8px 0 0}',
       '.dz-tree-body{padding:8px 12px;font-size:12.5px;color:#64748b}',
@@ -4501,10 +4344,6 @@
       '.dz-link-tag.dz-init-static{background:#a78bfa}',
       '.dz-link-tag.dz-init-lit{background:#7c3aed}',
       '.dz-link-tag.dz-init-chain{background:#5b21b6}',
-      // ===== 권한체크(AUTH) 배지: useAuthGuard/hasPermission 패턴이 있는 버튼 =====
-      // IV(보라)와 헷갈리지 않도록 경고색 계열(빨강)을 쓴다 — "이 버튼은 권한 게이트가 있다"가
-      // 한눈에 보이는 게 목적이라 WF/UI/Rp(초록/파랑/주황)와도 톤을 분명히 다르게 뒀다.
-      '.dz-link-tag.dz-auth-tag{background:#dc2626}',
       '.dz-report.dz-linked{border-style:solid;border-color:#e08e0b}',
       '.dz-tree.dz-linked{border-style:solid;border-color:#2563eb}',
       '.dz-chart.dz-linked{border-style:solid;border-color:#e08e0b}',
