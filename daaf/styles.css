@@ -381,14 +381,10 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .pw-eye:hover{opacity:1}
 .pw-eye.on{opacity:1}
 
-/* WF API 조회 스위치 (헤더, DB 연결 패널 옆) */
-.wf-api-group{display:flex;align-items:center;gap:6px;background:rgba(14,46,66,.9);border:1px solid rgba(56,178,172,.55);border-radius:9px;padding:4px 8px 4px 10px}
+/* WF API 조회 스위치 (헤더, [사용법] 왼쪽 고정) */
+.wf-api-group{display:flex;align-items:center;gap:6px;background:rgba(14,46,66,.9);border:1px solid rgba(56,178,172,.55);border-radius:9px;padding:4px 10px;flex:none}
 .wf-api-lock{font-size:12px}
 .wf-api-label{font-size:12px;font-weight:700;color:#e6f6f4;white-space:nowrap}
-.wf-api-gear{padding:3px 7px !important;font-size:12px}
-.wf-api-badge{font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:10px;white-space:nowrap}
-.wf-api-badge.ok{background:rgba(34,197,94,.18);color:#86efac;border:1px solid rgba(34,197,94,.4)}
-.wf-api-badge.err{background:rgba(239,68,68,.18);color:#fca5a5;border:1px solid rgba(239,68,68,.4)}
 
 /* 체크박스를 스위치 모양으로 (dbEncrypt 등 기존 체크박스는 그대로 두고, 이 클래스를 쓴 곳만 적용) */
 .switch{position:relative;display:inline-flex;align-items:center;cursor:pointer}
@@ -672,6 +668,8 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .settings-textarea{resize:vertical;min-height:44px;font-family:monospace;font-size:11.5px}
 .settings-field-row{display:flex;gap:10px}
 .settings-field-col{flex:1;min-width:0}
+.settings-subgroup{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px}
+.settings-subgroup-title{font-size:12px;font-weight:700;color:var(--ink);margin-bottom:8px}
 .api-test-result{font-size:11.5px;color:var(--mut);flex:1}
 .api-test-result.ok{color:#0e7a4d;font-weight:600}
 .api-test-result.err{color:#b42318;font-weight:600}

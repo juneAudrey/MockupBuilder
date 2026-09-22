@@ -174,9 +174,6 @@
 
   async function initWfApiSetting() {
     const toggle = el('wfApiToggle');
-    const gearBtn = el('wfApiGear');
-    const modal = el('settingsModal');
-    const badge = el('wfApiBadge');
 
     // 저장된 값 불러오기(엔드포인트 기본값은 apiClient.js의 DEFAULTS와 동일하게 맞춰둠)
     let saved = null;
@@ -257,35 +254,15 @@
       });
     }
     refreshSessionStatus();
-    updateWfApiBadge();
-
-    function updateWfApiBadge() {
-      if (!badge) return;
-      if (toggle && toggle.checked) {
-        badge.style.display = '';
-        badge.className = 'wf-api-badge ok';
-        badge.textContent = 'ON';
-      } else {
-        badge.style.display = 'none';
-      }
-    }
 
     if (toggle) {
       toggle.addEventListener('change', () => {
-        updateWfApiBadge();
         setStatus(toggle.checked
           ? '🔒 WF API 조회 켜짐 · 이제부터 WF는 DB 대신 API로 조회합니다(연결 상태에서만 동작).'
           : 'WF API 조회 꺼짐 · WF를 다시 DB에서 직접 조회합니다.');
         if (window.api && window.api.apiSettingsSet) {
           window.api.apiSettingsSet({ enabled: toggle.checked }).catch(() => {});
         }
-      });
-    }
-    if (gearBtn && modal) {
-      gearBtn.addEventListener('click', () => {
-        modal.style.display = 'flex';
-        const grp = el('settingsWfApiGroup');
-        if (grp && grp.scrollIntoView) grp.scrollIntoView({ block: 'nearest' });
       });
     }
 
