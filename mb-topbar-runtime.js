@@ -952,87 +952,112 @@
     return filename;
   }
 
-  // ── 시트 공통 스타일/헬퍼 (레퍼런스 사양서 실측값 그대로) ──────────────────────────
-  // 레퍼런스 사양서(생성 스크립트의 thin())와 동일하게, 표 셀은 4면 모두 얇은 테두리(기본 검정색)를
-  // 두른다 - 위쪽 선 하나만 긋는 방식이 아니다. 이걸 top만으로 잘못 두면 세로 경계선이 전혀 없어
-  // "표에 테두리가 다 없다"처럼 보인다.
+  // ── 시트 공통 스타일/헬퍼 (레퍼런스 사양서 생성 스크립트의 실측값 그대로) ──────────
+  // 표 셀은 4면 모두 얇은 테두리(기본 검정색)를 두른다 - 위쪽 선 하나만 긋는 방식이 아니다.
+  // 이걸 top만으로 잘못 두면 세로 경계선이 전혀 없어 "표에 테두리가 다 없다"처럼 보인다.
+  const MB_XL_FONT='맑은 고딕';
   const MB_XL_THIN={style:'thin'};
   const MB_XL_BORDER_ALL={top:MB_XL_THIN,bottom:MB_XL_THIN,left:MB_XL_THIN,right:MB_XL_THIN};
   const MB_XL_FILL_TITLE={type:'pattern',pattern:'solid',fgColor:{argb:'FF203864'}};
   const MB_XL_FILL_LABEL={type:'pattern',pattern:'solid',fgColor:{argb:'FFF2F2F2'}};
   const MB_XL_FILL_BANNER={type:'pattern',pattern:'solid',fgColor:{argb:'FF4472C4'}};
   const MB_XL_FILL_COLHEAD={type:'pattern',pattern:'solid',fgColor:{argb:'FFD9E1F2'}};
+  // 레퍼런스 생성 스크립트의 F_TITLE/F_BANNER/F_COLHEAD/F_BODY/F_LABEL 폰트 팩토리와 동일한 값.
+  function mbXlFontTitle(){ return {name:MB_XL_FONT, size:14, bold:true, color:{argb:'FFFFFFFF'}}; }
+  function mbXlFontBanner(){ return {name:MB_XL_FONT, size:11, bold:true, color:{argb:'FFFFFFFF'}}; }
+  function mbXlFontColHead(){ return {name:MB_XL_FONT, size:9, bold:true, color:{argb:'FF1F3864'}}; }
+  function mbXlFontBody(){ return {name:MB_XL_FONT, size:9, bold:false, color:{argb:'FF000000'}}; }
+  function mbXlFontLabel(){ return {name:MB_XL_FONT, size:9, bold:true, color:{argb:'FF000000'}}; }
 
   function mbXlDisplayWidth(s){
     let w=0;
     for(const ch of String(s)){ w += ch.charCodeAt(0)>0x2E80 ? 1.9 : 1.0; }
     return w;
   }
-  function mbXlWrappedLineCount(text, totalColWidth){
-    let lines=0;
-    String(text).split('\n').forEach(function(line){
-      lines += Math.max(1, Math.ceil(mbXlDisplayWidth(line)/totalColWidth));
+  // 레퍼런스 생성 스크립트의 est_row_height()와 동일한 산식: 병합된 컬럼들의 실제 폭 합계와
+  // 글자 수로 줄바꿈 줄 수를 추정하고, 잘리지 않을 최소 행 높이(포인트)를 반환한다.
+  function mbXlEstRowHeight(text, totalColWidth, fontSize, minHeight){
+    fontSize=fontSize||9; minHeight=minHeight||18;
+    text = (text===null||text===undefined) ? '' : String(text);
+    if(!text.trim()) return minHeight;
+    let nLines=0;
+    text.split('\n').forEach(function(line){
+      nLines += Math.max(1, Math.ceil(mbXlDisplayWidth(line)/Math.max(totalColWidth,4)));
     });
-    return lines;
+    const h=Math.max(minHeight, Math.round(nLines*fontSize*1.7+6));
+    return Math.min(h,409);
+  }
+  function mbXlColWidthSum(ws, colStart, colEnd){
+    let total=0;
+    for(let c=colStart;c<=colEnd;c++){ const col=ws.getColumn(c); total += (col&&col.width)||8.43; }
+    return total;
   }
   function mbXlMergeRow(ws, ncol, r, text, opts){
     opts=opts||{};
     ws.mergeCells(r,1,r,ncol);
     const c=ws.getCell(r,1);
     if(text!==null) c.value=text;
-    c.font={bold:!!opts.bold, size:opts.size||9, color:opts.color?{argb:opts.color}:undefined};
+    c.font=opts.font||mbXlFontBody();
     c.alignment={horizontal:opts.align||'left', vertical:opts.valign||'middle', wrapText:true};
     if(opts.fill){ for(let col=1;col<=ncol;col++) ws.getCell(r,col).fill=opts.fill; }
     if(opts.border){ for(let col=1;col<=ncol;col++) ws.getCell(r,col).border=opts.border; }
     return c;
   }
+  // 시트 제목바 - 진남색, 흰 굵은 14pt, 높이 30, 테두리 없음. 제목바 아래 한 줄은 항상 비운다
+  // (레퍼런스 생성 스크립트의 sheet_header()가 r+2를 돌려주는 것과 동일한 템플릿 규칙).
   function mbXlSheetTitle(ws, ncol, r, text){
-    mbXlMergeRow(ws, ncol, r, text, {bold:true,size:14,fill:MB_XL_FILL_TITLE,align:'center',color:'FFFFFFFF'});
-    ws.getRow(r).height=26;
-    return r+1;
+    mbXlMergeRow(ws, ncol, r, text, {font:mbXlFontTitle(), align:'center', fill:MB_XL_FILL_TITLE});
+    ws.getRow(r).height=30;
+    return r+2;
   }
   function mbXlSectionBanner(ws, ncol, r, text){
-    mbXlMergeRow(ws, ncol, r, text, {bold:true,size:11,fill:MB_XL_FILL_BANNER,color:'FFFFFFFF'});
+    mbXlMergeRow(ws, ncol, r, text, {font:mbXlFontBanner(), fill:MB_XL_FILL_BANNER});
     ws.getRow(r).height=20;
     return r+1;
   }
+  // 본문 문단(화면설명/안내문 등) - 좌측·중앙 정렬, 테두리 없음, 줄바꿈 줄 수에 맞춰 행 높이 자동.
   function mbXlParaBlock(ws, ncol, r, text){
-    const c=mbXlMergeRow(ws, ncol, r, text, {align:'left',valign:'top'});
-    const totalW=ws.columns.reduce(function(a,col){return a+(col.width||10);},0);
-    ws.getRow(r).height=Math.max(18, Math.round(15*mbXlWrappedLineCount(text,totalW)));
+    mbXlMergeRow(ws, ncol, r, text, {align:'left', valign:'middle'});
+    ws.getRow(r).height=mbXlEstRowHeight(text, mbXlColWidthSum(ws,1,ncol), 9, 18);
     return r+1;
   }
   // 1.개요(4열, 라벨 1칸)·2~4번 시트 헤더(8열, 라벨 2칸) 양쪽에서 함께 쓰는 항목-값 행.
+  // 라벨=회색 배경 굵은 9pt, 값=배경 없음 일반 9pt, 둘 다 좌측·중앙 정렬에 4면 얇은 테두리.
   function mbXlKVRow(ws, ncol, labelSpan, r, label, value, opts){
     opts=opts||{};
     ws.mergeCells(r,1,r,labelSpan);
     const lc=ws.getCell(r,1);
-    lc.value=label; lc.font={bold:true,size:9}; lc.alignment={vertical:'middle'};
+    lc.value=label; lc.font=mbXlFontLabel(); lc.alignment={horizontal:'left',vertical:'middle',wrapText:true};
     lc.fill=opts.fill; lc.border=MB_XL_BORDER_ALL;
     for(let col=2;col<=labelSpan;col++){ const cc=ws.getCell(r,col); cc.fill=opts.fill; cc.border=MB_XL_BORDER_ALL; }
     ws.mergeCells(r,labelSpan+1,r,ncol);
     const vc=ws.getCell(r,labelSpan+1);
-    vc.value=value; vc.font={size:9}; vc.alignment={vertical:'middle'};
+    vc.value=value; vc.font=mbXlFontBody(); vc.alignment={horizontal:'left',vertical:'middle',wrapText:true};
     vc.border=MB_XL_BORDER_ALL;
     for(let col=labelSpan+2;col<=ncol;col++) ws.getCell(r,col).border=MB_XL_BORDER_ALL;
-    ws.getRow(r).height=18;
+    ws.getRow(r).height=mbXlEstRowHeight(value, mbXlColWidthSum(ws,labelSpan+1,ncol), 9, 18);
     return r+1;
   }
+  // 데이터 표 - 컬럼헤더는 연파랑 배경+남색 굵은 9pt 가운데정렬 높이 26, 본문은 9pt 좌측·상단
+  // 정렬(모든 컬럼 동일, wrap)에 행마다 셀 내용 중 가장 긴 줄바꿈 기준으로 높이를 자동 계산한다.
   function mbXlDataTable(ws, ncol, r, headers, rows){
     headers.forEach(function(h,i){
       const c=ws.getCell(r,i+1);
-      c.value=h; c.font={bold:true,color:{argb:'FF1F3864'}}; c.fill=MB_XL_FILL_COLHEAD; c.border=MB_XL_BORDER_ALL;
-      c.alignment={horizontal:'center'};
+      c.value=h; c.font=mbXlFontColHead(); c.fill=MB_XL_FILL_COLHEAD; c.border=MB_XL_BORDER_ALL;
+      c.alignment={horizontal:'center', vertical:'middle', wrapText:true};
     });
     ws.getRow(r).height=26; r++;
     rows.forEach(function(row){
+      let maxH=18;
       row.forEach(function(v,i){
         if(i>=headers.length) return;
         const c=ws.getCell(r,i+1);
         if(v!==null && v!==undefined && v!=='') c.value=v;
-        c.border=MB_XL_BORDER_ALL; c.alignment={horizontal:i===0?'left':'center', wrapText:i===0};
+        c.font=mbXlFontBody();
+        c.border=MB_XL_BORDER_ALL; c.alignment={horizontal:'left', vertical:'top', wrapText:true};
+        maxH=Math.max(maxH, mbXlEstRowHeight(v, ws.getColumn(i+1).width||8.43, 9, 18));
       });
-      ws.getRow(r).height=18;
+      ws.getRow(r).height=maxH;
       r++;
     });
     return r;
@@ -1095,15 +1120,8 @@
         [5,14,70,20,12].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
         let r=1;
         r=mbXlSheetTitle(ws,5,r,'0. 변경이력  (Change History)');
-        ['No','변경 일자','변경 내용','담당자','요청자'].forEach(function(h,i){
-          const c=ws.getCell(r,i+1);
-          c.value=h; c.font={bold:true,color:{argb:'FF1F3864'}}; c.fill=MB_XL_FILL_COLHEAD; c.border=MB_XL_BORDER_ALL;
-          c.alignment={horizontal:'center'};
-        });
-        ws.getRow(r).height=26; r++;
-        [1, todayStr, '최초 작성', '', ''].forEach(function(v,i){
-          const c=ws.getCell(r,i+1); c.value=v; c.border=MB_XL_BORDER_ALL; c.alignment={horizontal:'left'};
-        });
+        r=mbXlDataTable(ws,5,r,['No','변경 일자','변경 내용','담당자','요청자'],
+          [[1, todayStr, '최초 작성', '', '']]);
       }
 
       // ── 1.개요 ──────────────────────────────────────────────────────────────────
@@ -1173,7 +1191,7 @@
       // ── 4.기술사양 ──────────────────────────────────────────────────────────────
       {
         const ws=wb.addWorksheet('4.기술사양');
-        [16,18,22,28,16,30].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        [14,46,14,30,8,8].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
         let r=1;
         r=mbXlSheetTitle(ws,6,r,'4. 기술사양  (Technical Specification)');
         r=mbXlHeaderKV(ws,6,r,[
@@ -1194,7 +1212,7 @@
       // ── 5.테이블 레이아웃 ──────────────────────────────────────────────────────
       {
         const ws=wb.addWorksheet('5.테이블 레이아웃');
-        [16,18,14,10,8,8,12,30].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        [20,18,12,8,6,6,8,22].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
         let r=1;
         r=mbXlSheetTitle(ws,8,r,'5. 테이블 레이아웃  (Table Layout)');
         r=mbXlParaBlock(ws,8,r,'저장/조회 대상 테이블·컬럼 정보는 화면 구성에 나타나지 않는다.');
@@ -1203,7 +1221,7 @@
       // ── 6.단위테스트 ────────────────────────────────────────────────────────────
       {
         const ws=wb.addWorksheet('6.단위테스트');
-        [8,26,20,20,10,20,14,20].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        [6,34,20,34,8,14,12,14].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
         let r=1;
         r=mbXlSheetTitle(ws,8,r,'6. 단위테스트  (Unit Test)');
         r=mbXlSectionBanner(ws,8,r,'■ 테스트 케이스');
