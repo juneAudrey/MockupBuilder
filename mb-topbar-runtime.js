@@ -700,27 +700,50 @@
     }
   };
 
-  /* ==================================================================================
+    /* ==================================================================================
      Alt+S: 사양서 매핑 템플릿(.xlsx) 내보내기.
-     화면에 이미 있는 정보(라벨/타입/필수/읽기전용)만 기계적으로 뽑아 표로 정리하고, 실제 업무
-     로직(뭘 누르면 뭐가 되는지)이 필요한 "화면 설명"란은 그 정보들의 구성 요약으로 대신 채운다 -
-     AI 없이, 목업 자체의 구조 데이터만으로 가능한 것만 담는다는 원칙.
+     화면에 이미 있는 정보(라벨/타입/필수/읽기전용/그리드 컬럼/버튼)만 기계적으로 뽑아 UNIERP AX
+     프로그램 사양서와 같은 7개 시트(0.변경이력~6.단위테스트) 구조로 정리한다. 업무 로직(뭘 누르면
+     뭐가 되는지)·저장 테이블·SQL처럼 화면 구조만으로는 알 수 없는 항목은 채우지 않고 공란으로
+     남긴다 - AI 추정이나 "확인 필요" 문구 없이, 화면 자체의 구조 데이터만으로 가능한 것만 담는다는
+     원칙. "목업" 같은 이 편집 도구 내부 용어도 사양서 문면에는 쓰지 않고 "화면"으로 표현한다.
      데이터 출처: 이 파일 맨 아래에 이미 항상 내장되어 있는 __mb_src__ JSON 블록(mbBuildSaveData()
      결과 = comps 배열 전체)을 그대로 재사용한다 - 별도로 뭘 더 심을 필요가 없다. (주의: 이 주석에
      실제 태그 문자열 "<script...id=__mb_src__>"을 그대로 적으면 안 된다 - 「불러오기」 기능이 그
      정확한 문자열을 파일에서 찾아 진짜 데이터 블록으로 착각해버려서, 내보낸 파일을 다시 불러올 때
      이 주석이 먼저 걸려 실패하게 된다.)
   ==================================================================================== */
+  // 표시타입 어휘는 사양서 표준 사전(Text/Textarea/Number General/Checkbox/Day picker/
+  // Date time/File Upload/Combobox/옵션버튼(Radio)/버튼)에 맞춘다. search/popup(팝업·검색형
+  // 입력)은 사전에 없는 종류라 표시타입 자체는 Text로 적고, 팝업/검색형이라는 사실은 표시타입
+  // 칸이 아니라 비고(note) 칸에 문장으로 남�다(사양서 표준 규칙과 동일).
   const MB_SPEC_TYPE_MAP={
-    search:'TextBox', text:'Text', input:'Text', radio:'Radio', combo:'ComboBox',
-    date:'Day picker', daterange:'Day picker(기간)', check:'Checkbox', checkbox:'Checkbox',
-    button:'Button', popup:'Popup'
+    text:'Text', input:'Text', search:'Text', popup:'Text',
+    textarea:'Textarea', number:'Number General',
+    radio:'옵션버튼(Radio)', combo:'Combobox',
+    date:'Day picker', daterange:'Day picker(기간)', datetime:'Date time',
+    check:'Checkbox', checkbox:'Checkbox', file:'File Upload', button:'버튼'
   };
   function mbSpecTypeLabel(t){ return MB_SPEC_TYPE_MAP[t]||'Text'; }
-  const MB_LABELED_INPUT_TYPES=['input','combo','date','daterange','check','radio','popup'];
+  function mbSpecIsPopupType(t){ return t==='search' || t==='popup'; }
+  const MB_LABELED_INPUT_TYPES=['input','combo','date','daterange','check','radio','popup','search','textarea','number','file'];
 
   // comps 배열을 훑어 조회조건(searchbar)/싱글 섹션(section 컴포넌트 기준으로 묶음)/그리드/버튼
-  // 넷으로 나눠 뽑는다. 순서는 화면에 놓인 순서(comps 배열 순서)를 그대로 따른다.
+  // 넷으로 나눠 뽑는다. 순서는 화면에 놓인 순서(comps 배열 순서)를 그대로 따른다. 각 행에는
+  // 표시타입뿐 아니라, 화면 구조만으로 알 수 있는 비고(note)도 함께 채운다(팝업/검색형, 옵션값,
+  // 중복 라벨 등) - 그 이상의 업무 로직은 담지 않는다.
+  function mbSpecNoteFor(rawType, options){
+    const notes=[];
+    if(mbSpecIsPopupType(rawType)) notes.push('팝업/검색형');
+    if((rawType==='combo') && options && String(options).trim()){
+      notes.push('화면 옵션값(예시): '+String(options).split(',').map(function(s){return s.trim();}).filter(Boolean).join(', '));
+    }
+    if(rawType==='radio' && options && String(options).trim()){
+      notes.push('옵션 : '+String(options).split(',').map(function(s){return s.trim();}).filter(Boolean).join(', '));
+    }
+    return notes.join(' / ');
+  }
+
   function mbBuildSpecSections(){
     const src=JSON.parse(document.getElementById('__mb_src__').textContent);
     const comps=src.comps||[];
@@ -730,22 +753,32 @@
     comps.filter(c=>c.type==='searchbar').forEach(sb=>{
       const rows=(sb.fields||[]).filter(f=>(f.label||'').trim()).map(f=>({
         label:f.label.trim(), type:mbSpecTypeLabel(f.type||'text'),
-        required:!!f.required, readonly:!!f.readonly
+        required:!!f.required, readonly:!!f.readonly,
+        note:mbSpecNoteFor(f.type||'text', f.options)
       }));
-      if(rows.length) searchbars.push({rows});
+      if(rows.length){
+        // 조회조건 표에는 화면 자체에 내장된 표준 [조회] 버튼도 한 행으로 함께 남긴다(별도
+        // 컴포넌트가 아니라 조회조건 영역에 딸린 버튼이라는 사실을 비고에 적는다).
+        rows.push({label:'[조회]', type:'버튼', required:false, readonly:false,
+          note:'조회조건 영역의 표준 조회 버튼(별도 항목이 아닌 조회 영역 내장 버튼)'});
+        searchbars.push({rows});
+      }
     });
 
     // 싱글(섹션): section 컴포넌트를 만날 때마다 새 묶음을 시작한다. 첫 section 이전에 나오는
     // 라벨 있는 컴포넌트는 "단일 입력항목"이라는 이름 없는 기본 묶음에 담는다.
-    const sections=[]; let cur={title:'단일 입력항목', rows:[]}; let curStarted=false;
+    const sections=[]; let cur={title:'단일 입력항목', rows:[]};
     comps.forEach(c=>{
       if(c.type==='section'){
         if(cur.rows.length) sections.push(cur);
-        cur={title:(c.text||'').trim()||'단일 입력항목', rows:[]}; curStarted=true;
+        cur={title:(c.text||'').trim()||'단일 입력항목', rows:[]};
       } else if(MB_LABELED_INPUT_TYPES.includes(c.type) && c.showLabel){
         const label=(c.labelText||'').trim();
         if(!label) return;
-        cur.rows.push({label, type:mbSpecTypeLabel(c.type), required:!!c.required, readonly:!!c.readonly});
+        cur.rows.push({
+          label, type:mbSpecTypeLabel(c.type), required:!!c.required, readonly:!!c.readonly,
+          note:mbSpecNoteFor(c.type, c.options)
+        });
       }
     });
     if(cur.rows.length) sections.push(cur);
@@ -753,16 +786,28 @@
     const grids=[];
     comps.filter(c=>c.type==='grid').forEach(g=>{
       const labels=(g.text||'').split(',').map(s=>s.trim());
-      const colTypes=g.colTypes||[], colReq=g.colRequired||[], colRo=g.colReadonly||[];
+      const colTypes=g.colTypes||[], colReq=g.colRequired||[], colRo=g.colReadonly||[],
+            colOpts=g.colOptions||[];
+      const seen={};
       const rows=[];
       labels.forEach((label,i)=>{
         if(!label) return;
+        const rawType=colTypes[i]||'input';
+        const notes=[mbSpecNoteFor(rawType, colOpts[i])];
+        if(seen[label]) notes.push('동일 라벨의 컬럼이 화면에 여러 개 있음(화면 그대로 표기)');
+        seen[label]=true;
         rows.push({
-          label, type:mbSpecTypeLabel(colTypes[i]||'input'),
-          required:!!colReq[i], readonly:!!colRo[i]
+          label, type:mbSpecTypeLabel(rawType),
+          required:!!colReq[i], readonly:!!colRo[i],
+          note:notes.filter(Boolean).join(' / ')
         });
       });
-      if(rows.length) grids.push({title:(g.gtitle||'').trim()||'그리드', rows});
+      if(rows.length){
+        grids.push({
+          title:(g.gtitle||'').trim()||'그리드', rows,
+          noAddDel: (g.stdAdd===false && g.stdDelete===false)
+        });
+      }
     });
 
     const buttons=comps.filter(c=>c.type==='button' && (c.text||'').trim()).map(c=>c.text.trim());
@@ -770,27 +815,58 @@
     return {title, searchbars, sections, grids, buttons};
   }
 
-  // 데이터 구성 요약(①②③...) - 목업 구조만으로 기계적으로 만들 수 있는 상한선까지의 "화면 설명".
-  // 실제 업무 로직(클릭 시 동작)은 목업 어디에도 없는 정보라 담지 못한다는 걸 알고 쓰는 함수.
+  // 화면 구성 요약(①②③...) - 화면 구조만으로 기계적으로 만들 수 있는 상한선까지의 "화면 설명".
+  // 실제 업무 로직(클릭 시 동작)은 화면 어디에도 없는 정보라 담지 못한다는 걸 알고 쓰는 함수.
   function mbSpecDescText(spec){
-    const CIRCLED='①②③④⑤⑥⑦⑧⑨⑩';
-    let idx=0; const blocks=[];
-    function block(title, rows){
-      const mark=CIRCLED[idx]||((idx+1)+'.'); idx++;
-      const labels=rows.map(r=>r.label);
-      const req=rows.filter(r=>r.required).map(r=>r.label);
-      const ro=rows.filter(r=>r.readonly).map(r=>r.label);
-      return mark+' '+title+'\n　▷ 입력컬럼 : '+(labels.length?labels.join(', '):'없음')+'\n　▷ 필수 : '+(req.length?req.join(', '):'없음')+'\n　▷ 읽기전용 : '+(ro.length?ro.join(', '):'없음');
+    const groups=[];
+    if(spec.searchbars.length) groups.push('[조회조건]');
+    spec.sections.forEach(s=>groups.push('['+s.title+']'));
+    spec.grids.forEach(g=>groups.push('['+g.title+'] 그리드'));
+
+    const lines=['① 화면 구성'];
+    lines.push('　'+(groups.length? groups.join(' → ')+' 순으로 배치되어 있다.' : '화면에 라벨이 있는 입력 항목이 없다.'));
+    if(spec.buttons.length) lines.push('　▷ 하단 버튼 : '+spec.buttons.join('·'));
+
+    const gridNotes=spec.grids.filter(g=>g.noAddDel).map(g=>'['+g.title+'] 그리드는 행추가·행삭제 버튼이 없다.');
+    if(gridNotes.length){
+      lines.push('② 그리드 특성');
+      gridNotes.forEach(n=>lines.push('　'+n));
     }
-    spec.searchbars.forEach(sb=>blocks.push(block('조회조건', sb.rows)));
-    spec.sections.forEach(s=>blocks.push(block(s.title, s.rows)));
-    spec.grids.forEach(g=>blocks.push(block(g.title+' 그리드', g.rows)));
-    if(spec.buttons.length){
-      const mark=CIRCLED[idx]||((idx+1)+'.'); idx++;
-      blocks.push(mark+' 버튼\n　▷ 구성 : '+spec.buttons.join(', '));
-    }
-    return blocks.join('\n\n');
+    lines.push('※ 위 내용은 화면 구성(레이아웃·컴포넌트 배치)만으로 파악한 사실이며, 실제 조회/저장 시의 업무 로직·검증 규칙은 이 사양서에 포함되어 있지 않습니다.');
+    return lines.join('\n');
   }
+
+  // 1.개요의 "프로그램 유형" - 버튼 라벨만 보고 기계적으로 판정한다(등록/조회/리포트 중 하나).
+  // 그 이상의 근거가 필요한 판단(왜 그런지, 세부 동작이 뭔지)은 여기 담지 않는다.
+  function mbSpecProgramType(spec){
+    const btnText=spec.buttons.join(' ');
+    if(/출력|인쇄|Export|다운로드/i.test(btnText)) return '리포트(조회/출력)';
+    if(/저장|등록|수정|확정|삭제/.test(btnText)) return '등록';
+    return '조회';
+  }
+
+  // 1.개요의 "기타 특성" - 화면 구성 순서 + 그리드 행추가/삭제 여부만 문장으로 옮긴다.
+  function mbSpecEtcFeature(spec){
+    const groups=[];
+    if(spec.searchbars.length) groups.push('[조회조건]');
+    spec.sections.forEach(s=>groups.push('['+s.title+']'));
+    spec.grids.forEach(g=>groups.push('['+g.title+'] 그리드'));
+    let text = groups.length ? (groups.join(' + ')+' 구조.') : '';
+    const gridNotes=spec.grids.filter(g=>g.noAddDel).map(g=>'['+g.title+'] 그리드는 행추가/행삭제 없음.');
+    if(gridNotes.length) text += (text?'\n':'') + gridNotes.join(' ');
+    return text;
+  }
+
+  const MB_SPEC_CHECKLIST=[
+    '· 메시지 : 누락/유형/사양서 일치 여부',
+    '· 컨트롤 : 보안필드·GUI Status, 상태별 활성/비활성',
+    '· 커서 복귀 : 저장/조회 후 커서·포커스 위치',
+    '· 화면세팅 : Default값·자동세팅 로직 확인',
+    '· 타이틀/오타/잘림 확인',
+    '· 리포트 : 해당없음',
+    '· 조회 0건 메시지 확인',
+    '· 컨텐츠 검토 : Test Case·주요 로직 단위테스트 기술 여부'
+  ];
 
   // ExcelJS는 라이브러리 용량이 커서(1MB+) html2canvas처럼 파일 안에 통째로 내장하지 않고,
   // 이 버튼을 실제로 누른 시점에만 CDN에서 불러온다 - 인터넷 연결이 필요한 유일한 기능이라는 뜻.
@@ -875,6 +951,104 @@
     setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
     return filename;
   }
+
+  // ── 시트 공통 스타일/헬퍼 (레퍼런스 사양서 실측값 그대로) ──────────────────────────
+  const MB_XL_THIN={style:'thin', color:{argb:'FFCCCCCC'}};
+  const MB_XL_BORDER_ALL={top:MB_XL_THIN,bottom:MB_XL_THIN,left:MB_XL_THIN,right:MB_XL_THIN};
+  const MB_XL_TOP_ONLY={top:MB_XL_THIN};
+  const MB_XL_FILL_TITLE={type:'pattern',pattern:'solid',fgColor:{argb:'FF203864'}};
+  const MB_XL_FILL_LABEL={type:'pattern',pattern:'solid',fgColor:{argb:'FFF2F2F2'}};
+  const MB_XL_FILL_BANNER={type:'pattern',pattern:'solid',fgColor:{argb:'FF4472C4'}};
+  const MB_XL_FILL_COLHEAD={type:'pattern',pattern:'solid',fgColor:{argb:'FFD9E1F2'}};
+
+  function mbXlDisplayWidth(s){
+    let w=0;
+    for(const ch of String(s)){ w += ch.charCodeAt(0)>0x2E80 ? 1.9 : 1.0; }
+    return w;
+  }
+  function mbXlWrappedLineCount(text, totalColWidth){
+    let lines=0;
+    String(text).split('\n').forEach(function(line){
+      lines += Math.max(1, Math.ceil(mbXlDisplayWidth(line)/totalColWidth));
+    });
+    return lines;
+  }
+  function mbXlMergeRow(ws, ncol, r, text, opts){
+    opts=opts||{};
+    ws.mergeCells(r,1,r,ncol);
+    const c=ws.getCell(r,1);
+    if(text!==null) c.value=text;
+    c.font={bold:!!opts.bold, size:opts.size||9, color:opts.color?{argb:opts.color}:undefined};
+    c.alignment={horizontal:opts.align||'left', vertical:opts.valign||'middle', wrapText:true};
+    if(opts.fill){ for(let col=1;col<=ncol;col++) ws.getCell(r,col).fill=opts.fill; }
+    if(opts.border){ for(let col=1;col<=ncol;col++) ws.getCell(r,col).border=opts.border; }
+    return c;
+  }
+  function mbXlSheetTitle(ws, ncol, r, text){
+    mbXlMergeRow(ws, ncol, r, text, {bold:true,size:14,fill:MB_XL_FILL_TITLE,align:'center',color:'FFFFFFFF'});
+    ws.getRow(r).height=26;
+    return r+1;
+  }
+  function mbXlSectionBanner(ws, ncol, r, text){
+    mbXlMergeRow(ws, ncol, r, text, {bold:true,size:11,fill:MB_XL_FILL_BANNER,color:'FFFFFFFF'});
+    ws.getRow(r).height=20;
+    return r+1;
+  }
+  function mbXlParaBlock(ws, ncol, r, text){
+    const c=mbXlMergeRow(ws, ncol, r, text, {align:'left',valign:'top'});
+    const totalW=ws.columns.reduce(function(a,col){return a+(col.width||10);},0);
+    ws.getRow(r).height=Math.max(18, Math.round(15*mbXlWrappedLineCount(text,totalW)));
+    return r+1;
+  }
+  // 1.개요(4열, 라벨 1칸)·2~4번 시트 헤더(8열, 라벨 2칸) 양쪽에서 함께 쓰는 항목-값 행.
+  function mbXlKVRow(ws, ncol, labelSpan, r, label, value, opts){
+    opts=opts||{};
+    ws.mergeCells(r,1,r,labelSpan);
+    const lc=ws.getCell(r,1);
+    lc.value=label; lc.font={bold:true,size:9}; lc.alignment={vertical:'middle'};
+    lc.fill=opts.fill; lc.border=MB_XL_TOP_ONLY;
+    for(let col=2;col<=labelSpan;col++){ const cc=ws.getCell(r,col); cc.fill=opts.fill; cc.border=MB_XL_TOP_ONLY; }
+    ws.mergeCells(r,labelSpan+1,r,ncol);
+    const vc=ws.getCell(r,labelSpan+1);
+    vc.value=value; vc.font={size:9}; vc.alignment={vertical:'middle'};
+    vc.border=MB_XL_TOP_ONLY;
+    for(let col=labelSpan+2;col<=ncol;col++) ws.getCell(r,col).border=MB_XL_TOP_ONLY;
+    ws.getRow(r).height=18;
+    return r+1;
+  }
+  function mbXlDataTable(ws, ncol, r, headers, rows){
+    headers.forEach(function(h,i){
+      const c=ws.getCell(r,i+1);
+      c.value=h; c.font={bold:true,color:{argb:'FF1F3864'}}; c.fill=MB_XL_FILL_COLHEAD; c.border=MB_XL_TOP_ONLY;
+      c.alignment={horizontal:'center'};
+    });
+    ws.getRow(r).height=26; r++;
+    rows.forEach(function(row){
+      row.forEach(function(v,i){
+        if(i>=headers.length) return;
+        const c=ws.getCell(r,i+1);
+        if(v!==null && v!==undefined && v!=='') c.value=v;
+        c.border=MB_XL_TOP_ONLY; c.alignment={horizontal:i===0?'left':'center', wrapText:i===0};
+      });
+      ws.getRow(r).height=18;
+      r++;
+    });
+    return r;
+  }
+  function mbXlHeaderKV(ws, ncol, r, pairs){
+    pairs.forEach(function(p){ r=mbXlKVRow(ws, ncol, 2, r, p[0], p[1], {fill:MB_XL_FILL_LABEL}); });
+    return r;
+  }
+
+  const MB_SPEC_FIELD_HEADERS=['한글명','영문컬럼ID','저장/조회 테이블','표시타입','기본값·설명(관련정보)','입력필수','Read Only','Display'];
+  function mbSpecFieldTable(ws, r, sectionTitle, rows){
+    r=mbXlSectionBanner(ws, 8, r, sectionTitle);
+    const vals=rows.map(function(row){
+      return [row.label, '', '', row.type, row.note||'', row.required?'Y(필수)':'N(선택)', row.readonly?'Y':'N', 'Y'];
+    });
+    return mbXlDataTable(ws, 8, r, MB_SPEC_FIELD_HEADERS, vals);
+  }
+
   window.mbOpenSpecExport=async function(){
     const badge=document.getElementById('mbBadgeS');
     const badgeOrigHtml=badge?badge.innerHTML:'';
@@ -884,7 +1058,7 @@
       const spec=mbBuildSpecSections();
       const shotBlob=await mbCaptureBlobForSpec();
       const shotBuf=await mbBlobToArrayBuffer(shotBlob);
-      // 화면 비율을 알아야 삽입할 이미지의 세로 크기(그리고 그만큼 늘려야 할 9행 높이)를 정할 수
+      // 화면 비율을 알아야 삽입할 이미지의 세로 크기(그리고 그만큼 늘려야 할 행 높이)를 정할 수
       // 있으므로, Blob을 임시 <img>에 한 번 그려 원본 픽셀 크기를 읽는다. onload가 어떤 이유로든
       // (깨진 이미지 등) 안 오면 절대 무한정 멈춰있지 않도록 onerror와 타임아웃 둘 다 안전장치로
       // 걸어, 무슨 일이 있어도 8초 안에는 반드시(기본값으로라도) 다음 단계로 넘어가게 한다.
@@ -900,130 +1074,145 @@
 
       const ExcelJS=await mbLoadExcelJS();
       const wb=new ExcelJS.Workbook();
-      const ws=wb.addWorksheet('화면LO');
-      const NCOLS=8;
-      const colWidths=[20.125,18,22,13,40,12,16,12];
-      colWidths.forEach(function(w,i){ ws.getColumn(i+1).width=w; });
-
-      const thin={style:'thin', color:{argb:'FFCCCCCC'}};
-      const borderAll={top:thin,bottom:thin,left:thin,right:thin};
-      const topOnly={top:thin};
-      const fillHeader={type:'pattern',pattern:'solid',fgColor:{argb:'FF203864'}};
-      const fillLabel={type:'pattern',pattern:'solid',fgColor:{argb:'FFF2F2F2'}};
-      // 레퍼런스 원본에서 실측한 값 - 진한 남색 배너(■ 화면설명/■ 화면 Mock-up, 그리고 각
-      // 섹션 이름표 "[조회조건 Selection]" 등)는 배경이 진한 파랑(FF4472C4)에 글자가 흰색이고,
-      // 그 아래 컬럼 헤더 행(한글명/표시타입 등)은 반대로 배경이 옅은 하늘색(FFD9E1F2)에 글자가
-      // 진한 남색(FF1F3864)이다 - 이 둘을 서로 바꿔 쓰면 지금 겪은 것과 같은 색 불일치가 난다.
-      const fillDarkBanner={type:'pattern',pattern:'solid',fgColor:{argb:'FF4472C4'}};
-      const fillColHeader={type:'pattern',pattern:'solid',fgColor:{argb:'FFD9E1F2'}};
-
-      function mergeRow(r,text,opts){
-        opts=opts||{};
-        ws.mergeCells(r,1,r,NCOLS);
-        const c=ws.getCell(r,1);
-        if(text!==null) c.value=text;
-        c.font={bold:!!opts.bold, size:opts.size||11, color:opts.color?{argb:opts.color}:undefined};
-        c.alignment={horizontal:opts.align||'left', vertical:'middle', wrapText:true};
-        if(opts.fill){ for(let col=1;col<=NCOLS;col++) ws.getCell(r,col).fill=opts.fill; }
-        if(opts.border){ for(let col=1;col<=NCOLS;col++) ws.getCell(r,col).border=opts.border; }
-        return c;
-      }
-      function displayWidth(s){
-        let w=0;
-        for(const ch of String(s)){ w += ch.charCodeAt(0)>0x2E80 ? 1.9 : 1.0; }
-        return w;
-      }
-      function wrappedLineCount(text){
-        const target=colWidths.reduce((a,b)=>a+b,0);
-        let lines=0;
-        String(text).split('\n').forEach(function(line){
-          lines += Math.max(1, Math.ceil(displayWidth(line)/target));
-        });
-        return lines;
-      }
-
-      function mergeLabelValueRow(r,label,value,opts){
-        opts=opts||{};
-        ws.mergeCells(r,1,r,2);
-        const lc=ws.getCell(r,1);
-        lc.value=label; lc.font={bold:true,size:opts.size||9}; lc.alignment={vertical:'middle'};
-        lc.fill=opts.fill; lc.border=topOnly;
-        const c2=ws.getCell(r,2); c2.fill=opts.fill; c2.border=topOnly;
-        ws.mergeCells(r,3,r,NCOLS);
-        const vc=ws.getCell(r,3);
-        vc.value=value; vc.font={size:opts.size||9}; vc.alignment={vertical:'middle'};
-        vc.border=topOnly;
-        for(let col=4;col<=NCOLS;col++) ws.getCell(r,col).border=topOnly;
-      }
-
-      mergeRow(1,'화면 LAYOUT (Screen Layout)',{bold:true,size:14,fill:fillHeader,align:'center',color:'FFFFFFFF'});
-      ws.getRow(1).height=26;
-
-      mergeLabelValueRow(3,'모듈 / 서브모듈','',{fill:fillLabel});
-      ws.getRow(3).height=18;
-
-      mergeLabelValueRow(4,'프로그램ID / 프로그램명',' / '+spec.title,{fill:fillLabel});
-      ws.getRow(4).height=18;
-
-      const todayStr=new Date().toISOString().slice(0,10);
-      mergeLabelValueRow(5,'작성자 / 작성일',' / '+todayStr,{fill:fillLabel});
-      ws.getRow(5).height=18;
-
-      mergeRow(6,'■ 화면설명',{bold:true,size:11,fill:fillDarkBanner,color:'FFFFFFFF'});
-      ws.getRow(6).height=20;
-
+      const todayStr=new Date().toISOString().slice(0,10).replace(/-/g,'.');
+      const todayIso=new Date().toISOString().slice(0,10);
+      const programType=mbSpecProgramType(spec);
+      const etcFeature=mbSpecEtcFeature(spec);
       const descText=mbSpecDescText(spec);
-      mergeRow(7,descText,{align:'left'});
-      ws.getCell(7,1).alignment={horizontal:'left',vertical:'top',wrapText:true};
-      ws.getRow(7).height=Math.round(15*(wrappedLineCount(descText)+descText.split('\n\n').length));
 
-      mergeRow(8,'■ 화면 Mock-up',{bold:true,size:11,fill:fillDarkBanner,color:'FFFFFFFF'});
-      ws.getRow(8).height=20;
+      // 화면LO의 [조회조건 Selection]/[섹션]/[그리드] 표에 쓸 필드 그룹을 한 번만 모아 여러
+      // 시트(2.화면LO의 표, 4.기술사양의 Display 컬럼 매핑)에서 재사용한다.
+      const fieldGroups=[];
+      spec.searchbars.forEach(function(sb){ fieldGroups.push({title:'[조회조건 Selection]  (저장 없음)', rows:sb.rows}); });
+      spec.sections.forEach(function(s){ fieldGroups.push({title:'['+s.title+']', rows:s.rows}); });
+      spec.grids.forEach(function(g){ fieldGroups.push({title:'['+g.title+'] 그리드', rows:g.rows, isGrid:true}); });
 
-      mergeRow(9,null,{});
-      const targetImgW=900;
-      const scale=targetImgW/shotDims.w;
-      const imgW=targetImgW, imgH=Math.round(shotDims.h*scale);
-      const imgId=wb.addImage({buffer:shotBuf, extension:'png'});
-      ws.addImage(imgId,{tl:{col:0,row:8}, ext:{width:imgW,height:imgH}});
-      // 이미지는 9행 자체의 높이(아래 한 줄로) 안에 온전히 들어가도록 그 행 높이를 이미지에 맞춰
-      // 늘리기만 하면 되고, 엑셀에서 그림은 셀을 실제로 "차지"하지 않고 그 위에 떠 있는 것뿐이라
-      // 다음 행(10행)은 이미지 크기와 무관하게 항상 바로 다음 줄로 시작한다 - 이미지 크기만큼
-      // 별도로 몇 줄을 더 "비워둬야" 한다고 계산해서 10행 시작 지점을 밀어내리면(예전 버그) 안 된다.
-      ws.getRow(9).height=Math.round(imgH*0.75)+10;
-
-      let curRow=10;
-      function writeSection(sectionLabel, rows){
-        mergeRow(curRow, sectionLabel, {bold:true, fill:fillDarkBanner, color:'FFFFFFFF'});
-        ws.getRow(curRow).height=20; curRow++;
-        const headers=['한글명','영문컬럼ID','저장/조회 테이블','표시타입','기본값·설명(관련정보)','입력필수','Read Only','Display'];
-        headers.forEach(function(h,i){
-          const c=ws.getCell(curRow,i+1);
-          c.value=h; c.font={bold:true,color:{argb:'FF1F3864'}}; c.fill=fillColHeader; c.border=topOnly;
+      // ── 0.변경이력 ──────────────────────────────────────────────────────────────
+      {
+        const ws=wb.addWorksheet('0.변경이력');
+        [5,14,70,20,12].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        let r=1;
+        r=mbXlSheetTitle(ws,5,r,'0. 변경이력  (Change History)');
+        ['No','변경 일자','변경 내용','담당자','요청자'].forEach(function(h,i){
+          const c=ws.getCell(r,i+1);
+          c.value=h; c.font={bold:true,color:{argb:'FF1F3864'}}; c.fill=MB_XL_FILL_COLHEAD; c.border=MB_XL_TOP_ONLY;
           c.alignment={horizontal:'center'};
         });
-        curRow++;
-        rows.forEach(function(row){
-          const vals=[row.label, null, null, row.type, null, row.required?'Y':'N', row.readonly?'Y':'N', 'Y'];
-          vals.forEach(function(v,i){
-            const c=ws.getCell(curRow,i+1);
-            if(v!==null) c.value=v;
-            c.border=topOnly; c.alignment={horizontal:i===0?'left':'center'};
-          });
-          curRow++;
+        ws.getRow(r).height=26; r++;
+        [1, todayStr, '최초 작성', '', ''].forEach(function(v,i){
+          const c=ws.getCell(r,i+1); c.value=v; c.border=MB_XL_TOP_ONLY; c.alignment={horizontal:'left'};
         });
-        curRow++;
       }
-      spec.searchbars.forEach(function(sb){ writeSection('[조회조건 Selection]  (저장 없음)', sb.rows); });
-      spec.sections.forEach(function(s){ writeSection('['+s.title+']', s.rows); });
-      spec.grids.forEach(function(g){ writeSection('['+g.title+'] 그리드', g.rows); });
-      if(spec.buttons.length){
-        writeSection('[버튼]', spec.buttons.map(function(b){ return {label:b,type:'Button',required:false,readonly:false}; }));
+
+      // ── 1.개요 ──────────────────────────────────────────────────────────────────
+      {
+        const ws=wb.addWorksheet('1.개요');
+        [26,45,25,25].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        let r=1;
+        r=mbXlSheetTitle(ws,4,r,'1. 개요  (Overview)');
+        const pairs=[
+          ['프로젝트 명',''], ['모듈 / 서브모듈',' / '], ['프로그램ID',''], ['프로세스ID','-'],
+          ['프로그램명', spec.title], ['프로그램 개요',''], ['요청자 / 요청일',' / '],
+          ['예상 개발기간 / 완료희망일',''], ['개발자 / 개발완료일',' / '],
+          ['우선순위(A/B/C)',''], ['난이도(H/M/L)',''], ['프로그램 유형', programType],
+          ['재사용 PGM-ID','-'], ['수행빈도',''], ['기타 특성', etcFeature]
+        ];
+        pairs.forEach(function(p){ r=mbXlKVRow(ws,4,1,r,p[0],p[1],{fill:MB_XL_FILL_LABEL}); });
+      }
+
+      // ── 2.화면LO ────────────────────────────────────────────────────────────────
+      {
+        const ws=wb.addWorksheet('2.화면LO');
+        [16,18,22,22,40,12,16,12].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        let r=1;
+        r=mbXlSheetTitle(ws,8,r,'2. 화면 LAYOUT  (Screen Layout)');
+        r=mbXlHeaderKV(ws,8,r,[
+          ['모듈 / 서브모듈',' / '],
+          ['프로그램ID / 프로그램명',' / '+spec.title],
+          ['작성자 / 작성일',' / '+todayIso]
+        ]);
+        r=mbXlSectionBanner(ws,8,r,'■ 화면설명');
+        r=mbXlParaBlock(ws,8,r,descText);
+
+        r=mbXlSectionBanner(ws,8,r,'■ 화면 Mock-up');
+        const targetImgW=900;
+        const scale=targetImgW/shotDims.w;
+        const imgW=targetImgW, imgH=Math.round(shotDims.h*scale);
+        const imgId=wb.addImage({buffer:shotBuf, extension:'png'});
+        ws.addImage(imgId,{tl:{col:0,row:r-1}, ext:{width:imgW,height:imgH}});
+        ws.getRow(r).height=Math.round(imgH*0.75)+10;
+        r++;
+
+        fieldGroups.forEach(function(g){ r=mbSpecFieldTable(ws, r, g.title, g.rows); });
+        if(spec.buttons.length && !spec.searchbars.length){
+          // 조회조건이 없는 화면은 표준 [조회] 버튼이 자동으로 붙지 않으므로, 버튼 목록을
+          // 별도 [버튼] 표로 한 번 더 남긴다(조회조건이 있으면 그 표에 이미 [조회]가 포함됨).
+          r=mbSpecFieldTable(ws, r, '[버튼]', spec.buttons.map(function(b){
+            return {label:b, type:'버튼', required:false, readonly:false, note:''};
+          }));
+        }
+      }
+
+      // ── 3.기능사양 ──────────────────────────────────────────────────────────────
+      {
+        const ws=wb.addWorksheet('3.기능사양');
+        [22,16,16,16,16,16,16,16].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        let r=1;
+        r=mbXlSheetTitle(ws,8,r,'3. 기능사양  (Functional Specification / 사용자 매뉴얼)');
+        r=mbXlHeaderKV(ws,8,r,[
+          ['모듈 / 서브모듈',' / '],
+          ['프로그램ID / 프로그램명',' / '+spec.title],
+          ['작성자 / 작성일',' / '+todayIso],
+          ['프로그램 목적','']
+        ]);
+        r=mbXlParaBlock(ws,8,r,"※ 본 시트는 사용자(현업) 관점의 기능 설명입니다. 사용 테이블·컬럼ID·SQL 등 기술 내용은 '4.기술사양' 시트를 참조하십시오. (XL-R08)");
+      }
+
+      // ── 4.기술사양 ──────────────────────────────────────────────────────────────
+      {
+        const ws=wb.addWorksheet('4.기술사양');
+        [16,18,22,28,16,30].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        let r=1;
+        r=mbXlSheetTitle(ws,6,r,'4. 기술사양  (Technical Specification)');
+        r=mbXlHeaderKV(ws,6,r,[
+          ['모듈 / 서브모듈',' / '],
+          ['프로그램ID / 프로그램명',' / '+spec.title],
+          ['작성자 / 작성일',' / '+todayIso]
+        ]);
+        const gridRows=[];
+        spec.grids.forEach(function(g){ gridRows.push.apply(gridRows, g.rows); });
+        if(gridRows.length){
+          r=mbXlSectionBanner(ws,6,r,'4-1. Display 컬럼 매핑');
+          const headers=['한글명','영문컬럼ID','원천 테이블(별칭)','SQL 표현식/산출','표시타입','비고'];
+          const vals=gridRows.map(function(row){ return [row.label, '', '', '', row.type, row.note||'']; });
+          r=mbXlDataTable(ws,6,r,headers,vals);
+        }
+      }
+
+      // ── 5.테이블 레이아웃 ──────────────────────────────────────────────────────
+      {
+        const ws=wb.addWorksheet('5.테이블 레이아웃');
+        [16,18,14,10,8,8,12,30].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        let r=1;
+        r=mbXlSheetTitle(ws,8,r,'5. 테이블 레이아웃  (Table Layout)');
+        r=mbXlParaBlock(ws,8,r,'저장/조회 대상 테이블·컬럼 정보는 화면 구성에 나타나지 않는다.');
+      }
+
+      // ── 6.단위테스트 ────────────────────────────────────────────────────────────
+      {
+        const ws=wb.addWorksheet('6.단위테스트');
+        [8,26,20,20,10,20,14,20].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        let r=1;
+        r=mbXlSheetTitle(ws,8,r,'6. 단위테스트  (Unit Test)');
+        r=mbXlSectionBanner(ws,8,r,'■ 테스트 케이스');
+        r=mbXlDataTable(ws,8,r,['순번','테스트 절차','테스트 데이터','예상결과','결과','오류내역','조치예정일','조치내역'],[]);
+        r=mbXlSectionBanner(ws,8,r,'■ 공통 체크리스트');
+        MB_SPEC_CHECKLIST.forEach(function(line){ r=mbXlParaBlock(ws,8,r,line); });
       }
 
       const buf=await wb.xlsx.writeBuffer();
       const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-      const suggestedName='화면레이아웃_'+(spec.title||'mockup').replace(/[\/:*?"<>|]/g,'_')+'.xlsx';
+      const suggestedName='사양서_'+(spec.title||'mockup').replace(/[\/:*?"<>|]/g,'_')+'.xlsx';
       const saved=await mbSaveBlobWithPicker(blob,suggestedName,'Excel 파일','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.xlsx');
       if(saved) showMbToast('사양서 매핑 템플릿(.xlsx)이 저장되었습니다');
     }catch(err){
