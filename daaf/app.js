@@ -154,6 +154,9 @@
     return {
       endpoint: el('apiEndpoint').value.trim(),
       userId: el('apiUserId') ? el('apiUserId').value.trim() : '',
+      // 체크돼 있으면 '직접 호출'(Node가 서버-서버로 직접 부름), 꺼져 있으면(기본) '세션'
+      // (로그인해둔 Electron 창 안에서 실제 fetch 실행) — apiClient.js DEFAULTS.authMode 참고.
+      authMode: (el('apiAuthModeDirect') && el('apiAuthModeDirect').checked) ? 'direct' : 'session',
       cookie: el('apiCookie').value,
       tokenHeaderName: el('apiTokenHeader').value.trim(),
       tokenValue: el('apiTokenValue').value,
@@ -190,6 +193,65 @@
     if (el('apiTokenValue')) el('apiTokenValue').value = saved.tokenValue || '';
     if (el('apiInsecureTls')) el('apiInsecureTls').checked = !!saved.insecureTls;
     if (toggle) toggle.checked = !!saved.enabled;
+
+    // authMode: 저장된 값이 'direct'일 때만 체크(기본은 세션 모드) — 체크 상태에 따라
+    // 아래 쿠키/토큰 "고급" 영역을 보이거나 숨긴다.
+    const authModeChk = el('apiAuthModeDirect');
+    const advancedBox = el('apiDirectAdvanced');
+    function syncAdvancedVisibility() {
+      if (advancedBox) advancedBox.style.display = (authModeChk && authModeChk.checked) ? '' : 'none';
+    }
+    if (authModeChk) {
+      authModeChk.checked = saved.authMode === 'direct';
+      syncAdvancedVisibility();
+      authModeChk.addEventListener('change', syncAdvancedVisibility);
+    }
+
+    // 세션 로그인 상태 표시 + 버튼
+    const sessionStatusEl = el('apiSessionStatus');
+    const sessionLoginBtn = el('apiSessionLoginBtn');
+    const sessionLogoutBtn = el('apiSessionLogoutBtn');
+    function paintSessionStatus(loggedIn, note) {
+      if (!sessionStatusEl) return;
+      if (note) { sessionStatusEl.textContent = note; sessionStatusEl.style.background = '#e2e8f0'; sessionStatusEl.style.color = 'var(--mut)'; return; }
+      if (loggedIn) {
+        sessionStatusEl.textContent = '✔ 로그인됨';
+        sessionStatusEl.style.background = 'rgba(34,197,94,.15)'; sessionStatusEl.style.color = '#16a34a';
+      } else {
+        sessionStatusEl.textContent = '로그인 필요';
+        sessionStatusEl.style.background = 'rgba(239,68,68,.12)'; sessionStatusEl.style.color = '#dc2626';
+      }
+    }
+    async function refreshSessionStatus() {
+      if (!(window.api && window.api.apiSessionStatus)) { paintSessionStatus(false, '(세션 기능 없음)'); return; }
+      paintSessionStatus(false, '확인 중…');
+      try {
+        const r = await window.api.apiSessionStatus();
+        paintSessionStatus(!!(r && r.ok && r.loggedIn));
+      } catch (e) { paintSessionStatus(false, '확인 실패'); }
+    }
+    if (sessionLoginBtn) {
+      sessionLoginBtn.addEventListener('click', async () => {
+        sessionLoginBtn.disabled = true;
+        const prevLabel = sessionLoginBtn.textContent;
+        sessionLoginBtn.textContent = '로그인 창 열림 — 로그인 후 창을 닫아주세요…';
+        try {
+          await window.api.apiSessionLogin();
+        } catch (e) { /* 창을 그냥 닫아도 여기로 올 수 있음 — 무시하고 상태만 다시 확인 */ }
+        sessionLoginBtn.disabled = false;
+        sessionLoginBtn.textContent = prevLabel;
+        await refreshSessionStatus();
+      });
+    }
+    if (sessionLogoutBtn) {
+      sessionLogoutBtn.addEventListener('click', async () => {
+        sessionLogoutBtn.disabled = true;
+        try { await window.api.apiSessionLogout(); } catch (e) {}
+        sessionLogoutBtn.disabled = false;
+        await refreshSessionStatus();
+      });
+    }
+    refreshSessionStatus();
     updateWfApiBadge();
 
     function updateWfApiBadge() {
@@ -2132,9 +2194,15 @@
     if (n.type === 'WF' && n.raw) {
       if (n.raw.__apiError) {
         const err = n.raw.__apiError;
+        // detail: 서버가 실제로 돌려준 원본 응답(최대 500자) — 진단 문구(reason)만으로 원인을
+        // 못 좁힐 때(예: userId까지 넣었는데도 403), 서버가 어떤 errMsg를 줬는지 직접 봐야
+        // 다음 원인을 좁힐 수 있어 접이식으로 노출한다(평소엔 접혀 있어 화면을 어지럽히지 않음).
         html += '<div class="warn warn-err">⚠ WF API 조회 실패'
           + (err.code ? ' <span class="muted">[' + esc(err.code) + ']</span>' : '') + '<br>'
           + esc(err.reason || err.detail || '알 수 없는 오류')
+          + (err.detail ? ('<br><details style="margin-top:4px"><summary style="cursor:pointer;color:var(--mut);font-size:11px">서버 원본 응답 보기(진단용)</summary>'
+            + '<pre style="white-space:pre-wrap;word-break:break-all;font-size:11px;margin:4px 0 0;background:#00000008;padding:6px;border-radius:4px;max-height:160px;overflow:auto">'
+            + esc(err.detail) + '</pre></details>') : '')
           + '<br><button type="button" class="btn ghost xs wf-api-retry" data-uid="' + esc(n.uid || '') + '" style="margin-top:6px">🔁 API 재시도</button>'
           + '</div>';
       } else if (n.raw.__apiUsed) {
