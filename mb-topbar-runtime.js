@@ -953,9 +953,11 @@
   }
 
   // ── 시트 공통 스타일/헬퍼 (레퍼런스 사양서 실측값 그대로) ──────────────────────────
-  const MB_XL_THIN={style:'thin', color:{argb:'FFCCCCCC'}};
+  // 레퍼런스 사양서(생성 스크립트의 thin())와 동일하게, 표 셀은 4면 모두 얇은 테두리(기본 검정색)를
+  // 두른다 - 위쪽 선 하나만 긋는 방식이 아니다. 이걸 top만으로 잘못 두면 세로 경계선이 전혀 없어
+  // "표에 테두리가 다 없다"처럼 보인다.
+  const MB_XL_THIN={style:'thin'};
   const MB_XL_BORDER_ALL={top:MB_XL_THIN,bottom:MB_XL_THIN,left:MB_XL_THIN,right:MB_XL_THIN};
-  const MB_XL_TOP_ONLY={top:MB_XL_THIN};
   const MB_XL_FILL_TITLE={type:'pattern',pattern:'solid',fgColor:{argb:'FF203864'}};
   const MB_XL_FILL_LABEL={type:'pattern',pattern:'solid',fgColor:{argb:'FFF2F2F2'}};
   const MB_XL_FILL_BANNER={type:'pattern',pattern:'solid',fgColor:{argb:'FF4472C4'}};
@@ -1006,20 +1008,20 @@
     ws.mergeCells(r,1,r,labelSpan);
     const lc=ws.getCell(r,1);
     lc.value=label; lc.font={bold:true,size:9}; lc.alignment={vertical:'middle'};
-    lc.fill=opts.fill; lc.border=MB_XL_TOP_ONLY;
-    for(let col=2;col<=labelSpan;col++){ const cc=ws.getCell(r,col); cc.fill=opts.fill; cc.border=MB_XL_TOP_ONLY; }
+    lc.fill=opts.fill; lc.border=MB_XL_BORDER_ALL;
+    for(let col=2;col<=labelSpan;col++){ const cc=ws.getCell(r,col); cc.fill=opts.fill; cc.border=MB_XL_BORDER_ALL; }
     ws.mergeCells(r,labelSpan+1,r,ncol);
     const vc=ws.getCell(r,labelSpan+1);
     vc.value=value; vc.font={size:9}; vc.alignment={vertical:'middle'};
-    vc.border=MB_XL_TOP_ONLY;
-    for(let col=labelSpan+2;col<=ncol;col++) ws.getCell(r,col).border=MB_XL_TOP_ONLY;
+    vc.border=MB_XL_BORDER_ALL;
+    for(let col=labelSpan+2;col<=ncol;col++) ws.getCell(r,col).border=MB_XL_BORDER_ALL;
     ws.getRow(r).height=18;
     return r+1;
   }
   function mbXlDataTable(ws, ncol, r, headers, rows){
     headers.forEach(function(h,i){
       const c=ws.getCell(r,i+1);
-      c.value=h; c.font={bold:true,color:{argb:'FF1F3864'}}; c.fill=MB_XL_FILL_COLHEAD; c.border=MB_XL_TOP_ONLY;
+      c.value=h; c.font={bold:true,color:{argb:'FF1F3864'}}; c.fill=MB_XL_FILL_COLHEAD; c.border=MB_XL_BORDER_ALL;
       c.alignment={horizontal:'center'};
     });
     ws.getRow(r).height=26; r++;
@@ -1028,7 +1030,7 @@
         if(i>=headers.length) return;
         const c=ws.getCell(r,i+1);
         if(v!==null && v!==undefined && v!=='') c.value=v;
-        c.border=MB_XL_TOP_ONLY; c.alignment={horizontal:i===0?'left':'center', wrapText:i===0};
+        c.border=MB_XL_BORDER_ALL; c.alignment={horizontal:i===0?'left':'center', wrapText:i===0};
       });
       ws.getRow(r).height=18;
       r++;
@@ -1095,12 +1097,12 @@
         r=mbXlSheetTitle(ws,5,r,'0. 변경이력  (Change History)');
         ['No','변경 일자','변경 내용','담당자','요청자'].forEach(function(h,i){
           const c=ws.getCell(r,i+1);
-          c.value=h; c.font={bold:true,color:{argb:'FF1F3864'}}; c.fill=MB_XL_FILL_COLHEAD; c.border=MB_XL_TOP_ONLY;
+          c.value=h; c.font={bold:true,color:{argb:'FF1F3864'}}; c.fill=MB_XL_FILL_COLHEAD; c.border=MB_XL_BORDER_ALL;
           c.alignment={horizontal:'center'};
         });
         ws.getRow(r).height=26; r++;
         [1, todayStr, '최초 작성', '', ''].forEach(function(v,i){
-          const c=ws.getCell(r,i+1); c.value=v; c.border=MB_XL_TOP_ONLY; c.alignment={horizontal:'left'};
+          const c=ws.getCell(r,i+1); c.value=v; c.border=MB_XL_BORDER_ALL; c.alignment={horizontal:'left'};
         });
       }
 
