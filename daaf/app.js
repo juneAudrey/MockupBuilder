@@ -153,6 +153,7 @@
   function apiFormValues() {
     return {
       endpoint: el('apiEndpoint').value.trim(),
+      userId: el('apiUserId') ? el('apiUserId').value.trim() : '',
       cookie: el('apiCookie').value,
       tokenHeaderName: el('apiTokenHeader').value.trim(),
       tokenValue: el('apiTokenValue').value,
@@ -183,6 +184,7 @@
     }
     saved = saved || {};
     if (el('apiEndpoint')) el('apiEndpoint').value = saved.endpoint || 'https://daaf.bizentro.net:9443';
+    if (el('apiUserId')) el('apiUserId').value = saved.userId || '';
     if (el('apiCookie')) el('apiCookie').value = saved.cookie || '';
     if (el('apiTokenHeader')) el('apiTokenHeader').value = saved.tokenHeaderName || '';
     if (el('apiTokenValue')) el('apiTokenValue').value = saved.tokenValue || '';
@@ -2311,7 +2313,13 @@
           // 숫자로 변환해 보낸다(fetchManyByUid에서 실제로 이 차이 때문에 문제가 될 뻔한 걸
           // 테스트로 확인해서 여기도 동일하게 맞춤).
           const uidValue = /^\d+$/.test(uid) ? Number(uid) : uid;
-          const r = await window.api.apiRefetchOne({ serviceUid: uidValue });
+          // serviceId/serviceName도 함께 보내야 한다(이 WF 행의 값 그대로) — 실제 API가
+          // serviceUid만으로는 인증을 통과시키지 않는 경우가 확인되었다.
+          const r = await window.api.apiRefetchOne({
+            serviceUid: uidValue,
+            serviceId: n.raw && n.raw.SERVICE_ID,
+            serviceName: n.raw && n.raw.SERVICE_NAME
+          });
           if (n.raw) {
             if (r.ok) {
               n.raw.RESOURCE_WF = r.row.RESOURCE_WF;

@@ -760,11 +760,17 @@
             일부 환경은 <b>z_wf_deploy_info.RESOURCE_WF</b>(WF 본문)가 DB에 암호화되어 저장되어 있어 그대로 읽으면 파싱할 수 없습니다.
             상단 헤더의 <b>[WF API 조회]</b> 스위치를 켜면, 해당 WF의 <b>SERVICE_UID</b>로 아래 API를 호출해 복호화된 본문을 대신 받아옵니다.
             UI/Rp/Mo 및 검색은 영향받지 않고 지금처럼 DB에서 조회됩니다.
+            <br><b>사용자 ID</b>는 필수입니다 — 이 API는 쿠키/토큰이 아니라 본인의 Daaf 로그인 ID로 호출자를 식별합니다.
           </div>
 
           <div class="settings-field">
             <label>API 엔드포인트</label>
             <input id="apiEndpoint" type="text" class="settings-input" placeholder="https://daaf.bizentro.net:9443">
+          </div>
+
+          <div class="settings-field">
+            <label>사용자 ID <span class="settings-optional">(필수 — 본인의 Daaf 로그인 ID, 예: joongoo.kim)</span></label>
+            <input id="apiUserId" type="text" class="settings-input" placeholder="예: joongoo.kim">
           </div>
 
           <div class="settings-field">
