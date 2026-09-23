@@ -16,7 +16,7 @@ function diffBoxCls(status){ const st=status||'base'; return st==='base'?'':' mb
 function diffBoxAttr(status){ const st=status||'base'; return st==='base'?'':' data-difflabel="'+DIFF_LABEL[st]+'"'; }
 // 속성패널 "타입" 콤보(입력 컴포넌트 타입 변경)에서 오갈 수 있는 7종. 우측 도구상자의 같은
 // 컴포넌트들과 순서·아이콘·라벨을 동일하게 맞춘다(index.html 도구상자 markup 참고).
-const INPUT_TYPES=['label','input','combo','date','daterange','check','radio'];
+const INPUT_TYPES=['label','input','combo','date','daterange','check','radio','popup','attach'];
 const INPUT_TYPE_META={
   label:{icon:'A',label:'라벨'},
   input:{icon:'▭',label:'텍스트박스'},
@@ -24,7 +24,9 @@ const INPUT_TYPE_META={
   date:{icon:'📅',label:'날짜선택'},
   daterange:{icon:'📅',label:'기간'},
   check:{icon:'☑',label:'체크박스'},
-  radio:{icon:'◉',label:'라디오'}
+  radio:{icon:'◉',label:'라디오'},
+  popup:{icon:'≡',label:'팝업'},
+  attach:{icon:'📎',label:'첨부파일'}
 };
 let comps=[]; let sel=null; let uid=1;
 let selIds=new Set(); // multi-selection
@@ -519,6 +521,8 @@ const defaults={
   // 팻모드 전용 팝업 컴포넌트: 라벨+텍스트박스(코드)+아이콘+텍스트박스(명칭).
   // 명칭 텍스트박스는 항상 읽기전용이며 별도 속성이 없다 - required/readonly/text는 코드 텍스트박스 것.
   popup:{w:420,h:23,text:"",required:false,readonly:false,showLabel:true,labelText:"항목명",labelPos:"left",style:"code_name"},
+  // 씬모드 전용: 조회조건 패널의 '검색' 필드와 같은 모양(텍스트박스+아이콘). 기본 읽기전용.
+  attach:{w:180,h:52,text:"",required:false,readonly:true,showLabel:true,labelText:"항목명",labelPos:"top"},
   button:{w:80,h:32,text:"버튼",required:false,readonly:false,outline:false},
   grid:{w:700,h:190,text:"컬럼1,컬럼2,컬럼3,컬럼4",required:false,readonly:false,rows:3,
     gtitle:"그리드 제목",showToolbar:true,pagination:false,colSizeMode:'auto',
@@ -561,11 +565,22 @@ function changeCompType(id,newType){
   pushHistory();
   const fatMode=document.body.classList.contains('skin-classic');
   const d=JSON.parse(JSON.stringify(defaults[newType]));
+  // 사용자가 크기를 임의로 조절해 놨을 수 있으므로, 타입을 바꿔도 가로/세로 크기는 절대 건드리지
+  // 않는다 - defaults[newType]에 있는 w/h는 여기서 아예 지워서, 아래 Object.assign(keep,d)이
+  // keep에 이미 넣어둔 원래 크기(c.w/c.h)를 덮어쓰지 못하게 한다.
+  delete d.w; delete d.h;
   if(d.labelPos && fatMode) d.labelPos='left';
+  // 팝업은 씬모드에서 첨부파일과 같은 구조(라벨 위)를 쓴다 - defaults.popup 자체는 팻모드
+  // 기준(라벨 왼쪽)이라, 타입 변경으로 들어올 때도 placeNewComponent와 동일하게 바로잡아 준다.
+  // (크기는 위 규칙대로 원래 컴포넌트 것을 그대로 유지 - 여기서 건드리는 건 라벨 위치뿐이다.)
+  if(newType==='popup' && !fatMode) d.labelPos='top';
   if(newType==='date'){ d.text=todayStr(); d.dateSpec='chip:today'; }
   ['required','readonly','showLabel','labelText','labelPos','options'].forEach(k=>{
     if(Object.prototype.hasOwnProperty.call(d,k)&&Object.prototype.hasOwnProperty.call(c,k)) d[k]=c[k];
   });
+  // 첨부파일은 원래 컴포넌트의 읽기전용 여부와 무관하게 항상 읽기전용으로 시작한다
+  // (배치할 때와 동일한 기본값 - 위 공통 속성 유지 규칙의 유일한 예외).
+  if(newType==='attach') d.readonly=true;
   const keep={id:c.id,type:newType,x:c.x,y:c.y,w:c.w,h:c.h};
   if(c.parent!=null) keep.parent=c.parent;
   if(c.tabIdx!=null) keep.tabIdx=c.tabIdx;
@@ -600,7 +615,11 @@ const FAT_RESIZE_TYPES=['label','input','combo','date','daterange','check','radi
 const FAT_HEIGHT=23;
 function defaultSizeFor(type){
   const d=defaults[type]||{w:180,h:52};
-  if(FAT_RESIZE_TYPES.includes(type) && document.body.classList.contains('skin-classic')){
+  const fat=document.body.classList.contains('skin-classic');
+  // Thin Mode 팝업(검색형)은 팻모드 코드/명 팝업과 완전히 다른 컴포넌트라, 크기도 팻모드
+  // defaults(420x23)를 그대로 물려받지 않고 첨부파일 컴포넌트와 같은 구조(180x52)를 쓴다.
+  if(type==='popup' && !fat) return {w:180,h:52};
+  if(FAT_RESIZE_TYPES.includes(type) && fat){
     const w = type==='label' ? d.w : Math.round(d.w*1.3);
     return {w,h:FAT_HEIGHT};
   }
@@ -686,6 +705,9 @@ function placeNewComponent(type,x,y,centered,snapPos){
   // Fat Mode에서는 라벨 있는 컴포넌트의 기본 라벨 위치가 위쪽 대신 왼쪽이다.
   // Thin Mode(기존)는 그대로 top을 유지한다.
   if(d.labelPos && fatMode) d.labelPos='left';
+  // 팝업은 예외 - defaults.popup 자체가 팻모드 모양(라벨 왼쪽) 기준으로 정의돼 있으므로,
+  // 씬모드에서는 첨부파일과 같은 라벨 위쪽 구조로 명시적으로 되돌린다.
+  if(type==='popup' && !fatMode) d.labelPos='top';
   // 기본 생성 크기 보정(가로 1.3배·세로 2/3배)은 defaultSizeFor()가 모드를 보고 처리한다.
   const sz=defaultSizeFor(type);
   d.w=sz.w; d.h=sz.h;
@@ -1239,7 +1261,7 @@ function parseTree(text){
   return nodes;
 }
 
-const LABELED_TYPES=['input','combo','date','daterange','check','radio','popup'];
+const LABELED_TYPES=['input','combo','date','daterange','check','radio','popup','attach'];
 function labelWrap(c,html){
   if(!LABELED_TYPES.includes(c.type))return html;
   if(c.showLabel!==true)return html;
@@ -1327,6 +1349,12 @@ function innerRaw(c,mode){
       if(exp) return `<div class="ax-input-x${c.readonly?' ro':''}${c.required?' required':''}"><input type="text" class="ax-input-el" value="${escAttr(c.text)}"${c.readonly?' readonly':''}${textFmtStyle(c)}>${req}</div>`;
       return `<div class="ax-input ${c.readonly?'readonly':''}${c.required?' required':''}">${textSpan(c)}${req}</div>`;
     case 'popup':{
+      if(!document.body.classList.contains('skin-classic')){
+        // Thin Mode: 조회조건 패널의 '검색' 필드와 똑같은 모양(텍스트박스 + 우측 돋보기 아이콘).
+        // 팻모드 전용인 아래 코드/명 2단 구성과 달리, 값 한 칸 + 아이콘 뿐인 단순한 형태다.
+        if(exp) return `<div class="ax-popup-thin-x${c.readonly?' ro':''}${c.required?' required':''}"><input type="text" class="ax-input-el" value="${escAttr(c.text)}"${c.readonly?' readonly':''}${textFmtStyle(c)}><span class="sctl-search-ic"></span>${req}</div>`;
+        return `<div class="ax-popup-thin${c.readonly?' readonly':''}${c.required?' required':''}">${textSpan(c)}<span class="sctl-search-ic"></span>${req}</div>`;
+      }
       // 라벨+텍스트박스(코드)+아이콘+텍스트박스(명칭). 명칭 칸은 항상 읽기전용이고 값도 비워둔다
       // (실제 조회 결과가 여기 채워진다는 것을 보여주는 자리표시일 뿐, 별도 속성은 없음).
       // 스타일이 "코드"면 명칭 칸을 아예 뺀다(코드/명 이 기본값).
@@ -1335,6 +1363,14 @@ function innerRaw(c,mode){
         : `<div class="ax-input${c.readonly?' readonly':''}${c.required?' required':''}">${textSpan(c)}</div>`;
       const nameBox = c.style==='code' ? '' : '<div class="ax-popup-name"></div>';
       return `<div class="ax-popup">${codeBox}<div class="ax-popup-ic">≡</div>${nameBox}${req}</div>`;
+    }
+    case 'attach':{
+      // 조회조건 패널의 '검색' 필드와 같은 구조(텍스트박스 + 우측 아이콘)를 쓰지만, 그리드의
+      // '첨부파일' 컬럼 유형과는 이름만 같을 뿐 완전히 별개인 독립 컴포넌트다 - 아이콘도 그리드
+      // 쪽(gcell-file-ic, 구름 모양)과 절대 공유하지 않고, 파일+업로드 화살표 모양을 새로 쓴다.
+      const attachIc='<svg class="ax-attach-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M4.5 22H18a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v9.5"></path><path d="M12 12v6"></path><path d="m9 15 3-3 3 3"></path></svg>';
+      if(exp) return `<div class="ax-popup-thin-x${c.readonly?' ro':''}${c.required?' required':''}"><input type="text" class="ax-input-el" value="${escAttr(c.text)}"${c.readonly?' readonly':''}${textFmtStyle(c)}>${attachIc}${req}</div>`;
+      return `<div class="ax-popup-thin${c.readonly?' readonly':''}${c.required?' required':''}">${textSpan(c)}${attachIc}${req}</div>`;
     }
     case 'combo':{
       const copts=(c.options||'').split(',').map(s=>s.trim()).filter(Boolean);
@@ -2685,7 +2721,7 @@ document.addEventListener('keydown',e=>{
 // ---- Properties panel ----
 // "입력 컴포넌트" 그룹(툴박스의 입력 컴포넌트 섹션과 동일한 타입 집합).
 // 정렬/간격 기능은 이 타입들로만 구성된 다중 선택에서만 노출한다.
-const INPUT_COMPONENT_TYPES=['label','input','combo','date','daterange','check','radio','popup'];
+const INPUT_COMPONENT_TYPES=['label','input','combo','date','daterange','check','radio','popup','attach'];
 function isInputComponent(c){ return INPUT_COMPONENT_TYPES.includes(c.type); }
 // Builds the small "?" badge whose tooltip replaces the old always-visible hint paragraphs.
 function qh(text){
@@ -2751,7 +2787,7 @@ function renderProps(){
   const c=comps.find(x=>x.id===sel);
   if(!c){p.innerHTML='<div class="empty-props">컴포넌트를 선택하면<br>여기에 속성이 표시됩니다.<br><br>왼쪽 도구상자에서 캔버스로<br>끌어다 놓으세요.<br><br>여러 개 선택: 빈 곳에서 드래그<br>또는 Ctrl(⌘)+클릭<br><br>복사: Ctrl(⌘)+드래그 또는<br>Ctrl(⌘)+C / Ctrl(⌘)+V<div style="margin-top:22px;padding-top:16px;border-top:1px solid #e2e8f0;text-align:left;font-size:12px;line-height:1.7;color:#64748b;"><b style="color:#334155;">사용 안내</b><br>본 프로그램은 <b style="color:#185fa5;">인가된 업무 목적</b>으로만 사용할 수 있습니다.<br><br><span style="color:#94a2ae;">다음 행위를 금지합니다</span><br>· 목적 외 사용<br>· 데이터의 외부 유출 및 무단 배포<br><br>원활한 운영과 보안을 위해 <b style="color:#334155;">접속 정보(IP, 사용자명 등)가 기록</b>될 수 있으며, 사용에 따른 <b style="color:#334155;">모든 책임은 사용자 본인</b>에게 있습니다.</div></div>';return;}
   const fatMode=document.body.classList.contains('skin-classic');
-  const names={title:'화면 제목',section:'섹션 헤더',panel:'패널',tabs:'탭(Tab)',split:'스플릿 컨테이너',label:'라벨',input:'텍스트박스',combo:'콤보박스',date:'날짜선택',daterange:'기간',check:'체크박스',radio:'라디오',button:'버튼',grid:'그리드',chart:'차트',tree:'트리',searchbar:'조회조건 패널',popup:'팝업'};
+  const names={title:'화면 제목',section:'섹션 헤더',panel:'패널',tabs:'탭(Tab)',split:'스플릿 컨테이너',label:'라벨',input:'텍스트박스',combo:'콤보박스',date:'날짜선택',daterange:'기간',check:'체크박스',radio:'라디오',button:'버튼',grid:'그리드',chart:'차트',tree:'트리',searchbar:'조회조건 패널',popup:'팝업',attach:'첨부파일'};
   let html=`<h3>${names[c.type]} 속성</h3>`;
   // 변경상태(기본/추가/변경/삭제/이동) - 모든 컴포넌트 공통, 항상 속성 최상단. 그리드·조회조건
   // 패널도 "그 컴포넌트 자체"는 다른 컴포넌트와 동일하게 여기서 지정한다(내부 컬럼/필드별 상태는
@@ -2764,8 +2800,8 @@ function renderProps(){
     }).join('');
     html+=`<div class="status-seg">${seg}</div>`;
   }
-  // 입력 컴포넌트 타입 변경 - 라벨|텍스트박스|콤보박스|날짜선택|기간|체크박스|라디오 7종 사이를
-  // 콤보박스로 즉시 전환한다(예: 텍스트박스→콤보박스, 라디오→체크박스). 변경상태 선택과 아래
+  // 입력 컴포넌트 타입 변경 - 라벨|텍스트박스|콤보박스|날짜선택|기간|체크박스|라디오|팝업|첨부파일 9종
+  // 사이를 즉시 전환한다(예: 텍스트박스→콤보박스, 라디오→체크박스). 변경상태 선택과 아래
   // 텍스트/라벨 속성 사이에 위치. changeCompType()이 실제 변환을 담당.
   if(INPUT_TYPES.includes(c.type)){
     const tOpts=INPUT_TYPES.map(t=>{const m=INPUT_TYPE_META[t];return `<option value="${t}"${c.type===t?' selected':''}>${m.icon} ${m.label}</option>`;}).join('');
@@ -2840,7 +2876,7 @@ function renderProps(){
     <div class="prop"><label>너비</label><input type="number" data-prop="w" value="${c.w}" oninput="upd('w',+this.value)"></div>
     <div class="prop"><label>높이</label><input type="number" data-prop="h" value="${c.h}" oninput="upd('h',+this.value)"></div>
   </div>`;
-  if(['label','input','combo','date','daterange','section','check','popup'].includes(c.type)&&!(c.type==='daterange'&&fatMode))
+  if(['label','input','combo','date','daterange','section','check','popup','attach'].includes(c.type)&&!(c.type==='daterange'&&fatMode))
     html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.required?'checked':''} onchange="upd('required',this.checked)"> 필수 항목 (*)</label></div>`;
   if(c.type==='label'&&fatMode){
     const lblStyle=(c.style==='ref'||c.style==='jump')?c.style:'none';
@@ -2863,9 +2899,9 @@ function renderProps(){
     }
     html+=`</div>`;
   }
-  if(['input','combo','date','daterange','popup'].includes(c.type)&&!(c.type==='daterange'&&fatMode))
-    html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.readonly?'checked':''} onchange="upd('readonly',this.checked)"> 읽기전용${c.type==='popup'?qh('첫 번째(코드) 텍스트박스에만 적용됩니다. 명칭 표시칸은 항상 읽기전용입니다.'):''}</label></div>`;
-  if(c.type==='popup'){
+  if(['input','combo','date','daterange','popup','attach'].includes(c.type)&&!(c.type==='daterange'&&fatMode))
+    html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.readonly?'checked':''} onchange="upd('readonly',this.checked)"> 읽기전용${(c.type==='popup'&&fatMode)?qh('첫 번째(코드) 텍스트박스에만 적용됩니다. 명칭 표시칸은 항상 읽기전용입니다.'):''}</label></div>`;
+  if(c.type==='popup'&&fatMode){
     const popStyle=c.style==='code'?'code':'code_name';
     html+=`<div class="grp"><div class="grp-h">스타일${qh('<b>코드/명</b>은 코드 입력칸 옆에 명칭 표시칸까지 함께 둡니다(기본값). <b>코드</b>를 고르면 명칭 표시칸 없이 코드 입력칸만 남습니다.')}</div>
       <div class="prop"><label class="cbx"><input type="radio" name="popStyle${c.id}" ${popStyle==='code_name'?'checked':''} onchange="upd('style','code_name')"> 코드/명</label></div>
@@ -5692,7 +5728,7 @@ function seed(){
 function placeItems(items,scale,clearFirst){
   pushHistory();
   if(clearFirst){ comps=[]; clearOriginTracking(); } // 기존 내용을 지우는 선택이므로 파생 추적 값도 함께 지운다
-  const known=['title','section','panel','tabs','label','input','combo','date','daterange','check','radio','button','grid','chart','tree','searchbar','popup'];
+  const known=['title','section','panel','tabs','label','input','combo','date','daterange','check','radio','button','grid','chart','tree','searchbar','popup','attach'];
   const fieldTypes=['text','combo','date','daterange','search','radio','empty'];
   // Properties (beyond type/x/y/w/h/text/required) that a JSON item may set directly; copied through as-is.
   const passthroughKeys=['gtitle','userBtns','stdAdd','stdCancel','stdCopy','stdDelete','rows','showToolbar',
@@ -6114,6 +6150,10 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20260923.001', date:'2026년 9월 23일', items:[
+    {t:'🧷 씬모드 전용 「첨부파일」 컴포넌트 추가', d:'① 도구상자 입력 컴포넌트에 <b>첨부파일</b> 항목 추가(씬모드 전용, 팻모드에는 노출되지 않습니다).<br>② 모양은 조회조건 패널의 「검색」 필드와 같은 구조(텍스트박스+우측 아이콘)이되, 아이콘은 그리드 컬럼의 첨부파일 유형(구름 모양)과는 다른 전용 아이콘을 씁니다 - 이름만 같을 뿐 서로 완전히 별개인 컴포넌트입니다.<br>③ 기본 속성이 <b>읽기전용</b>으로 켜진 채 배치됩니다.'},
+    {t:'≡ 「팝업」 컴포넌트, 씬모드에도 추가', d:'① 지금까지 팻모드 전용이던 <b>팝업</b> 컴포넌트를 씬모드 도구상자에도 노출합니다.<br>② 씬모드의 팝업은 팻모드(코드+아이콘+명칭 3단 구성)와 완전히 다른 컴포넌트로, 첨부파일 컴포넌트와 같은 구조(텍스트박스+우측 아이콘, 180×52 크기)에 아이콘만 조회조건 패널의 「검색」과 동일한 돋보기를 씁니다.<br>③ 팻모드에서 배치하면 지금까지와 동일하게 코드/명 스타일 그대로 나옵니다 - 모드별로 서로 다른 컴포넌트라는 뜻입니다.'}
+  ]},
   {ver:'20260919.001', date:'2026년 9월 19일', items:[
     {t:'📊 사양서 매핑 템플릿 내보내기 (Alt+S)', d:'① 결과물 상단 바에 <b>Alt+S</b> 뱃지 추가 - 클릭하면 사양서 표준 서식과 같은 <b>엑셀 파일(.xlsx, 7개 시트)</b>을 바로 내려받습니다.<br>② 2.화면LO 시트에 화면 캡처 이미지·구성 요약과 함께, 조회조건·입력항목·그리드 컬럼별로 <b>표시타입·필수·읽기전용</b>을 자동으로 채워 넣고, 화면만으로 알 수 없는 테이블·SQL·업무 로직 항목은 공란으로 남깁니다.<br>③ 사양서 작성 시 화면 구성을 다시 옮겨 적을 필요 없이 그대로 참고할 수 있습니다.<br>④ 이 기능만 인터넷 연결이 필요합니다(엑셀 생성 라이브러리를 그때그때 불러옴) - 오프라인이어도 나머지 기능은 그대로 작동합니다.'}
   ]},
@@ -6718,7 +6758,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260919.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20260923.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 // 내보내기 결과물의 상단 바(Alt+O/Alt+P/Alt+S) 런타임을 어디서 불러올지 - 이 주소에 있는 파일만
 // 고치면 이미 내보내진(구버전) 결과물까지 전부 상단 바 버그 수정이 그대로 적용된다. 실제 배포
 // 도메인이 바뀌면 이 한 줄만 바꾸면 된다.
@@ -8084,7 +8124,7 @@ function mbThumbDrawComp(c,x,y,w,h,C,FF){
       return `<circle cx="${(x+r+1).toFixed(1)}" cy="${(y+h/2).toFixed(1)}" r="${r.toFixed(1)}" fill="#fff" stroke="${C.border}" stroke-width="0.6"/>`
         +`<text x="${(x+r*2+4).toFixed(1)}" y="${(y+h*0.68).toFixed(1)}" font-size="${fs.toFixed(1)}" fill="${C.labelFg}" ${FF}>${e(mbThumbFit(label,w-r*2-6,fs,400))}</text>`;
     }
-    case 'input': case 'date': case 'daterange': case 'popup':{
+    case 'input': case 'date': case 'daterange': case 'popup': case 'attach':{
       const bg=c.readonly?C.roBg:(c.required?C.reqBg:'#fff');
       return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(2,h*0.15).toFixed(1)}" fill="${bg}" stroke="${C.border}" stroke-width="0.6"/>`
         +`<text x="${(x+3).toFixed(1)}" y="${(y+h*0.66).toFixed(1)}" font-size="${fs.toFixed(1)}" fill="#333" ${FF}>${e(mbThumbFit(c.text,w-6,fs,400))}</text>`;
@@ -9516,7 +9556,7 @@ checkVersion();
   /* ---------- 컴포넌트 카탈로그 ---------- */
   var CATS=[
     {name:'레이아웃', items:[['title','🅣','제목'],['section','▬','섹션'],['panel','▢','패널'],['tabs','▤','탭'],['split','⊟','분할'],['searchbar','🔍','조회조건']]},
-    {name:'입력', items:[['label','🄰','라벨'],['input','▭','입력'],['combo','▾','콤보'],['date','📅','날짜'],['daterange','📆','기간'],['check','☑','체크'],['radio','◉','라디오'],['popup','≡','팝업']]},
+    {name:'입력', items:[['label','🄰','라벨'],['input','▭','입력'],['combo','▾','콤보'],['date','📅','날짜'],['daterange','📆','기간'],['check','☑','체크'],['radio','◉','라디오'],['popup','≡','팝업'],['attach','📎','첨부파일']]},
     {name:'액션', items:[['button','⬛','버튼']]},
     {name:'데이터', items:[['grid','▦','그리드'],['chart','📊','차트'],['tree','🌳','트리']]}
   ];
@@ -9526,12 +9566,13 @@ checkVersion();
   var QUICK=['input','combo','button','grid','searchbar','date','check','label','title'];
   var recent=[];
   function pushRecent(t){ recent=[t].concat(recent.filter(function(x){return x!==t;})).slice(0,8); }
-  // 팻모드에서는 조회조건(searchbar) 대신 팝업을 쓴다(데스크톱 도구상자와 동일한 규칙).
+  // 조회조건(searchbar)은 씬모드 전용, 첨부파일(attach)도 씬모드 전용(팻모드 스타일 미대응).
+  // 팝업(popup)은 이제 두 모드 모두 노출(팻모드=코드/명, 씬모드=검색형 - 데스크톱 도구상자와 동일한 규칙).
   // 도크/레일/전체 시트 어디서든 이 함수로 걸러서 두 모드의 컴포넌트 목록이 데스크톱과 일치하게 한다.
   function mbTypeVisible(t){
     var fat=document.body.classList.contains('skin-classic');
     if(t==='searchbar') return !fat;
-    if(t==='popup') return fat;
+    if(t==='attach') return !fat;
     return true;
   }
 

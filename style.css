@@ -317,8 +317,10 @@
   .tool.armed .ic{color:#fff;}
   /* Fat Mode에서는 도구상자에서 조회조건 패널 항목을 숨긴다. Thin Mode는 그대로 노출. */
   body.skin-classic .toolbox .tool[data-type="searchbar"]{display:none;}
-  /* 팝업은 팻모드 전용 컴포넌트라 씬모드 도구상자에서는 숨긴다. */
-  body:not(.skin-classic) .toolbox .tool[data-type="popup"]{display:none;}
+  /* 첨부파일(검색형 아이콘 컴포넌트)은 씬모드 전용이라 팻모드 도구상자에서는 숨긴다.
+     팝업은 이제 두 모드 모두에 노출하되(팻모드=코드/명, 씬모드=검색형), 모드별로 다르게
+     그려진다(innerRaw의 'popup' 분기 참고). */
+  body.skin-classic .toolbox .tool[data-type="attach"]{display:none;}
   /* 상단바의 템플릿 버튼은 씬모드·팻모드 모두에서 숨긴다. */
   #templateBtn{display:none;}
   .toolbox.click-place-on .tool.armed{cursor:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'><g transform='translate(3,2)'><path d='M2 1 L2 15 L5.6 11.7 L8.2 17.6 L11 16.3 L8.4 10.6 L13 10.3 Z' fill='%23ffe680' stroke='%23111111' stroke-width='1.8' stroke-linejoin='round'/></g></svg>") 5 3, pointer;}
@@ -456,6 +458,24 @@
   .ax-popup-ic{flex:none;width:22px;height:22px;box-sizing:border-box;border:1px solid var(--ax-border);border-radius:2px;
     background:var(--ax-green-light);color:var(--ax-green);display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1;}
   .ax-popup-name{flex:1.6 1 0;height:100%;min-width:0;box-sizing:border-box;border:1px solid var(--ax-border);border-radius:2px;background:var(--ax-readonly-bg);}
+  /* Thin Mode 전용 - 팝업(검색형)·첨부파일: 조회조건 패널의 '검색' 필드와 같은 모양(텍스트박스 +
+     우측 아이콘). 아이콘만 다르다(팝업=돋보기 .sctl-search-ic 재사용, 첨부파일=업로드 아이콘). */
+  .ax-popup-thin{width:100%;height:100%;box-sizing:border-box;display:flex;align-items:center;gap:8px;
+    border:1px solid var(--ax-border);border-radius:4px;background:#fff;padding:0 8px;font-size:12px;color:#111;}
+  .ax-popup-thin.readonly{background:var(--ax-readonly-bg);color:#555;}
+  .ax-popup-thin.required{background:var(--ax-required-bg);}
+  .ax-popup-thin>span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ax-popup-thin .sctl-search-ic,.ax-popup-thin .ax-attach-ic{flex:none;}
+  .ax-popup-thin.readonly .sctl-search-ic{opacity:.45;}
+  .ax-popup-thin-x{width:100%;height:100%;box-sizing:border-box;display:flex;align-items:center;gap:8px;
+    border:1px solid var(--ax-border);border-radius:4px;background:#fff;padding:0 8px;}
+  .ax-popup-thin-x.ro{background:var(--ax-readonly-bg);}
+  .ax-popup-thin-x.required{background:var(--ax-required-bg);}
+  .ax-popup-thin-x .ax-input-el{border:none;padding:0;background:transparent;}
+  .ax-popup-thin-x.ro .ax-input-el{background:transparent;color:#555;cursor:not-allowed;}
+  .ax-popup-thin-x.ro .sctl-search-ic{opacity:.45;}
+  .ax-attach-ic{width:16px;height:16px;flex:none;color:#6b7280;}
+  .ax-popup-thin.readonly .ax-attach-ic,.ax-popup-thin-x.ro .ax-attach-ic{opacity:.55;}
   .ax-combo{width:100%;height:100%;min-width:0;box-sizing:border-box;border:1px solid var(--ax-border);border-radius:4px;background:#fff;padding:0 8px;font-size:12px;display:flex;align-items:center;justify-content:space-between;color:#111;}
   .ax-combo span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
   .ax-combo.readonly{background:var(--ax-readonly-bg);color:#555;}
