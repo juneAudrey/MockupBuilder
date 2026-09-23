@@ -543,12 +543,13 @@
   .ax-grid .gtoolbar .gcount{display:inline-flex;align-items:center;gap:0;flex:none;margin-left:10px;font-size:13px;font-weight:600;color:#6b7280;white-space:nowrap;}
   .ax-grid .gtoolbar .gcount-n{color:var(--ax-green);font-weight:700;}
   .ax-grid .gtoolbar .gspacer{flex:1;min-width:8px;}
-  .ax-grid .gtoolbar .gbtn-row{display:flex;align-items:center;gap:5px;flex:none;max-width:100%;overflow-x:auto;scrollbar-width:thin;}
-  .gbtn{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:#fff;background:var(--ax-green);border:1px solid var(--ax-green);border-radius:5px;padding:5px 10px 5px 6px;white-space:nowrap;}
-  .gbtn .gic{font-size:10px;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.22);border-radius:4px;flex:none;}
-  .gbtn.disabled{color:#fff;background:#c7ccd1;border-color:#c7ccd1;}
-  .gbtn.disabled .gic{background:rgba(255,255,255,.3);}
-  .gbtn.user{background:var(--ax-green);border-color:var(--ax-green);}
+  .ax-grid .gtoolbar .gbtn-row{display:flex;align-items:center;gap:8px;flex:none;max-width:100%;overflow-x:auto;scrollbar-width:thin;}
+  /* 그리드 툴바 버튼 - 실제 AX 화면과 동일한 색감: 연한 민트 배경(#e7f7f3) + 진녹색 글자·아이콘(#068965), 테두리 없음 */
+  .gbtn{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:500;color:#068965;background:#e7f7f3;border:1px solid #e7f7f3;border-radius:7px;padding:5.5px 13px 5.5px 12px;white-space:nowrap;}
+  .gbtn .gic{width:12px;height:12px;display:block;flex:none;color:#068965;}
+  .gbtn.disabled{color:#a9b1b8;background:#f1f3f5;border-color:#f1f3f5;}
+  .gbtn.disabled .gic{color:#a9b1b8;}
+  .gbtn.user{background:#e7f7f3;border-color:#e7f7f3;}
   .ax-grid .gbody{flex:1;overflow-x:auto;overflow-y:hidden;display:flex;flex-direction:column;scrollbar-width:thin;}
   /* .gbody-track/.grows - 합계 행이 데이터 행 개수와 상관없이 항상 보이게 하는 실제 장치.
      position:sticky를 써봤지만 .gbody가 overflow-y:hidden이라 스크롤 자체가 없는 상자라서
@@ -1137,7 +1138,7 @@
   .ax-btn.outline:hover{background:var(--ax-green-light);}
   .ax-btn:active{transform:scale(.97);}
   .gbtn{cursor:pointer;transition:background .12s,border-color .12s;}
-  .gbtn:not(.disabled):hover{background:var(--ax-green-dark);border-color:var(--ax-green-dark);}
+  .gbtn:not(.disabled):hover{background:#d3efe7;border-color:#d3efe7;}
   .ax-grid .gr.hoverable{transition:background .1s;}
   .ax-grid .gr.hoverable:hover{background:#f3f9f6;}
   /* let a combo dropdown escape the panel instead of being clipped by overflow:hidden */
