@@ -381,10 +381,6 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .pw-eye:hover{opacity:1}
 .pw-eye.on{opacity:1}
 
-/* WF API 조회 스위치 (헤더, [사용법] 왼쪽 고정) */
-.wf-api-group{display:flex;align-items:center;gap:6px;background:rgba(14,46,66,.9);border:1px solid rgba(56,178,172,.55);border-radius:9px;padding:4px 10px;flex:none}
-.wf-api-lock{font-size:12px}
-.wf-api-label{font-size:12px;font-weight:700;color:#e6f6f4;white-space:nowrap}
 
 /* 체크박스를 스위치 모양으로 (dbEncrypt 등 기존 체크박스는 그대로 두고, 이 클래스를 쓴 곳만 적용) */
 .switch{position:relative;display:inline-flex;align-items:center;cursor:pointer}
@@ -411,6 +407,9 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .off-mode{display:flex;align-items:center;gap:16px;margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:8px}
 .off-modeopt{font-size:12px;display:flex;align-items:center;gap:5px;cursor:pointer}
 .off-tables{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:12px}
+.off-tables-toggle{display:flex;align-items:center;gap:6px;width:100%;background:#eef2f7;color:var(--nv);font-weight:700;font-size:12px;padding:8px 10px;border:none;cursor:pointer;text-align:left;font-family:inherit}
+.off-tables-toggle:hover{background:#e2e8f0}
+.off-tables-summary{font-weight:400;color:var(--mut);margin-left:auto}
 .off-th,.off-tr{display:grid;grid-template-columns:1.6fr 1fr 1.6fr 60px;gap:6px;padding:8px 10px;font-size:12px;align-items:center}
 .off-th{background:#eef2f7;color:var(--nv);font-weight:700}
 .off-tr{border-top:1px solid #f1f5f9}

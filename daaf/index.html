@@ -62,21 +62,6 @@
       <button id="btnLoadErp" class="btn ghost sm" title="저장했던 .erp 파일을 불러와 그래프로 다시 봅니다">📂 불러오기</button>
     </div>
 
-    <!-- WF API 조회: DB의 RESOURCE_WF(WF 본문)가 암호화되어 있을 때, 같은 SERVICE_UID로
-         daaf.bizentro.net API를 호출해 그 값만 복호화된 내용으로 대체한다. UI/Rp/Mo와
-         검색/필터는 지금처럼 DB를 그대로 쓰고, WF 본문만 이 스위치의 영향을 받는다.
-         OFF가 기본값이라 이 기능을 모르는 사용자는 기존과 완전히 동일하게 동작한다.
-         모드(DB 연결/오프라인)와 무관하게 항상 [사용법] 왼쪽에 고정 표시된다. 세부 설정(로그인
-         주소/엔드포인트 등)은 우측 [⚙ 설정] 버튼의 설정 모달 안에 있다(별도 톱니 버튼 없음). -->
-    <span class="wf-api-group" id="wfApiGroup" title="암호화된 WF는 DB 대신 API로 조회합니다 (WF에만 적용, UI/Rp/Mo는 지금처럼 DB에서 조회) — 세부 설정은 [⚙ 설정]에 있습니다">
-      <span class="wf-api-lock">🔒</span>
-      <span class="wf-api-label">WF API 조회</span>
-      <label class="switch sm">
-        <input id="wfApiToggle" type="checkbox">
-        <span class="switch-track"><span class="switch-knob"></span></span>
-      </label>
-    </span>
-
     <button id="btnGuide" class="btn ghost sm guide-btn" title="사용법 보기">❓ 사용법</button>
     <button id="btnTour" class="btn ghost sm tour-btn" title="화면 둘러보기 투어">🧭 가이드</button>
     <button id="btnSettings" class="btn ghost sm settings-btn" title="설정 (화면 배율 등)">⚙ 설정</button>
@@ -383,8 +368,14 @@
         <div id="offFileSize" class="off-note" style="display:none"></div>
 
         <div class="off-tables">
-          <div class="off-th"><span>테이블</span><span>행수</span><span>최근 갱신</span><span>선택</span></div>
-          <div id="offTableRows"></div>
+          <button type="button" id="offTablesToggle" class="off-tables-toggle">
+            <span id="offTablesToggleIcon">▶</span><span id="offTablesToggleLabel">&nbsp;테이블 목록 펼치기</span>
+            <span id="offTablesSummary" class="off-tables-summary"></span>
+          </button>
+          <div id="offTablesBody" style="display:none">
+            <div class="off-th"><span>테이블</span><span>행수</span><span>최근 갱신</span><span>선택</span></div>
+            <div id="offTableRows"></div>
+          </div>
         </div>
 
         <div class="off-actions">
@@ -754,69 +745,19 @@
           </div>
         </div>
 
-        <div class="settings-group" id="settingsWfApiGroup" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line)">
-          <div class="settings-group-title">🔒 WF API 조회</div>
-
-          <div class="settings-subgroup">
-            <div class="settings-subgroup-title">세션 로그인</div>
-            <div class="settings-field" style="margin-bottom:8px">
-              <label>로그인 페이지 주소</label>
-              <input id="apiWebOrigin" type="text" class="settings-input" placeholder="https://daaf.bizentro.net/user/Login">
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span id="apiSessionStatus" style="font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:10px;background:#e2e8f0;color:var(--mut)">확인 중…</span>
-              <button id="apiSessionLoginBtn" type="button" class="btn ghost sm">로그인</button>
-              <button id="apiSessionLogoutBtn" type="button" class="btn ghost sm">로그아웃</button>
-            </div>
-          </div>
-
-          <div class="settings-subgroup">
-            <div class="settings-subgroup-title">API 엔드포인트</div>
-            <input id="apiEndpoint" type="text" class="settings-input" placeholder="https://daaf.bizentro.net:9443">
-          </div>
-
-          <div class="settings-subgroup">
-            <div class="settings-subgroup-title">사용자 ID</div>
-            <input id="apiUserId" type="text" class="settings-input">
-          </div>
+        <div class="settings-group" id="settingsWfCipherGroup" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line)">
+          <div class="settings-group-title">🔑 복호화 키</div>
 
           <div class="settings-subgroup" style="margin-bottom:0">
-            <label class="chk sm settings-subgroup-title" style="margin-bottom:0;display:flex;align-items:center;gap:6px">
-              <input id="apiAuthModeDirect" type="checkbox"> 직접 호출 (고급)
-            </label>
-
-            <div id="apiDirectAdvanced" style="display:none;margin-top:10px">
-              <div class="settings-field">
-                <label>Cookie</label>
-                <textarea id="apiCookie" class="settings-textarea" rows="2"></textarea>
-              </div>
-
-              <div class="settings-field settings-field-row">
-                <div class="settings-field-col">
-                  <label>인증 헤더 이름</label>
-                  <input id="apiTokenHeader" type="text" class="settings-input" placeholder="Authorization">
-                </div>
-                <div class="settings-field-col">
-                  <label>토큰 값</label>
-                  <span class="pw-wrap" style="display:flex">
-                    <input id="apiTokenValue" type="password" class="settings-input">
-                    <button id="apiTokenShow" type="button" class="pw-eye" title="토큰 보기">👁</button>
-                  </span>
-                </div>
-              </div>
-
-              <label class="chk sm" style="margin:10px 0 0">
-                <input id="apiInsecureTls" type="checkbox"> 인증서 검증 건너뛰기
-              </label>
-            </div>
-          </div>
-
-          <div class="settings-zoom-actions" style="justify-content:space-between;align-items:center;margin-top:14px">
-            <span id="apiTestResult" class="api-test-result"></span>
-            <span style="display:flex;gap:8px">
-              <button id="apiTestBtn" class="btn ghost sm">연결 테스트</button>
-              <button id="apiSaveBtn" class="btn primary sm">저장</button>
+            <div class="settings-subgroup-title">RESOURCE_WF 복호화 키</div>
+            <span class="pw-wrap" style="display:flex">
+              <input id="wfCipherKey" type="password" class="settings-input">
+              <button id="wfCipherKeyShow" type="button" class="pw-eye" title="키 보기">👁</button>
             </span>
+            <div class="settings-zoom-actions" style="justify-content:space-between;align-items:center;margin-top:10px">
+              <span id="wfCipherResult" class="api-test-result"></span>
+              <button id="wfCipherSaveBtn" class="btn primary sm">저장</button>
+            </div>
           </div>
         </div>
       </div>

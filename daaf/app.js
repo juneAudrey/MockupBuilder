@@ -71,7 +71,7 @@
     setStatus('준비됨 · DB에 연결하거나 오프라인 데이터를 불러오세요.');
     refreshBasket();
     initFontScaleSetting();  // 저장된 화면 배율을 즉시 적용 + 설정 모달 바인딩
-    initWfApiSetting();      // WF API 조회(암호화 우회) 스위치 + 설정 모달 바인딩
+    initWfCipherSetting();   // WF 복호화 키 설정 모달 바인딩
     consentGate();   // 최초 실행 시 사용 동의 확인 (미동의 시 종료)
   });
 
@@ -140,168 +140,47 @@
     }
   }
 
-  /* ---------- 설정: WF API 조회(암호화 우회) ---------- */
-  // 헤더의 스위치(wfApiToggle)는 "지금 켜져 있는지"만 담당하고, 설정 모달의 나머지 필드
-  // (엔드포인트/쿠키/토큰/인증서 검증)는 settings.json(main 프로세스)에 저장된다.
-  // fetchWave()/fetchWfByUids() 는 이 스위치를 호출 시점마다 직접 읽으므로(아래 두 함수 참고)
-  // DB 재접속 없이 토글 즉시 다음 조회부터 반영된다.
-  function isWfApiOn() {
-    const t = el('wfApiToggle');
-    return !!(t && t.checked);
-  }
-
-  function apiFormValues() {
-    return {
-      endpoint: el('apiEndpoint').value.trim(),
-      webOrigin: el('apiWebOrigin') ? el('apiWebOrigin').value.trim() : '',
-      userId: el('apiUserId') ? el('apiUserId').value.trim() : '',
-      // 체크돼 있으면 '직접 호출'(Node가 서버-서버로 직접 부름), 꺼져 있으면(기본) '세션'
-      // (로그인해둔 Electron 창 안에서 실제 fetch 실행) — apiClient.js DEFAULTS.authMode 참고.
-      authMode: (el('apiAuthModeDirect') && el('apiAuthModeDirect').checked) ? 'direct' : 'session',
-      cookie: el('apiCookie').value,
-      tokenHeaderName: el('apiTokenHeader').value.trim(),
-      tokenValue: el('apiTokenValue').value,
-      insecureTls: el('apiInsecureTls').checked
-    };
-  }
-
-  function setApiTestResult(msg, kind) {
-    const box = el('apiTestResult');
+  /* ---------- 설정: WF 복호화 키 ---------- */
+  // RESOURCE_WF 가 {"_enc":"..."} 형태(암호화된 값)일 때 로컬에서 바로 복호화하는 데 쓰는
+  // 키 하나만 관리한다. 네트워크 호출이 전혀 없고, 켜고 끄는 스위치도 없다 — main 프로세스가
+  // 데이터 모양만 보고 자동으로 복호화를 시도한다(wfCipher.js 참고).
+  function setWfCipherResult(msg, kind) {
+    const box = el('wfCipherResult');
     if (!box) return;
     box.textContent = msg || '';
     box.className = 'api-test-result' + (kind ? (' ' + kind) : '');
   }
 
-  async function initWfApiSetting() {
-    const toggle = el('wfApiToggle');
-
-    // 저장된 값 불러오기(엔드포인트 기본값은 apiClient.js의 DEFAULTS와 동일하게 맞춰둠)
-    let saved = null;
-    if (window.api && window.api.apiSettingsGet) {
+  async function initWfCipherSetting() {
+    // 저장된 키 불러오기
+    if (window.api && window.api.cipherKeyGet) {
       try {
-        const r = await window.api.apiSettingsGet();
-        if (r && r.ok) saved = r.settings;
-      } catch (e) { /* 무시 — 기본값으로 진행 */ }
-    }
-    saved = saved || {};
-    if (el('apiEndpoint')) el('apiEndpoint').value = saved.endpoint || 'https://daaf.bizentro.net:9443';
-    if (el('apiWebOrigin')) el('apiWebOrigin').value = saved.webOrigin || 'https://daaf.bizentro.net/user/Login';
-    if (el('apiUserId')) el('apiUserId').value = saved.userId || '';
-    if (el('apiCookie')) el('apiCookie').value = saved.cookie || '';
-    if (el('apiTokenHeader')) el('apiTokenHeader').value = saved.tokenHeaderName || '';
-    if (el('apiTokenValue')) el('apiTokenValue').value = saved.tokenValue || '';
-    if (el('apiInsecureTls')) el('apiInsecureTls').checked = !!saved.insecureTls;
-    if (toggle) toggle.checked = !!saved.enabled;
-
-    // authMode: 저장된 값이 'direct'일 때만 체크(기본은 세션 모드) — 체크 상태에 따라
-    // 아래 쿠키/토큰 "고급" 영역을 보이거나 숨긴다.
-    const authModeChk = el('apiAuthModeDirect');
-    const advancedBox = el('apiDirectAdvanced');
-    function syncAdvancedVisibility() {
-      if (advancedBox) advancedBox.style.display = (authModeChk && authModeChk.checked) ? '' : 'none';
-    }
-    if (authModeChk) {
-      authModeChk.checked = saved.authMode === 'direct';
-      syncAdvancedVisibility();
-      authModeChk.addEventListener('change', syncAdvancedVisibility);
+        const r = await window.api.cipherKeyGet();
+        if (r && r.ok && el('wfCipherKey')) el('wfCipherKey').value = r.key || '';
+      } catch (e) { /* 무시 — 빈 값으로 진행 */ }
     }
 
-    // 세션 로그인 상태 표시 + 버튼
-    const sessionStatusEl = el('apiSessionStatus');
-    const sessionLoginBtn = el('apiSessionLoginBtn');
-    const sessionLogoutBtn = el('apiSessionLogoutBtn');
-    function paintSessionStatus(loggedIn, note) {
-      if (!sessionStatusEl) return;
-      if (note) { sessionStatusEl.textContent = note; sessionStatusEl.style.background = '#e2e8f0'; sessionStatusEl.style.color = 'var(--mut)'; return; }
-      if (loggedIn) {
-        sessionStatusEl.textContent = '✔ 로그인됨';
-        sessionStatusEl.style.background = 'rgba(34,197,94,.15)'; sessionStatusEl.style.color = '#16a34a';
-      } else {
-        sessionStatusEl.textContent = '로그인 필요';
-        sessionStatusEl.style.background = 'rgba(239,68,68,.12)'; sessionStatusEl.style.color = '#dc2626';
-      }
-    }
-    async function refreshSessionStatus() {
-      if (!(window.api && window.api.apiSessionStatus)) { paintSessionStatus(false, '(세션 기능 없음)'); return; }
-      paintSessionStatus(false, '확인 중…');
-      try {
-        const r = await window.api.apiSessionStatus();
-        paintSessionStatus(!!(r && r.ok && r.loggedIn));
-      } catch (e) { paintSessionStatus(false, '확인 실패'); }
-    }
-    if (sessionLoginBtn) {
-      sessionLoginBtn.addEventListener('click', async () => {
-        sessionLoginBtn.disabled = true;
-        const prevLabel = sessionLoginBtn.textContent;
-        sessionLoginBtn.textContent = '로그인 창 열림 — 로그인 후 창을 닫아주세요…';
-        try {
-          // 로그인 창은 "저장된" 엔드포인트/로그인주소를 쓰므로, 아직 [저장]을 안 눌렀어도
-          // 지금 입력칸에 있는 값 그대로 로그인 창이 뜨도록 먼저 조용히 저장해둔다.
-          if (window.api.apiSettingsSet) { try { await window.api.apiSettingsSet(apiFormValues()); } catch (e) {} }
-          await window.api.apiSessionLogin();
-        } catch (e) { /* 창을 그냥 닫아도 여기로 올 수 있음 — 무시하고 상태만 다시 확인 */ }
-        sessionLoginBtn.disabled = false;
-        sessionLoginBtn.textContent = prevLabel;
-        await refreshSessionStatus();
-      });
-    }
-    if (sessionLogoutBtn) {
-      sessionLogoutBtn.addEventListener('click', async () => {
-        sessionLogoutBtn.disabled = true;
-        try { await window.api.apiSessionLogout(); } catch (e) {}
-        sessionLogoutBtn.disabled = false;
-        await refreshSessionStatus();
-      });
-    }
-    refreshSessionStatus();
-
-    if (toggle) {
-      toggle.addEventListener('change', () => {
-        setStatus(toggle.checked
-          ? '🔒 WF API 조회 켜짐 · 이제부터 WF는 DB 대신 API로 조회합니다(연결 상태에서만 동작).'
-          : 'WF API 조회 꺼짐 · WF를 다시 DB에서 직접 조회합니다.');
-        if (window.api && window.api.apiSettingsSet) {
-          window.api.apiSettingsSet({ enabled: toggle.checked }).catch(() => {});
-        }
+    const showBtn = el('wfCipherKeyShow');
+    if (showBtn) {
+      showBtn.addEventListener('click', () => {
+        const inp = el('wfCipherKey');
+        if (!inp) return;
+        if (inp.type === 'password') { inp.type = 'text'; showBtn.classList.add('on'); }
+        else { inp.type = 'password'; showBtn.classList.remove('on'); }
       });
     }
 
-    const tokenShowBtn = el('apiTokenShow');
-    if (tokenShowBtn) {
-      tokenShowBtn.addEventListener('click', () => {
-        const inp = el('apiTokenValue');
-        if (inp.type === 'password') { inp.type = 'text'; tokenShowBtn.classList.add('on'); }
-        else { inp.type = 'password'; tokenShowBtn.classList.remove('on'); }
-      });
-    }
-
-    const testBtn = el('apiTestBtn');
-    if (testBtn) {
-      testBtn.addEventListener('click', async () => {
-        testBtn.disabled = true;
-        setApiTestResult('테스트 중…', '');
-        try {
-          const r = await window.api.apiTestConnection(apiFormValues());
-          if (r.ok) setApiTestResult('✔ ' + r.message, 'ok');
-          else setApiTestResult('✘ ' + (r.message || (r.error && r.error.reason) || '연결 실패'), 'err');
-        } catch (e) {
-          setApiTestResult('✘ 테스트 중 오류: ' + (e && e.message ? e.message : e), 'err');
-        } finally {
-          testBtn.disabled = false;
-        }
-      });
-    }
-
-    const saveBtn = el('apiSaveBtn');
+    const saveBtn = el('wfCipherSaveBtn');
     if (saveBtn) {
       saveBtn.addEventListener('click', async () => {
         saveBtn.disabled = true;
         try {
-          const r = await window.api.apiSettingsSet(apiFormValues());
-          if (r && r.ok) setApiTestResult('저장했습니다.', 'ok');
-          else setApiTestResult('저장 실패', 'err');
+          const key = el('wfCipherKey') ? el('wfCipherKey').value : '';
+          const r = await window.api.cipherKeySet(key);
+          if (r && r.ok) setWfCipherResult('저장했습니다.', 'ok');
+          else setWfCipherResult('저장 실패', 'err');
         } catch (e) {
-          setApiTestResult('저장 실패: ' + (e && e.message ? e.message : e), 'err');
+          setWfCipherResult('저장 실패: ' + (e && e.message ? e.message : e), 'err');
         } finally {
           saveBtn.disabled = false;
         }
@@ -1910,10 +1789,9 @@
       return r.rows;
     }
     if (demoMode) return demoFetchWave(wave, keyType, keyValue);
-    const apiUse = wave === 'WF' && isWfApiOn();
-    const r = await window.api.fetchWave({ cfg, wave, tenantId, coCd, keyType, keyValue, relaxed, apiUse });
+    const r = await window.api.fetchWave({ cfg, wave, tenantId, coCd, keyType, keyValue, relaxed });
     if (!r.ok) throw new Error(r.error);
-    if (apiUse) reportWfApiRowOutcome(r.rows);
+    if (wave === 'WF') reportWfDecryptOutcome(r.rows);
     return r.rows;
   }
   async function fetchWfByUids(uids, tenantId, coCd) {
@@ -1923,21 +1801,20 @@
       return r.rows;
     }
     if (demoMode) return demoFetchWfByUids(uids);
-    const apiUse = isWfApiOn();
-    const r = await window.api.fetchWfByUids({ cfg, tenantId, coCd, uids, apiUse });
+    const r = await window.api.fetchWfByUids({ cfg, tenantId, coCd, uids });
     if (!r.ok) throw new Error(r.error);
-    if (apiUse) reportWfApiRowOutcome(r.rows);
+    reportWfDecryptOutcome(r.rows);
     return r.rows;
   }
 
-  // WF API 조회 결과를 상태표시줄에 요약한다 — 실패한 WF가 있으면 몇 건인지, 어떤 종류의
+  // WF 복호화 결과를 상태표시줄에 요약한다 — 실패한 WF가 있으면 몇 건인지, 어떤 종류의
   // 오류가 가장 많은지 바로 알 수 있게(개별 사유는 각 WF 노드의 상세 패널에서 확인).
-  function reportWfApiRowOutcome(rows) {
-    const list = (rows || []).filter(r => r && r.__apiError);
+  function reportWfDecryptOutcome(rows) {
+    const list = (rows || []).filter(r => r && r.__decryptError);
     if (!list.length) return;
-    const first = list[0].__apiError;
+    const first = list[0].__decryptError;
     const more = list.length > 1 ? (' 외 ' + (list.length - 1) + '건') : '';
-    setStatus('⚠ WF API 조회 실패: ' + (first.reason || first.detail || '알 수 없는 오류') + more +
+    setStatus('⚠ WF 복호화 실패: ' + (first.reason || first.detail || '알 수 없는 오류') + more +
       ' — 실패한 WF 노드를 클릭하면 상세 사유와 재시도 버튼을 볼 수 있습니다.', true);
   }
 
@@ -2171,26 +2048,25 @@
         + ') 검색 화면의 Wave 선택에서 <b>WF</b> 를 체크하고 다시 실행하면 내용을 볼 수 있습니다.</div>';
     }
 
-    // WF API 조회(암호화 우회) 상태 표시 — 실패 시 원인(사람이 읽을 수 있는 한국어 진단)과
-    // [🔁 재시도] 버튼을, 성공 시에는 API로 대체된 내용임을 알려준다.
+    // WF 복호화 상태 표시 — 실패 시 원인(사람이 읽을 수 있는 한국어 진단)과 [🔁 재시도] 버튼을,
+    // 성공 시에는 복호화된 내용으로 대체됐음을 알려준다.
     if (n.type === 'WF' && n.raw) {
-      if (n.raw.__apiError) {
-        const err = n.raw.__apiError;
-        // detail: 서버가 실제로 돌려준 원본 응답(최대 500자) — 진단 문구(reason)만으로 원인을
-        // 못 좁힐 때(예: userId까지 넣었는데도 403), 서버가 어떤 errMsg를 줬는지 직접 봐야
-        // 다음 원인을 좁힐 수 있어 접이식으로 노출한다(평소엔 접혀 있어 화면을 어지럽히지 않음).
-        html += '<div class="warn warn-err">⚠ WF API 조회 실패'
+      if (n.raw.__decryptError) {
+        const err = n.raw.__decryptError;
+        // detail: 복호화 시도 중 발생한 원본 오류 메시지 또는 원본 값(최대 300자) — 진단 문구
+        // (reason)만으로 원인을 못 좁힐 때 직접 봐야 다음 원인을 좁힐 수 있어 접이식으로
+        // 노출한다(평소엔 접혀 있어 화면을 어지럽히지 않음).
+        html += '<div class="warn warn-err">⚠ WF 복호화 실패'
           + (err.code ? ' <span class="muted">[' + esc(err.code) + ']</span>' : '') + '<br>'
           + esc(err.reason || err.detail || '알 수 없는 오류')
-          + (err.detail ? ('<br><details style="margin-top:4px"><summary style="cursor:pointer;color:var(--mut);font-size:11px">서버 원본 응답 보기(진단용)</summary>'
+          + (err.detail ? ('<br><details style="margin-top:4px"><summary style="cursor:pointer;color:var(--mut);font-size:11px">원본 값 보기(진단용)</summary>'
             + '<pre style="white-space:pre-wrap;word-break:break-all;font-size:11px;margin:4px 0 0;background:#00000008;padding:6px;border-radius:4px;max-height:160px;overflow:auto">'
             + esc(err.detail) + '</pre></details>') : '')
-          + '<br><button type="button" class="btn ghost xs wf-api-retry" data-uid="' + esc(n.uid || '') + '" style="margin-top:6px">🔁 API 재시도</button>'
+          + '<br><button type="button" class="btn ghost xs wf-decrypt-retry" data-uid="' + esc(n.uid || '') + '" style="margin-top:6px">🔁 복호화 재시도</button>'
           + '</div>';
-      } else if (n.raw.__apiUsed) {
-        html += '<div class="info-ok">🔒 이 WF는 API로 조회한 내용입니다'
-          + (n.raw.__apiInsecure ? ' (인증서 검증 건너뜀)' : '')
-          + ' — DB에 저장된 암호화 값 대신 사용됨.</div>';
+      } else if (n.raw.__decrypted) {
+        html += '<div class="info-ok">🔑 이 WF는 복호화된 내용입니다'
+          + ' — DB에 저장된 암호화 값을 대신 표시함.</div>';
       }
     }
 
@@ -2349,42 +2225,30 @@
 
     box.innerHTML = html;
 
-    // WF API 재시도 — DB를 다시 읽지 않고 그 WF의 SERVICE_UID만 다시 API로 조회한다.
-    // 성공하면 노드의 RESOURCE_WF를 갱신하고(그래프/흐름도는 해당 WF를 다시 열면 새 내용
-    // 반영), 실패하면 새 진단 사유로 배너를 갱신한다.
-    box.querySelectorAll('.wf-api-retry').forEach(btn => {
+    // WF 복호화 재시도 — DB를 다시 읽지 않고 지금 화면에 있는(암호화된) RESOURCE_WF 값을
+    // 방금 설정에 저장한 키로 다시 복호화해본다(키를 새로 입력/수정한 뒤 다시 눌러보는 용도).
+    // 성공하면 노드의 RESOURCE_WF를 평문으로 갱신하고(그래프/흐름도는 해당 WF를 다시 열면 새
+    // 내용 반영), 실패하면 새 진단 사유로 배너를 갱신한다.
+    box.querySelectorAll('.wf-decrypt-retry').forEach(btn => {
       btn.addEventListener('click', async () => {
         const uid = btn.getAttribute('data-uid');
-        if (!uid) return;
-        btn.disabled = true; btn.textContent = '조회 중…';
+        btn.disabled = true; btn.textContent = '복호화 중…';
         try {
-          // data-uid는 DOM 속성이라 항상 문자열이다. DB에서 오는 SERVICE_UID는 보통 숫자
-          // 타입이라(overlayWfApiContent 경로) 서버가 타입을 엄격히 볼 수 있으니 숫자 형태면
-          // 숫자로 변환해 보낸다(fetchManyByUid에서 실제로 이 차이 때문에 문제가 될 뻔한 걸
-          // 테스트로 확인해서 여기도 동일하게 맞춤).
-          const uidValue = /^\d+$/.test(uid) ? Number(uid) : uid;
-          // serviceId/serviceName도 함께 보내야 한다(이 WF 행의 값 그대로) — 실제 API가
-          // serviceUid만으로는 인증을 통과시키지 않는 경우가 확인되었다.
-          const r = await window.api.apiRefetchOne({
-            serviceUid: uidValue,
-            serviceId: n.raw && n.raw.SERVICE_ID,
-            serviceName: n.raw && n.raw.SERVICE_NAME
-          });
+          const r = await window.api.cipherDecryptOne(n.raw && n.raw.RESOURCE_WF);
           if (n.raw) {
             if (r.ok) {
-              n.raw.RESOURCE_WF = r.row.RESOURCE_WF;
-              n.raw.__apiUsed = true;
-              n.raw.__apiInsecure = !!r.insecureUsed;
-              n.raw.__apiError = null;
-              setStatus('✔ WF API 재조회 성공 (SERVICE_UID=' + uid + ')');
+              n.raw.RESOURCE_WF = r.plain;
+              n.raw.__decrypted = true;
+              n.raw.__decryptError = null;
+              setStatus('✔ WF 복호화 성공' + (uid ? (' (SERVICE_UID=' + uid + ')') : ''));
             } else {
-              n.raw.__apiError = r.error;
-              setStatus('✘ WF API 재조회 실패 (SERVICE_UID=' + uid + '): ' + (r.error && r.error.reason), true);
+              n.raw.__decryptError = r.error;
+              setStatus('✘ WF 복호화 실패' + (uid ? (' (SERVICE_UID=' + uid + ')') : '') + ': ' + (r.error && r.error.reason), true);
             }
           }
           showDetail(key); // 배너/내용 갱신을 위해 상세 패널 다시 그림
         } catch (e) {
-          btn.disabled = false; btn.textContent = '🔁 API 재시도';
+          btn.disabled = false; btn.textContent = '🔁 복호화 재시도';
           setStatus('✘ 재시도 중 오류: ' + (e && e.message ? e.message : e), true);
         }
       });
