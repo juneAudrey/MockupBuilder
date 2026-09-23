@@ -755,12 +755,7 @@
   .ax-search .sradio .opt .dot::after{content:"";position:absolute;inset:3px;background:var(--ax-green);border-radius:50%;display:none;}
   .ax-search .sradio .opt.on .dot::after{display:block;}
   .ax-search .sactions{display:flex;align-items:flex-start;gap:6px;flex:none;padding-top:20px;}
-  .ax-search .sexpand{width:32px;height:32px;border:1px solid var(--ax-green);border-radius:4px;background:#eaf6f0;color:var(--ax-green);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;line-height:1;}
   .ax-search .ssearch{height:32px;border-radius:4px;background:var(--ax-green);color:#fff;font-size:13px;font-weight:600;display:flex;align-items:center;gap:5px;padding:0 18px;}
-  .ax-search.collapsed{align-items:center;justify-content:center;color:#9aa4ad;font-size:12px;padding:8px;min-height:0;}
-  .ax-search.collapsed .sfields,.ax-search.collapsed .sactions{display:none;}
-  .ax-search .scollapsed-msg{display:none;}
-  .ax-search.collapsed .scollapsed-msg{display:flex;align-items:center;gap:6px;}
 
   /* Tab component */
   .ax-tabs-wrap{width:100%;height:100%;position:relative;}
@@ -1142,16 +1137,11 @@
   .gbtn:not(.disabled):hover{background:var(--ax-green-dark);border-color:var(--ax-green-dark);}
   .ax-grid .gr.hoverable{transition:background .1s;}
   .ax-grid .gr.hoverable:hover{background:#f3f9f6;}
-  .ax-search-toggle-wrap{width:100%;height:100%;position:relative;}
-  .ax-search-toggle-wrap .ax-search{width:100%;height:100%;}
   /* let a combo dropdown escape the panel instead of being clipped by overflow:hidden */
   .ax-search{overflow:visible;}
   .ax-search .sfields{overflow:visible;}
   .ax-search .sctl.combo.interactive{position:relative;}
   .ax-search .sctl.combo.interactive.open{z-index:600;}
-  .ax-search.collapsed{cursor:pointer;}
-  .ax-search .sexpand{cursor:pointer;transition:background .12s;}
-  .ax-search .sexpand:hover{background:var(--ax-green-light);}
   .sctl.date-x,.sctl.text-x{padding:0;}
   .sctl-text-el{width:100%;height:100%;border:none;outline:none;background:transparent;font-size:12px;color:#111;padding:0 8px;font-family:inherit;}
   /* .sctl-date-el도 위쪽(.ax-date-el,.sctl-date-el)에서 이미 항상 숨겨두었다 - 실제로 보이는 건
@@ -1216,7 +1206,6 @@
   body.skin-classic .ax-chart,
   body.skin-classic .ax-search,
   body.skin-classic .ax-search .sctl,
-  body.skin-classic .ax-search .sexpand,
   body.skin-classic .ax-search .ssearch,
   body.skin-classic .combo-drop,
   body.skin-classic .gbtn,
