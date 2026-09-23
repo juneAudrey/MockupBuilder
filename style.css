@@ -539,6 +539,9 @@
   body.skin-classic .ax-grid .gtoolbar{display:none;}
   .ax-grid .gtoolbar .gtitle{font-size:13px;font-weight:700;color:var(--ax-navy);display:flex;align-items:center;gap:4px;flex:none;white-space:nowrap;}
   .ax-grid .gtoolbar .gtitle::before{content:"⌃";transform:rotate(180deg);color:var(--ax-green);font-weight:700;}
+  /* 씬모드 그리드 제목 우측 - "(N)건" (Excel Download 사용 옵션) */
+  .ax-grid .gtoolbar .gcount{display:inline-flex;align-items:center;gap:0;flex:none;margin-left:10px;font-size:13px;font-weight:600;color:#6b7280;white-space:nowrap;}
+  .ax-grid .gtoolbar .gcount-n{color:var(--ax-green);font-weight:700;}
   .ax-grid .gtoolbar .gspacer{flex:1;min-width:8px;}
   .ax-grid .gtoolbar .gbtn-row{display:flex;align-items:center;gap:5px;flex:none;max-width:100%;overflow-x:auto;scrollbar-width:thin;}
   .gbtn{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:#fff;background:var(--ax-green);border:1px solid var(--ax-green);border-radius:5px;padding:5px 10px 5px 6px;white-space:nowrap;}
