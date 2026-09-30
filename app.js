@@ -10724,9 +10724,22 @@ checkVersion();
     if (cached && !geoIsAllowed(cached)) geoShowBlock();
   }catch(_){}
 
-  async function logMockupAccess(){
+  // 이번 페이지 로드가 브라우저 새로고침(F5·새로고침 버튼·location.reload)인지 판별.
+  // Navigation Timing Level 2를 우선 쓰고, 미지원 브라우저는 구형 performance.navigation으로 폴백.
+  function isReloadNavigation(){
+    try{
+      const nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+      if (nav && nav.type) return nav.type === 'reload';
+      if (performance.navigation) return performance.navigation.type === 1; // TYPE_RELOAD
+    }catch(_){}
+    return false;
+  }
+
+  // opts.skipInsert=true 이면 국가 조회·해외 차단 판정만 하고 DB INSERT는 하지 않는다.
+  async function logMockupAccess(opts){
     const geo = await fetchIpAndLocation();
-    geoApply(geo.countryCode); // 차단 판정은 화면에만 영향. 아래 로그 INSERT는 그대로 진행
+    geoApply(geo.countryCode); // 차단 판정은 로그 기록 여부와 무관하게 매번 수행
+    if (opts && opts.skipInsert) return;
     const row = {
       created_at: nowKstIso(), // 명시하지 않으면 테이블의 default now()가 UTC로 채움
       external_ip: geo.ip,
@@ -10763,11 +10776,13 @@ checkVersion();
     }
   }
 
-  function init(){ logMockupAccess(); }
+  // 새로고침으로 다시 연 경우에는 접속 로그를 남기지 않는다(해외 차단 판정은 그대로 수행).
+  // 새 탭·주소창 입력·링크·북마크로 연 경우와 씬/팻 모드 전환(setAppSkin) 로그는 기존대로 남는다.
+  function init(){ logMockupAccess({ skipInsert: isReloadNavigation() }); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
   // 모드(씬/팻)가 바뀔 때도 같은 로그를 한 번 더 남긴다 - setAppSkin()이 로고 클릭이든 파일
   // 불러오기든 모드가 바뀌는 유일한 통로라서, 거기서 이 함수를 호출하면 "언제 어떤 모드였는지"의
   // 타임라인이 접속 로그만으로 만들어진다. 최초 접속 로그(위 init)와 완전히 같은 형태의 행이라
   // mode 컬럼만 보고 그 시점의 모드를 그대로 읽을 수 있다.
-  window.mbLogAccess = logMockupAccess;
+  window.mbLogAccess = function(){ return logMockupAccess(); };
 })();
