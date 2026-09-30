@@ -10625,15 +10625,15 @@ checkVersion();
         const city = j.city || null;
         const countryCode = j.country_code || j.country || null;
         const loc = (city && countryCode) ? `${city}, ${countryCode}` : (countryCode || null);
-        return { ip: j.ip, location: loc };
+        return { ip: j.ip, location: loc, countryCode: countryCode ? String(countryCode).toUpperCase() : null };
       }
     }catch(_){}
     try{
       const r = await fetchWithTimeout('https://api.ipify.org?format=json', {}, 5000);
       const j = await r.json();
-      return { ip: (j && j.ip) ? j.ip : null, location: null };
+      return { ip: (j && j.ip) ? j.ip : null, location: null, countryCode: null };
     }catch(_){
-      return { ip: null, location: null };
+      return { ip: null, location: null, countryCode: null };
     }
   }
 
@@ -10649,8 +10649,84 @@ checkVersion();
     }catch(_){}
   }
 
+  /* ----- 해외 접속 차단 -----
+   * 접속 로그용으로 조회한 국가코드(ipapi.co)가 KR이 아니면 앱 화면을 모두 숨기고 안내 문구만 보여준다.
+   * - 접속 로그 INSERT는 차단 여부와 관계없이 그대로 수행한다(해외 접속도 기록에 남는다).
+   * - 국가코드를 알 수 없는 경우(ipapi 차단·레이트리밋·타임아웃 → ipify 폴백)는 막지 않는다(fail-open).
+   *   사내망에서 ipapi가 막혀 있어도 국내 사용자가 차단되지 않게 하기 위함.
+   * - 마지막으로 확인된 국가코드를 localStorage에 캐시해, 이전에 해외로 판정된 브라우저는 다음 접속 때
+   *   조회 결과를 기다리지 않고 즉시 차단 화면을 띄운다. 새 조회 결과가 KR이면 차단을 해제한다.
+   * - 차단 화면은 style.css가 아닌 JS 주입 스타일을 쓰므로 MB_APP_CSS_B64 스냅샷 재생성이 필요 없다. */
+  const GEO_ALLOWED = ['KR'];
+  const GEO_CACHE_KEY = 'mb_geo_country';
+  let geoBlocked = false;
+
+  function geoIsAllowed(cc){ return !cc || GEO_ALLOWED.indexOf(cc) >= 0; }
+
+  function geoKeyGuard(e){
+    if (!geoBlocked) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+
+  function geoShowBlock(){
+    if (geoBlocked) return;
+    geoBlocked = true;
+    try{
+      if (!document.getElementById('mbGeoBlockStyle')) {
+        const st = document.createElement('style');
+        st.id = 'mbGeoBlockStyle';
+        st.textContent =
+          'html.mb-geo-blocked,html.mb-geo-blocked body{overflow:hidden!important;background:#f4f6f8!important;}' +
+          'html.mb-geo-blocked body>*:not(#mbGeoBlock){display:none!important;}' +
+          '#mbGeoBlock{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;' +
+            'background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;padding:24px;box-sizing:border-box;}' +
+          '#mbGeoBlock .mb-geo-inner{text-align:center;max-width:520px;}' +
+          '#mbGeoBlock h1{margin:0 0 12px;font-size:28px;font-weight:700;color:#2c3e50;letter-spacing:-0.01em;}' +
+          '#mbGeoBlock p{margin:0;font-size:15px;line-height:1.6;color:#6b7280;}';
+        (document.head || document.documentElement).appendChild(st);
+      }
+      if (!document.getElementById('mbGeoBlock')) {
+        const box = document.createElement('div');
+        box.id = 'mbGeoBlock';
+        box.setAttribute('role', 'alert');
+        box.innerHTML = '<div class="mb-geo-inner"><h1>Access Restricted</h1>' +
+          '<p>This service is not available from your current location.</p></div>';
+        document.body.appendChild(box);
+      }
+      document.documentElement.classList.add('mb-geo-blocked');
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      // 숨겨진 화면에 대한 단축키(Alt+O/P, Ctrl+S 등)도 동작하지 않게 캡처 단계에서 차단
+      ['keydown','keypress','keyup','paste','drop','dragover'].forEach(t => window.addEventListener(t, geoKeyGuard, true));
+    }catch(_){}
+  }
+
+  function geoHideBlock(){
+    if (!geoBlocked) return;
+    geoBlocked = false;
+    try{
+      document.documentElement.classList.remove('mb-geo-blocked');
+      const box = document.getElementById('mbGeoBlock');
+      if (box) box.remove();
+      ['keydown','keypress','keyup','paste','drop','dragover'].forEach(t => window.removeEventListener(t, geoKeyGuard, true));
+    }catch(_){}
+  }
+
+  function geoApply(cc){
+    if (!cc) return; // 판단 불가 → 현재 상태 유지(캐시로 이미 차단된 경우 그대로 차단)
+    try{ localStorage.setItem(GEO_CACHE_KEY, cc); }catch(_){}
+    if (geoIsAllowed(cc)) geoHideBlock(); else geoShowBlock();
+  }
+
+  // 부트 시점: 이전에 해외로 판정된 브라우저면 조회를 기다리지 않고 즉시 차단
+  try{
+    const cached = localStorage.getItem(GEO_CACHE_KEY);
+    if (cached && !geoIsAllowed(cached)) geoShowBlock();
+  }catch(_){}
+
   async function logMockupAccess(){
     const geo = await fetchIpAndLocation();
+    geoApply(geo.countryCode); // 차단 판정은 화면에만 영향. 아래 로그 INSERT는 그대로 진행
     const row = {
       created_at: nowKstIso(), // 명시하지 않으면 테이블의 default now()가 UTC로 채움
       external_ip: geo.ip,
