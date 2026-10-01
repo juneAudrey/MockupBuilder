@@ -7649,6 +7649,9 @@ async function mbAdminEnsureLoaded(){
     }
   }
 }
+// 일자별 통계 필터: 'stat' = 일자별 통계(IP), 'statMode' = 일자별 통계(Mode). 둘 다 같은 원본(statRaw)·
+// 검색어(statQuery)·정렬(statSort)을 쓰고, 묶는 기준(IP / 화면 모드)만 다르다.
+function mbAdminIsStat(f){ f=f==null?mbAdmin.logsFilter:f; return f==='stat'||f==='statMode'; }
 function mbAdminLogsFilter(v){
   mbAdmin.logsFilter=v;
   // 검색창 placeholder·정렬 옵션이 필터마다 달라지므로(특히 일자별 통계) 결과 테이블만이 아니라
@@ -7656,14 +7659,14 @@ function mbAdminLogsFilter(v){
   mbAdminRender();
 }
 function mbAdminSearch(tabKey,v){
-  if(tabKey==='logs'){ if(mbAdmin.logsFilter==='stat') mbAdmin.statQuery=v; else mbAdmin.logsQuery=v; }
+  if(tabKey==='logs'){ if(mbAdminIsStat()) mbAdmin.statQuery=v; else mbAdmin.logsQuery=v; }
   else if(tabKey==='users') mbAdmin.usersQuery=v;
   else mbAdmin.fbQuery=v;
   const el=document.getElementById('adm-'+tabKey+'-results');
   if(el) el.innerHTML = tabKey==='logs'?mbAdminLogsRows():tabKey==='users'?mbAdminUsersRows():mbAdminFeedbackRows();
 }
 function mbAdminSort(tabKey,v){
-  if(tabKey==='logs'){ if(mbAdmin.logsFilter==='stat') mbAdmin.statSort=v; else mbAdmin.logsSort=v; }
+  if(tabKey==='logs'){ if(mbAdminIsStat()) mbAdmin.statSort=v; else mbAdmin.logsSort=v; }
   else if(tabKey==='users') mbAdmin.usersSort=v;
   else mbAdmin.fbSort=v;
   const el=document.getElementById('adm-'+tabKey+'-results');
@@ -7676,7 +7679,7 @@ function mbAdminSort(tabKey,v){
 // 생기지 않는다). 데이터가 아주 많아져도 이 조회 자체는 가벼운 정렬+LIMIT라 부담 없다.
 async function mbAdminLoadMore(tabKey){
   if(tabKey==='logs'){
-    if(mbAdmin.logsFilter==='stat') return; // 일자별 통계는 전량을 한 번에 집계하므로 무한스크롤 추가 로드가 필요 없다
+    if(mbAdminIsStat()) return; // 일자별 통계는 전량을 한 번에 집계하므로 무한스크롤 추가 로드가 필요 없다
     if(mbAdmin.logsLoadingMore || (!mbAdmin.authLogsHasMore && !mbAdmin.accessLogHasMore)) return;
     mbAdmin.logsLoadingMore=true; mbAdmin.logsLimit+=MB_ADMIN_PAGE_SIZE;
     mbAdminRenderKeepListScroll(tabKey);
@@ -7731,18 +7734,20 @@ function mbAdminMoreHint(hasMore,loadingMore,hasQuery){
 const ADM_EVENT_LABEL={login:['로그인','#eaf6ef','#1a7a4c'],logout:['로그아웃','#eef1f4','#5f6c78'],signup:['가입','#eaf1fb','#2a5ea8'],login_failed:['로그인 실패','#fdecec','#c0392b'],page_access:['페이지 접속','#fff4e5','#a5650a']};
 function mbAdminRenderLogs(){
   const f=mbAdmin.logsFilter;
-  if(f==='stat') mbAdminEnsureStatLoaded(); // 최초 진입 시 1회 백그라운드 로드(이미 로드됐으면 내부에서 바로 리턴)
-  const isStat=f==='stat';
+  if(mbAdminIsStat(f)) mbAdminEnsureStatLoaded(); // 최초 진입 시 1회 백그라운드 로드(이미 로드됐으면 내부에서 바로 리턴)
+  const isStat=mbAdminIsStat(f);
+  const statByMode=f==='statMode';
   return `<div class="cl-toolbar">
     <div class="cl-lineage-seg" style="flex-shrink:0;">
       <span class="${f==='all'?'on':''}" onclick="mbAdminLogsFilter('all')">전체</span>
       <span class="${f==='auth'?'on':''}" onclick="mbAdminLogsFilter('auth')">로그인 이력</span>
       <span class="${f==='access'?'on':''}" onclick="mbAdminLogsFilter('access')">페이지 접속</span>
-      <span class="${f==='stat'?'on':''}" onclick="mbAdminLogsFilter('stat')">일자별 통계</span>
+      <span class="${f==='stat'?'on':''}" onclick="mbAdminLogsFilter('stat')">일자별 통계(IP)</span>
+      <span class="${f==='statMode'?'on':''}" onclick="mbAdminLogsFilter('statMode')">일자별 통계(Mode)</span>
     </div>
     <div class="cl-search-box" style="flex:1;max-width:none;">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.3"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
-      <input type="text" placeholder="${isStat?'IP로 검색':'사용자명, IP, 위치, 환경으로 검색'}" value="${esc(isStat?mbAdmin.statQuery:mbAdmin.logsQuery)}" oninput="mbAdminSearch('logs',this.value)">
+      <input type="text" placeholder="${isStat?(statByMode?'Mode로 검색':'IP로 검색'):'사용자명, IP, 위치, 환경으로 검색'}" value="${esc(isStat?mbAdmin.statQuery:mbAdmin.logsQuery)}" oninput="mbAdminSearch('logs',this.value)">
     </div>
     <select class="cl-sortselect" onchange="mbAdminSort('logs',this.value)">
       ${isStat?`
@@ -7766,7 +7771,7 @@ async function mbAdminEnsureStatLoaded(){
   try{ mbAdmin.statRaw=await mbAdminListAccessLog(MB_ADMIN_STAT_LIMIT)||[]; }
   catch(e){ mbAdmin.statRaw=[]; }
   mbAdmin.statLoading=false; mbAdmin.statLoaded=true;
-  if(mbAdmin.tab==='logs'&&mbAdmin.logsFilter==='stat'){
+  if(mbAdmin.tab==='logs'&&mbAdminIsStat()){
     const el=document.getElementById('adm-logs-results');
     if(el) el.innerHTML=mbAdminLogsRows();
   }
@@ -7774,9 +7779,10 @@ async function mbAdminEnsureStatLoaded(){
 function mbAdminStatRows(){
   if(mbAdmin.statLoading||!mbAdmin.statLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
   const q=mbAdmin.statQuery.trim().toLowerCase();
+  const byMode=mbAdmin.logsFilter==='statMode'; // 일자별 통계(Mode): IP 대신 접속 시점의 화면 모드(Thin/Fat/Mobile)로 묶는다
   const map=new Map();
   mbAdmin.statRaw.forEach(r=>{
-    const ip=r.external_ip||'(알 수 없음)';
+    const ip=(byMode?r.mode:r.external_ip)||'(알 수 없음)';
     if(q && !ip.toLowerCase().includes(q)) return;
     const d=new Date(r.created_at);
     const p=n=>String(n).padStart(2,'0');
@@ -7801,7 +7807,7 @@ function mbAdminStatRows(){
     const bg=band?'#f3f6fb':'#ffffff';
     return `<tr style="background:${bg};"><td style="background:${bg};">${esc(r.date)}</td><td style="background:${bg};" class="adm-mono">${esc(r.ip)}</td><td style="background:${bg};"><span class="adm-badge" style="background:#eaf1fb;color:#2a5ea8;">${r.count}건</span></td></tr>`;
   }).join('');
-  return `<table class="adm-table" style="width:auto;min-width:420px;table-layout:auto;"><thead><tr><th style="width:120px;">날짜</th><th style="width:160px;">IP</th><th style="width:90px;">접속 건수</th></tr></thead><tbody>${trs}</tbody></table>`;
+  return `<table class="adm-table" style="width:auto;min-width:420px;table-layout:auto;"><thead><tr><th style="width:120px;">날짜</th><th style="width:160px;">${byMode?'Mode':'IP'}</th><th style="width:90px;">접속 건수</th></tr></thead><tbody>${trs}</tbody></table>`;
 }
 // auth_logs(로그인/로그아웃/가입 이벤트)와 mockup_access_log(페이지 접속 기록)는 서로 다른 목적의
 // 완전히 독립된 두 기록이라(둘 사이에 외래키로 묶을 만한 실제 관계가 없다 - 페이지 접속은 로그인
@@ -7809,7 +7815,7 @@ function mbAdminStatRows(){
 // 만들어 조인하는 대신 여기서 그냥 "시간순 타임라인"으로 합친다 - 화면에 같이 보여주는 목적에는
 // 이 편이 스키마를 안 건드리면서 더 간단하고, 필터(전체/로그인 이력/페이지 접속)로 언제든 나눠 볼 수도 있다.
 function mbAdminLogsRows(){
-  if(mbAdmin.logsFilter==='stat') return mbAdminStatRows();
+  if(mbAdminIsStat()) return mbAdminStatRows();
   if(!mbAdmin.authLogsLoaded||!mbAdmin.accessLogLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
   const f=mbAdmin.logsFilter;
   let rows=[];
