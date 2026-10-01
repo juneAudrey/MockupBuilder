@@ -632,6 +632,7 @@ function todayStr(){
 function changeCompType(id,newType){
   const c=comps.find(x=>x.id===id);
   if(!c||!INPUT_TYPES.includes(c.type)||!INPUT_TYPES.includes(newType)||c.type===newType)return;
+  if(!mbTypeAllowedInSkin(newType))return; // 지금 모드에서 쓰지 않는 컴포넌트로는 바꾸지 않는다
   // 이 컴포넌트를 대상으로 열려 있던 텍스트 서식 팝업(볼드/기울임 등)이 있으면 먼저 닫는다 -
   // 타입이 바뀌면 그 팝업이 읽고 쓰던 속성 구조도 같이 바뀌므로, 그리드 컬럼 삭제 시와 동일한
   // 방식으로 먼저 정리한다(위 updGridColStatus 등 근처의 기존 lf 정리 패턴과 동일).
@@ -2915,7 +2916,8 @@ function renderProps(){
   // 사이를 즉시 전환한다(예: 텍스트박스→콤보박스, 라디오→체크박스). 변경상태 선택과 아래
   // 텍스트/라벨 속성 사이에 위치. changeCompType()이 실제 변환을 담당.
   if(INPUT_TYPES.includes(c.type)){
-    const tOpts=INPUT_TYPES.map(t=>{const m=INPUT_TYPE_META[t];return `<option value="${t}"${c.type===t?' selected':''}>${m.icon} ${m.label}</option>`;}).join('');
+    // 지금 모드의 컴포넌트 목록(MB_MODE_COMPONENTS)에 있는 타입만 보여준다(현재 타입은 항상 포함).
+    const tOpts=INPUT_TYPES.filter(t=>t===c.type||mbTypeAllowedInSkin(t)).map(t=>{const m=INPUT_TYPE_META[t];return `<option value="${t}"${c.type===t?' selected':''}>${m.icon} ${m.label}</option>`;}).join('');
     html+=`<div class="prop"><label>타입${qh('다른 입력 컴포넌트 종류로 바로 바꿉니다. 위치·크기는 그대로 유지되고, 라벨 문구·필수·읽기전용 등 공통 속성은 옮겨집니다.')}</label><select onchange="changeCompType(${c.id},this.value)">${tOpts}</select></div>`;
   }
   if(c.type!=='panel'&&c.type!=='split'){
@@ -5947,7 +5949,57 @@ function seed(){
 
 // Places an array of imported/template JSON items onto the canvas.
 // scale: multiply all coordinates (1 = as-is). clearFirst: wipe canvas first.
+// 모바일모드 JSON 가져오기 보정: 모바일 도구상자에 없는 타입을 모바일에서 쓸 수 있는 형태로 바꾼다.
+// - popup/attach → 텍스트박스(input). 첨부파일은 원래처럼 읽기전용으로.
+// - searchbar → 조건 필드를 한 행짜리 입력 컴포넌트로 세로로 펼치고, 그 아래(같은 최상위) 항목은 늘어난 만큼 내린다.
+// - grid는 모바일 기본값대로 툴바를 끈다(JSON에 showToolbar가 명시돼 있으면 그 값을 따른다).
+// (split은 원래부터 가져오기 대상 타입이 아니라 텍스트박스로 바뀐다)
+function mbMobileNormalizeImport(items){
+  if(!mbIsMobileSkin()||!Array.isArray(items)) return items;
+  const FIELD_MAP={text:'input',search:'input',combo:'combo',date:'date',daterange:'daterange',radio:'radio'};
+  const ROW_H=52, ROW_GAP=8;
+  let out=[];
+  items.forEach(it=>{
+    if(!it||typeof it!=='object'){ out.push(it); return; }
+    const type=String(it.type||'').toLowerCase();
+    if(type==='popup'||type==='attach'){
+      const n=Object.assign({},it,{type:'input'});
+      if(type==='attach') n.readonly=true;
+      delete n.style;
+      out.push(n); return;
+    }
+    if(type==='grid'&&it.showToolbar===undefined){ out.push(Object.assign({},it,{showToolbar:false})); return; }
+    if(type==='searchbar'){
+      const fields=(Array.isArray(it.fields)?it.fields:[]).filter(f=>f&&String(f.type||'text').toLowerCase()!=='empty');
+      const x=Number(it.x)||MB_MOBILE_SIDE_MARGIN, w=Number(it.w)||(MB_SKIN_CANVAS.mobile.w-2*MB_MOBILE_SIDE_MARGIN);
+      const y0=Number(it.y)||0, oldH=Number(it.h)||84;
+      const made=fields.map((f,i)=>{
+        const ft=FIELD_MAP[String(f.type||'text').toLowerCase()]||'input';
+        const n={type:ft,x,y:y0+i*(ROW_H+ROW_GAP),w,h:ROW_H,text:f.text!=null?String(f.text):(ft==='combo'?'선택':''),
+          showLabel:!!(f.label&&String(f.label).trim()),labelText:f.label||'',labelPos:'top',required:!!f.required};
+        if(f.readonly) n.readonly=true;
+        if(f.options) n.options=String(f.options);
+        if(it.parent!==undefined){ n.parent=it.parent; if(it.tabIdx!==undefined) n.tabIdx=it.tabIdx; }
+        return n;
+      });
+      const newH=made.length?made.length*(ROW_H+ROW_GAP)-ROW_GAP:0;
+      const delta=newH-oldH;
+      if(delta!==0){
+        // 같은 레벨(최상위끼리 / 같은 부모끼리)에서 조회조건 아래에 있던 항목을 늘어난(줄어든) 만큼 이동
+        const sameLevel=o=>o&&typeof o==='object'&&o.parent===it.parent&&(o.tabIdx===it.tabIdx);
+        const bottom=y0+oldH;
+        const shift=o=>{ if(sameLevel(o)&&(Number(o.y)||0)>=bottom-1) o.y=(Number(o.y)||0)+delta; };
+        out.forEach(shift);
+        items.forEach(o=>{ if(o!==it&&items.indexOf(o)>items.indexOf(it)) shift(o); });
+      }
+      out=out.concat(made); return;
+    }
+    out.push(it);
+  });
+  return out;
+}
 function placeItems(items,scale,clearFirst){
+  items=mbMobileNormalizeImport(items);
   pushHistory();
   if(clearFirst){ comps=[]; clearOriginTracking(); } // 기존 내용을 지우는 선택이므로 파생 추적 값도 함께 지운다
   const known=['title','section','panel','tabs','label','input','combo','date','daterange','check','radio','button','grid','chart','tree','searchbar','popup','attach'];
@@ -6371,6 +6423,9 @@ let tmplTab='reg';
 // Newest first. Add a new entry at the top on each release and bump PATCH_VER;
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
+  {ver:'20261001.001', date:'2026년 10월 1일', items:[
+    {t:'📱 Mobile Mode 추가', d:'① 상단 왼쪽 <b>타이틀</b>을 누르면 뜨는 화면 모드 전환 팝업에 <b>Mobile Mode</b>가 추가되었습니다(모바일 앱·PDA 웹앱 화면용).<br>② 캔버스는 <b>400×700 세로형</b>이며, 바깥에 <b>휴대폰 프레임</b>이 함께 표시됩니다.<br>③ 기본 화면은 좌측 상단 <b>「&lt;」</b>와 가운데 <b>프로그램명</b> 제목으로 시작합니다.<br>④ 도구상자에서 끌어다 놓으면 입력·데이터 컴포넌트가 <b>한 행 전체 폭</b>으로 놓입니다.<br>⑤ 버튼은 <b>파란색</b>으로 그려지며, <b>검색 아이콘</b>을 붙일 수 있습니다.<br>⑥ 클라우드·목업마켓·임시 작업·AI 프롬프트는 <b>모바일 전용</b>으로 따로 관리되고, 저장한 파일을 열면 그 파일의 모드로 <b>자동 전환</b>됩니다.'}
+  ]},
   {ver:'20260923.002', date:'2026년 9월 23일', items:[
     {t:'📥 그리드 「Excel Download 사용」 옵션·건수 표시 추가 (씬모드)', d:'① 그리드 제목 우측에 <b>(0)건</b> 문구가 표시됩니다. 숫자는 녹색으로 강조되며, 속성의 <b>표시 행 수</b>를 그대로 따라 바꾸면 바로 반영됩니다(0행이면 (0)건, 본문 행도 0행).<br>② 그리드 속성 「CheckBox 사용」 바로 아래에 <b>Excel Download 사용</b> 옵션이 추가되었습니다(기본값 체크). 체크를 해제하면 건수 문구가 숨겨집니다.<br>③ 미리보기·저장 결과물에도 동일하게 적용되며, 씬모드 전용 기능이라 팻모드에서는 표시되지 않습니다.'}
   ]},
@@ -6998,7 +7053,7 @@ const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
 // 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
 const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
 const VER_FILE         = 'verchk.txt';
-const REMOTE_VER       = '20260923.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+const REMOTE_VER       = '20261001.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
 // 내보내기 결과물의 상단 바(Alt+O/Alt+P/Alt+S) 런타임을 어디서 불러올지 - 이 주소에 있는 파일만
 // 고치면 이미 내보내진(구버전) 결과물까지 전부 상단 바 버그 수정이 그대로 적용된다. 실제 배포
 // 도메인이 바뀌면 이 한 줄만 바꾸면 된다.
@@ -8372,6 +8427,15 @@ function mbThumbDrawComp(c,x,y,w,h,C,FF){
       const bc=C.btn||C.green; // 모바일모드 버튼은 파란 계열(#2384DB), 아웃라인 테두리는 연회색(#DFDFDF)
       const bStroke=outline&&C.btnOutlineBorder?C.btnOutlineBorder:bc;
       const rx=C.mobile?Math.min(12*h/44,h*0.3):Math.min(3,h*0.2);
+      if(C.mobile&&c.searchIcon){
+        // 모바일 「검색 아이콘 사용」: 텍스트 왼쪽 돋보기(간단한 원+손잡이)
+        const ic=Math.max(2,fs*0.9), tw=String(c.text||'').trim()?Math.min(w*0.6,String(c.text).length*fs*0.9):0;
+        const cx=x+w/2-(tw?tw/2+ic*0.7:0), cy=y+h/2, col=outline?bc:'#fff';
+        return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${rx.toFixed(1)}" fill="${outline?'#fff':bc}" stroke="${bStroke}" stroke-width="0.6"/>`
+          +`<circle cx="${(cx-ic*0.1).toFixed(1)}" cy="${(cy-ic*0.1).toFixed(1)}" r="${(ic*0.32).toFixed(1)}" fill="none" stroke="${col}" stroke-width="${Math.max(0.5,ic*0.14).toFixed(2)}"/>`
+          +`<line x1="${(cx+ic*0.14).toFixed(1)}" y1="${(cy+ic*0.14).toFixed(1)}" x2="${(cx+ic*0.4).toFixed(1)}" y2="${(cy+ic*0.4).toFixed(1)}" stroke="${col}" stroke-width="${Math.max(0.5,ic*0.14).toFixed(2)}" stroke-linecap="round"/>`
+          +(tw?`<text x="${(x+w/2+ic*0.7).toFixed(1)}" y="${(y+h*0.66).toFixed(1)}" font-size="${fs.toFixed(1)}" font-weight="700" fill="${outline?bc:'#fff'}" text-anchor="middle" ${FF}>${e(mbThumbFit(c.text,w-2-ic*1.4,fs,700))}</text>`:'');
+      }
       return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${rx.toFixed(1)}" fill="${outline?'#fff':bc}" stroke="${bStroke}" stroke-width="0.6"/>`
         +`<text x="${(x+w/2).toFixed(1)}" y="${(y+h*0.66).toFixed(1)}" font-size="${fs.toFixed(1)}" font-weight="700" fill="${outline?bc:'#fff'}" text-anchor="middle" ${FF}>${e(mbThumbFit(c.text,w-2,fs,700))}</text>`;
     }
@@ -10312,7 +10376,8 @@ checkVersion();
         selectSingle(null);
         try{ clearOriginTracking(); }catch(e){} // 전체 초기화이므로 공유파일 파생 추적 값도 함께 지운다
         var cw=document.getElementById('cw'), ch=document.getElementById('ch');
-        if(cw){ cw.value=1100; setCW(); } if(ch){ ch.value=700; setCH(); }
+        var ds=mbDefaultCanvasSize(); // 모드별 기본 크기(씬/팻 1100x700, 모바일 400x700)
+        if(cw){ cw.value=ds.w; setCW(); } if(ch){ ch.value=ds.h; setCH(); }
         var s=document.getElementById('snapChk'); if(s) s.checked=true;
         var ss=document.getElementById('snapSize'); if(ss) ss.value=10;
         var g=document.getElementById('gridChk'); if(g) g.checked=true;
