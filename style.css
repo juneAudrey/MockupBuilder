@@ -1806,3 +1806,65 @@ body.mb-diffhide .sfield.mb-diffst::after,body.mb-diffhide .sfield.mb-diffst::be
 body.mb-diffhide .ax-grid .gh span.gcol-diffst{border-color:transparent!important;}
 body.mb-diffhide .ax-grid .gh span.gcol-diffst::before{visibility:hidden!important;}
 body.mb-diffhide .gcol-diffst-del,body.mb-diffhide .gcol-diffst-del-cell{opacity:1!important;text-decoration:none!important;}
+
+/* ===== Mobile Mode (화면 모드: 모바일 앱 / PDA 웹앱) =====
+   body.skin-mobile 일 때만 적용된다. 컴포넌트 렌더링은 씬모드를 기반으로 하므로 색상 변수는 씬모드
+   그대로 두고, 앱 상단바·로고만 보라 계열로 바꾸며 모바일 전용 차이(버튼 색, 제목 정렬,
+   휴대폰 프레임)만 아래에서 덧붙인다. */
+body.skin-mobile{
+  --topbar-bg:
+    linear-gradient(122deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 30%),
+    linear-gradient(58deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,0) 46%),
+    linear-gradient(300deg, rgba(0,0,0,.20) 0%, rgba(0,0,0,0) 40%),
+    linear-gradient(96deg, #6c45dc 0%, #5f36c4 52%, #7350e4 100%);
+  --topbar-ghost-border:#5b46a8; --topbar-ghost-hover:#4c3896;
+  --autosave-fg:#d6c8ff;
+  --mb-btn-blue:#2384DB; --mb-btn-blue-hover:#1c72c2; --mb-btn-outline-border:#DFDFDF;
+}
+body.skin-mobile .topbar{background-color:#5f36c4;}
+body.skin-mobile .brand-m img,
+body.skin-mobile #mbTop .mb-brand-mark img{
+  filter:grayscale(1) sepia(1) hue-rotate(215deg) saturate(4) brightness(.9);
+}
+/* 도구상자: 지금 모드의 컴포넌트 목록(MB_MODE_COMPONENTS)에 없는 항목은 숨긴다 */
+.toolbox .tool.mb-mode-off{display:none!important;}
+/* 모바일 버튼: 기본=파란 배경(#2384DB)+흰 글씨, 아웃라인=흰 배경+파란 글씨+연회색(#DFDFDF) 테두리, 둥근 모서리 */
+body.skin-mobile .ax-btn{background:var(--mb-btn-blue);border:1px solid var(--mb-btn-blue);color:#fff;border-radius:12px;font-size:14px;font-weight:700;}
+body.skin-mobile .ax-btn.outline{background:#fff;color:var(--mb-btn-blue);border-color:var(--mb-btn-outline-border);}
+body.skin-mobile .ax-btn:hover{background:var(--mb-btn-blue-hover);border-color:var(--mb-btn-blue-hover);}
+body.skin-mobile .ax-btn.outline:hover{background:#f3f8fd;border-color:var(--mb-btn-outline-border);}
+/* 모바일 화면 제목은 앱 헤더처럼 가운데 정렬 */
+body.skin-mobile .ax-title{justify-content:center;text-align:center;}
+/* 편집 캔버스 바깥 휴대폰 프레임 - 캔버스(#canvas)와 같은 .canvas-holder 안에서 캔버스 뒤에 깔린다.
+   --pz(현재 확대/축소 배율, applyZoom이 설정)를 곱해 확대/축소와 캔버스 크기 변경을 그대로 따라간다.
+   치수는 app.js의 MB_PHONE(padT 34 / padX 11 / padB 54 / border 3 / radius 34 / nav 44)과 같다. */
+#phoneFrame{display:none;}
+body.skin-mobile .canvas-holder{margin:calc(var(--pz,1)*37px) calc(var(--pz,1)*14px) calc(var(--pz,1)*57px);}
+body.skin-mobile #canvas{z-index:1;border-radius:0;border-color:#e6e9ec;}
+body.skin-mobile #phoneFrame{display:block;position:absolute;z-index:0;pointer-events:none;
+  left:calc(var(--pz,1)*-14px);right:calc(var(--pz,1)*-14px);
+  top:calc(var(--pz,1)*-37px);bottom:calc(var(--pz,1)*-57px);
+  border:calc(var(--pz,1)*3px) solid #8f8f8f;border-radius:calc(var(--pz,1)*34px);background:#fff;
+  box-shadow:0 6px 18px rgba(0,0,0,.16),inset 0 0 0 1px #cfcfcf;}
+body.skin-mobile #phoneFrame .pf-nav{position:absolute;left:0;right:0;bottom:0;height:calc(var(--pz,1)*44px);
+  background:#d9d9d9;border-radius:0 0 calc(var(--pz,1)*31px) calc(var(--pz,1)*31px);
+  display:flex;align-items:center;justify-content:space-around;color:#333;}
+body.skin-mobile #phoneFrame .pf-nav svg{width:calc(var(--pz,1)*20px);height:calc(var(--pz,1)*20px);}
+body.skin-mobile.mb-preview #phoneFrame{display:block;}
+/* 화면 모드 전환 팝업: 3개 카드(Thin / Fat / Mobile) */
+.skin-pick-grid{grid-template-columns:1fr 1fr 1fr;}
+.skin-pick-swatch-mobile{display:flex;align-items:center;justify-content:center;}
+.spw-phone{height:88%;aspect-ratio:9/16;background:#fff;border:2px solid #8f8f8f;border-radius:9px;display:flex;flex-direction:column;overflow:hidden;}
+.spw-phone-head{flex:none;height:16%;display:flex;align-items:center;gap:10%;padding:0 10%;}
+.spw-phone-back{width:9%;height:28%;border-left:2px solid #374151;border-bottom:2px solid #374151;transform:rotate(45deg);}
+.spw-phone-title{width:46%;height:26%;background:#374151;border-radius:2px;}
+.spw-phone-body{flex:1;display:flex;flex-direction:column;gap:5%;padding:2% 10%;}
+.spw-phone-body .spw-label{width:40%;height:6%;}
+.spw-phone-body .spw-field{height:12%;}
+.spw-phone-btn{margin-top:auto;height:12%;border-radius:4px;}
+.spw-phone-nav{flex:none;height:10%;background:#d9d9d9;}
+/* 관리자 AI프롬프트 모드 탭 */
+.adm-mode-seg span.on-mobile{background:#7c4dff!important;color:#fff!important;box-shadow:none!important;}
+/* 모바일 버튼 「검색 아이콘 사용」 - 텍스트 왼쪽 돋보기(버튼 크기·글자는 그대로, 색은 글자색을 따름) */
+body.skin-mobile .ax-btn .mb-btn-search-ic{flex:none;width:1.15em;height:1.15em;display:block;}
+body.skin-mobile .ax-btn .mb-btn-search-ic.with-text{margin-right:6px;}
