@@ -1053,29 +1053,50 @@
         const title = withExtra(navKey, rpId, '리포트 연결: ' + rpId + ' (더블클릭: 그래프 이동)');
         return { navKey, cls: 'lk-rp', badge: 'Rp', title };
       }
-      // 4) BTN_USR_EVENT 버튼: 선언적 serviceId/serviceUid 바인딩이 없고, usrEventFn(커스텀 JS)
-      //    안에서 ajax.postJson(... '/wf/{uid}/execute...' ...) 형태로 WF 를 직접 호출하는 경우
-      //    (결의전표등록 저장 버튼 등). computeLinkMap()(RESOURCE_HTML 오버레이 경로)에는 이미
-      //    이 감지가 있었지만, RESOURCE_HTML 이 비어 JSON 합성 렌더링(이 함수)을 타는 화면에는
-      //    빠져 있어 배지가 전혀 안 붙는 버그가 있었다 — 여기서도 동일하게 잡아준다.
-      //    이 함수는 배지 1개만 표시하므로(복수 지원 X) 첫 번째 UID를 대표로 쓰고,
-      //    여러 건이면 툴팁에 "외 N건"으로 알려준다.
-      if (typeof pv.usrEventFn === 'string' && pv.usrEventFn.indexOf('/execute') !== -1) {
-        const wfCallRe = /\/wf\/(\d+)\/execute/g;
-        const uids = [];
-        const seen = new Set();
-        let wm;
-        while ((wm = wfCallRe.exec(pv.usrEventFn)) !== null) {
-          if (seen.has(wm[1])) continue;
-          seen.add(wm[1]); uids.push(wm[1]);
+      // 4) BTN_USR_EVENT 버튼: 선언적 programId/serviceId 바인딩이 없고, usrEventFn(커스텀 JS)
+      //    안에서 직접 팝업을 열거나(calleePgmId + popup.show) WF 를 직접 호출(/execute)하는 경우.
+      if (typeof pv.usrEventFn === 'string') {
+        // 4-a) 코드도움/돋보기 버튼 등: calleePgmId 변수로 대상 프로그램을 정하고
+        //      popup.show(...)로 직접 팝업을 띄우는 패턴(예: "작지(발주)번호" 코드도움).
+        //      extractStructuralButtonTriggers()(파도타기 그래프 확장)와 동일한 규칙을 여기
+        //      (디자인 미리보기 배지)에도 적용해, "그래프엔 연결되는데 배지는 안 보임" 같은
+        //      불일치가 생기지 않게 한다.
+        const pgmM = pv.usrEventFn.match(/calleePgmId\s*=\s*['"]([^'"]+)['"]/)
+          || pv.usrEventFn.match(/\bprogramId\s*[:=]\s*['"]([^'"]+)['"]/);
+        if (pgmM && pgmM[1]) {
+          const pgmId2 = pgmM[1];
+          if (looksLikeReportId(pgmId2)) {
+            const navKey = 'Rp:' + pgmId2;
+            const title = withExtra(navKey, pgmId2, '리포트 연결: ' + pgmId2 + ' · 직접호출(스크립트) (더블클릭: 그래프 이동)');
+            return { navKey, cls: 'lk-rp', badge: 'Rp', title };
+          }
+          const navKey = 'UI:' + pgmId2;
+          const title = withExtra(navKey, pgmId2, '팝업 UI 연결: ' + pgmId2 + ' · 직접호출(스크립트) (더블클릭: 그래프 이동)');
+          return { navKey, cls: 'lk-ui', badge: 'UI', title };
         }
-        if (uids.length) {
-          const navKey = 'WF:u' + uids[0];
-          const idPart = 'uid=' + uids[0];
-          const extraCnt = uids.length > 1 ? (' 외 ' + (uids.length - 1) + '건') : '';
-          const baseTitle = 'WF 연결: ' + idPart + extraCnt + ' · 직접호출(스크립트) (더블클릭: 그래프 이동)';
-          const title = withExtra(navKey, idPart, baseTitle);
-          return { navKey, cls: 'lk-wf', badge: 'WF', title };
+        // 4-b) ajax.postJson(... '/wf/{uid}/execute...' ...) 형태로 WF 를 직접 호출하는 경우
+        //    (결의전표등록 저장 버튼 등). computeLinkMap()(RESOURCE_HTML 오버레이 경로)에는 이미
+        //    이 감지가 있었지만, RESOURCE_HTML 이 비어 JSON 합성 렌더링(이 함수)을 타는 화면에는
+        //    빠져 있어 배지가 전혀 안 붙는 버그가 있었다 — 여기서도 동일하게 잡아준다.
+        //    이 함수는 배지 1개만 표시하므로(복수 지원 X) 첫 번째 UID를 대표로 쓰고,
+        //    여러 건이면 툴팁에 "외 N건"으로 알려준다.
+        if (pv.usrEventFn.indexOf('/execute') !== -1) {
+          const wfCallRe = /\/wf\/(\d+)\/execute/g;
+          const uids = [];
+          const seen = new Set();
+          let wm;
+          while ((wm = wfCallRe.exec(pv.usrEventFn)) !== null) {
+            if (seen.has(wm[1])) continue;
+            seen.add(wm[1]); uids.push(wm[1]);
+          }
+          if (uids.length) {
+            const navKey = 'WF:u' + uids[0];
+            const idPart = 'uid=' + uids[0];
+            const extraCnt = uids.length > 1 ? (' 외 ' + (uids.length - 1) + '건') : '';
+            const baseTitle = 'WF 연결: ' + idPart + extraCnt + ' · 직접호출(스크립트) (더블클릭: 그래프 이동)';
+            const title = withExtra(navKey, idPart, baseTitle);
+            return { navKey, cls: 'lk-wf', badge: 'WF', title };
+          }
         }
       }
       return null;
@@ -1266,6 +1287,18 @@
         const formPgmId = Array.isArray(pv.form) ? (pv.form.find(f => f && f.programId) || {}).programId : null;
         const programId = pv.programId || formPgmId;
         if (programId) out.push({ event: 'BTN_OPEN_POPUP', programId, label: pv.label || pv.id || '' });
+      } else if (pv.eventType === 'BTN_USR_EVENT' && typeof pv.usrEventFn === 'string') {
+        // 코드도움/돋보기 버튼 등: eventType이 BTN_OPEN_POPUP이 아니라 BTN_USR_EVENT(커스텀 스크립트)로
+        // 선언되고, form[].programId 같은 선언적 필드도 없이 usrEventFn 본문 안에서 calleePgmId
+        // 변수로 대상 프로그램을 정한 뒤 popup.show(...)로 직접 팝업을 띄우는 패턴이다
+        // (예: "작지(발주)번호" 코드도움 → calleePgmId = 'PPRSLMUI0006'). 이 패턴은 JSON 구조만
+        // 봐서는 programId 필드 자체가 없어 위 BTN_OPEN_POPUP 분기로는 절대 잡히지 않고, 그 결과
+        // 파도타기 그래프 확장에서 이 팝업이 통째로 빠진다. extractGridButtonTriggers() 가 그리드
+        // 컬럼 버튼의 같은 패턴을 RESOURCE_JS 안에서 calleePgmId 로 찾는 것과 동일한 규칙을,
+        // 여기서는 그리드 밖(검색조건 등) 버튼의 usrEventFn 본문에 바로 적용한다.
+        const pm = pv.usrEventFn.match(/calleePgmId\s*=\s*['"]([^'"]+)['"]/)
+          || pv.usrEventFn.match(/\bprogramId\s*[:=]\s*['"]([^'"]+)['"]/);
+        if (pm && pm[1]) out.push({ event: 'BTN_OPEN_POPUP', programId: pm[1], label: pv.label || pv.id || '' });
       }
       Object.keys(o).forEach(k => scan(o[k]));
     })(obj);
