@@ -5702,40 +5702,60 @@ h=라벨+칸(left/right≈23,top/bottom≈52),w보통234(popup420안팎).없으�
 // ⚠️ 아래 JSON_PROMPT_MOBILE_COPY와 완전히 별개의 문자열이다(서로 참조하지 않음).
 const JSON_PROMPT_MOBILE_URL=`이 모바일 앱(PDA 웹앱 포함) 화면 캡처를 분석해 UI 컴포넌트 JSON 배열만 출력(설명·코드블록 금지).
 형식:{"type","x","y","w","h","text"}·좌표=가로400px세로형정수·text=보이는값(없으면"")
-type:title label input combo date daterange(text="YYYY-MM-DD ~ YYYY-MM-DD") check radio button grid(text=항목명,쉼표) tabs section panel chart tree
+type:title label input combo date daterange check radio button grid tabs section panel chart tree
 
-[제외요소] 휴대폰 상태바·하단 내비게이션바(≡ □ <)·스크롤바는 출력안함.
-[헤더] 상단가운데 화면명=title(x60,y12,w280,h34)·좌측상단 뒤로가기"<"=label(x16,y14,w24,h30,text"<")·우측상단 글자링크=label.
-[입력] 항목명은 본체에포함:showLabel:true,labelText,labelPos:"top",required=별표(*)면true. 기본 한행 전체폭 x20,w360,h60(라벨+입력칸). 한줄에 칸2개면 w170씩(x20,x210)·같은y. 회색칸=readonly:true. combo text=보이는값(None 등).
-[버튼] 파란배경=button·흰배경+파란글씨=button "outline":true. 하단 버튼2개면 한줄에 나란히(w170).
-[탭] 상단 탭메뉴=tabs:{"type":"tabs","_tempId":1,"text":"탭1,탭2","active":0}·탭안 컴포넌트는 "parent":1,"tabIdx":번호·좌표는 탭콘텐츠영역 기준.
-[목록] 반복되는 카드/행 목록=grid1개(text=보이는항목명 쉼표,"showToolbar":false).
-[레이아웃] 위→아래 순서·x20여백 통일·세로간격 8~12px·겹치지 않게.
-예:[{"type":"label","x":16,"y":14,"w":24,"h":30,"text":"<"},{"type":"title","x":60,"y":12,"w":280,"h":34,"text":"신규 신청"},{"type":"date","x":20,"y":60,"w":360,"h":60,"text":"","showLabel":true,"labelText":"사용일","labelPos":"top","required":true},{"type":"combo","x":20,"y":130,"w":170,"h":60,"text":"None","showLabel":true,"labelText":"유형","labelPos":"top"},{"type":"combo","x":210,"y":130,"w":170,"h":60,"text":"None","showLabel":true,"labelText":"상세유형","labelPos":"top"},{"type":"button","x":20,"y":630,"w":170,"h":44,"text":"close","outline":true},{"type":"button","x":210,"y":630,"w":170,"h":44,"text":"Add details"}]`;
+[제외] 휴대폰 프레임·상태바·하단 내비바(≡ □ <)·스크롤바.
+[헤더] 보일 때만:상단가운데 화면명=title(x60,y12,w280,h34)·좌측상단"<"=label(x16,y14,w24,h30).
+[text] 입력칸 내용은 비움("").변수명·코드(txtItemCd,lotNo,{{...}})는 절대 넣지 않음.combo는 보이는 선택값만.
+[라벨 위] 항목명이 칸 위=showLabel:true,labelText,labelPos:"top",x20,w360,h60.한줄 2칸이면 w170(x20,x210).별표(*)=required:true.
+[라벨 왼쪽] "항목명|입력칸" 같은 줄=행마다 input(showLabel:true,labelText,labelPos:"left",x20,w360,h36,text:"").여러 행이 이어져도 grid 아님·panel 안 만듦·행 간격 4px.
+[grid] 컬럼 제목 1줄+같은 구성 데이터 2줄 이상인 표만 grid("showToolbar":false).
+[버튼] 파란배경=button·흰배경+파란글씨="outline":true·돋보기="searchIcon":true.하단 2개면 w170(x20,x210,h44).
+[탭] tabs:{"type":"tabs","_tempId":1,"text":"탭1,탭2","active":0}·탭안은 "parent":1,"tabIdx":번호·좌표는 탭콘텐츠 기준.
+[레이아웃] 원본 순서대로 위→아래·x20 여백·겹치지 않게.
+예:[{"type":"combo","x":20,"y":20,"w":360,"h":60,"text":"없음","showLabel":true,"labelText":"공장","labelPos":"top"},{"type":"input","x":20,"y":90,"w":360,"h":36,"text":"","showLabel":true,"labelText":"품목","labelPos":"left"},{"type":"input","x":20,"y":130,"w":360,"h":36,"text":"","showLabel":true,"labelText":"품명","labelPos":"left"}]`;
 
 // [모바일모드] 「질문만 복사」(클립보드) 전용 프롬프트 — DB(mb_prompts.mode='Mobile')에 프롬프트가 없거나
 // 조회에 실패했을 때 쓰는 내장 기본값이다. 관리자 「목업관리 → AI프롬프트 → Mobile Mode」에서 고친
 // 내용이 있으면 그쪽이 우선한다. ⚠️ 위 JSON_PROMPT_MOBILE_URL과 완전히 별개의 문자열이다.
 const JSON_PROMPT_MOBILE_COPY=`이 모바일 앱(PDA 웹앱 포함) 화면 캡처를 분석해 UI 컴포넌트 JSON 배열만 출력(설명·코드블록 금지).
 형식:{"type","x","y","w","h","text"}·좌표=가로400px 세로형 캔버스 기준 정수·text=보이는값(없으면"")
-type:title label input combo date daterange(text="YYYY-MM-DD ~ YYYY-MM-DD") check radio button grid(text=항목명,쉼표) tabs section panel chart tree
+type:title label input combo date daterange(text="YYYY-MM-DD ~ YYYY-MM-DD") check radio button grid(text=컬럼명,쉼표) tabs section panel chart tree
 
 [제외요소]
 휴대폰 외곽 프레임·상단 상태바(시간·배터리)·하단 내비게이션바(≡ □ <)·스크롤바·키보드는 화면 설계가 아니므로 출력하지 않는다.
 
 [헤더]
+화면에 실제로 보일 때만 출력한다(없으면 title·"<"를 만들지 않는다).
 상단 가운데 화면명=title 1개(x60,y12,w280,h34 고정, 글자는 가운데 정렬됨).
 좌측 상단 뒤로가기 화살표"<"=label(x16,y14,w24,h30,text"<").
 우측 상단 작은 글자 링크(예"신청정보")=label(우측 끝에 맞춤, 예 x300,y14,w80,h30).
 
-[입력]
-input/combo/date/daterange/check/radio의 항목명은 별도 label로 빼지 말고 본체에 포함:showLabel:true,labelText,labelPos:"top",required=항목명 옆 별표(*)면 true.
-기본은 한 행 전체폭:x20,w360,h60(라벨+입력칸). 한 줄에 칸 2개가 나란히 있으면 각 w170(x20,x210)·같은 y.
-회색 배경칸=readonly:true. combo text=칸에 보이는 값(예 None). 입력칸 안 흐린 안내문구(placeholder)는 text에 그대로.
-체크박스 1개+문구(예 전체선택)=check(showLabel:false,text=문구).
+[입력칸 text 규칙]
+입력칸 안의 내용은 비운다(text:""). 특히 변수명·코드값처럼 보이는 글자(예 txtItemCd, lotNo, expnsLocAmt, {{html ...}} 같은 템플릿 식)는 절대 text에 넣지 않는다.
+combo는 칸에 보이는 선택값만 text로(예 없음, None, 전체). date/daterange는 형식 안내만(예 "YYYY-MM-DD").
+
+[입력-라벨 위] ← 기본
+항목명이 입력칸 "위"에 있으면: showLabel:true,labelText,labelPos:"top",required=항목명 옆 별표(*)면 true.
+한 행 전체폭:x20,w360,h60(라벨+입력칸). 한 줄에 칸 2개가 나란히 있으면 각 w170(x20,x210)·같은 y.
+
+[입력-라벨 왼쪽] ← 그리드로 착각하지 말 것
+"항목명 | 입력칸"처럼 항목명이 입력칸 "왼쪽"에 같은 줄로 붙어 있는 행은 행마다 input 1개(콤보 모양이면 combo):
+showLabel:true,labelText:항목명,labelPos:"left",x20,w360,h36,text:"".
+이런 행이 세로로 여러 개 이어져 있어도(예 LOT NO/품목/품명/창고/BIN/단위/수량/규격) 각각 별도 input이며 grid가 아니다. 행 간격은 4~6px로 촘촘하게(y를 h36+4씩 증가).
+행 묶음 바깥에 얇은 테두리 상자가 있어도 panel을 만들지 않는다.
+
+[grid 판단 기준]
+grid는 "맨 위에 컬럼 제목 줄이 1줄 있고, 그 아래로 같은 컬럼 구성의 데이터 줄이 2줄 이상 반복되는 표"일 때만 쓴다.
+왼쪽에 항목명, 오른쪽에 값 칸이 있는 세로 나열은 grid가 아니라 [입력-라벨 왼쪽]이다.
+같은 모양 카드가 반복되는 카드형 목록=grid 1개:text=카드에 보이는 항목명을 쉼표로,"showToolbar":false,"rows":보이는 카드 수.
+
+[기타 입력]
+회색 배경칸=readonly:true. 체크박스 1개+문구(예 전체선택)=check(showLabel:false,text=문구).
 
 [버튼]
 파란 배경+흰 글씨=button(outline 생략). 흰 배경+파란 글씨(+회색 테두리)=button "outline":true. 회색 배경 버튼도 outline:true로 근사.
+돋보기 아이콘이 있는 버튼="searchIcon":true(text=옆 글자, 없으면"").
 화면 하단 고정 버튼 2개(예 close / Add details)는 한 줄에 나란히(w170, x20·x210, h44), 1개면 한 행 전체폭(x20,w360,h44).
 알약 모양 작은 버튼 여러 개가 한 줄이면 같은 y에 균등 배치.
 
@@ -5743,26 +5763,30 @@ input/combo/date/daterange/check/radio의 항목명은 별도 label로 빼지 �
 상단 탭 메뉴(예 신청대상|신청제외|출장비전환)=tabs 1개:{"type":"tabs","_tempId":1,"x":20,"y":..,"w":360,"h":..,"text":"탭1,탭2","active":선택탭번호(0부터)}.
 탭 안 컴포넌트에는 "parent":1(tabs의 _tempId),"tabIdx":소속탭번호를 붙이고 좌표는 탭 콘텐츠 영역 기준 상대좌표.
 
-[목록]
-같은 모양 카드/행이 반복되는 목록(카드형 리스트 포함)=grid 1개:text=카드에 보이는 항목명을 쉼표로,"showToolbar":false,"rows":보이는 카드 수.
-
 [다중캡처]
-이미지가 여러 장이고 같은 화면을 위→아래로 스크롤해 찍은 것이면 1개 JSON으로 합친다: 겹치는 부분은 1회만, 아래 이미지 요소는 위 이미지 마지막 요소 다음 y로 이어 붙이고(캔버스 세로 길이는 내용에 맞춰 늘어남) title·헤더는 1회만.
+이미지가 여러 장이고 같은 화면을 위→아래로 스크롤해 찍은 것이면 1개 JSON으로 합친다: 겹치는 부분은 1회만, 아래 이미지 요소는 위 이미지 마지막 요소 다음 y로 이어 붙이고 title·헤더는 1회만.
 
 [레이아웃]
-원본 픽셀을 그대로 베끼지 말고 400px 폭 기준으로 재배치: 위→아래 순서, 좌우 여백 x20 통일, 요소 간 세로 간격 8~12px, 겹치지 않게.
+원본 순서·배치를 그대로 따르되 400px 폭 기준으로 맞춘다: 위→아래 순서, 좌우 여백 x20 통일, 겹치지 않게.
+요소 간 세로 간격은 [입력-라벨 위]는 8~12px, [입력-라벨 왼쪽] 행끼리는 4~6px.
 그림자·둥근 모서리·아이콘 장식은 재현하지 않는다.
 
-예:
+예1(라벨 위):
 [{"type":"label","x":16,"y":14,"w":24,"h":30,"text":"<"},
 {"type":"title","x":60,"y":12,"w":280,"h":34,"text":"신규 신청"},
 {"type":"date","x":20,"y":60,"w":360,"h":60,"text":"","showLabel":true,"labelText":"사용일","labelPos":"top","required":true},
-{"type":"input","x":20,"y":130,"w":360,"h":60,"text":"expnsLocAmt","showLabel":true,"labelText":"신청금액","labelPos":"top","required":true},
-{"type":"combo","x":20,"y":200,"w":170,"h":60,"text":"None","showLabel":true,"labelText":"유형","labelPos":"top","required":true},
-{"type":"combo","x":210,"y":200,"w":170,"h":60,"text":"None","showLabel":true,"labelText":"상세유형","labelPos":"top","required":true},
-{"type":"combo","x":20,"y":270,"w":360,"h":60,"text":"None","showLabel":true,"labelText":"경비항목","labelPos":"top","required":true,"readonly":true},
+{"type":"combo","x":20,"y":130,"w":170,"h":60,"text":"None","showLabel":true,"labelText":"유형","labelPos":"top","required":true},
+{"type":"combo","x":210,"y":130,"w":170,"h":60,"text":"None","showLabel":true,"labelText":"상세유형","labelPos":"top"},
 {"type":"button","x":20,"y":630,"w":170,"h":44,"text":"close","outline":true},
-{"type":"button","x":210,"y":630,"w":170,"h":44,"text":"Add details"}]`;
+{"type":"button","x":210,"y":630,"w":170,"h":44,"text":"Add details"}]
+
+예2(라벨 왼쪽 세로 나열 - grid 아님):
+[{"type":"combo","x":20,"y":20,"w":360,"h":60,"text":"없음","showLabel":true,"labelText":"공장","labelPos":"top"},
+{"type":"input","x":20,"y":90,"w":360,"h":60,"text":"","showLabel":true,"labelText":"LOT NO","labelPos":"top"},
+{"type":"input","x":20,"y":164,"w":360,"h":36,"text":"","showLabel":true,"labelText":"LOT NO","labelPos":"left"},
+{"type":"input","x":20,"y":204,"w":360,"h":36,"text":"","showLabel":true,"labelText":"품목","labelPos":"left"},
+{"type":"input","x":20,"y":244,"w":360,"h":36,"text":"","showLabel":true,"labelText":"품명","labelPos":"left"},
+{"type":"input","x":20,"y":284,"w":360,"h":36,"text":"","showLabel":true,"labelText":"창고/BIN","labelPos":"left"}]`;
 
 // 지금 켜져 있는 스킨(Thin/Fat)에 맞는 변환 프롬프트를 돌려준다.
 // kind='url' → Claude 열기(새 창 URL 파라미터, 인코딩 팽창 때문에 짧아야 함) - 항상 이 JS
@@ -5881,7 +5905,15 @@ function runJSON(){
     if(!items.length)throw new Error('EMPTY');
     const clearFirst=document.getElementById('jsonClearChk').checked;
     placeItems(items,1,clearFirst);
-    fitCanvasToComponents();
+    // 모바일모드는 이미지 변환 후에도 캔버스 크기를 항상 모바일 기본값(400x700)으로 유지한다
+    // (내용에 맞춰 캔버스를 늘리거나 줄이지 않음). 씬/팻모드는 기존처럼 내용에 맞춰 조정.
+    if(mbIsMobileSkin()){
+      const ds=mbDefaultCanvasSize('mobile');
+      document.getElementById('cw').value=ds.w; setCW();
+      document.getElementById('ch').value=ds.h; setCH();
+    } else {
+      fitCanvasToComponents();
+    }
     fitZoomToViewport();
     cvSetStep(3);
     setStatus(`✅ 완성! <b>${items.length}개</b> 컴포넌트 생성.${clearFirst?' (기존 내용 삭제 후 생성)':' (기존 화면에 이어서 추가)'}`,'ok');
