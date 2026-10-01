@@ -1,0 +1,10788 @@
+/* ===== Microsoft Clarity ===== */
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "xssh91r5t1");
+
+/* ===== Mockup Builder - 메인 로직 (에디터/클라우드/내보내기 등) ===== */
+// ---- 변경상태 표시(기본/추가/변경/삭제/이동) 공통 헬퍼 ----
+// 컴포넌트 전체(그리드/조회조건패널 포함) + 그리드 개별 컬럼 + 조회조건 개별 필드, 세 레벨에서
+// 재사용한다. 값은 항상 이 5개 중 하나이며, 없거나 알 수 없는 값은 'base'(기본)로 취급한다.
+const DIFF_LABEL={base:'',add:'추가',chg:'변경',del:'삭제',mov:'이동'};
+const DIFF_ORDER=['base','add','chg','del','mov'];
+// 컴포넌트/필드/컬럼 "박스" 전체에 점선 테두리+코너 라벨을 씌우는 클래스 문자열. base면 빈 문자열.
+function diffBoxCls(status){ const st=status||'base'; return st==='base'?'':' mb-diffst mb-diffst-'+st; }
+function diffBoxAttr(status){ const st=status||'base'; return st==='base'?'':' data-difflabel="'+DIFF_LABEL[st]+'"'; }
+// 속성패널 "타입" 콤보(입력 컴포넌트 타입 변경)에서 오갈 수 있는 7종. 우측 도구상자의 같은
+// 컴포넌트들과 순서·아이콘·라벨을 동일하게 맞춘다(index.html 도구상자 markup 참고).
+const INPUT_TYPES=['label','input','combo','date','daterange','check','radio','popup','attach'];
+const INPUT_TYPE_META={
+  label:{icon:'A',label:'라벨'},
+  input:{icon:'▭',label:'텍스트박스'},
+  combo:{icon:'▾',label:'콤보박스'},
+  date:{icon:'📅',label:'날짜선택'},
+  daterange:{icon:'📅',label:'기간'},
+  check:{icon:'☑',label:'체크박스'},
+  radio:{icon:'◉',label:'라디오'},
+  popup:{icon:'≡',label:'팝업'},
+  attach:{icon:'📎',label:'첨부파일'}
+};
+let comps=[]; let sel=null; let uid=1;
+let selIds=new Set(); // multi-selection
+function setSelection(ids){ selIds=new Set(ids); sel = selIds.size===1 ? [...selIds][0] : (selIds.size===0?null:sel); if(selIds.size!==1) sel = (selIds.size===0? null : ([...selIds].includes(sel)?sel:[...selIds][selIds.size-1])); }
+function selectSingle(id){ selIds=new Set(id==null?[]:[id]); sel=id; if(selSF&&selSF.compId!==id) selSF=null; if(selGC&&selGC.compId!==id) selGC=null; if(lf&&lf.compId!==id) closeLabelFormat(); }
+function toggleSel(id){ if(selIds.has(id)){ selIds.delete(id); } else { selIds.add(id); } sel = selIds.size? [...selIds][selIds.size-1] : null; }
+function isSel(id){ return selIds.has(id); }
+
+// ---- Multi-select alignment (수평/수직/스마트 정렬) ----
+// 정렬 대상: 선택된 것 중 기준과 같은 parent를 공유하는 컴포넌트들만 (좌표계가 동일해야 안전)
+// 기준(anchor)은 항상 선택된 것 중 좌측 상단(x+y 최소)에 위치한 컴포넌트로 고정.
+function alignTargets(){
+  const items=comps.filter(c=>selIds.has(c.id));
+  if(items.length<2) return null;
+  const anchor=items.slice().sort((a,b)=>((a.x||0)+(a.y||0))-((b.x||0)+(b.y||0))||(a.x||0)-(b.x||0)||(a.y||0)-(b.y||0))[0];
+  const pkey=anchor.parent||null;
+  const targets=items.filter(c=>(c.parent||null)===pkey);
+  return {anchor, targets};
+}
+const ALIGN_GAP=12; // 같은 그룹 내 컴포넌트 최소 간격(px)
+// 교차축에서 서로 겹치는 컴포넌트끼리 하나의 그룹(행/열)으로 묶는다.
+//  axis='x'(수평정렬): 교차축=Y. Y구간이 겹치는 것끼리 같은 "행".
+//  axis='y'(수직정렬): 교차축=X. X구간이 겹치는 것끼리 같은 "열".
+//  겹침은 연결(transitive)로 확장한다: A-B 겹치고 B-C 겹치면 A,B,C 한 그룹.
+function groupByCrossOverlap(axis, targets){
+  const CS = axis==='x' ? 'y':'x';   // 교차축 시작좌표
+  const CD = axis==='x' ? 'h':'w';   // 교차축 길이
+  // 같은 행/열 판정: 교차축 구간이 겹치거나, 두 컴포넌트의 교차축 중심이 충분히 가까우면 한 그룹.
+  // (팻모드처럼 컴포넌트 높이가 얇으면 완전 겹침이 안 나므로 중심 근접도 함께 본다)
+  const items=targets.map(c=>({
+    c,
+    s:(c[CS]||0),
+    e:(c[CS]||0)+(c[CD]||0),
+    center:(c[CS]||0)+(c[CD]||0)/2,
+    size:(c[CD]||0)
+  }));
+  items.sort((a,b)=>a.center-b.center);
+  const groups=[]; let cur=[items[0]];
+  let curEnd=items[0].e;                 // 그룹의 교차축 최대 끝
+  let curCenter=items[0].center;         // 그룹의 대표 중심(마지막 요소 기준)
+  let curSize=items[0].size;
+  for(let i=1;i<items.length;i++){
+    const it=items[i];
+    const overlap = it.s < curEnd;                         // 구간이 실제로 겹침
+    // 중심 근접: 두 컴포넌트 중 작은 쪽 크기의 60% 이내면 같은 줄로 간주(얇은 컴포넌트 대응)
+    const tol = Math.max(8, Math.min(curSize, it.size) * 0.6);
+    const nearCenter = Math.abs(it.center - curCenter) <= tol;
+    if(overlap || nearCenter){
+      cur.push(it);
+      curEnd=Math.max(curEnd, it.e);
+      curCenter=it.center; curSize=it.size;                // 체인 방식: 직전 요소와 비교
+    }else{
+      groups.push(cur); cur=[it];
+      curEnd=it.e; curCenter=it.center; curSize=it.size;
+    }
+  }
+  groups.push(cur);
+  return groups.map(g=>g.map(o=>o.c));
+}
+// 실제로 가까운 위치에 있는 것끼리 하나의 "밴드"(열 또는 행)로 묶어 [regionStart, regionEnd] 구간에 분배한다.
+//  groups: 이미 근접도로 클러스터링된 실제 열(또는 행) 목록 (행 개수가 서로 다른 불규칙한 그리드에서도
+//   "몇 번째 칸인가"가 아니라 "실제 좌표가 어디인가"로 묶이므로 열/행이 잘못 병합되지 않는다)
+//  regionStart~regionEnd 구간을 벗어나지 않는 선에서 남는 여유는 밴드 사이에 균등 배분한다.
+//  반환: Map(id -> 새 정렬축 시작좌표)
+function distributeBands(axis, groups, regionStart, regionEnd){
+  const S = axis==='x' ? 'x':'y';
+  const D = axis==='x' ? 'w':'h';
+  const pos=new Map();
+  // 그룹을 자신의 평균 위치 기준 오름차순 정렬(좌→우 / 위→아래)
+  const withAvg=groups.map(g=>({g, avg: g.reduce((s,c)=>s+(c[S]||0),0)/g.length}));
+  withAvg.sort((a,b)=>a.avg-b.avg);
+  const sorted=withAvg.map(o=>o.g);
+  const m=sorted.length;
+  if(m===0) return pos;
+  if(m===1){ sorted[0].forEach(c=>{ pos.set(c.id, regionStart); }); return pos; }
+  // 밴드 크기 = 그 그룹(열/행) 안의 컴포넌트 중 최대 크기(폭/높이)
+  const bandSize=sorted.map(g=>Math.max(...g.map(c=>c[D]||0)));
+  // 밴드 시작좌표 누적 계산(최소 간격 ALIGN_GAP 보장)
+  const bandStart=[regionStart];
+  for(let i=1;i<m;i++) bandStart.push(bandStart[i-1]+bandSize[i-1]+ALIGN_GAP);
+  // 남는 여유 공간이 있으면 밴드 사이 간격에 균등 배분(요청 영역을 최대한 채우도록)
+  const contentEnd=bandStart[m-1]+bandSize[m-1];
+  if(contentEnd<regionEnd){
+    const extraPerGap=(regionEnd-contentEnd)/(m-1);
+    for(let i=1;i<m;i++) bandStart[i]+=extraPerGap*i;
+  }
+  sorted.forEach((g,i)=>{ g.forEach(c=>{ pos.set(c.id, Math.round(bandStart[i])); }); });
+  return pos;
+}
+// 정렬 좌표계의 크기. 최상위=캔버스, 컨테이너 내부=부모 컴포넌트 크기.
+function alignFrameSize(anchor){
+  if(anchor.parent){
+    const p=comps.find(c=>c.id===anchor.parent);
+    if(p) return {w:p.w||canvas.offsetWidth, h:p.h||canvas.offsetHeight};
+  }
+  return {w:canvas.offsetWidth, h:canvas.offsetHeight};
+}
+// 선택되지 않은 형제 컴포넌트 목록(같은 parent 공유, 정렬 영역 침범 방지용)
+function alignSiblingBlockers(anchor){
+  const pkey=anchor.parent||null;
+  return comps.filter(c=>!selIds.has(c.id) && (c.parent||null)===pkey);
+}
+function alignHorizontal(track){
+  const info=alignTargets(); if(!info) return;
+  const {anchor,targets}=info; if(targets.length<2) return;
+  const regionStart=anchor.x||0;      // 기준(좌상단)의 좌측 X
+  // 정렬 영역: 캔버스 전체가 아니라 "선택된 컴포넌트들의 바운딩 박스" 우측 끝까지만 사용
+  let regionEnd=Math.max(...targets.map(c=>(c.x||0)+(c.w||0)));
+  // 선택 안 된 형제 컴포넌트가 선택영역의 Y범위와 겹치고 정렬영역 안쪽에 있으면, 그 앞에서 멈추도록 clamp
+  const selMinY=Math.min(...targets.map(c=>c.y||0));
+  const selMaxY=Math.max(...targets.map(c=>(c.y||0)+(c.h||0)));
+  alignSiblingBlockers(anchor).forEach(o=>{
+    const os=o.y||0, oe=os+(o.h||0), ox=o.x||0;
+    const overlaps = os < selMaxY && oe > selMinY;
+    if(overlaps && ox >= regionStart){ regionEnd=Math.min(regionEnd, ox-ALIGN_GAP); }
+  });
+  if(regionEnd<regionStart) regionEnd=regionStart;
+  if(track!==false) pushHistory();
+  // 실제 "열"(X 위치가 가까운 것끼리)로 클러스터링 → 모든 열이 같은 [기준X, 선택영역 우측끝] 구간을 공유
+  // (행 안에서의 순서(인덱스)로 열을 추정하면, 행마다 컴포넌트 개수/순서가 다른 불규칙한 그리드에서
+  //  서로 다른 열이 잘못 합쳐질 수 있으므로, X 근접도로 실제 열을 먼저 찾는다.)
+  const cols=groupByCrossOverlap('y', targets);
+  const pos=distributeBands('x', cols, regionStart, regionEnd);
+  targets.forEach(c=>{ if(c.id!==anchor.id && pos.has(c.id)) c.x=pos.get(c.id); });
+  render(); scheduleAutosave();
+}
+function alignVertical(track){
+  const info=alignTargets(); if(!info) return;
+  const {anchor,targets}=info; if(targets.length<2) return;
+  const regionStart=anchor.y||0;      // 기준(좌상단)의 상단 Y
+  // 정렬 영역: 캔버스 전체가 아니라 "선택된 컴포넌트들의 바운딩 박스" 하단 끝까지만 사용
+  let regionEnd=Math.max(...targets.map(c=>(c.y||0)+(c.h||0)));
+  // 선택 안 된 형제 컴포넌트가 선택영역의 X범위와 겹치고 정렬영역 안쪽에 있으면, 그 앞에서 멈추도록 clamp
+  const selMinX=Math.min(...targets.map(c=>c.x||0));
+  const selMaxX=Math.max(...targets.map(c=>(c.x||0)+(c.w||0)));
+  alignSiblingBlockers(anchor).forEach(o=>{
+    const os=o.x||0, oe=os+(o.w||0), oy=o.y||0;
+    const overlaps = os < selMaxX && oe > selMinX;
+    if(overlaps && oy >= regionStart){ regionEnd=Math.min(regionEnd, oy-ALIGN_GAP); }
+  });
+  if(regionEnd<regionStart) regionEnd=regionStart;
+  if(track!==false) pushHistory();
+  // 실제 "행"(Y 위치가 가까운 것끼리)로 클러스터링 → 모든 행이 같은 [기준Y, 선택영역 하단끝] 구간을 공유
+  // (열 안에서의 순서(인덱스)로 행을 추정하면, 열마다 컴포넌트 개수/순서가 다른 불규칙한 그리드에서
+  //  서로 다른 행이 잘못 합쳐질 수 있으므로, Y 근접도로 실제 행을 먼저 찾는다.)
+  const rows=groupByCrossOverlap('x', targets);
+  const pos=distributeBands('y', rows, regionStart, regionEnd);
+  targets.forEach(c=>{ if(c.id!==anchor.id && pos.has(c.id)) c.y=pos.get(c.id); });
+  render(); scheduleAutosave();
+}
+function alignSmart(){
+  // 수평 정렬 후 수직 정렬을 차례로 실행 (히스토리 1회만)
+  pushHistory();
+  alignHorizontal(false);
+  alignVertical(false);
+}
+
+// ---- 간격 슬라이더: 멀티 선택 컴포넌트의 간격을 균일하게 크게/작게 조절 ----
+// 기준(좌상단) 고정. 수평 슬라이더=가로 간격(열 사이 간격), 수직 슬라이더=세로 간격(행 사이 간격).
+// 드래그 시작 시 밴드(실제 열/행) 구조를 스냅샷으로 고정하고, 드래그 중에는 pitch만 바꿔 좌표를 계산한다.
+let gapSnap={x:null, y:null};   // axis별 스냅샷
+// axis='x'(가로 간격)면 실제 "열"(X 근접 클러스터)을, axis='y'(세로 간격)면 실제 "행"(Y 근접 클러스터)을 구한다.
+// "몇 번째 칸인가"가 아니라 "실제 좌표가 가까운가"로 묶어야, 칸 크기가 서로 다를 때도 열/행이 흐트러지지 않는다.
+function gapBands(axis, targets){
+  const groups = axis==='x' ? groupByCrossOverlap('y', targets) : groupByCrossOverlap('x', targets);
+  const S = axis==='x' ? 'x' : 'y';
+  const D = axis==='x' ? 'w' : 'h';
+  const withAvg=groups.map(g=>({
+    items:g,
+    avg: g.reduce((s,c)=>s+(c[S]||0),0)/g.length,
+    size: Math.max(...g.map(c=>c[D]||0)),  // 밴드 크기 = 그 열/행 안 최대 폭/높이
+  }));
+  withAvg.sort((a,b)=>a.avg-b.avg);
+  return withAvg;
+}
+// 스냅샷 생성: 실제 열/행 밴드별로 [소속 컴포넌트 id 목록, 밴드 크기]를 저장.
+// 컴포넌트 크기(w/h)는 절대 변경하지 않는다. 위치(간격)만 조절한다.
+function buildGapSnapshot(axis){
+  const info=alignTargets(); if(!info) return null;
+  const {anchor,targets}=info; if(targets.length<2) return null;
+  const S = axis==='x' ? 'x':'y';
+  const anchorStart = anchor[S]||0;   // 기준(좌상단)의 시작 좌표
+  const bands=gapBands(axis, targets);
+  const anchorBandIdx=bands.findIndex(b=>b.items.some(c=>c.id===anchor.id));
+  return {
+    axis, S, anchorStart,
+    anchorBandIdx: anchorBandIdx>=0 ? anchorBandIdx : 0,
+    bands: bands.map(b=>({size:b.size, ids:b.items.map(c=>c.id)})),
+  };
+}
+// 스냅샷 + pitch로 좌표 적용. pitch = 밴드(열/행)의 시작선 사이 간격.
+// 기준이 속한 밴드는 항상 자기 원위치(anchorStart)에 고정되고, 나머지 밴드가 pitch 간격으로 배치된다.
+// 밴드 크기(그 열/행 안의 최대 폭/높이)보다 pitch가 좁아 겹칠 경우에만 최소 간격을 보정한다.
+// 모든 밴드가 동일한 계산을 공유하므로, 특정 칸이 크더라도 다른 열/행이 함께 밀려 격자가 흐트러지지 않는다.
+function applyGapFromSnap(snap, pitch){
+  if(!snap) return;
+  const {S, bands, anchorStart, anchorBandIdx}=snap;
+  const n=bands.length; if(n===0) return;
+  const bandStart=new Array(n);
+  bandStart[anchorBandIdx]=anchorStart;
+  for(let i=anchorBandIdx+1;i<n;i++){
+    const desired=bandStart[i-1]+pitch;
+    const minAllowed=bandStart[i-1]+bands[i-1].size+ALIGN_GAP;
+    bandStart[i]=Math.max(desired, minAllowed);
+  }
+  for(let i=anchorBandIdx-1;i>=0;i--){
+    const desired=bandStart[i+1]-pitch;
+    const maxAllowed=bandStart[i+1]-bands[i].size-ALIGN_GAP;
+    bandStart[i]=Math.min(desired, maxAllowed);
+  }
+  bandStart.forEach((s,i)=>{
+    bands[i].ids.forEach(id=>{ const c=comps.find(x=>x.id===id); if(c) c[S]=Math.round(s); });
+  });
+}
+// 슬라이더 조작 시작(mousedown/touchstart): 히스토리 1회 + 스냅샷 생성.
+function gapSliderStart(axis){
+  pushHistory();
+  gapSnap[axis]=buildGapSnapshot(axis);
+}
+// 슬라이더 입력(oninput): 스냅샷 기준으로 즉시 반영. 스냅샷이 없으면(직접 값변경 등) 새로 생성.
+let gapRaf=null;
+function onGapSlider(axis, value){
+  if(!gapSnap[axis]) gapSnap[axis]=buildGapSnapshot(axis);
+  applyGapFromSnap(gapSnap[axis], +value);
+  // 숫자 입력칸 동기화(슬라이더 DOM은 유지되므로 값만 갱신)
+  const num=document.getElementById(axis==='x'?'gapHInput':'gapVInput');
+  if(num) num.value=value;
+  // 캔버스만 갱신(renderProps 금지 → 슬라이더 DOM 유지). rAF로 프레임당 1회로 병합.
+  if(gapRaf) cancelAnimationFrame(gapRaf);
+  gapRaf=requestAnimationFrame(()=>{ drawCanvas(); gapRaf=null; });
+}
+// 숫자 입력칸에 직접 px 값 입력(키보드): 한 번에 적용.
+function onGapNumber(axis, value){
+  let v=parseInt(value,10); if(isNaN(v)) return;
+  if(v<0) v=0;
+  const range=document.getElementById(axis==='x'?'gapHRange':'gapVRange');
+  if(range){
+    if(v>+range.max) range.max=v;  // 입력값이 슬라이더 최대보다 크면 최대를 늘림
+    range.value=v;
+  }
+  const num=document.getElementById(axis==='x'?'gapHInput':'gapVInput');
+  if(num) num.value=v;
+  pushHistory();
+  gapSnap[axis]=buildGapSnapshot(axis);
+  applyGapFromSnap(gapSnap[axis], v);
+  gapSnap[axis]=null;
+  drawCanvas(); scheduleAutosave();
+}
+// 슬라이더 조작 종료(change/mouseup): 저장 + 스냅샷 해제.
+function gapSliderEnd(axis){
+  gapSnap[axis]=null;
+  if(gapRaf){ cancelAnimationFrame(gapRaf); gapRaf=null; }
+  drawCanvas();
+  scheduleAutosave();
+}
+// 현재 선택 기준으로 슬라이더 최대값 계산: 마지막 밴드가 캔버스를 살짝만 넘도록.
+function gapSliderMax(axis){
+  const info=alignTargets(); if(!info) return 200;
+  const {anchor,targets}=info; if(targets.length<2) return 200;
+  const S = axis==='x' ? 'x':'y';
+  const {w:frameW, h:frameH}=alignFrameSize(anchor);
+  const frameEnd = axis==='x' ? frameW : frameH;
+  const bands=gapBands(axis, targets);
+  if(bands.length<2) return 200;
+  const anchorStart=anchor[S]||0;
+  const lastSize=bands[bands.length-1].size;
+  const m=bands.length;
+  // 마지막 밴드가 frameEnd에 닿는 pitch: anchorStart + pitch*(m-1) + lastSize = frameEnd
+  const pitchFit=(frameEnd - anchorStart - lastSize)/(m-1);
+  // 캔버스를 살짝 넘어가도 되도록 15% 여유. 하한 60 보장.
+  return Math.max(60, Math.round(pitchFit*1.15));
+}
+// 현재 선택된 컴포넌트들의 실제 "밴드(열/행) 시작선 간 거리(피치)" 대표값. 슬라이더 기본값으로 사용.
+function currentGap(axis){
+  const info=alignTargets(); if(!info) return ALIGN_GAP;
+  const {targets}=info; if(targets.length<2) return ALIGN_GAP;
+  const bands=gapBands(axis, targets);
+  if(bands.length<2) return ALIGN_GAP;
+  const S = axis==='x' ? 'x':'y';
+  const starts=bands.map(b=>Math.min(...b.items.map(c=>c[S]||0)));
+  const pitches=[];
+  for(let i=1;i<starts.length;i++) pitches.push(starts[i]-starts[i-1]);
+  pitches.sort((a,b)=>a-b);
+  const mid=Math.round(pitches[Math.floor(pitches.length/2)]);
+  return Math.max(0, mid);
+}
+
+
+// ---- Copy / Paste ----
+let clipboard=[]; let pasteSeq=0;
+function copySelection(){
+  if(!selIds.size)return;
+  const ids=collectWithChildren([...selIds]);
+  clipboard=comps.filter(c=>ids.includes(c.id)).map(c=>JSON.parse(JSON.stringify(c)));
+  pasteSeq=0;
+}
+// ---- 브라우저 간 복사/붙여넣기 (OS 클립보드 연동) ----
+// 동일/타 브라우저(창·탭·프로필 구분 없이) 사이에 컴포넌트를 복사·붙여넣기 하기 위해,
+// 로컬 clipboard 배열에 담는 것과 별개로 OS 클립보드에도 식별 마커를 포함한 JSON 문자열로
+// 기록한다. 붙여넣기 시에는 OS 클립보드를 먼저 읽어 마커가 있으면 그 내용을 쓰고,
+// 읽기 실패(권한 거부·비-JSON·비-목업빌더 텍스트 등)하면 기존 로컬 clipboard 로 대체 동작한다.
+const MB_CLIP_MARKER='__mockupBuilderClipboard__';
+let clipboardTextSeen=null; // 직전에 OS 클립보드에 기록/인식한 텍스트(중복 붙여넣기 시 오프셋 리셋 방지용)
+// Ctrl+C 전용 진입점. 로컬 복사는 항상 성공하므로(선택이 있는 한) 하단 토스트를 띄운다.
+// OS 클립보드 기록은 실패해도(구형 브라우저·권한 거부 등) 로컬 복사/붙여넣기 자체는 그대로 동작한다.
+function copySelectionToSystem(){
+  if(!selIds.size)return;
+  copySelection();
+  if(!clipboard.length)return;
+  const payload=JSON.stringify({[MB_CLIP_MARKER]:1, comps:clipboard});
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(payload).then(()=>{ clipboardTextSeen=payload; }).catch(()=>{});
+  }
+  if(typeof mbToast==='function') mbToast('복사됨');
+}
+// Ctrl+V 전용 진입점. OS 클립보드를 먼저 시도하고, 실패/불일치 시 로컬 clipboard 로 대체한다.
+// 붙여넣기에는(스펙에 따라) 별도 토스트를 띄우지 않는다.
+async function pasteFromClipboard(){
+  if(navigator.clipboard&&navigator.clipboard.readText){
+    try{
+      const text=await navigator.clipboard.readText();
+      if(text&&text!==clipboardTextSeen){
+        const data=JSON.parse(text);
+        if(data&&data[MB_CLIP_MARKER]&&Array.isArray(data.comps)&&data.comps.length){
+          clipboard=data.comps.map(c=>JSON.parse(JSON.stringify(c)));
+          pasteSeq=0;
+          clipboardTextSeen=text;
+        }
+      }
+    }catch(err){ /* 권한 거부, JSON 아님, 마커 없음 등은 무시하고 로컬 clipboard 로 대체 */ }
+  }
+  pasteClipboard();
+}
+function pasteClipboard(){
+  if(!clipboard.length)return;
+  pushHistory();
+  pasteSeq++;
+  const off=pasteSeq*20;
+
+  // Determine the current "paste target" Tab context from the current single selection, if any:
+  // - a Tab container selected -> paste into its currently active page
+  // - a component that lives inside a Tab selected -> paste into that same Tab/page
+  // - anything else (or no clear single selection) -> paste as top-level, same as before
+  let targetParent=null, targetTabIdx=0;
+  if(selIds.size===1){
+    const curSel=comps.find(x=>x.id===sel);
+    if(curSel){
+      if(curSel.type==='tabs'){ targetParent=curSel.id; targetTabIdx=curSel.active||0; }
+      else if(curSel.parent){ targetParent=curSel.parent; targetTabIdx=curSel.tabIdx||0; }
+    }
+  }
+
+  const clipIds=new Set(clipboard.map(c=>c.id));
+  const idMap={};
+  const created=[]; // {nc, wasRoot, origParent}
+  clipboard.forEach(c=>{
+    const nc=JSON.parse(JSON.stringify(c));
+    const oldId=nc.id;
+    nc.id=uid++;
+    idMap[oldId]=nc.id;
+    comps.push(nc);
+    created.push({nc, wasRoot:!(c.parent&&clipIds.has(c.parent)), origParent:c.parent});
+  });
+  created.forEach(({nc,wasRoot,origParent})=>{
+    if(!wasRoot){
+      // a nested child copied together with its own container: stays attached to the newly duplicated container
+      nc.parent=idMap[origParent];
+      return; // relative x/y unchanged, it moves with its new parent automatically
+    }
+    // this item is a "root" of the copied selection: decide where it lands
+    if(targetParent){
+      nc.parent=targetParent; nc.tabIdx=targetTabIdx;
+    } else {
+      delete nc.parent; delete nc.tabIdx;
+    }
+    nc.x=(nc.x||0)+off; nc.y=(nc.y||0)+off;
+  });
+  const newIds=created.map(o=>o.nc.id);
+  selIds=new Set(newIds);
+  sel = newIds.length?newIds[newIds.length-1]:null;
+  render();
+}
+
+// ---- Undo / Redo history ----
+let undoStack=[]; let redoStack=[]; const HIST_MAX=60;
+function snapshot(){return JSON.parse(JSON.stringify({comps,uid,originId:mbCloud.originId||null}));}
+function pushHistory(){
+  undoStack.push(snapshot());
+  if(undoStack.length>HIST_MAX)undoStack.shift();
+  redoStack=[];
+  updateHistBtns();
+}
+function undo(){
+  if(!undoStack.length)return;
+  redoStack.push(snapshot());
+  const s=undoStack.pop();
+  comps=s.comps; uid=s.uid; mbCloud.originId=s.originId||null; selectSingle(null);
+  render(); updateHistBtns();
+}
+function redo(){
+  if(!redoStack.length)return;
+  undoStack.push(snapshot());
+  const s=redoStack.pop();
+  comps=s.comps; uid=s.uid; mbCloud.originId=s.originId||null; selectSingle(null);
+  render(); updateHistBtns();
+}
+// Undo/redo are keyboard-only (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z); the toolbar buttons were
+// removed, so there is no button state to sync. Kept as a no-op safe hook: it is called from
+// several places (undo, redo, pushHistory, load paths) and tolerates the buttons being absent,
+// so re-adding a button later only needs the markup back.
+function updateHistBtns(){
+  const u=document.getElementById('undoBtn'), r=document.getElementById('redoBtn');
+  if(u)u.disabled=!undoStack.length;
+  if(r)r.disabled=!redoStack.length;
+}
+
+const TAB_HEADER_H=40; // px height of the tab header row, used for content-area layout & hit-testing
+const SPLIT_DIVIDER=8; // px thickness of a split-container's draggable divider bar
+// Computes the two pane rectangles (local coords, relative to the split container's own x/y)
+// and the divider's rectangle, from the container's current w/h/dir/pos.
+function splitPaneRects(c){
+  const dir=c.dir==='v'?'v':'h';
+  const pos=Math.min(0.85,Math.max(0.15,c.pos!=null?c.pos:0.5));
+  if(dir==='h'){
+    const w1=Math.max(10,Math.round(c.w*pos-SPLIT_DIVIDER/2));
+    const w2=Math.max(10,c.w-w1-SPLIT_DIVIDER);
+    return {dir,
+      pane0:{x:0,y:0,w:w1,h:c.h},
+      pane1:{x:w1+SPLIT_DIVIDER,y:0,w:w2,h:c.h},
+      divider:{x:w1,y:0,w:SPLIT_DIVIDER,h:c.h}};
+  }
+  const h1=Math.max(10,Math.round(c.h*pos-SPLIT_DIVIDER/2));
+  const h2=Math.max(10,c.h-h1-SPLIT_DIVIDER);
+  return {dir,
+    pane0:{x:0,y:0,w:c.w,h:h1},
+    pane1:{x:0,y:h1+SPLIT_DIVIDER,w:c.w,h:h2},
+    divider:{x:0,y:h1,w:c.w,h:SPLIT_DIVIDER}};
+}
+// Resolves a component's absolute canvas-space position by walking up its parent chain,
+// so hit-testing/placement still works correctly for nested containers (split-in-split,
+// split-in-tab, etc), not just one level of nesting.
+function absPos(comp){
+  if(!comp.parent) return {x:comp.x,y:comp.y};
+  const p=comps.find(x=>x.id===comp.parent);
+  if(!p) return {x:comp.x,y:comp.y};
+  const pAbs=absPos(p);
+  if(p.type==='split'){
+    const r=splitPaneRects(p);
+    const off=(comp.pane||0)===0?r.pane0:r.pane1;
+    return {x:pAbs.x+off.x+comp.x, y:pAbs.y+off.y+comp.y};
+  }
+  if(p.type==='tabs'){
+    return {x:pAbs.x+comp.x, y:pAbs.y+comp.y+TAB_HEADER_H};
+  }
+  // panel(그룹박스) 등 헤더가 없는 단순 컨테이너: 자식 좌표는 부모 좌상단 기준 그대로.
+  return {x:pAbs.x+comp.x, y:pAbs.y+comp.y};
+}
+// A nested component is only "live" (clickable/hit-testable) if every Tab ancestor
+// has it on its currently active page; otherwise it's sitting on a hidden tab page.
+function isVisible(comp){
+  let cur=comp;
+  while(cur&&cur.parent){
+    const p=comps.find(x=>x.id===cur.parent);
+    if(!p) break;
+    if(p.type==='tabs'&&(cur.tabIdx||0)!==(p.active||0)) return false;
+    cur=p;
+  }
+  return true;
+}
+// True if `comp` is nested anywhere underneath the component with id `ancestorId`
+// (used to stop a split container from being dropped inside its own descendant).
+function isDescendantOf(comp,ancestorId){
+  let cur=comp;
+  while(cur&&cur.parent){
+    if(cur.parent===ancestorId) return true;
+    cur=comps.find(x=>x.id===cur.parent);
+  }
+  return false;
+}
+const defaults={
+  title:{w:260,h:34,text:"화면 제목",required:false,readonly:false},
+  section:{w:1060,h:28,text:"섹션",required:false,readonly:false},
+  panel:{w:300,h:150,text:"",required:false,readonly:false},
+  tabs:{w:700,h:300,text:"탭1,탭2,탭3",required:false,readonly:false,active:0},
+  label:{w:90,h:26,text:"라벨",required:false,readonly:false,style:"none"},
+  input:{w:180,h:52,text:"",required:false,readonly:false,showLabel:true,labelText:"항목명",labelPos:"top"},
+  combo:{w:180,h:52,text:"선택",required:false,readonly:false,options:"옵션1,옵션2,옵션3",showLabel:true,labelText:"항목명",labelPos:"top"},
+  date:{w:150,h:52,text:"",required:false,readonly:false,showLabel:true,labelText:"항목명",labelPos:"top"},
+  daterange:{w:220,h:52,text:"2026-07-01 ~ 2026-07-15",required:false,readonly:false,showLabel:true,labelText:"항목명",labelPos:"top"},
+  check:{w:120,h:48,text:"체크박스",required:false,readonly:false,showLabel:true,labelText:"항목명",labelPos:"top"},
+  radio:{w:260,h:48,text:"라디오",required:false,readonly:false,options:"옵션1,옵션2,옵션3",selected:0,showLabel:true,labelText:"항목명",labelPos:"top"},
+  // 팻모드 전용 팝업 컴포넌트: 라벨+텍스트박스(코드)+아이콘+텍스트박스(명칭).
+  // 명칭 텍스트박스는 항상 읽기전용이며 별도 속성이 없다 - required/readonly/text는 코드 텍스트박스 것.
+  popup:{w:420,h:23,text:"",required:false,readonly:false,showLabel:true,labelText:"항목명",labelPos:"left",style:"code_name"},
+  // 씬모드 전용: 조회조건 패널의 '검색' 필드와 같은 모양(텍스트박스+아이콘). 기본 읽기전용.
+  attach:{w:180,h:52,text:"",required:false,readonly:true,showLabel:true,labelText:"항목명",labelPos:"top"},
+  button:{w:80,h:32,text:"버튼",required:false,readonly:false,outline:false},
+  grid:{w:700,h:190,text:"컬럼1,컬럼2,컬럼3,컬럼4",required:false,readonly:false,rows:3,
+    gtitle:"그리드 제목",showToolbar:true,pagination:false,excelDownload:true,colSizeMode:'auto',
+    stdAdd:true,stdCancel:true,stdCopy:true,stdDelete:true,
+    userBtns:[]},
+  chart:{w:440,h:260,text:"25,45,30,60,40,55",required:false,readonly:false,
+    ctitle:"차트 제목",chartType:"bar",color:"green",showArrow:true},
+  tree:{w:300,h:280,required:false,readonly:false,
+    text:"아이템1\n  아이템1-1\n  아이템1-2\n    아이템1-2-1\n    아이템1-2-2\n  아이템1-3\n아이템2\n  아이템2-1\n  아이템2-2",
+    selectedLine:0,showLines:true},
+  searchbar:{w:1060,h:84,text:"",required:false,readonly:false,
+    perRow:4,
+    fields:[
+      {label:"조건1",type:"text",required:false},
+      {label:"조건2",type:"text",required:false}
+    ]},
+  split:{w:700,h:400,text:"",required:false,readonly:false,dir:"h",pos:0.5}
+};
+function todayStr(){
+  const d=new Date();
+  const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+
+// 입력 컴포넌트 타입 변경(속성패널의 "타입" 콤보) - 텍스트박스를 콤보박스로, 라디오를 체크박스로
+// 바꾸는 등, 컴포넌트를 지우고 새로 만드는 대신 그 자리에서 종류만 바꾼다.
+// - 위치·크기(x/y/w/h)와 컨테이너 소속(parent/tabIdx/pane/dock), 변경상태(diffStatus)는 그대로 유지.
+// - 내용은 placeNewComponent()가 새 컴포넌트를 놓을 때와 동일하게 defaults[newType]으로 완전히
+//   새로 시작한다(날짜 타입의 오늘 날짜 초기화도 동일하게 재현) - 그래야 이전 타입 전용 속성
+//   (예: 날짜의 dateSpec, 콤보/라디오의 options)이 맞지 않는 타입에 죽은 값으로 남지 않는다.
+// - 다만 두 타입 모두에 실제로 있는 공통 속성(라벨 문구/위치/표시여부, 필수, 읽기전용, 콤보·라디오의
+//   보기 목록)만은 기존 값을 그대로 옮겨, 사용자가 입력해둔 내용이 불필요하게 날아가지 않게 한다.
+function changeCompType(id,newType){
+  const c=comps.find(x=>x.id===id);
+  if(!c||!INPUT_TYPES.includes(c.type)||!INPUT_TYPES.includes(newType)||c.type===newType)return;
+  // 이 컴포넌트를 대상으로 열려 있던 텍스트 서식 팝업(볼드/기울임 등)이 있으면 먼저 닫는다 -
+  // 타입이 바뀌면 그 팝업이 읽고 쓰던 속성 구조도 같이 바뀌므로, 그리드 컬럼 삭제 시와 동일한
+  // 방식으로 먼저 정리한다(위 updGridColStatus 등 근처의 기존 lf 정리 패턴과 동일).
+  if(lf&&lf.compId===c.id) closeLabelFormat();
+  pushHistory();
+  const fatMode=document.body.classList.contains('skin-classic');
+  const d=JSON.parse(JSON.stringify(defaults[newType]));
+  // 사용자가 크기를 임의로 조절해 놨을 수 있으므로, 타입을 바꿔도 가로/세로 크기는 절대 건드리지
+  // 않는다 - defaults[newType]에 있는 w/h는 여기서 아예 지워서, 아래 Object.assign(keep,d)이
+  // keep에 이미 넣어둔 원래 크기(c.w/c.h)를 덮어쓰지 못하게 한다.
+  delete d.w; delete d.h;
+  if(d.labelPos && fatMode) d.labelPos='left';
+  // 팝업은 씬모드에서 첨부파일과 같은 구조(라벨 위)를 쓴다 - defaults.popup 자체는 팻모드
+  // 기준(라벨 왼쪽)이라, 타입 변경으로 들어올 때도 placeNewComponent와 동일하게 바로잡아 준다.
+  // (크기는 위 규칙대로 원래 컴포넌트 것을 그대로 유지 - 여기서 건드리는 건 라벨 위치뿐이다.)
+  if(newType==='popup' && !fatMode) d.labelPos='top';
+  if(newType==='date'){ d.text=todayStr(); d.dateSpec='chip:today'; }
+  ['required','readonly','showLabel','labelText','labelPos','options'].forEach(k=>{
+    if(Object.prototype.hasOwnProperty.call(d,k)&&Object.prototype.hasOwnProperty.call(c,k)) d[k]=c[k];
+  });
+  // 첨부파일은 원래 컴포넌트의 읽기전용 여부와 무관하게 항상 읽기전용으로 시작한다
+  // (배치할 때와 동일한 기본값 - 위 공통 속성 유지 규칙의 유일한 예외).
+  if(newType==='attach') d.readonly=true;
+  const keep={id:c.id,type:newType,x:c.x,y:c.y,w:c.w,h:c.h};
+  if(c.parent!=null) keep.parent=c.parent;
+  if(c.tabIdx!=null) keep.tabIdx=c.tabIdx;
+  if(c.pane!=null) keep.pane=c.pane;
+  if(c.dock!=null) keep.dock=c.dock;
+  if(c.diffStatus!=null) keep.diffStatus=c.diffStatus;
+  const idx=comps.indexOf(c);
+  if(idx<0)return;
+  comps[idx]=Object.assign(keep,d);
+  selectSingle(comps[idx].id);
+  render();
+}
+
+function snap(v){
+  if(!document.getElementById('snapChk').checked) return v;
+  const s=parseInt(document.getElementById('snapSize').value)||10;
+  return Math.round(v/s)*s;
+}
+
+// ---- Drag from toolbox (and click-to-place mode) ----
+let clickPlaceMode=false;
+let armedType=null;
+// Ghost preview for dragging a new component out of the toolbox.
+// dropGhostType is the component being dragged; its icon/label come from the tool element.
+let dropGhostType=null, dropGhostLabel='', dropGhostIcon='';
+function dropGhostEl(){ return document.getElementById('dropGhost'); }
+// Fat Mode에서는 도구상자 "입력 컴포넌트" 그룹(라벨·텍스트박스·콤보·날짜·기간·
+// 체크박스·라디오)의 기본 생성 높이를 23으로 고정한다. 라벨을 제외한 나머지는 폭도 1.3배로 넓힌다.
+// Thin Mode는 defaults의 원래 크기 그대로 반환한다.
+// 드래그 중 보여주는 고스트 미리보기와 실제 배치(placeNewComponent) 양쪽에서 함께 쓴다.
+const FAT_RESIZE_TYPES=['label','input','combo','date','daterange','check','radio'];
+const FAT_HEIGHT=23;
+function defaultSizeFor(type){
+  const d=defaults[type]||{w:180,h:52};
+  const fat=document.body.classList.contains('skin-classic');
+  // Thin Mode 팝업(검색형)은 팻모드 코드/명 팝업과 완전히 다른 컴포넌트라, 크기도 팻모드
+  // defaults(420x23)를 그대로 물려받지 않고 첨부파일 컴포넌트와 같은 구조(180x52)를 쓴다.
+  if(type==='popup' && !fat) return {w:180,h:52};
+  if(FAT_RESIZE_TYPES.includes(type) && fat){
+    const w = type==='label' ? d.w : Math.round(d.w*1.3);
+    return {w,h:FAT_HEIGHT};
+  }
+  return {w:d.w,h:d.h};
+}
+function hideDropGhost(){ dropGhostType=null; lastGhostSnap=null; const g=dropGhostEl(); if(g)g.classList.remove('on'); try{ clearGuides(); }catch(_){} }
+// Position+size the ghost so the component is centered under the cursor (same
+// feel as dragging an existing component), snapping like the real placement will.
+// The ghost is a sibling of #canvas (which is CSS-scaled by `zoom`), so we scale
+// its coordinates by `zoom` to line up with the visible, zoomed canvas.
+function moveDropGhost(clientX,clientY){
+  if(!dropGhostType)return;
+  const g=dropGhostEl(); if(!g)return;
+  const r=canvas.getBoundingClientRect();
+  const d=defaultSizeFor(dropGhostType);
+  const cxCanvas=(clientX-r.left)/zoom, cyCanvas=(clientY-r.top)/zoom;
+  // 컴포넌트의 좌상단이 커서 위치가 되도록 배치(가운데 정렬 아님).
+  let x=Math.max(0,snap(cxCanvas)), y=Math.max(0,snap(cyCanvas));
+  // 스마트 가이드가 켜져 있으면, 기존 컴포넌트/캔버스 기준선에 스냅하고 가이드라인 표시.
+  // 단, 컨테이너(탭/스플릿/패널) 위에 놓는 경우는 부모 상대좌표라 캔버스 절대 가이드가 맞지 않으므로 제외.
+  const smartOn=(()=>{ const e=document.getElementById('smartChk'); return e?e.checked:false; })();
+  const overContainer = hitTestContainer(cxCanvas,cyCanvas);
+  if(smartOn && !overContainer){
+    try{
+      const gRes=computeGuides({id:null, w:d.w, h:d.h}, x, y);
+      x=Math.max(0,gRes.x); y=Math.max(0,gRes.y);
+      drawGuides(gRes.lines);
+      lastGhostSnap={x, y}; // drop 시 이 스냅 위치를 그대로 사용
+    }catch(_){ lastGhostSnap=null; clearGuides(); }
+  }else{
+    lastGhostSnap=null;
+    try{ clearGuides(); }catch(_){}
+  }
+  g.style.left=(x*zoom)+'px';
+  g.style.top=(y*zoom)+'px';
+  g.style.width=(d.w*zoom)+'px';
+  g.style.height=(d.h*zoom)+'px';
+  g.classList.add('on');
+}
+let lastGhostSnap=null; // 마지막 ghost 스냅 좌표(가이드 적용 결과)
+document.querySelectorAll('.tool').forEach(t=>{
+  t.addEventListener('dragstart',e=>{
+    e.dataTransfer.setData('type',t.dataset.type);
+    e.dataTransfer.effectAllowed='copy';
+    dropGhostType=t.dataset.type;
+    const ic=t.querySelector('.ic'); dropGhostIcon=ic?ic.textContent:'';
+    // textContent includes the icon glyph; drop it so the label isn't doubled.
+    dropGhostLabel=t.textContent.replace(dropGhostIcon,'').trim();
+    const g=dropGhostEl();
+    if(g) g.innerHTML=`<span class="dg-ic">${dropGhostIcon}</span><span>${dropGhostLabel}</span>`;
+    // Hide the browser's default drag image so only our ghost shows.
+    try{ const img=new Image(); img.src='data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='; e.dataTransfer.setDragImage(img,0,0); }catch(_){}
+  });
+  t.addEventListener('dragend',hideDropGhost);
+  t.addEventListener('click',()=>{
+    if(!clickPlaceMode)return;
+    armedType = (armedType===t.dataset.type) ? null : t.dataset.type; // clicking the same tool again disarms it
+    updateArmedUI();
+  });
+});
+// Toolbox group collapse/expand (default expanded; state is UI-only, not persisted).
+function toggleToolGroup(h3){
+  h3.parentElement.classList.toggle('collapsed');
+}
+function onClickPlaceToggle(){
+  clickPlaceMode=document.getElementById('clickPlaceChk').checked;
+  document.getElementById('toolbox').classList.toggle('click-place-on',clickPlaceMode);
+  if(!clickPlaceMode){ armedType=null; }
+  updateArmedUI();
+}
+function updateArmedUI(){
+  document.querySelectorAll('.tool').forEach(t=>t.classList.toggle('armed',t.dataset.type===armedType));
+  canvas.classList.toggle('click-place-armed',!!armedType);
+}
+// Places a new top-level (or Tab-nested, if dropped/clicked inside a Tab's content area) component of `type`
+// at canvas-local coordinates (x,y). Shared by both drag-and-drop and click-to-place.
+// (x,y) is always the component's top-left corner - matching where the drag ghost/cursor
+// was shown - so it lands exactly under the cursor; hit-testing still uses the raw cursor point.
+function placeNewComponent(type,x,y,centered,snapPos){
+  pushHistory();
+  const d=JSON.parse(JSON.stringify(defaults[type]));
+  const fatMode=document.body.classList.contains('skin-classic');
+  // Fat Mode에서는 라벨 있는 컴포넌트의 기본 라벨 위치가 위쪽 대신 왼쪽이다.
+  // Thin Mode(기존)는 그대로 top을 유지한다.
+  if(d.labelPos && fatMode) d.labelPos='left';
+  // 팝업은 예외 - defaults.popup 자체가 팻모드 모양(라벨 왼쪽) 기준으로 정의돼 있으므로,
+  // 씬모드에서는 첨부파일과 같은 라벨 위쪽 구조로 명시적으로 되돌린다.
+  if(type==='popup' && !fatMode) d.labelPos='top';
+  // 기본 생성 크기 보정(가로 1.3배·세로 2/3배)은 defaultSizeFor()가 모드를 보고 처리한다.
+  const sz=defaultSizeFor(type);
+  d.w=sz.w; d.h=sz.h;
+  if(type==='date'){ d.text=todayStr(); d.dateSpec='chip:today'; }
+  // px,py = where the component's top-left should go (always the cursor/ghost position itself)
+  const px = x;
+  const py = y;
+  const target=hitTestContainer(x,y);
+  if(target&&target.kind==='tab'){
+    const nx=snap(px-target.cx), ny=snap(py-target.cy);
+    comps.push({id:uid++,type,x:Math.max(0,nx),y:Math.max(0,ny),parent:target.c.id,tabIdx:target.c.active||0,...d});
+  } else if(target&&target.kind==='split'){
+    const paneRect=target.pane===0?target.rects.pane0:target.rects.pane1;
+    const newId=uid++;
+    // Fill only makes sense as the automatic default for a nested split container itself
+    // (so it tiles the parent pane); any other component defaults to None - placed at its
+    // normal size near the drop point - so it stays free to drag, resize, and drag back out.
+    const dock = type==='split' ? 'fill' : 'none';
+    let nx=0, ny=0, nw=paneRect.w, nh=paneRect.h;
+    if(dock==='none'){
+      nx=Math.max(0,snap(px-target.cx)); ny=Math.max(0,snap(py-target.cy));
+      nw=d.w; nh=d.h;
+    }
+    comps.push({id:newId,type,...d,x:nx,y:ny,w:nw,h:nh,parent:target.c.id,pane:target.pane,dock});
+    if(type==='split'){
+      // that pane may already have content - move it into the new nested split's first
+      // pane instead of letting it silently overlap the new split
+      comps.forEach(k=>{
+        if(k.id!==newId&&k.parent===target.c.id&&(k.pane||0)===target.pane){
+          k.parent=newId; k.pane=0; if(!k.dock)k.dock='fill';
+        }
+      });
+    }
+  } else if(target&&target.kind==='panel'){
+    // 패널/그룹박스 안에 놓으면 탭·스플릿과 마찬가지로 그 패널의 자식이 된다(상대좌표 저장).
+    const nx=snap(px-target.cx), ny=snap(py-target.cy);
+    comps.push({id:uid++,type,x:Math.max(0,nx),y:Math.max(0,ny),parent:target.c.id,...d});
+  } else {
+    // 스마트 가이드로 스냅된 좌표가 있으면 그대로 사용, 없으면 격자 snap.
+    const fx = snapPos ? Math.max(0, Math.round(snapPos.x)) : Math.max(0,snap(px));
+    const fy = snapPos ? Math.max(0, Math.round(snapPos.y)) : Math.max(0,snap(py));
+    comps.push({id:uid++,type,x:fx,y:fy,...d});
+  }
+  selectSingle(comps[comps.length-1].id);
+  render();
+}
+const canvas=document.getElementById('canvas');
+canvas.addEventListener('dragover',e=>{
+  e.preventDefault();
+  if(e.dataTransfer) e.dataTransfer.dropEffect='copy';
+  if(dropGhostType) moveDropGhost(e.clientX,e.clientY);
+});
+// Hide the ghost when the cursor leaves the canvas area (but not on inner-element flicker).
+canvas.addEventListener('dragleave',e=>{
+  if(!dropGhostType)return;
+  const r=canvas.getBoundingClientRect();
+  if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) hideDropGhost();
+});
+canvas.addEventListener('drop',e=>{
+  e.preventDefault();
+  const snapPos=lastGhostSnap; // hideDropGhost가 초기화하기 전에 보관
+  hideDropGhost();
+  const type=e.dataTransfer.getData('type');
+  if(!type) return;
+  const r=canvas.getBoundingClientRect();
+  if(snapPos){
+    // 스마트 가이드로 스냅된 좌상단 좌표에 그대로 배치(컨테이너 히트테스트는 커서 위치 기준)
+    placeNewComponent(type, (e.clientX-r.left)/zoom, (e.clientY-r.top)/zoom, false, snapPos);
+  }else{
+    placeNewComponent(type, (e.clientX-r.left)/zoom, (e.clientY-r.top)/zoom); // 좌상단이 커서 위치
+  }
+});
+// Intercepts mousedown in the CAPTURE phase (before it reaches its target) whenever a tool is armed,
+// so a click anywhere inside the canvas - including on a Tab header, inside a Tab's content area, or
+// on top of an existing component - places the new component instead of triggering that element's own
+// behavior (tab switching, drag-move, resize, etc). stopPropagation here prevents those nested handlers
+// (which are wired on 'mousedown'/'onmousedown') from ever running.
+canvas.addEventListener('mousedown',e=>{
+  if(!armedType)return;
+  e.stopPropagation();
+  e.preventDefault();
+  const r=canvas.getBoundingClientRect();
+  placeNewComponent(armedType, (e.clientX-r.left)/zoom, (e.clientY-r.top)/zoom);
+},true);
+// depth in the parent chain - used to resolve "which container did the cursor actually land
+// in" when containers are nested inside each other (a split's pane sitting inside a tab's
+// content area, etc): the geometrically innermost/deepest container should always win over
+// an ancestor that merely happens to also contain that point, regardless of container type.
+function containerDepth(c){
+  let d=0, cur=c;
+  while(cur&&cur.parent){ cur=comps.find(x=>x.id===cur.parent); if(!cur)break; d++; }
+  return d;
+}
+// Single hit-test covering tabs/split/panel together, at any nesting depth and in any
+// combination (tab-in-split, split-in-tab, tab-in-tab, split-in-split, ...). Every visible
+// container whose content area contains (px,py) is a candidate; the one with the greatest
+// ancestor-chain depth wins (ties broken by later `comps` array position, i.e. created more
+// recently) so a nested container is always preferred over the ancestor(s) it sits inside.
+// Returns null, or {kind:'tab'|'split'|'panel', c, cx, cy, pane, rects} - cx/cy is always the
+// content area's own absolute top-left, ready to convert a drop point into local coordinates.
+function hitTestContainer(px,py){
+  const cands=[];
+  comps.forEach(c=>{
+    if(!isVisible(c))return;
+    if(c.type==='tabs'){
+      const abs=absPos(c);
+      const cx=abs.x, cy=abs.y+TAB_HEADER_H, cw=c.w, ch=c.h-TAB_HEADER_H;
+      if(px>=cx&&px<=cx+cw&&py>=cy&&py<=cy+ch) cands.push({kind:'tab',c,cx,cy,depth:containerDepth(c)});
+    } else if(c.type==='split'){
+      const abs=absPos(c);
+      const r=splitPaneRects(c);
+      const p0={x:abs.x+r.pane0.x,y:abs.y+r.pane0.y,w:r.pane0.w,h:r.pane0.h};
+      const p1={x:abs.x+r.pane1.x,y:abs.y+r.pane1.y,w:r.pane1.w,h:r.pane1.h};
+      if(px>=p0.x&&px<=p0.x+p0.w&&py>=p0.y&&py<=p0.y+p0.h) cands.push({kind:'split',c,cx:p0.x,cy:p0.y,pane:0,rects:r,depth:containerDepth(c)});
+      else if(px>=p1.x&&px<=p1.x+p1.w&&py>=p1.y&&py<=p1.y+p1.h) cands.push({kind:'split',c,cx:p1.x,cy:p1.y,pane:1,rects:r,depth:containerDepth(c)});
+    } else if(c.type==='panel'){
+      const abs=absPos(c);
+      if(px>=abs.x&&px<=abs.x+c.w&&py>=abs.y&&py<=abs.y+c.h) cands.push({kind:'panel',c,cx:abs.x,cy:abs.y,depth:containerDepth(c)});
+    }
+  });
+  if(!cands.length) return null;
+  cands.sort((a,b)=> a.depth-b.depth || comps.indexOf(a.c)-comps.indexOf(b.c));
+  return cands[cands.length-1];
+}
+// hit test against the content area of any 'tabs' component, including ones nested inside
+// another tab's content area, a split's pane, or a panel (mirrors hitTestSplitContainer/
+// hitTestPanelContainer below - isVisible() walks the whole ancestor chain, so a tab nested
+// several levels deep is only a valid target while every ancestor tab page it sits on is
+// actually the one currently showing).
+function hitTestTabContainer(px,py){
+  let found=null;
+  comps.forEach(c=>{
+    if(c.type!=='tabs'||!isVisible(c))return;
+    const abs=absPos(c);
+    const cx=abs.x, cy=abs.y+TAB_HEADER_H, cw=c.w, ch=c.h-TAB_HEADER_H;
+    if(px>=cx&&px<=cx+cw&&py>=cy&&py<=cy+ch){ found={c,cx,cy}; }
+  });
+  return found;
+}
+// hit test against either pane of any 'split' component, including ones nested inside
+// another split's pane or a tab's content area (topmost/last match wins - a deeper-nested
+// split is later in `comps` than its ancestor, so it naturally takes priority)
+function hitTestSplitContainer(px,py){
+  let found=null;
+  comps.forEach(c=>{
+    if(c.type!=='split'||!isVisible(c))return;
+    const abs=absPos(c);
+    const r=splitPaneRects(c);
+    const p0={x:abs.x+r.pane0.x,y:abs.y+r.pane0.y,w:r.pane0.w,h:r.pane0.h};
+    const p1={x:abs.x+r.pane1.x,y:abs.y+r.pane1.y,w:r.pane1.w,h:r.pane1.h};
+    if(px>=p0.x&&px<=p0.x+p0.w&&py>=p0.y&&py<=p0.y+p0.h){ found={c,cx:p0.x,cy:p0.y,pane:0,rects:r}; }
+    else if(px>=p1.x&&px<=p1.x+p1.w&&py>=p1.y&&py<=p1.y+p1.h){ found={c,cx:p1.x,cy:p1.y,pane:1,rects:r}; }
+  });
+  return found;
+}
+
+// hit test against the content area of any 'panel' component, including ones nested inside
+// another panel/split/tab (topmost/last match wins - a deeper-nested panel is later in
+// `comps` than its ancestor, so it naturally takes priority). Mirrors hitTestSplitContainer.
+function hitTestPanelContainer(px,py){
+  let found=null;
+  comps.forEach(c=>{
+    if(c.type!=='panel'||!isVisible(c))return;
+    const abs=absPos(c);
+    if(px>=abs.x&&px<=abs.x+c.w&&py>=abs.y&&py<=abs.y+c.h){ found={c,cx:abs.x,cy:abs.y}; }
+  });
+  return found;
+}
+
+// ---- Render ----
+// ---- Autosave (browser storage only) ----
+// Keeps a snapshot in localStorage so an accidental close/refresh doesn't lose work.
+// Saves shortly after the last edit, and again on a timer while editing continues.
+const AUTOSAVE_KEY='mb_autosave';
+const AUTOSAVE_IDLE=3000;   // save 3s after edits stop
+const AUTOSAVE_PERIOD=60000; // and at least once a minute
+let autosaveTimer=null, lastAutosave=0, autosaveReady=false;
+// 모바일/태블릿에서는 자동 저장·이어하기(복구) 기능을 끈다.
+// checkAutosave 는 모바일 모듈(applyMode)보다 먼저 실행되므로 body 클래스에만
+// 의존할 수 없어 detectMode 와 동일한 판별 로직을 여기서도 사용한다.
+function mbDeviceIsMobileOrTablet(){
+  var b=document.body;
+  if(b.classList.contains('mb-mobile')||b.classList.contains('mb-tablet')) return true;
+  if(b.classList.contains('mb-pc')) return false;
+  try{
+    if(window.__mbForce) return window.__mbForce!=='pc';
+    var q=(location.search.match(/[?&]mbmode=(mobile|tablet|pc)/)||[])[1];
+    if(q) return q!=='pc';
+    var w=window.innerWidth,h=window.innerHeight,shortSide=Math.min(w,h),longSide=Math.max(w,h);
+    var coarse=!!(window.matchMedia&&window.matchMedia('(pointer:coarse)').matches);
+    var ua=(navigator.userAgent||'');
+    var phoneUA=/Android.*Mobile|iPhone|iPod/i.test(ua);
+    var tabletUA=/iPad|Android(?!.*Mobile)|Tablet|PlayBook|Silk/i.test(ua);
+    if((coarse&&shortSide<600)||phoneUA) return true;
+    if((coarse&&shortSide<=1024&&longSide<=1400)||(tabletUA&&!phoneUA)) return true;
+  }catch(e){}
+  return false;
+}
+function autosaveSnapshot(){
+  return JSON.stringify({
+    v:1, comps, uid,
+    cw:document.getElementById('cw').value,
+    ch:document.getElementById('ch').value,
+    originId:mbCloud.originId||null, // 공유파일에서 이어 작업 중이던 원본 추적값도 함께 저장
+    savedAt:Date.now()
+  });
+}
+function doAutosave(){
+  if(!autosaveReady)return;
+  if(mbDeviceIsMobileOrTablet())return; // 모바일/태블릿은 자동 저장 안 함
+  try{
+    localStorage.setItem(AUTOSAVE_KEY,autosaveSnapshot());
+    lastAutosave=Date.now();
+    showAutosaveMark();
+  }catch(e){ /* storage full or blocked - ignore */ }
+  mbSyncDraft(); // 로그인 상태일 때만 DB "임시 작업 목록"도 함께 갱신(비로그인이면 내부에서 조용히 무시)
+}
+function scheduleAutosave(){
+  if(!autosaveReady)return;
+  if(mbDeviceIsMobileOrTablet())return; // 모바일/태블릿은 자동 저장 안 함
+  clearTimeout(autosaveTimer);
+  // periodic guarantee: if it's been a while, save right away
+  if(Date.now()-lastAutosave>AUTOSAVE_PERIOD){ doAutosave(); return; }
+  autosaveTimer=setTimeout(doAutosave,AUTOSAVE_IDLE);
+}
+function showAutosaveMark(){
+  const el=document.getElementById('autosaveMark');
+  if(!el)return;
+  const t=new Date();
+  const hh=String(t.getHours()).padStart(2,'0'), mm=String(t.getMinutes()).padStart(2,'0');
+  el.textContent='자동저장됨 '+hh+':'+mm;
+  el.classList.add('on');
+  clearTimeout(showAutosaveMark._t);
+  showAutosaveMark._t=setTimeout(()=>{
+    el.classList.remove('on');
+    // clear after the fade so the empty span collapses and buttons stay tight
+    setTimeout(()=>{ if(!el.classList.contains('on')) el.textContent=''; },350);
+  },2500);
+}
+// Offers to restore the previous session if a snapshot exists.
+function checkAutosave(){
+  // 모바일/태블릿에서는 이어하기(복구) 안내를 띄우지 않고 자동 저장도 하지 않는다.
+  if(mbDeviceIsMobileOrTablet()){ autosaveReady=false; return; }
+  let raw=null;
+  try{ raw=localStorage.getItem(AUTOSAVE_KEY); }catch(e){}
+  autosaveReady=true;
+  if(!raw)return;
+  let d;
+  try{ d=JSON.parse(raw); }catch(e){ return; }
+  if(!d||!Array.isArray(d.comps)||!d.comps.length)return;
+  const when=d.savedAt?new Date(d.savedAt):null;
+  const ago=when?(function(){
+    const m=Math.round((Date.now()-d.savedAt)/60000);
+    if(m<1)return '방금 전';
+    if(m<60)return m+'분 전';
+    const h=Math.round(m/60);
+    return h<24?h+'시간 전':Math.round(h/24)+'일 전';
+  })():'';
+  document.getElementById('restoreInfo').textContent=
+    (ago?ago+' ':'')+'작업하던 내용('+d.comps.length+'개 컴포넌트)이 남아 있습니다.';
+  document.getElementById('restoreBg').classList.add('on');
+  window.__autosaveData=d;
+}
+function restoreAutosave(){
+  const d=window.__autosaveData;
+  if(d){
+    pushHistory();
+    comps=d.comps;
+    uid=Math.max(0,...comps.map(c=>c.id||0))+1;
+    if(d.cw){document.getElementById('cw').value=d.cw;setCW();}
+    if(d.ch){document.getElementById('ch').value=d.ch;setCH();}
+    mbCloud.originId=d.originId||null; // 브라우저가 꺼지기 전 이어 작업 중이던 원본 추적값 복원
+    selectSingle(null);
+    render();
+  }
+  closeRestore();
+}
+function discardAutosave(){
+  try{ localStorage.removeItem(AUTOSAVE_KEY); }catch(e){}
+  // "새로 시작"도 의도를 가지고 이전 작업을 포기하는 선택이므로, 그 이전 작업의 임시 저장 행은
+  // (DB에 이미 있다면) 목록에 그대로 남기고 지금부터는 새 세션으로 시작한다.
+  mbResetDraftSessionKey();
+  closeRestore();
+}
+function closeRestore(){
+  document.getElementById('restoreBg').classList.remove('on');
+  if(maybeShowPatch._pending){ maybeShowPatch._pending=false; maybeShowPatch(); }
+}
+
+// 그리드 「표시 행 수」 - 속성값을 그대로 따른다(0 포함). 값이 아예 없는(구버전/미지정) 경우에만
+// 기본값 3. 본문 행·Row Order 순번·Pagination 건수·제목 우측 "(N)건"·속성창 입력칸이 모두 이 값을 쓴다.
+function gridRowCount(c){
+  const v=c?c.rows:undefined;
+  if(v===undefined||v===null||v==='') return 3;
+  const n=parseInt(v,10);
+  if(isNaN(n)) return 3;
+  return Math.max(0,Math.min(20,n));
+}
+function render(){
+  drawCanvas();
+  renderProps();
+}
+// ---- 겹치는 최상위 컴포넌트 자동 가림(occlusion clip) ----
+// 두 컴포넌트를 자유롭게 겹쳐 놓으면(도킹된 자식이 아니라 캔버스 위 형제 관계일 때), 뒤에 있는
+// 컴포넌트가 앞에 있는 컴포넌트와 "겹치는 부분만" 안 보이도록 clip-path로 도려낸다. 배경색/투명도를
+// 바꾸는 방식이 아니라 실제로 그 사각형만 잘라내는 것이므로, 겹치지 않는 나머지 부분의 모양(반투명
+// 배경, 격자 비침 등)은 전혀 건드리지 않는다. 도킹된 자식은 이미 부모 pane의 overflow로 잘려
+// 표시되므로 대상에서 제외한다(comps.filter(c=>!c.parent)와 동일한 최상위 컴포넌트만 대상).
+function occlusionZRank(c){
+  // renderComp()가 실제로 매기는 z-index 규칙과 동일해야 "화면에 보이는 순서"와 클리핑 결과가
+  // 일치한다: 컨테이너(panel/tabs/split)는 항상 낮은 대역, 그 외는 항상 높은 대역이고, 같은
+  // 대역 안에서는 comps 배열에서 더 뒤에 있는(나중에 만들었거나 "맨 앞"으로 옮긴) 쪽이 위에 온다.
+  const ord=Math.min(comps.findIndex(x=>x.id===c.id),299);
+  const isContainer=(c.type==='panel'||c.type==='tabs'||c.type==='split');
+  return isContainer?(1+ord):(310+ord);
+}
+function occlusionRectsOverlap(a,b){
+  return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y;
+}
+// r을 h만큼 도려낸 결과를 최대 4개의 사각형으로 반환한다(겹치지 않으면 r 그대로 1개).
+// 위/아래/좌/우 4조각으로 정확히 나누는 표준적인 방법이라, 여러 개의 h를 순서대로 계속
+// 적용해도(2차 이상 겹침) 조각들끼리 서로 겹치지 않게 유지된다.
+function occlusionSubtractOne(r,h){
+  if(h.x2<=r.x1||h.x1>=r.x2||h.y2<=r.y1||h.y1>=r.y2) return [r];
+  const out=[];
+  if(h.y1>r.y1) out.push({x1:r.x1,y1:r.y1,x2:r.x2,y2:h.y1});
+  if(h.y2<r.y2) out.push({x1:r.x1,y1:h.y2,x2:r.x2,y2:r.y2});
+  const midY1=Math.max(r.y1,h.y1), midY2=Math.min(r.y2,h.y2);
+  if(h.x1>r.x1) out.push({x1:r.x1,y1:midY1,x2:h.x1,y2:midY2});
+  if(h.x2<r.x2) out.push({x1:h.x2,y1:midY1,x2:r.x2,y2:midY2});
+  return out;
+}
+function occlusionSubtractRects(rect,holes){
+  let list=[rect];
+  holes.forEach(h=>{
+    const next=[];
+    list.forEach(r=>next.push(...occlusionSubtractOne(r,h)));
+    list=next;
+  });
+  return list.filter(r=>r.x2-r.x1>0.5 && r.y2-r.y1>0.5);
+}
+function applyOcclusionClips(){
+  const items=comps.filter(c=>!c.parent).map(c=>{
+    const el=canvas.querySelector(':scope > .cmp[data-cid="'+c.id+'"]');
+    return el?{c,el,x:c.x,y:c.y,w:c.w,h:c.h,z:occlusionZRank(c)}:null;
+  }).filter(Boolean);
+  items.forEach(info=>{
+    // 지금 선택된 컴포넌트는 클리핑 대상에서 뺀다 - 안 그러면 가려진 모서리에 있는 크기조절
+    // 핸들이나 ⧉ 이동 태그까지 같이 잘려서, 선택은 됐는데 정작 손잡이를 못 잡는 상황이 생긴다.
+    if(isSel(info.c.id)){ info.el.style.clipPath=''; return; }
+    // 나(info)보다 z가 높으면서(=위에 그려지면서) 실제로 겹치는 컴포넌트들만 "가리는 쪽"이다.
+    const occluders=items.filter(o=>o!==info && o.z>info.z && occlusionRectsOverlap(info,o));
+    if(!occluders.length){ info.el.style.clipPath=''; return; }
+    // 클립 좌표는 이 요소(info) 기준 로컬 좌표라서, 가리는 사각형도 info의 좌상단을 원점으로 변환한다.
+    const holes=occluders.map(o=>({
+      x1:Math.max(0,o.x-info.x), y1:Math.max(0,o.y-info.y),
+      x2:Math.min(info.w,o.x+o.w-info.x), y2:Math.min(info.h,o.y+o.h-info.y)
+    }));
+    const visible=occlusionSubtractRects({x1:0,y1:0,x2:info.w,y2:info.h},holes);
+    if(!visible.length){ info.el.style.clipPath='polygon(0 0,0 0,0 0)'; return; } // 완전히 다 가려짐
+    const d=visible.map(r=>`M ${r.x1} ${r.y1} L ${r.x2} ${r.y1} L ${r.x2} ${r.y2} L ${r.x1} ${r.y2} Z`).join(' ');
+    info.el.style.clipPath="path('"+d+"')";
+  });
+}
+function drawCanvas(){
+  // [구버전 데이터 정리] 조회조건 접기/펼치기 기능은 삭제됐다. 예전 저장 파일·자동저장·클라우드
+  // 화면에 남아 있는 collapsed 값은 여기서 지우고, 접힌 채(높이 44) 저장됐던 패널은 필드 수에
+  // 맞는 높이로 되돌린다.
+  comps.forEach(c=>{ if(c&&c.type==='searchbar'&&('collapsed' in c)){ if(c.collapsed) c.h=searchbarHeight(c); delete c.collapsed; } });
+  scheduleAutosave();
+  // Every full canvas rebuild below recreates each component's DOM from scratch, which would
+  // reset any scrollable grid's horizontal scroll (.gbody.scrollLeft) back to 0 - regardless of
+  // *why* the rebuild happened: a column-resize/reorder drag, or just as easily an ordinary
+  // property panel edit (alignment, type, date settings, required/readonly, etc. all call
+  // render()/drawCanvas() too). Rather than special-case every call site that might disturb a
+  // scrolled grid, save every grid's current scroll position once here before tearing down the
+  // DOM, and restore it after rebuilding - so no future change anywhere can reintroduce this bug.
+  const gridScrolls=new Map();
+  canvas.querySelectorAll('.cmp[data-cid] .gbody').forEach(gb=>{
+    if(gb.scrollLeft){
+      const wrap=gb.closest('.cmp');
+      if(wrap)gridScrolls.set(wrap.dataset.cid,gb.scrollLeft);
+    }
+  });
+  canvas.innerHTML='';
+  const single = selIds.size===1;
+  comps.filter(c=>!c.parent).forEach(c=>renderComp(c,canvas,single));
+  if(gridScrolls.size){
+    gridScrolls.forEach((sl,cid)=>{
+      const gb=canvas.querySelector('.cmp[data-cid="'+cid+'"] .gbody');
+      if(gb)gb.scrollLeft=sl;
+    });
+  }
+  applyOcclusionClips();
+}
+function renderComp(c,container,single,locked){
+  const on = isSel(c.id);
+  const el=document.createElement('div');
+  el.className='cmp'+(on?' selected':'')+(locked?' locked':'');
+  el.dataset.cid=c.id;  // lets column-drag/resize handlers on a grid's inner HTML find their way back to this wrapper without holding a stale DOM reference across re-renders
+  el.style.left=c.x+'px'; el.style.top=c.y+'px';
+  el.style.width=c.w+'px'; el.style.height=c.h+'px';
+  // 컴포넌트 전체(그리드/조회조건패널 포함) 변경상태 표시 - 속성패널 최상단 세그먼트 버튼 값.
+  {
+    const dst=c.diffStatus||'base';
+    if(dst!=='base'){ el.classList.add('mb-diffst','mb-diffst-'+dst); el.dataset.difflabel=DIFF_LABEL[dst]; }
+  }
+  // Z order follows the component's position in `comps` (that is what zorder() reorders).
+  // Containers stay on a lower band so their children always paint above them. The selection
+  // is NOT lifted here: doing so would hide the effect of 맨 뒤 while the item is still selected.
+  // The whole canvas band is kept well under the overlay z-indexes (guidelines 900,
+  // modals 1000) so patch/restore popups and smart guides always draw on top.
+  const isContainer=(c.type==='panel'||c.type==='tabs'||c.type==='split');
+  const ord=Math.min(comps.findIndex(x=>x.id===c.id),299);
+  el.style.zIndex=isContainer?(1+ord):(310+ord);
+  el.innerHTML=inner(c);
+  if(locked){
+    // Split-pane children are always auto-fit to their pane, so dragging/resizing is disabled;
+    // clicking still selects the component so its properties (and delete) remain reachable.
+    el.addEventListener('mousedown',ev=>{
+      // Same guard as startMove(): a mousedown that lands on the grid's own horizontal
+      // scrollbar track must not select+render() here, or drawCanvas() would tear down
+      // and rebuild this very element mid-drag and cancel the native scrollbar grab
+      // before it can move - "좌우 스크롤 사용" would then look like it does nothing
+      // for any grid docked into a split pane, since (unlike a free-floating grid,
+      // which goes through startMove() and already has this guard) this is the only
+      // mousedown handler a fill-docked grid gets.
+      const gbody = ev.target.closest && ev.target.closest('.ax-grid .gbody.xscroll');
+      if(gbody){
+        const gb=gbody.getBoundingClientRect();
+        const offY=(ev.clientY - gb.top)/(zoom||1);
+        if(offY > gbody.clientHeight && gbody.scrollWidth>gbody.clientWidth) return;
+      }
+      ev.stopPropagation();
+      if(!isSel(c.id)){ selectSingle(c.id); render(); }
+    });
+    // The normal ".cmp.selected" outline is drawn just OUTSIDE the box and gets clipped away
+    // by the pane's own overflow (the child is sized to exactly fill the pane) - so a fill-docked
+    // child could be selected with no visible sign of it. Add a topmost overlay INSIDE the box
+    // instead (appended last, after the rendered content, so it always paints above it) whose
+    // inset box-shadow can never be clipped since it never extends past the box it's drawn in.
+    const selFrame=document.createElement('div');
+    selFrame.className='sel-frame';
+    el.appendChild(selFrame);
+  } else if(c.type==='tabs'||c.type==='split'){
+    // Tabs/Split containers no longer move on a plain drag anywhere in their body - that area
+    // needs to be free for rubber-band selecting the components inside instead (see
+    // attachContainerBoxSelect below). Moving/selecting the container itself is done through
+    // its small "⧉" tag handle (tabs-tag / split-tag), same as Split already worked.
+  } else {
+    el.addEventListener('mousedown',ev=>startMove(ev,c));
+  }
+  if(single && on && !locked){
+    // 파워포인트 방식 8방향 리사이즈 핸들: 네 변(상하좌우) + 네 모서리(대각선).
+    ['n','s','e','w','ne','nw','se','sw'].forEach(dir=>{
+      const h=document.createElement('div');h.className='handle '+dir;
+      h.addEventListener('mousedown',ev=>startResize(ev,c,dir));
+      el.appendChild(h);
+    });
+  }
+  container.appendChild(el);
+  if(c.type==='tabs'){
+    const body=document.createElement('div');
+    body.className='tabs-body-wrap tabs-body-hint';
+    body.style.cssText='position:absolute;left:0;top:'+TAB_HEADER_H+'px;right:0;bottom:0;overflow-y:auto;overflow-x:hidden;';
+    el.appendChild(body);
+    const active=c.active||0;
+    comps.filter(k=>k.parent===c.id&&(k.tabIdx||0)===active).forEach(k=>renderComp(k,body,single));
+    // Rubber-band select the components on the current tab page when dragging the empty background.
+    attachContainerBoxSelect(body,c,null,()=>comps.filter(k=>k.parent===c.id&&(k.tabIdx||0)===(c.active||0)));
+    // Small always-on-top tag/handle: lets the Tabs container be selected AND dragged to move,
+    // mirroring the Split container's "⧉" tag (see renderSplitChildren) - necessary now that
+    // the header background and body no longer forward plain clicks up to the container.
+    const selfFillLocked = c.parent && c.dock==='fill'; // true when c itself is a dock:'fill' pane child
+    const moveOrSelect = selfFillLocked
+      ? (ev)=>{ ev.stopPropagation(); if(!isSel(c.id)){ selectSingle(c.id); render(); } }
+      : (ev)=>startMove(ev,c);
+    // Dragging the header's empty strip (beside/between the tab buttons) also moves the container,
+    // just like grabbing any other component's body - the tab buttons themselves already
+    // stopPropagation on their own mousedown (see the 'tabs' case in inner()), so this only ever
+    // fires on the header background, never hijacking a tab-switch click.
+    const head=el.querySelector(':scope > .ax-tabs-wrap > .ax-tabs-head');
+    if(head) head.addEventListener('mousedown',moveOrSelect);
+    const tag=document.createElement('div');
+    tag.className='split-tag tabs-tag';
+    tag.textContent='⧉';
+    if(selfFillLocked){
+      tag.title='탭 컨테이너 선택 (Fill 배치라 이동은 안 됩니다 - Dock을 None으로 바꾸면 이동 가능)';
+    } else {
+      tag.title='드래그: 탭 컨테이너 이동 · 클릭: 선택';
+    }
+    tag.addEventListener('mousedown',moveOrSelect);
+    el.appendChild(tag);
+  }
+  if(c.type==='split'){
+    renderSplitChildren(c,el,single);
+  }
+  if(c.type==='panel'){
+    const body=document.createElement('div');
+    body.className='panel-body-wrap panel-body-hint';
+    body.style.cssText='position:absolute;left:0;top:0;right:0;bottom:0;overflow-y:auto;overflow-x:hidden;';
+    el.appendChild(body);
+    comps.filter(k=>k.parent===c.id).forEach(k=>renderComp(k,body,single));
+  }
+}
+// Builds the two panes + draggable divider inside a split container. Each pane's children
+// are either left free to move/resize/drag out on their own (dock:'none', the default) or
+// auto-fit to exactly fill the pane (dock:'fill' - e.g. so a grid auto-resizes when the divider moves).
+function renderSplitChildren(c,el,single){
+  const r=splitPaneRects(c);
+  const p0=document.createElement('div');
+  p0.className='split-pane split-pane-hint';
+  p0.style.cssText=`left:${r.pane0.x}px;top:${r.pane0.y}px;width:${r.pane0.w}px;height:${r.pane0.h}px;overflow-y:auto;overflow-x:hidden;`;
+  const p1=document.createElement('div');
+  p1.className='split-pane split-pane-hint';
+  p1.style.cssText=`left:${r.pane1.x}px;top:${r.pane1.y}px;width:${r.pane1.w}px;height:${r.pane1.h}px;overflow-y:auto;overflow-x:hidden;`;
+  const dv=document.createElement('div');
+  dv.className='split-divider '+(r.dir==='h'?'split-divider-h':'split-divider-v');
+  dv.style.cssText=`left:${r.divider.x}px;top:${r.divider.y}px;width:${r.divider.w}px;height:${r.divider.h}px;`;
+  dv.title='드래그: 크기 조절 · 클릭: 컨테이너 선택';
+  dv.addEventListener('mousedown',ev=>startSplitDrag(ev,c));
+  el.appendChild(p0); el.appendChild(p1); el.appendChild(dv);
+  comps.filter(k=>k.parent===c.id&&(k.pane||0)===0).forEach(k=>renderSplitChild(k,p0,r.pane0,single));
+  comps.filter(k=>k.parent===c.id&&(k.pane||0)===1).forEach(k=>renderSplitChild(k,p1,r.pane1,single));
+  // Rubber-band select each pane's own components when dragging its empty background.
+  attachContainerBoxSelect(p0,c,0,()=>comps.filter(k=>k.parent===c.id&&(k.pane||0)===0));
+  attachContainerBoxSelect(p1,c,1,()=>comps.filter(k=>k.parent===c.id&&(k.pane||0)===1));
+  // A small always-on-top tag/handle: lets the split container be selected AND dragged to move,
+  // even when its panes are completely covered by dock:fill children (which would otherwise
+  // intercept every click before it reaches the container's own move handler).
+  const selfFillLocked = c.parent && c.dock==='fill'; // true when c itself is a dock:'fill' pane child
+  const tag=document.createElement('div');
+  tag.className='split-tag';
+  tag.textContent='⧉';
+  if(selfFillLocked){
+    tag.title='스플릿 컨테이너 선택 (Fill 배치라 이동은 안 됩니다 - Dock을 None으로 바꾸면 이동 가능)';
+    tag.addEventListener('mousedown',ev=>{ ev.stopPropagation(); if(!isSel(c.id)){ selectSingle(c.id); render(); } });
+  } else {
+    tag.title='드래그: 컨테이너 이동 · 클릭: 선택';
+    tag.addEventListener('mousedown',ev=>startMove(ev,c));
+  }
+  el.appendChild(tag);
+}
+function renderSplitChild(k,paneEl,rect,single){
+  const fill=k.dock==='fill';
+  if(fill) fitSplitChild(k,rect);
+  renderComp(k,paneEl,single,fill);
+}
+// Forces a dock:'fill' split-pane child to exactly fill its pane; called every render so
+// resizing the divider (or the split container itself) keeps the child's size in sync automatically.
+function fitSplitChild(k,rect){
+  k.x=0; k.y=0; k.w=rect.w; k.h=rect.h;
+}
+
+// Parses indented text into tree nodes. Indentation (2 spaces or a tab per level)
+// determines depth; a node "has children" when the next line is deeper.
+function parseTree(text){
+  const lines=String(text||'').split('\n').filter(l=>l.trim().length);
+  const nodes=lines.map((l,i)=>{
+    const ind=l.match(/^[\t ]*/)[0].replace(/\t/g,'  ').length;
+    return {i,depth:ind>>1,label:l.trim(),hasChildren:false};
+  });
+  nodes.forEach((n,i)=>{ const nx=nodes[i+1]; if(nx&&nx.depth>n.depth) n.hasChildren=true; });
+  return nodes;
+}
+
+const LABELED_TYPES=['input','combo','date','daterange','check','radio','popup','attach'];
+function labelWrap(c,html){
+  if(!LABELED_TYPES.includes(c.type))return html;
+  if(c.showLabel!==true)return html;
+  const pos=c.labelPos||'top';
+  const req=c.required?'<span class="req">*</span>':'';
+  const lbl=`<div class="fl-label"><span${labelFmtStyle(c)}>${esc(c.labelText||'')}</span>${req}</div>`;
+  return `<div class="fl-wrap fl-${pos}">${lbl}<div class="fl-body">${html}</div></div>`;
+}
+function inner(c,mode){
+  return labelWrap(c, innerRaw(c,mode));
+}
+// Renders a single grid cell body for a per-column control type (텍스트박스/콤보박스/날짜/체크박스).
+function todayISO(){
+  const d=new Date();
+  const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+function gridCellCtrl(ctype,opts,exp,dateVal,dateBlank,dateSpec,dateFmt){
+  switch(ctype){
+    case 'combo':{
+      const list=opts.length?opts:['선택','옵션1','옵션2','옵션3'];
+      if(exp){
+        const optHtml=list.map(o=>`<div class="combo-opt" data-val="${escAttr(o)}" onmousedown="event.stopPropagation();selectComboExport(this)">${esc(o)}</div>`).join('');
+        return `<div class="ax-combo interactive" onclick="toggleComboExport(this)"><span class="combo-val">선택</span><div class="combo-drop">${optHtml}</div></div>`;
+      }
+      return `<div class="ax-combo"><span>선택</span></div>`;
+    }
+    case 'date':{
+      const dv=dateBlank?'':(qdResolvedText(dateVal,dateSpec)||todayISO());
+      if(exp){
+        const relAttr=(!dateBlank&&dateSpec)?` data-relspec="${escAttr(dateSpec)}"`:'';
+        const blankAttr=dateBlank?' data-blank="1"':'';
+        return `<div class="ax-date-x"><input type="date" class="ax-date-el"${dv?` value="${escAttr(dv)}"`:''}${relAttr}${blankAttr} data-fmt="${escAttr(dateFmt||'년-월-일')}"><div class="ax-date ax-date-disp" onclick="mbOpenDatePicker(this)"><span>${esc(qdDisplayText(dv,dateFmt))}</span></div></div>`;
+      }
+      return `<div class="ax-date"><span>${esc(qdDisplayText(dv,dateFmt))}</span></div>`;
+    }
+    case 'check':
+      if(exp) return `<div class="gcell-check interactive" onclick="toggleCheckExport(this)"><span class="box"></span></div>`;
+      return `<div class="gcell-check"><span class="box"></span></div>`;
+    case 'file':
+      return `<div class="gcell-file" title="첨부파일"><svg class="gcell-file-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg></div>`;
+    case 'search':
+      if(exp) return `<div class="gcell-search"><input type="text" class="gcell-search-input"><span class="sctl-search-ic"></span></div>`;
+      return `<div class="gcell-search"><span class="sctl-search-ic"></span></div>`;
+    default:
+      if(exp) return `<input type="text" class="gcell-input">`;
+      return '&nbsp;';
+  }
+}
+// 자동 컬럼 폭 계산용 1회성 캔버스 컨텍스트 - 실제 DOM에 붙이지 않고도 그리드 헤더와 같은
+// 폰트로 텍스트 폭을 정확히 잴 수 있어, 렌더링마다 가볍게 재사용한다.
+let __gcMeasureCtx=null;
+function autoColWidth(text,required){
+  if(!__gcMeasureCtx) __gcMeasureCtx=document.createElement('canvas').getContext('2d');
+  __gcMeasureCtx.font='700 11px "Malgun Gothic","맑은 고딕",-apple-system,sans-serif'; // .ax-grid .gh span 과 동일한 폰트
+  const textW=__gcMeasureCtx.measureText(text||'').width;
+  const PAD=18;                    // 헤더 셀 좌우 padding(8px*2)+테두리 여유(2px) - 글자가 경계에 딱 붙어 잘려 보이지 않도록
+  const REQ_EXTRA=required?12:0;   // 필수(*) 표시가 앞에 붙는 만큼의 여유
+  return Math.max(28, Math.ceil(textW)+PAD+REQ_EXTRA);
+}
+function innerRaw(c,mode){
+  mode=mode||'design';
+  const exp=mode==='export';
+  const req=(c.required&&!(LABELED_TYPES.includes(c.type)&&c.showLabel===true))?'<span class="req">*</span>':'';
+  switch(c.type){
+    case 'title':return `<div class="ax-title">${textSpan(c)}${req}</div>`;
+    case 'section':return `<div class="ax-section">${textSpan(c)}${req}</div>`;
+    case 'panel':return `<div class="ax-panel-c"></div>`;
+    case 'split':return `<div class="ax-split-c"></div>`;
+    case 'tabs':{
+      // ilItems는 이름을 지우는 중이라 빈 문자열이어도 칸을 그대로 유지한다(그래야 편집 중에
+      // 탭이 사라지지 않는다). 실제 화면에서만 빈 탭이 안 보이지 않도록 자리표시자를 넣어준다.
+      const names=ilItems(c,'text');
+      const active=c.active||0;
+      const items=names.map((n,i)=>`<div class="axtab-item${i===active?' on':''}" data-tabbtn-group="${c.id}" data-tabidx="${i}" onmousedown="event.stopPropagation();setActiveTab(${c.id},${i})">${esc(n)||'&nbsp;&nbsp;&nbsp;'}</div>`).join('');
+      return `<div class="ax-tabs-wrap"><div class="ax-tabs-head">${items}</div></div>`;
+    }
+    case 'label':{
+      const fatSkin=document.body.classList.contains('skin-classic');
+      const lblIc = !fatSkin ? '' : c.style==='ref' ? '<span class="ax-label-ic ax-label-ic-ref"></span>'
+        : c.style==='jump' ? '<span class="ax-label-ic ax-label-ic-jump"></span>' : '';
+      return `<div class="ax-label">${lblIc}${textSpan(c)}${req}</div>`;
+    }
+    case 'input':
+      if(exp) return `<div class="ax-input-x${c.readonly?' ro':''}${c.required?' required':''}"><input type="text" class="ax-input-el" value="${escAttr(c.text)}"${c.readonly?' readonly':''}${textFmtStyle(c)}>${req}</div>`;
+      return `<div class="ax-input ${c.readonly?'readonly':''}${c.required?' required':''}">${textSpan(c)}${req}</div>`;
+    case 'popup':{
+      if(!document.body.classList.contains('skin-classic')){
+        // Thin Mode: 조회조건 패널의 '검색' 필드와 똑같은 모양(텍스트박스 + 우측 돋보기 아이콘).
+        // 팻모드 전용인 아래 코드/명 2단 구성과 달리, 값 한 칸 + 아이콘 뿐인 단순한 형태다.
+        if(exp) return `<div class="ax-popup-thin-x${c.readonly?' ro':''}${c.required?' required':''}"><input type="text" class="ax-input-el" value="${escAttr(c.text)}"${c.readonly?' readonly':''}${textFmtStyle(c)}><span class="sctl-search-ic"></span>${req}</div>`;
+        return `<div class="ax-popup-thin${c.readonly?' readonly':''}${c.required?' required':''}">${textSpan(c)}<span class="sctl-search-ic"></span>${req}</div>`;
+      }
+      // 라벨+텍스트박스(코드)+아이콘+텍스트박스(명칭). 명칭 칸은 항상 읽기전용이고 값도 비워둔다
+      // (실제 조회 결과가 여기 채워진다는 것을 보여주는 자리표시일 뿐, 별도 속성은 없음).
+      // 스타일이 "코드"면 명칭 칸을 아예 뺀다(코드/명 이 기본값).
+      const codeBox = exp
+        ? `<div class="ax-input-x${c.readonly?' ro':''}${c.required?' required':''}"><input type="text" class="ax-input-el" value="${escAttr(c.text)}"${c.readonly?' readonly':''}${textFmtStyle(c)}></div>`
+        : `<div class="ax-input${c.readonly?' readonly':''}${c.required?' required':''}">${textSpan(c)}</div>`;
+      const nameBox = c.style==='code' ? '' : '<div class="ax-popup-name"></div>';
+      return `<div class="ax-popup">${codeBox}<div class="ax-popup-ic">≡</div>${nameBox}${req}</div>`;
+    }
+    case 'attach':{
+      // 조회조건 패널의 '검색' 필드와 같은 구조(텍스트박스 + 우측 아이콘)를 쓰지만, 그리드의
+      // '첨부파일' 컬럼 유형과는 이름만 같을 뿐 완전히 별개인 독립 컴포넌트다 - 아이콘도 그리드
+      // 쪽(gcell-file-ic, 구름 모양)과 절대 공유하지 않고, 파일+업로드 화살표 모양을 새로 쓴다.
+      const attachIc='<svg class="ax-attach-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M4.5 22H18a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v9.5"></path><path d="M12 12v6"></path><path d="m9 15 3-3 3 3"></path></svg>';
+      if(exp) return `<div class="ax-popup-thin-x${c.readonly?' ro':''}${c.required?' required':''}"><input type="text" class="ax-input-el" value="${escAttr(c.text)}"${c.readonly?' readonly':''}${textFmtStyle(c)}>${attachIc}${req}</div>`;
+      return `<div class="ax-popup-thin${c.readonly?' readonly':''}${c.required?' required':''}">${textSpan(c)}${attachIc}${req}</div>`;
+    }
+    case 'combo':{
+      const copts=(c.options||'').split(',').map(s=>s.trim()).filter(Boolean);
+      if(exp&&!c.readonly&&copts.length){
+        const optHtml=copts.map(o=>`<div class="combo-opt" data-val="${escAttr(o)}" onmousedown="event.stopPropagation();selectComboExport(this)">${esc(o)}</div>`).join('');
+        return `<div class="ax-combo interactive${c.required?' required':''}" onclick="toggleComboExport(this)"><span class="combo-val"${textFmtStyle(c)}>${esc(c.text)}</span>${req}<div class="combo-drop">${optHtml}</div></div>`;
+      }
+      if(exp) return `<div class="ax-combo interactive${c.readonly?' ro':''}${c.required?' required':''}" ${c.readonly?'':'onclick="this.classList.toggle(\'open\')"'}><span${textFmtStyle(c)}>${esc(c.text)}</span>${req}</div>`;
+      return `<div class="ax-combo${c.readonly?' readonly':''}${c.required?' required':''}">${textSpan(c)}${req}</div>`;
+    }
+    case 'date':{
+      // spec이 있으면(빠른 날짜 팝업에서 오늘/어제 등으로 고른 값이면) 고정 문자열이 아니라 "지금"
+      // 기준으로 다시 계산한 값을 쓴다. spec이 없으면(빈값, 또는 예전 고정값) 저장된 텍스트 그대로.
+      const resolved=qdResolvedText(c.text,c.dateSpec);
+      if(exp){
+        const valid=/^\d{4}-\d{2}-\d{2}$/.test(resolved||'');
+        const relAttr=c.dateSpec?` data-relspec="${escAttr(c.dateSpec)}"`:'';
+        const blankAttr=c.blank?' data-blank="1"':'';
+        return `<div class="ax-date-x${c.readonly?' ro':''}${c.required?' required':''}"><input type="date" class="ax-date-el" value="${valid?resolved:''}"${relAttr}${blankAttr}${c.readonly?' disabled':''} data-fmt="${escAttr(c.dateFmt||'년-월-일')}"><div class="ax-date ax-date-disp${c.readonly?' readonly':''}${c.required?' required':''}"${c.readonly?'':' onclick="mbOpenDatePicker(this)"'}><span>${esc(qdDisplayText(valid?resolved:'',c.dateFmt))}</span></div>${req}</div>`;
+      }
+      return `<div class="ax-date${c.readonly?' readonly':''}${c.required?' required':''}"><span>${esc(qdDisplayText(resolved,c.dateFmt))}</span>${req}</div>`;
+    }
+    case 'daterange':{
+      // 날짜1=required/readonly, 날짜2=required2/readonly2 (개별 처리)
+      const ro1=!!c.readonly, ro2=!!c.readonly2, rq1=!!c.required, rq2=!!c.required2;
+      const drParts=(c.text||'').split('~').map(s=>s.trim());
+      const r1=qdResolvedText(drParts[0],c.startSpec), r2=qdResolvedText(drParts[1],c.endSpec);
+      const drV1=c.startBlank?'':(/^\d{4}-\d{2}-\d{2}$/.test(r1||'')?r1:''),
+            drV2=c.endBlank?'':(/^\d{4}-\d{2}-\d{2}$/.test(r2||'')?r2:'');
+      if(exp){
+        const rel1=c.startSpec?` data-relspec="${escAttr(c.startSpec)}"`:'', rel2=c.endSpec?` data-relspec="${escAttr(c.endSpec)}"`:'';
+        const blank1=c.startBlank?' data-blank="1"':'', blank2=c.endBlank?' data-blank="1"':'';
+        const fmtAttr=` data-fmt="${escAttr(c.dateFmt||'년-월-일')}"`;
+        if(document.body.classList.contains('skin-classic')){
+          // 팻모드는 디자인 캔버스에서도 이미 실제처럼 날짜 두 칸으로 보여주므로(위 skin-classic
+          // 분기 참고), 내보내기도 그 두 칸 모양(.ax-date-part) 그대로 맞춘다 - 개별(날짜1/날짜2)
+          // 필수·읽기전용도 디자인 캔버스와 동일하게 각 칸에 따로 적용된다.
+          return `<div class="ax-daterange"><input type="date" class="ax-date-el"${drV1?` value="${escAttr(drV1)}"`:''}${rel1}${blank1}${ro1?' disabled':''}${fmtAttr}><span class="ax-date-part ax-date-disp${ro1?' ro':''}${rq1?' is-req':''}"${ro1?'':' onclick="mbOpenDatePicker(this)"'}>${esc(qdDisplayText(drV1,c.dateFmt))}</span><span class="dr-sep">~</span><input type="date" class="ax-date-el"${drV2?` value="${escAttr(drV2)}"`:''}${rel2}${blank2}${ro2?' disabled':''}${fmtAttr}><span class="ax-date-part ax-date-disp${ro2?' ro':''}${rq2?' is-req':''}"${ro2?'':' onclick="mbOpenDatePicker(this)"'}>${esc(qdDisplayText(drV2,c.dateFmt))}</span>${req}</div>`;
+        }
+        // 씬모드는 디자인 캔버스에서 한 칸(.ax-date)으로 합쳐 보여주므로(아래 마지막 return 참고),
+        // 내보내기도 박스 하나 안에 두 날짜를 나란히 넣어 똑같은 모양으로 맞춘다 - 필수·읽기전용도
+        // 씬모드 디자인 캔버스와 같이 개별이 아니라 컴포넌트 전체 값(c.readonly/c.required)을 쓴다.
+        return `<div class="ax-date${c.readonly?' readonly':''}${c.required?' required':''}"><span class="dr-combo"><input type="date" class="ax-date-el"${drV1?` value="${escAttr(drV1)}"`:''}${rel1}${blank1}${c.readonly?' disabled':''}${fmtAttr}><span class="ax-date-disp" onclick="mbOpenDatePicker(this)">${esc(qdDisplayText(drV1,c.dateFmt))}</span>&nbsp;~&nbsp;<input type="date" class="ax-date-el"${drV2?` value="${escAttr(drV2)}"`:''}${rel2}${blank2}${c.readonly?' disabled':''}${fmtAttr}><span class="ax-date-disp" onclick="mbOpenDatePicker(this)">${esc(qdDisplayText(drV2,c.dateFmt))}</span></span>${req}</div>`;
+      }
+      if(document.body.classList.contains('skin-classic')){
+        // 팻모드는 편집 화면에서도 실제처럼 날짜 두 칸+물결(~)로 보여준다(씬모드는 기존 한 칸 표현 유지).
+        return `<div class="ax-daterange"><span class="ax-date-part${ro1?' ro':''}${rq1?' is-req':''}">${esc(qdDisplayText(drV1,c.dateFmt))}</span><span class="dr-sep">~</span><span class="ax-date-part${ro2?' ro':''}${rq2?' is-req':''}">${esc(qdDisplayText(drV2,c.dateFmt))}</span>${req}</div>`;
+      }
+      return `<div class="ax-date${c.readonly?' readonly':''}${c.required?' required':''}"><span>${esc(qdDisplayText(drV1,c.dateFmt))} ~ ${esc(qdDisplayText(drV2,c.dateFmt))}</span>${req}</div>`;
+    }
+    case 'check':
+      if(exp) return `<div class="ax-check interactive" onclick="toggleCheckExport(this)"><span class="box"></span>${textSpan(c)}${req}</div>`;
+      return `<div class="ax-check"><span class="box"></span>${textSpan(c)}${req}</div>`;
+    case 'radio':{
+      const ropts=(c.options||'').split(',').map(s=>s.trim()).filter(Boolean);
+      if(!ropts.length){
+        // legacy single-radio fallback (no options configured)
+        if(exp) return `<div class="ax-radio interactive on" onclick="toggleRadioExport(this)"><span class="dot"></span>${textSpan(c)}</div>`;
+        return `<div class="ax-radio"><span class="dot"></span>${textSpan(c)}</div>`;
+      }
+      const rsel=c.selected||0;
+      if(exp){
+        const items=ropts.map((o,i)=>`<span class="opt interactive${i===rsel?' on':''}" data-group="${c.id}" onclick="selectRadioGroupExport(this)"><span class="dot"></span>${esc(o)}</span>`).join('');
+        return `<div class="ax-radio-group">${items}</div>`;
+      }
+      const items=ropts.map((o,i)=>`<span class="opt${i===rsel?' on':''}"><span class="dot"></span>${esc(o)}</span>`).join('');
+      return `<div class="ax-radio-group">${items}</div>`;
+    }
+    case 'button':return `<div class="ax-btn ${c.outline?'outline':''}">${textSpan(c)}</div>`;
+    case 'grid':{
+      const cols=c.text.split(',');
+      const gridFatSkin=document.body.classList.contains('skin-classic');
+      // Row Order(순번)/CheckBox 좌측 유틸리티 컬럼 - 씬모드 전용. 저장된 값이 없는 경우(레거시
+      // 목업 포함)에도 기본값은 켜짐으로 취급한다 - 사람이 명시적으로 꺼야(===false)만 사라진다.
+      const rowOrderOn=!gridFatSkin&&c.rowOrderCol!==false;
+      const checkboxOn=!gridFatSkin&&c.checkboxCol!==false;
+      const extraDefs=[];
+      if(rowOrderOn)extraDefs.push({kind:'roworder',w:48});
+      if(checkboxOn)extraDefs.push({kind:'checkbox',w:40});
+      const ROWORDER_ICON_GEAR=`<svg viewBox="0 0 24 24" title="설정"><g fill="currentColor"><circle cx="12" cy="12" r="6.4"/><circle cx="19.2" cy="12" r="2.6"/><circle cx="15.6" cy="18.24" r="2.6"/><circle cx="8.4" cy="18.24" r="2.6"/><circle cx="4.8" cy="12" r="2.6"/><circle cx="8.4" cy="5.76" r="2.6"/><circle cx="15.6" cy="5.76" r="2.6"/></g><circle cx="12" cy="12" r="3" fill="var(--ax-grid-head)"/></svg>`;
+      const ROWORDER_ICON_FILTER=`<svg viewBox="0 0 24 24" title="필터"><path fill="currentColor" d="M4,4 L20,4 L13,14 L13,19 L11,19 L11,14 Z"/></svg>`;
+      const ROWORDER_ICON_PIN=`<svg viewBox="0 0 24 24" title="고정"><g fill="currentColor" transform="rotate(45 12 12)"><path d="M16,12V4h1V2H7v2h1v8l-2,2v2h5.2v6h1.6v-6H18v-2L16,12z"/></g></svg>`;
+      const extraInnerHTML=d=>d.kind==='roworder'
+        ? `<div class="grh-icons">${ROWORDER_ICON_GEAR}${ROWORDER_ICON_FILTER}${ROWORDER_ICON_PIN}</div>`
+        : `<div class="gcell-check"><span class="box"></span></div>`;
+      // If columns can't all fit at their minimum width, suggest switching to 스크롤 mode
+      // automatically - but only in response to a genuinely new structural change (column added/
+      // removed, grid resized). If the person already explicitly picked a mode themselves,
+      // _sizeModeManual is set and this is skipped so their choice isn't instantly overridden on
+      // the next render. Only "date" columns have a real, unshrinkable native-widget minimum
+      // width (combo/check/input are all custom-styled and shrink fine) - so plain-text grids
+      // (e.g. every built-in template) never trigger this, and it only kicks in once a column is
+      // actually set to date and would clip.
+      if(mode==='design'&&gridSizeMode(c)==='default'&&!c._sizeModeManual){
+        const hasDateCol=cols.some((x,ci)=>((c.colTypes&&c.colTypes[ci])||'input')==='date');
+        if(hasDateCol){
+          const floorW=Math.max(60,+c.colMinW||120);
+          if(cols.length*floorW>c.w) c.colSizeMode='scroll';
+        }
+      }
+      let toolbar='';
+      if(c.showToolbar!==false){
+        let btns='';
+        // 그리드 툴바 버튼 아이콘 - 실제 AX 화면과 같은 채움(fill) 아이콘. 색은 CSS(currentColor)로 준다.
+        const GIC_ADD='<svg class="gic" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" fill="currentColor"/><path d="M12 7.5v9M7.5 12h9" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>';
+        const GIC_CANCEL='<svg class="gic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M9 9l6 6M15 9l-6 6" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>';
+        const GIC_COPY='<svg class="gic" viewBox="0 0 24 24"><path d="M5.5 8.5H5a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h8.5a2 2 0 0 0 2-2v-.5" fill="none" stroke="currentColor" stroke-width="3"/><rect x="8" y="3" width="13" height="13" rx="2" fill="currentColor"/></svg>';
+        const GIC_DELETE='<svg class="gic" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="3.4" rx="1" fill="currentColor"/><path d="M5.6 7.8h12.8l-1.3 12.4a2 2 0 0 1-2 1.8H8.9a2 2 0 0 1-2-1.8z" fill="currentColor"/></svg>';
+        if(c.stdAdd)btns+=`<span class="gbtn">${GIC_ADD}행추가</span>`;
+        if(c.stdCancel)btns+=`<span class="gbtn">${GIC_CANCEL}행취소</span>`;
+        if(c.stdCopy)btns+=`<span class="gbtn">${GIC_COPY}행복사</span>`;
+        if(c.stdDelete)btns+=`<span class="gbtn">${GIC_DELETE}행삭제</span>`;
+        (c.userBtns||[]).forEach(b=>{
+          const label=typeof b==='string'?b:b.label;
+          const disabled=(typeof b==='object'&&b.disabled)?' disabled':'';
+          btns+=`<span class="gbtn user${disabled}">${GIC_ADD}${esc(label)}</span>`;
+        });
+        // 씬모드 전용 - 「Excel Download 사용」(기본 켜짐, 명시적으로 false일 때만 숨김)이면 제목 우측에
+        // "(N)건"을 붙인다. N은 그리드 본문에 실제로 그려지는 표시 행 수와 같은 값이라
+        // 속성창에서 표시 행 수를 바꾸면 캔버스 재렌더링과 함께 바로 반영된다.
+        const gcountHtml=(!gridFatSkin&&c.excelDownload!==false)
+          ? `<span class="gcount">(<b class="gcount-n">${gridRowCount(c)}</b>)건</span>`
+          : '';
+        toolbar=`<div class="gtoolbar"><span class="gtitle">${esc(c.gtitle||'')}</span>${gcountHtml}<span class="gspacer"></span><div class="gbtn-row">${btns}</div></div>`;
+      }
+      // 헤더 텍스트 정렬 / 필수 / 읽기전용 - 컬럼별로 하나씩. autoColWidth() 계산에 필수(*) 여유가
+      // 필요하므로 폭 관련 값들보다 먼저 계산해둔다.
+      const colAligns=(c.colAligns||[]).slice(0,cols.length);
+      while(colAligns.length<cols.length)colAligns.push('left');
+      const colRequired=(c.colRequired||[]).slice(0,cols.length);
+      while(colRequired.length<cols.length)colRequired.push(false);
+      const colReadonly=(c.colReadonly||[]).slice(0,cols.length);
+      while(colReadonly.length<cols.length)colReadonly.push(false);
+      // 읽기전용·필수가 둘 다 켜진 컬럼은 읽기전용(회색)을 우선한다 - 데이터 행(바디 셀)에만
+      // 적용한다. 헤더는 색이 바뀌지 않고, 필수일 때 빨간 * 표시만 붙는다.
+      const colColorCls=ci=>colReadonly[ci]?'col-readonly':(colRequired[ci]?'col-required':'');
+      const colReqMark=ci=>colRequired[ci]?'<span class="col-req-mark">*</span>':'';
+      // 컬럼 폭 방식 3가지: 고정(균등분할, 스크롤 없음)·수동(고정폭+가로 스크롤, 컬럼 폭 슬라이더
+      // 사용 가능)·자동(글자가 안 잘리는 최소 크기로 딱 맞추고, 넘칠 때만 가로 스크롤). 레거시
+      // 목업에는 colSizeMode가 없으니 gridSizeMode()가 예전 xscroll 값으로 대신 판단한다.
+      const sizeMode=gridSizeMode(c);
+      const xs=sizeMode!=='default';   // scroll·auto 모두 가로 스크롤이 가능한 flex 레이아웃을 쓴다
+      const colW=Math.max(60,+c.colMinW||120);   // 스크롤 모드에서 슬라이더로 지정한 전체 컬럼 공통 폭
+      // 컬럼별 "기본" 폭(사용자가 드래그로 개별 조절하지 않았을 때의 값): 자동 모드는 그 컬럼
+      // 글자 길이에 맞춘 값, 스크롤 모드는 슬라이더 값(colW)을 모든 컬럼에 동일 적용.
+      const colBaseW=ci=>sizeMode==='auto'?autoColWidth(cols[ci].trim(),colRequired[ci]):colW;
+      // Per-column width overrides set by dragging a column's right border directly on the
+      // canvas (see startColResize/colresize drag mode). A column with no override falls back
+      // to colBaseW(ci) above. In 자동 mode, updGridColLabel() clears a column's override the
+      // moment its name changes, so a manual drag only "sticks" until the next rename.
+      const colWidths=(c.colWidths||[]).slice(0,cols.length);
+      const isDesign=mode==='design';
+      const cellW=ci=>{
+        const w=colWidths[ci];
+        return (xs||w)?` style="width:${w||colBaseW(ci)}px"`:'';
+      };
+      const resizeHandle=ci=>isDesign?`<div class="col-resize-handle" onmousedown="event.stopPropagation();startColResize(event,${c.id},${ci})" title="드래그하여 폭 조절"></div>`:'';
+      // 컬럼 순서를 드래그로 바꾸는 기능도 디자인 캔버스 전용. data-ci로 어느 컬럼인지 표시해두면
+      // 드래그 중 mousemove 핸들러가 마우스 아래 컬럼을 다시 찾을 때 (재렌더링을 거치지 않고도)
+      // 그 값만으로 바로 식별할 수 있다. resizeHandle과 달리 셀 전체가 손잡이이므로, 폭 조절
+      // 손잡이 위에서 누르면 그쪽 mousedown이 먼저 stopPropagation 해서 순서 변경은 걸리지 않는다.
+      const colStatusArr=(c.colStatus||[]).slice(0,cols.length);
+      while(colStatusArr.length<cols.length)colStatusArr.push('base');
+      const colDragAttrs=ci=>{
+        const cls=reorderCls(ci).trim();
+        const cst=colStatusArr[ci]||'base';
+        // 상태 박스는 이제 그룹 여부와 상관없이 이 span 하나로 4면 다 그린다(border 단축 속성) +
+        // 우측 상단 코너 태그(data-difflabel, CSS ::before)로 라벨 텍스트를 보여준다 - 조회조건
+        // 필드의 점선 박스+코너 태그와 같은 방식.
+        const stCls=cst!=='base'?`gcol-diffst gcol-diffst-${cst}`:'';
+        const selCls=(isDesign&&selGC&&selGC.compId===c.id&&selGC.ci===ci)?'gcol-selected':'';
+        const clsAll=[cls,stCls,selCls].filter(Boolean).join(' ');
+        const clsAttr=clsAll?` class="${clsAll}"`:'';
+        const dragAttr=isDesign?` data-ci="${ci}" onmousedown="event.stopPropagation();startColReorder(event,${c.id},${ci})"`:'';
+        const dlAttr=cst!=='base'?` data-difflabel="${DIFF_LABEL[cst]}"`:'';
+        return clsAttr+dragAttr+dlAttr;
+      };
+      // 컬럼 드래그 중일 때만(같은 그리드 인스턴스를 드래그하는 동안) 시각 표시 클래스를 붙인다.
+      // drag는 전역 변수라 재렌더링 때마다 여기서 최신 상태를 그대로 읽을 수 있다 - 이 값 자체를
+      // 바꾸는 곳은 mousemove의 updateColReorderHover() 뿐이고, 렌더링은 그 결과만 읽어 표시한다.
+      const reorderCls=ci=>{
+        if(!isDesign||!drag||drag.mode!=='colreorder'||drag.c!==c)return '';
+        let cls=[];
+        if(drag.ci===ci)cls.push('gcol-dragging');
+        if(drag.committed&&drag.hoverCi===ci)cls.push(drag.hoverSide==='after'?'gcol-drop-after':'gcol-drop-before');
+        return cls.length?` ${cls.join(' ')}`:'';
+      };
+      const extraTrack=extraDefs.map(d=>d.w+'px').join(' ');
+      // 좌우 스크롤(xs) 모드에서 순번/체크박스 같은 왼쪽 유틸리티 컬럼은 스크롤해도 계속 왼쪽에
+      // 붙어 있어야 한다(그래야 몇 번째 행인지 계속 알아볼 수 있다) - position:sticky로 고정하고,
+      // 뒤에 스크롤되어 오는 데이터 컬럼들에 가리지 않도록 배경색을 각 행 맥락에 맞게 칠한다.
+      // 스크롤이 아예 없는(=xs가 아닌) 모드에서는 필요 없으므로 빈 문자열을 돌려준다.
+      const extraOffsets=(()=>{ const arr=[]; let acc=0; extraDefs.forEach(d=>{arr.push(acc); acc+=d.w;}); return arr; })();
+      const stickyExtraStyle=(ei,bg)=>xs?`position:sticky;left:${extraOffsets[ei]}px;z-index:6;background:${bg};`:'';
+      // One data-column's CSS Grid track: a dragged-to width always wins as a fixed px track;
+      // otherwise scroll/auto modes fix every column at colBaseW(ci), while default mode divides
+      // remaining space evenly (minmax(0,1fr)) exactly as before this feature existed.
+      const colTrack=ci=>colWidths[ci]?`${colWidths[ci]}px`:(xs?`${colBaseW(ci)}px`:'minmax(0,1fr)');
+      const dataTracks=()=>cols.map((_,ci)=>colTrack(ci)).join(' ');
+      // Non-scroll mode: an explicit grid-template-columns (same string on header and every row)
+      // guarantees identical column widths everywhere - unlike independent flex rows, which could
+      // drift apart by a pixel or two between the header and body rows. minmax(0,1fr) means a true
+      // even split with no floor: in 기본 mode, columns always divide evenly and the grid never
+      // scrolls, even if that squeezes a column very narrow (unless individually resized - see
+      // colTrack above). Row Order/CheckBox columns get a fixed px track prepended so they stay
+      // narrow no matter how many data columns exist; since they're also placed first in the DOM,
+      // grid auto-placement drops them straight into those leading tracks with no per-cell column
+      // index needed.
+      const gridColsStyle=xs?'':` style="grid-template-columns:${extraTrack?extraTrack+' ':''}${dataTracks()}"`;
+      // Merged header groups: c.colGroups[ci] holds an optional group label per column, set
+      // from the property panel. Consecutive columns sharing the same non-empty label merge
+      // into one centered cell spanning them on header row 1 (like 기준정보/재고정보 in the
+      // reference mock); each of those columns still shows its own name on row 2 below. A
+      // column with no group label gets a single cell spanning both rows, so the header stays
+      // a uniform height whether or not any given column belongs to a group. When no column
+      // has a group at all, the header renders exactly as before (single row) - zero visual
+      // change for every grid that isn't using this feature.
+      const colGroups=(c.colGroups||[]).slice(0,cols.length);
+      while(colGroups.length<cols.length)colGroups.push('');
+      const hasGroups=colGroups.some(g=>g&&g.trim());
+      // 컬럼별 변경상태(추가/변경/삭제/이동)는 조회조건 필드와 같은 방식 - 색깔 있는 점선 박스 +
+      // 우측 상단 코너 태그(라벨 텍스트)로 표시한다(colDragAttrs가 만드는 gcol-diffst 클래스 +
+      // data-difflabel 속성, CSS의 ::before로 그린다). 조회조건 쪽과 달리 헤더 셀 자체가
+      // overflow:hidden(긴 컬럼명 말줄임표 처리를 위해)이라, 태그가 셀 테두리 밖으로 튀어나오면
+      // 그대로 잘려버린다 - 그래서 셀 "안쪽" 우측 상단에 걸치도록 양수 좌표로 배치한다. 이 방식은
+      // 그룹(상위헤더) 유무와 상관없이 항상 같은 한 줄짜리 셀에 적용되므로, 더 이상 상태만을
+      // 위한 별도 행이 필요 없다 - 상위헤더가 있을 때만 2행 레이아웃을 쓴다.
+      const hasTopRow=hasGroups;
+      const ALIGN_JUSTIFY={left:'flex-start',center:'center',right:'flex-end'};
+      // headerHtml(고정 표시)와 rowsHtml(데이터 행 - 넘치면 이 부분만 잘림)을 서로 다른 변수로
+      // 쌓는다. 예전엔 둘 다 같은 문자열(h)에 이어 붙였는데, 그러면 나중에 "헤더+합계는 항상 보이고
+      // 데이터 행만 넘치면 잘리게" 만들 때 각각 따로 감쌀 수가 없었다.
+      let headerHtml;
+      if(hasTopRow){
+        // CSS Grid natively supports the 2D (row+column) span placement this needs, so the
+        // header is forced onto display:grid here even in xscroll mode (which normally lays
+        // the header out with flexbox) - an inline style wins over the .xscroll CSS rule.
+        // Row Order/CheckBox columns (if on) occupy the leading `off` tracks, so every data
+        // column's explicit grid-column index is shifted right by `off`.
+        const off=extraDefs.length;
+        const colTrackStyle=(extraTrack?extraTrack+' ':'')+dataTracks();
+        const headParts=[];
+        extraDefs.forEach((d,ei)=>{
+          headParts.push(`<span style="grid-column:${ei+1};grid-row:1/span 2;${stickyExtraStyle(ei,'var(--ax-grid-head)')}">${extraInnerHTML(d)}</span>`);
+        });
+        for(let ci=0;ci<cols.length;ci++){
+          const g=(colGroups[ci]||'').trim();
+          const mark=colReqMark(ci);
+          const align=colAligns[ci]||'left';
+          if(g){
+            if(ci===0||(colGroups[ci-1]||'').trim()!==g){
+              let span=1;
+              while(ci+span<cols.length&&(colGroups[ci+span]||'').trim()===g)span++;
+              headParts.push(`<span style="grid-column:${ci+1+off}/span ${span};grid-row:1;text-align:center;border-bottom:1px solid var(--ax-border);">${esc(g)}</span>`);
+            }
+            headParts.push(`<span${colDragAttrs(ci)} style="grid-column:${ci+1+off};grid-row:2;text-align:${align};position:relative;">${mark}${colLabelSpan(c,ci,cols[ci].trim())}${resizeHandle(ci)}</span>`);
+          }else{
+            headParts.push(`<span${colDragAttrs(ci)} style="grid-column:${ci+1+off};grid-row:1/span 2;display:flex;align-items:center;justify-content:${ALIGN_JUSTIFY[align]||'flex-start'};position:relative;">${mark}${colLabelSpan(c,ci,cols[ci].trim())}${resizeHandle(ci)}</span>`);
+          }
+        }
+        headerHtml=`<div class="gh" style="display:grid;grid-template-columns:${colTrackStyle};grid-template-rows:repeat(2,auto);">${headParts.join('')}</div>`;
+      }else{
+        // No explicit grid-column indices here - the grid auto-places cells in DOM order, so
+        // the extra Row Order/CheckBox header cells just need to come first to land in the
+        // leading fixed-width tracks that gridColsStyle already reserved for them.
+        const extraHeadHtml=extraDefs.map((d,ei)=>{
+          const wStyle=xs?` style="width:${d.w}px;${stickyExtraStyle(ei,'var(--ax-grid-head)')}"`:'';
+          return `<span${wStyle}>${extraInnerHTML(d)}</span>`;
+        }).join('');
+        headerHtml='<div class="gh"'+gridColsStyle+'>'+extraHeadHtml+cols.map((x,ci)=>{
+          const align=colAligns[ci]||'left';
+          const w=colWidths[ci];
+          const wStyle=(xs||w)?`width:${w||colBaseW(ci)}px;`:'';
+          return `<span${colDragAttrs(ci)} style="${wStyle}text-align:${align};position:relative;">${colReqMark(ci)}${colLabelSpan(c,ci,x.trim())}${resizeHandle(ci)}</span>`;
+        }).join('')+'</div>';
+      }
+      let rowsHtml='';
+      for(let i=0;i<gridRowCount(c);i++){
+        // Row Order shows 1..표시 행 수 top to bottom; CheckBox reuses the same check-cell markup
+        // (and click handler, in export mode) as a regular "체크박스" type data column.
+        const extraCellsHtml=extraDefs.map((d,ei)=>{
+          const wStyle=xs?` style="width:${d.w}px;${stickyExtraStyle(ei,'#fff')}"`:'';
+          if(d.kind==='roworder') return `<span${wStyle}><div class="gcell-roworder-num">${i+1}</div></span>`;
+          const chkCls='gcell-check'+(exp?' interactive':'');
+          const chkClick=exp?' onclick="toggleCheckExport(this)"':'';
+          return `<span${wStyle}><div class="${chkCls}"${chkClick}><span class="box"></span></div></span>`;
+        }).join('');
+        const cells=cols.map((x,ci)=>{
+          const ctype=(c.colTypes&&c.colTypes[ci])||'input';
+          const copts=((c.colOptions&&c.colOptions[ci])||'').split(',').map(s=>s.trim()).filter(Boolean);
+          const content=gridCellCtrl(ctype,copts,exp,(c.colDateVals&&c.colDateVals[ci])||'',!!(c.colDateBlank&&c.colDateBlank[ci]),(c.colDateSpec&&c.colDateSpec[ci])||'',(c.colDateFmt&&c.colDateFmt[ci])||'');
+          const editCls=ctype==='input'&&exp?'gcell-edit':'';
+          const colorCls=colColorCls(ci);
+          const delCls=colStatusArr[ci]==='del'?'gcol-diffst-del-cell':'';
+          const clsAttr=[editCls,colorCls,delCls].filter(Boolean).join(' ');
+          const cls=clsAttr?` class="${clsAttr}"`:'';
+          return `<span${cellW(ci)}${cls}>${content}</span>`;
+        }).join('');
+        rowsHtml+='<div class="gr'+(exp?' hoverable':'')+'"'+gridColsStyle+'>'+extraCellsHtml+cells+'</div>';
+      }
+      // 그리드 합계 행 - 세 가지를 동시에 만족해야 한다: (1) 데이터 행이 아무리 많아도 항상 보여야
+      // 하고, (2) 좌우로 스크롤해도 "합계" 글자 자체는 순번 컬럼처럼 계속 왼쪽에 붙어 있어야
+      // 하며, (3) 가로 스크롤바는 헤더·데이터 행과 하나로 합쳐진 것 하나만 있어야 한다. (1)을
+      // position:sticky로 해봤지만 .gbody가 overflow-y:hidden이라 실제로는 스크롤이 전혀 안
+      // 생기는 상자라, sticky가 "고정될 스크롤 동작" 자체가 없어 그냥 자기 순서대로 그려지고
+      // 넘치면 그대로 잘렸다(=합계가 안 보임) - 그래서 대신 순수 flexbox 크기 배분으로 해결한다:
+      // 아래에서 데이터 행들만 별도로 overflow:hidden;flex:1인 상자(.grows)에 넣고, 합계 행은
+      // 그 상자 밖(형제)에 flex:none으로 둔다 - 데이터 행이 넘치면 .grows 안에서만 잘리고, 합계는
+      // 항상 자기 몫의 자리를 차지한다. (2)(3)은 그대로 유지 - 순번/합계 라벨의 position:sticky
+      // (좌우 고정)는 실제로 좌우 스크롤이 일어나는 컨테이너라 정상 동작한다.
+      let totalHtml='';
+      if(c.showTotal){
+        const totalCols=(c.totalCols||[]).slice(0,cols.length);
+        const hasExtras=extraDefs.length>0;
+        const extraTotalHtml=extraDefs.map((d,ei)=>{
+          const wStyle=xs?` style="width:${d.w}px;${stickyExtraStyle(ei,'var(--ax-green-light)')}"`:'';
+          const body=ei===0?'<span class="gtotal-label">합계</span>':'';
+          return `<span${wStyle}>${body}</span>`;
+        }).join('');
+        const totalCells=cols.map((x,ci)=>{
+          const body = (!hasExtras&&ci===0) ? '<span class="gtotal-label">합계</span>' : (totalCols[ci] ? '0' : '');
+          return `<span${cellW(ci)}>${body}</span>`;
+        }).join('');
+        totalHtml=`<div class="gr gr-total"${gridColsStyle}>${extraTotalHtml}${totalCells}</div>`;
+      }
+      let pagination='';
+      if(c.pagination&&!gridFatSkin){
+        const rowsCount=gridRowCount(c);
+        pagination=`<div class="gpagination">
+          <div class="gp-nav">
+            <span class="gp-btn gp-arrow">«</span>
+            <span class="gp-btn gp-arrow">‹</span>
+            <span class="gp-btn on">1</span>
+            <span class="gp-btn gp-arrow">›</span>
+            <span class="gp-btn gp-arrow">»</span>
+          </div>
+          <div class="gp-right">
+            <span class="gp-item">Show rows: <span class="gp-select">${rowsCount}</span></span>
+            <span class="gp-item">Go to: <span class="gp-input">1</span> page</span>
+            <span class="gp-item">전체 <b>${rowsCount}</b>건</span>
+          </div>
+        </div>`;
+      }
+      return `<div class="ax-grid">${toolbar}<div class="gbody${xs?' xscroll':''}"><div class="gbody-track">${headerHtml}<div class="grows">${rowsHtml}</div>${totalHtml}</div></div>${pagination}</div>`;
+    }
+    case 'chart':{
+      const arrow=c.showArrow!==false?`<span class="arw">›</span>`:'';
+      return `<div class="ax-chart"><div class="ctitle">${esc(c.ctitle||'')} ${arrow}</div><div class="cbody">${chartSVG(c)}</div></div>`;
+    }
+    case 'tree':{
+      const nodes=parseTree(c.text||'');
+      const selLine=c.selectedLine||0;
+      const IND=18, PAD=10;
+      const rows=nodes.map(n=>{
+        const toggle=n.hasChildren
+          ? `<span class="tw-tog"${exp?` onclick="toggleTreeExport(this)"`:''}>−</span>`
+          : `<span class="tw-tog leaf">–</span>`;
+        // dashed guides for each ancestor level
+        let guides='';
+        for(let g=0;g<n.depth;g++) guides+=`<span class="tw-guide" style="left:${PAD+g*IND+7}px"></span>`;
+        const onCls=n.i===selLine?' on':'';
+        const click=exp?` onclick="selectTreeExport(this)"`:'';
+        return `<div class="tw-row${onCls}" data-depth="${n.depth}" style="padding-left:${PAD+n.depth*IND}px"${click}>${guides}${toggle}<span class="tw-lbl">${esc(n.label)}</span></div>`;
+      }).join('');
+      return `<div class="ax-tree${c.showLines===false?' nolines':''}">${rows}</div>`;
+    }
+    case 'searchbar':{
+      const isDesign=mode==='design';
+      const perRow=sbPerRow(c);
+      const cells=sbLayoutCells(c.fields||[],perRow);
+      const sfFieldsLen=(c.fields||[]).length;
+      // 그리드 컬럼(colDragAttrs)과 동일한 패턴: 디자인 캔버스에서만 data-fi + onmousedown을 붙여
+      // 클릭 선택(파란 박스)과 드래그 순서변경을 켠다. exp(내보내기) 결과물에는 아무 것도 안 붙는다.
+      const sfBoxAttrs=fi=>{
+        if(!isDesign) return {cls:'',attr:''};
+        let cls='';
+        if(selSF&&selSF.compId===c.id&&selSF.fi===fi&&fi<sfFieldsLen) cls+=' sf-selected';
+        if(drag&&drag.mode==='sfreorder'&&drag.c===c){
+          if(drag.fi===fi) cls+=' sf-dragging';
+          if(drag.committed&&drag.hoverFi===fi) cls+=drag.hoverSide==='after'?' sf-drop-after':' sf-drop-before';
+        }
+        return {cls, attr:` data-fi="${fi}" onmousedown="event.stopPropagation();startSFReorder(event,${c.id},${fi})"`};
+      };
+      let sfIdx=0;
+      const fields=cells.map(cell=>{
+        if(cell.kind==='halfpair'){
+          const fiA=sfIdx++, fiB=sfIdx++;
+          return `<div class="sfield-halfslot" style="grid-column:span 1;">${sfHalfBox(cell.a,fiA,exp,c.id,sfBoxAttrs(fiA))}${sfHalfBox(cell.b,fiB,exp,c.id,sfBoxAttrs(fiB))}</div>`;
+        }
+        if(cell.kind==='halfsolo'){
+          const fi=sfIdx++;
+          return `<div class="sfield-halfslot" style="grid-column:span 1;">${sfHalfBox(cell.f,fi,exp,c.id,sfBoxAttrs(fi))}<div class="sfield-half sfield-half-blank"></div></div>`;
+        }
+        const f=cell.f, fi=sfIdx++;
+        const {cls:bcls,attr:battr}=sfBoxAttrs(fi);
+        if(f.type==='empty'){
+          return `<div class="sfield sfield-empty${diffBoxCls(f.status)}${bcls}" style="grid-column:span ${cell.units};position:relative;"${diffBoxAttr(f.status)}${battr}></div>`;
+        }
+        return `<div class="sfield${f.type==='radio'?' radio':''}${diffBoxCls(f.status)}${bcls}" style="grid-column:span ${cell.units};position:relative;"${diffBoxAttr(f.status)}${battr}>${sfFieldInner(f,fi,exp,c.id)}</div>`;
+      }).join('');
+      const fullInner=`<div class="sfields" style="grid-template-columns:repeat(${perRow},1fr);">${fields}</div><div class="sactions"><span class="ssearch"><span class="sctl-search-ic"></span>조회</span></div>`;
+      return `<div class="ax-search">${fullInner}</div>`;
+    }
+  }
+  return '';
+}
+function esc(s){return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function escAttr(s){return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// ---- Searchbar ½-column (half-span) layout helpers ----
+// Walks the field list once and groups it into render "cells": normal fields keep
+// their own 1~4 column span, while two consecutive span===0.5 fields are paired into
+// a single 1-column cell that's split 50/50, and a lone (unpaired) span===0.5 field
+// becomes its own 1-column cell with only the left half filled (right half stays blank
+// so a later field can't slide into that space).
+function sbLayoutCells(fields,perRow){
+  const cols=Math.max(1,perRow||4);
+  const arr=fields||[], cells=[];
+  for(let i=0;i<arr.length;i++){
+    const f=arr[i];
+    if(f.span===0.5){
+      const next=arr[i+1];
+      if(next&&next.span===0.5){ cells.push({kind:'halfpair',a:f,b:next}); i++; }
+      else cells.push({kind:'halfsolo',f});
+    } else {
+      cells.push({kind:'field',f,units:Math.min(cols,Math.max(1,f.span||1))});
+    }
+  }
+  return cells;
+}
+// 한 행에 표시할 조건 갯수 - 컴포넌트별로 지정 가능(기본값 4), 비정상 값은 1~10 사이로 보정.
+function sbPerRow(c){
+  const n=parseInt(c&&c.perRow,10);
+  return Number.isFinite(n)?Math.max(1,Math.min(10,n)):4;
+}
+// Builds the label+control markup for one field (shared by full-width and half-width rendering).
+// 조회조건 필드 라벨의 볼드/기울임/밑줄/글자색/배경색 서식 - f.labelBold 등은 openLabelFormat()
+// 팝업에서 지정한다. 캔버스(.slabel)와 속성패널의 서식 트리거 버튼("가") 둘 다 이 함수로 미리보기를
+// 그리므로, 팝업에서 뭔가 바꾸면 그 즉시 양쪽에 똑같이 반영된다.
+function labelFmtStyle(f){
+  if(!f)return '';
+  const s=[];
+  if(f.labelBold) s.push('font-weight:700');
+  if(f.labelItalic) s.push('font-style:italic');
+  if(f.labelUnderline) s.push('text-decoration:underline');
+  if(f.labelColor) s.push('color:'+f.labelColor);
+  if(f.labelBg) s.push('background:'+f.labelBg+';padding:1px 4px;border-radius:3px');
+  return s.length?` style="${s.join(';')}"`:'';
+}
+// 일반 컴포넌트(제목/버튼/텍스트박스/콤보 등)의 "텍스트" 서식 - 조회조건 필드 라벨과 같은 5가지
+// (볼드/기울임/밑줄/글자색/배경색)를 컴포넌트 자신의 c.textBold 등에 저장한다. 라벨(.fl-label)
+// 서식은 c.labelBold 등을 그대로 쓰므로 위 labelFmtStyle(c)를 그대로 재사용하면 된다.
+function textFmtStyle(c){
+  if(!c)return '';
+  const s=[];
+  if(c.textBold) s.push('font-weight:700');
+  if(c.textItalic) s.push('font-style:italic');
+  if(c.textUnderline) s.push('text-decoration:underline');
+  if(c.textColor) s.push('color:'+c.textColor);
+  if(c.textBg) s.push('background:'+c.textBg+';padding:1px 4px;border-radius:3px');
+  return s.length?` style="${s.join(';')}"`:'';
+}
+function textSpan(c){ return `<span${textFmtStyle(c)}>${esc(c.text)}</span>`; }
+// 그리드 컬럼 헤더용 - 조회조건 필드의 labelFmtStyle()과 같은 규칙을 컬럼별 배열(colLabelBold 등,
+// normGridColArrays()가 다른 컬럼별 배열과 같은 길이로 관리한다)에서 읽어 적용한다.
+function colLabelFmtStyle(c,ci){
+  if(!c)return '';
+  const s=[];
+  if(c.colLabelBold&&c.colLabelBold[ci]) s.push('font-weight:700');
+  if(c.colLabelItalic&&c.colLabelItalic[ci]) s.push('font-style:italic');
+  if(c.colLabelUnderline&&c.colLabelUnderline[ci]) s.push('text-decoration:underline');
+  if(c.colLabelColor&&c.colLabelColor[ci]) s.push('color:'+c.colLabelColor[ci]);
+  if(c.colLabelBg&&c.colLabelBg[ci]) s.push('background:'+c.colLabelBg[ci]+';padding:1px 4px;border-radius:3px');
+  return s.length?` style="${s.join(';')}"`:'';
+}
+function colLabelSpan(c,ci,text){
+  return `<span class="gcol-label"${colLabelFmtStyle(c,ci)}>${esc(text)}</span>`;
+}
+function sfFieldInner(f,fi,exp,cid){
+  const freq=f.required?'<span class="req">*</span>':'';
+  let ctl;
+  if(f.type==='combo'){
+    const fopts=(f.options||'전체,선택1,선택2').split(',').map(s=>s.trim()).filter(Boolean);
+    if(exp&&fopts.length){
+      const optHtml=fopts.map(o=>`<div class="combo-opt" data-val="${escAttr(o)}" onmousedown="event.stopPropagation();selectComboExport(this)">${esc(o)}</div>`).join('');
+      ctl=`<div class="sctl combo interactive" onclick="toggleComboExport(this)"><span class="combo-val">선택</span><div class="combo-drop">${optHtml}</div></div>`;
+    } else {
+      ctl=`<div class="sctl combo${exp?' interactive':''}"${exp?' onclick="this.classList.toggle(\'open\')"':''}>선택</div>`;
+    }
+  }
+  else if(f.type==='date'){
+    // 값이 비어 있으면(신규/구버전 목업) 오늘 날짜를 기본값으로 보여준다. 단, "빈값"으로 명시적으로
+    // 지정된 경우엔 오늘 날짜로 채우지 않고 정말 빈 채로 둔다. spec이 있으면(오늘/어제 등 빠른
+    // 날짜 팝업에서 고른 값이면) 고정 문자열이 아니라 "지금" 기준으로 다시 계산한 값을 쓴다.
+    const val=f.blank?'':(qdResolvedText(f.text,f.dateSpec)||todayStr());
+    const relAttr=(!f.blank&&f.dateSpec)?` data-relspec="${escAttr(f.dateSpec)}"`:'';
+    const blankAttr=f.blank?' data-blank="1"':'';
+    ctl= exp?`<div class="sctl date-x"><input type="date" class="sctl-date-el"${val?` value="${escAttr(val)}"`:''}${relAttr}${blankAttr} data-fmt="${escAttr(f.dateFmt||'년-월-일')}"><div class="sctl date sctl-date-disp" onclick="mbOpenDatePicker(this)">${esc(qdDisplayText(val,f.dateFmt))}</div></div>`:`<div class="sctl date">${esc(qdDisplayText(val,f.dateFmt))}</div>`;
+  }
+  else if(f.type==='daterange'){
+    const raw=(f.text||'').trim()||(todayStr()+'~'+todayStr());
+    const parts=raw.split('~').map(s=>s.trim());
+    const v1=f.startBlank?'':(qdResolvedText(parts[0],f.startSpec)||todayStr()), v2=f.endBlank?'':(qdResolvedText(parts[1],f.endSpec)||todayStr());
+    const rel1=(!f.startBlank&&f.startSpec)?` data-relspec="${escAttr(f.startSpec)}"`:'', rel2=(!f.endBlank&&f.endSpec)?` data-relspec="${escAttr(f.endSpec)}"`:'';
+    const blank1=f.startBlank?' data-blank="1"':'', blank2=f.endBlank?' data-blank="1"':'';
+    ctl= exp?`<div class="sctl daterange"><span class="dr-combo"><input type="date" class="sctl-date-el"${v1?` value="${escAttr(v1)}"`:''}${rel1}${blank1} data-fmt="${escAttr(f.dateFmt||'년-월-일')}"><span class="sctl-date-disp" onclick="mbOpenDatePicker(this)">${esc(qdDisplayText(v1,f.dateFmt))}</span>&nbsp;~&nbsp;<input type="date" class="sctl-date-el"${v2?` value="${escAttr(v2)}"`:''}${rel2}${blank2} data-fmt="${escAttr(f.dateFmt||'년-월-일')}"><span class="sctl-date-disp" onclick="mbOpenDatePicker(this)">${esc(qdDisplayText(v2,f.dateFmt))}</span></span></div>`:`<div class="sctl daterange">${esc(qdDisplayText(v1,f.dateFmt))} ~ ${esc(qdDisplayText(v2,f.dateFmt))}</div>`;
+  }
+  else if(f.type==='search')ctl= exp?`<div class="sctl search-x"><input type="text" class="sctl-text-el" placeholder="검색어 입력"><span class="sctl-search-ic"></span></div>`:'<div class="sctl search"><span class="sctl-search-ic"></span></div>';
+  else if(f.type==='radio'){
+    const opts=(f.options||'전체,확정,미확정').split(',').map((o,i)=>{
+      const onCls=i===0?' on':'';
+      const interCls=exp?' interactive':'';
+      const attrs=exp?` data-group="sf-${cid}-${fi}" onclick="selectRadioGroupExport(this)"`:'';
+      return `<span class="opt${onCls}${interCls}"${attrs}><span class="dot"></span>${esc(o.trim())}</span>`;
+    }).join('');
+    ctl=`<div class="sradio">${opts}</div>`;
+  }
+  else ctl= exp?`<div class="sctl text-x"><input type="text" class="sctl-text-el"></div>`:'<div class="sctl text"></div>';
+  if(f.readonly){
+    // grey out the control and, in exports, stop it from being editable
+    ctl=ctl.replace(/^(<div class="[^"]*)/,'$1 ro');
+    if(exp){
+      ctl=ctl.replace(/<input /g,'<input readonly disabled ')
+             .replace(/ onclick="[^"]*"/g,'')
+             .replace(/ onmousedown="[^"]*"/g,'');
+    }
+  }
+  return `<span class="slabel"${labelFmtStyle(f)}>${esc(f.label||'')}${freq}</span>${ctl}`;
+}
+// Renders one half (50%-width) box inside a .sfield-halfslot: a real field's label+control,
+// or (for the empty field type) just a blank half-height placeholder.
+function sfHalfBox(f,fi,exp,cid,boxAttrs){
+  boxAttrs=boxAttrs||{cls:'',attr:''};
+  if(f.type==='empty') return `<div class="sfield sfield-half sfield-empty${diffBoxCls(f.status)}${boxAttrs.cls}" style="position:relative;"${diffBoxAttr(f.status)}${boxAttrs.attr}></div>`;
+  return `<div class="sfield sfield-half${f.type==='radio'?' radio':''}${diffBoxCls(f.status)}${boxAttrs.cls}" style="position:relative;"${diffBoxAttr(f.status)}${boxAttrs.attr}>${sfFieldInner(f,fi,exp,cid)}</div>`;
+}
+// palette for charts
+const CHART_PAL={
+  green:['#a8d5ba','#8bc4a0','#b9dfc9'],
+  blue:['#aed4f2','#c5e0f7','#8fc0e8'],
+  mixed:['#a8d5ba','#aed4f2','#f5d99b','#c9b8e8','#f2b8b8'],
+  yellow:['#f5d99b','#f8e4b5','#efc978']
+};
+function chartSVG(c){
+  const vals=(c.text||'').split(',').map(s=>parseFloat(s.trim())).filter(v=>!isNaN(v));
+  const pal=CHART_PAL[c.color]||CHART_PAL.green;
+  if(!vals.length)return '<div style="color:#bbb;font-size:12px;">데이터 없음</div>';
+  const type=c.chartType||'bar';
+  if(type==='donut')return donutSVG(vals,pal);
+  if(type==='line')return lineSVG(vals,pal,false);
+  if(type==='area')return lineSVG(vals,pal,true);
+  return barSVG(vals,pal); // bar
+}
+function niceMax(v){return v<=0?10:Math.ceil(v/10)*10;}
+function barSVG(vals,pal){
+  const W=400,H=180,pad=24,bw=(W-pad*2)/vals.length*0.6, gap=(W-pad*2)/vals.length;
+  const max=niceMax(Math.max(...vals,0)), min=Math.min(...vals,0), range=max-min||1;
+  const y0=H-pad-((0-min)/range)*(H-pad*2);
+  let bars='';
+  vals.forEach((v,i)=>{
+    const x=pad+gap*i+(gap-bw)/2;
+    const yv=H-pad-((v-min)/range)*(H-pad*2);
+    const top=Math.min(yv,y0), hh=Math.abs(yv-y0);
+    bars+=`<rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1,hh).toFixed(1)}" rx="2" fill="${pal[i%pal.length]}"/>`;
+    bars+=`<text x="${(x+bw/2).toFixed(1)}" y="${(top-4).toFixed(1)}" font-size="10" fill="#666" text-anchor="middle">${v}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+    <line x1="${pad}" y1="${y0.toFixed(1)}" x2="${W-pad}" y2="${y0.toFixed(1)}" stroke="#333" stroke-width="1"/>
+    ${bars}</svg>`;
+}
+function lineSVG(vals,pal,fill){
+  const W=400,H=180,pad=24;
+  const max=niceMax(Math.max(...vals,0)), min=Math.min(...vals,0), range=max-min||1;
+  const step=(W-pad*2)/(vals.length-1||1);
+  const pts=vals.map((v,i)=>[pad+step*i, H-pad-((v-min)/range)*(H-pad*2)]);
+  const line=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const col=pal[0];
+  let area='';
+  if(fill){
+    const y0=H-pad-((0-min)/range)*(H-pad*2);
+    area=`<path d="${line} L${pts[pts.length-1][0].toFixed(1)} ${y0.toFixed(1)} L${pts[0][0].toFixed(1)} ${y0.toFixed(1)} Z" fill="${col}" opacity="0.35"/>`;
+  }
+  const dots=pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${col}"/>`).join('');
+  const zeroY=H-pad-((0-min)/range)*(H-pad*2);
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+    <line x1="${pad}" y1="${zeroY.toFixed(1)}" x2="${W-pad}" y2="${zeroY.toFixed(1)}" stroke="#e5e7eb" stroke-width="1"/>
+    ${area}<path d="${line}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round"/>${dots}</svg>`;
+}
+function donutSVG(vals,pal){
+  const total=vals.reduce((a,b)=>a+Math.abs(b),0)||1;
+  const cx=90,cy=90,r=62,rw=26;
+  let ang=-Math.PI/2, arcs='';
+  vals.forEach((v,i)=>{
+    const frac=Math.abs(v)/total, a2=ang+frac*Math.PI*2;
+    const large=frac>0.5?1:0;
+    const x1=cx+r*Math.cos(ang), y1=cy+r*Math.sin(ang);
+    const x2=cx+r*Math.cos(a2), y2=cy+r*Math.sin(a2);
+    if(frac>0.0001)
+      arcs+=`<path d="M${x1.toFixed(1)} ${y1.toFixed(1)} A${r} ${r} 0 ${large} 1 ${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="${pal[i%pal.length]}" stroke-width="${rw}"/>`;
+    ang=a2;
+  });
+  // legend
+  let lg='';
+  vals.forEach((v,i)=>{
+    const pct=Math.round(Math.abs(v)/total*100);
+    lg+=`<div class="lg"><span class="sw" style="background:${pal[i%pal.length]}"></span>항목${i+1} ${v} (${pct}%)</div>`;
+  });
+  return `<div style="display:flex;align-items:center;width:100%;height:100%;">
+    <svg viewBox="0 0 180 180" preserveAspectRatio="xMidYMid meet" style="flex:none;width:150px;height:150px;">
+      ${arcs}
+      <text x="90" y="95" font-size="18" font-weight="800" fill="#2c3e50" text-anchor="middle">${total}</text>
+    </svg>
+    <div class="legend">${lg}</div>
+  </div>`;
+}
+
+// ---- Move / Resize ----
+let drag=null;
+// 조회조건 패널 안에서 선택된 개별 필드 - {compId, fi}. fi는 c.fields 배열의 실제 인덱스와 같다.
+// 다른 컴포넌트 선택(sel/selIds)과는 별개로 관리하되, 컴포넌트 선택이 바뀌면 selectSingle()에서
+// 함께 정리한다.
+let selSF=null;
+// 그리드에서 선택된 개별 컬럼 - {compId, ci}. selSF와 같은 규칙: 컴포넌트 선택이 바뀌면
+// selectSingle()에서 함께 정리하고, 그리드의 빈 영역을 클릭하면 startMove에서 정리한다.
+let selGC=null;
+function startMove(e,c){
+  if(e.target.classList.contains('handle'))return;
+  // 조회조건 패널의 빈 여백(필드가 아닌 곳)을 클릭한 경우 - 필드 개별 선택은 해제하고 패널
+  // 컴포넌트 자체를 선택한다. 필드 위에서 누른 클릭은 startSFReorder가 stopPropagation 하므로
+  // 여기까지 오지 않는다.
+  if(c.type==='searchbar') selSF=null;
+  // 그리드의 빈 영역(컬럼 헤더가 아닌 곳)을 클릭한 경우도 동일 - 컬럼 개별 선택 해제.
+  if(c.type==='grid') selGC=null;
+  // Let the grid's own horizontal scrollbar work on the canvas: if the mousedown
+  // landed on the scrollbar track of a scrollable grid body (below its client area),
+  // don't start a component move - let the browser handle the native scrollbar drag.
+  const gbody = e.target.closest && e.target.closest('.ax-grid .gbody.xscroll');
+  if(gbody){
+    const gb=gbody.getBoundingClientRect();
+    // scrollbar sits in the strip between clientHeight and the full offset height.
+    // gb is in scaled screen px; clientHeight is unscaled layout px, so divide by zoom.
+    const offY=(e.clientY - gb.top)/(zoom||1);
+    const overScrollbar = offY > gbody.clientHeight;
+    if(overScrollbar && gbody.scrollWidth>gbody.clientWidth){
+      // Don't start a move and don't re-render (re-rendering would destroy this
+      // element mid-drag and cancel the native scrollbar grab). Just let it scroll.
+      return;
+    }
+  }
+  e.stopPropagation();
+  const ctrl = e.ctrlKey||e.metaKey;
+  if(ctrl){
+    // Don't decide yet: a plain ctrl+click (no drag) toggles selection,
+    // while a ctrl+drag duplicates the selection and moves the copy.
+    const wasSelected = isSel(c.id);
+    const groupIds = wasSelected ? [...selIds] : [c.id];
+    drag={mode:'ctrlpending',c,sx:e.clientX,sy:e.clientY,wasSelected,groupIds,committed:false,pre:snapshot()};
+    return;
+  }
+  // if clicking a component not in current selection, select just it
+  if(!isSel(c.id)) selectSingle(c.id);
+  render();
+  // capture originals for all selected (group move)
+  const group = comps.filter(x=>isSel(x.id)).map(x=>({c:x, ox:x.x, oy:x.y}));
+  drag={mode:'move',c,sx:e.clientX,sy:e.clientY,ox:c.x,oy:c.y,committed:false,pre:snapshot(),group};
+}
+function startResize(e,c,dir){
+  e.stopPropagation();selectSingle(c.id);render();
+  drag={mode:'resize',dir,c,sx:e.clientX,sy:e.clientY,ow:c.w,oh:c.h,ox:c.x,oy:c.y,committed:false,pre:snapshot()};
+}
+// Dragging a grid column's own right border (the small handle rendered inside its header cell -
+// see resizeHandle() in innerRaw's 'grid' case) resizes just that one column, independent of the
+// property panel's global "컬럼 폭" slider. The handle's onmousedown calls this with the grid's
+// component id and the column index rather than closing over live objects, since the grid's
+// markup is built as an HTML string and inserted via innerHTML.
+function startColResize(e,compId,ci){
+  const c=comps.find(x=>x.id===compId); if(!c)return;
+  // Measure the column's current on-screen width (its header cell, the handle's parent) BEFORE
+  // selecting/rendering below - render() tears down and rebuilds the whole canvas, which would
+  // detach this element from the document and make getBoundingClientRect() report zeros.
+  const cell=e.target.closest('span');
+  const rect=cell?cell.getBoundingClientRect():null;
+  const ow=rect?rect.width/(zoom||1):Math.max(60,+c.colMinW||120);
+  if(!isSel(c.id)){ selectSingle(c.id); render(); }
+  drag={mode:'colresize',c,ci,sx:e.clientX,sy:e.clientY,ow,committed:false,pre:snapshot()};
+}
+// 그리드 헤더 셀 자체를 드래그해 컬럼 순서를 바꾼다 (Row Order/CheckBox 유틸리티 컬럼은 data-ci가
+// 없어 애초에 손잡이 대상이 아니므로 항상 맨 왼쪽에 고정된다). resizeHandle과 달리 이 드래그는
+// 매 mousemove마다 실제로 컬럼을 옮기지 않고 "어디에 놓일지"만 drag.hoverCi/hoverSide에 기록해
+// innerRaw()가 그 값을 읽어 점선 표시(class)만 그려주다가, mouseup에서 한 번에 실제로 옮긴다.
+function startColReorder(e,compId,ci){
+  const c=comps.find(x=>x.id===compId); if(!c)return;
+  if(!isSel(c.id)){ selectSingle(c.id); }
+  selGC={compId,ci};
+  // 컬럼 목록이 접혀 있으면 방금 선택한 컬럼의 속성 행이 아예 렌더링되지 않으므로 펼친다.
+  gcolGroupCollapsed.delete(String(compId));
+  render();
+  drag={mode:'colreorder',c,ci,sx:e.clientX,sy:e.clientY,committed:false,pre:snapshot(),hoverCi:ci,hoverSide:'before'};
+  startColReorderAutoScroll(c.id);
+}
+// 조회조건 필드를 캔버스에서 직접 누르면(그리드 컬럼 헤더와 동일한 방식) 그 필드를 선택해 파란
+// 선택 박스를 표시하고, 그대로 드래그하면 순서를 바꿀 수 있다. 그리드 컬럼과 달리 필드는 한 줄에
+// 여러 개가(perRow 설정에 따라) 놓이고 줄바꿈도 되므로, 마우스 아래 위치를 찾을 때 x축뿐 아니라
+// 어느 줄(row)인지도 함께 판단해야 한다 (updateSFReorderHover 참고).
+function startSFReorder(e,compId,fi){
+  const c=comps.find(x=>x.id===compId); if(!c||!c.fields)return;
+  if(!isSel(c.id)) selectSingle(c.id);
+  selSF={compId,fi};
+  render();
+  drag={mode:'sfreorder',c,fi,sx:e.clientX,sy:e.clientY,committed:false,pre:snapshot(),hoverFi:fi,hoverSide:'before'};
+}
+// updateColReorderHover와 같은 이유로 매번 DOM에서 다시 찾는다(매 프레임 drawCanvas()가 캔버스를
+// 통째로 다시 그리므로 이전 프레임의 엘리먼트 참조는 다음 프레임엔 못 쓴다). 필드는 줄바꿈이
+// 있으므로 먼저 상단좌표(top)로 줄을 묶고, 커서 y가 속한(또는 가장 가까운) 줄을 고른 다음, 그
+// 줄 안에서 x좌표로 어느 필드의 앞/뒤에 놓일지를 정한다.
+function updateSFReorderHover(clientX,clientY){
+  const wrap=document.querySelector('.cmp[data-cid="'+drag.c.id+'"] .sfields');
+  if(!wrap)return;
+  const els=Array.from(wrap.querySelectorAll('[data-fi]'));
+  if(!els.length)return;
+  const rows=[];
+  els.forEach(el=>{
+    const r=el.getBoundingClientRect();
+    const fi=parseInt(el.dataset.fi,10);
+    let row=rows.find(rw=>Math.abs(rw.top-r.top)<6);
+    if(!row){ row={top:r.top,bottom:r.bottom,items:[]}; rows.push(row); }
+    row.bottom=Math.max(row.bottom,r.bottom);
+    row.items.push({fi,r});
+  });
+  rows.sort((a,b)=>a.top-b.top);
+  let row=rows.find(rw=>clientY>=rw.top&&clientY<=rw.bottom);
+  if(!row) row = clientY<rows[0].top ? rows[0] : rows[rows.length-1];
+  row.items.sort((a,b)=>a.r.left-b.r.left);
+  for(const it of row.items){
+    if(clientX<=it.r.left){ drag.hoverFi=it.fi; drag.hoverSide='before'; return; }
+    if(clientX<it.r.right){ drag.hoverFi=it.fi; drag.hoverSide=clientX<(it.r.left+it.r.right)/2?'before':'after'; return; }
+  }
+  const last=row.items[row.items.length-1];
+  drag.hoverFi=last.fi; drag.hoverSide='after';
+}
+// 조회조건 필드 순서 변경 - 속성패널의 sfMoveTo/드래그(gcDrop 계열)와 같은 규칙(from/to는 실제
+// c.fields 인덱스)을 쓰되, 전역 sel이 아니라 파라미터로 받은 컴포넌트를 대상으로 동작한다.
+function moveSearchField(c,from,to){
+  if(!c||!c.fields)return false;
+  const len=c.fields.length;
+  to=Math.max(0,Math.min(len-1,to));
+  if(to===from||from<0||from>=len)return false;
+  const [item]=c.fields.splice(from,1);
+  c.fields.splice(to,0,item);
+  fitSearchbar(c);
+  // sfDrop/sfMoveTo와 같은 규칙 - 옮긴 필드 자신뿐 아니라 그 사이에서 함께 밀린 다른 필드를
+  // 가리키던 강조 표시·서식 팝업도 같이 보정한다(lf는 idx 프로퍼티를 쓰므로 lf.fi가 아니라
+  // lf.idx로 다뤄야 한다).
+  if(selSF&&selSF.compId===c.id) selSF.fi=shiftIndexForMove(selSF.fi,from,to);
+  if(lf&&lf.kind==='field'&&lf.compId===c.id) lf.idx=shiftIndexForMove(lf.idx,from,to);
+  return true;
+}
+// 현재 마우스 x좌표 아래에 있는 컬럼과, 그 컬럼의 왼쪽/오른쪽 중 어느 쪽에 놓일지를 계산해
+// drag에 기록한다. 매번 DOM에서 다시 찾는 이유는, 이 함수를 호출하는 mousemove 핸들러 끝에서
+// drawCanvas()가 매 프레임 캔버스를 통째로 다시 그리기 때문에(다른 drag 모드들도 동일) 이전
+// 프레임에서 잡아둔 엘리먼트 참조가 다음 프레임엔 이미 못 쓰게 되어 있다.
+function updateColReorderHover(clientX){
+  const gh=document.querySelector('.cmp[data-cid="'+drag.c.id+'"] .gh');
+  if(!gh)return;
+  const spans=Array.from(gh.querySelectorAll('[data-ci]'));
+  if(!spans.length)return;
+  for(const el of spans){
+    const r=el.getBoundingClientRect();
+    const ci=parseInt(el.dataset.ci,10);
+    if(clientX<=r.left){ drag.hoverCi=ci; drag.hoverSide='before'; return; }
+    if(clientX<r.right){ drag.hoverCi=ci; drag.hoverSide=clientX<(r.left+r.right)/2?'before':'after'; return; }
+  }
+  // 마지막 컬럼보다 더 오른쪽 - 맨 끝에 놓는다.
+  const last=spans[spans.length-1];
+  drag.hoverCi=parseInt(last.dataset.ci,10); drag.hoverSide='after';
+}
+// 좌우 스크롤이 있는 그리드에서 컬럼을 드래그해 화면 밖(왼쪽/오른쪽 끝)으로 가져가면, 마우스가
+// 가장자리 근처에 머무는 동안 계속 스크롤되어야 원하는 위치까지 옮길 수 있다. mousemove가 멈춰도
+// (가장자리에서 정지) 계속 스크롤되도록 별도 타이머를 둔다 - #props 세로 스크롤과 같은 패턴.
+// gbody를 직접 들고 있지 않고 매 tick마다 다시 찾는 이유도 위 updateColReorderHover와 동일하다.
+let colReorderScrollX=null, colReorderScrollTimer=null, colReorderCompId=null;
+function startColReorderAutoScroll(compId){
+  colReorderCompId=compId;
+  if(colReorderScrollTimer)return;
+  colReorderScrollTimer=setInterval(()=>{
+    if(colReorderScrollX==null||colReorderCompId==null)return;
+    const wrap=document.querySelector('.cmp[data-cid="'+colReorderCompId+'"] .gbody');
+    if(!wrap||wrap.scrollWidth<=wrap.clientWidth)return;
+    const rect=wrap.getBoundingClientRect();
+    const margin=40, maxSpeed=18;
+    let dx=0;
+    if(colReorderScrollX<rect.left+margin) dx=-maxSpeed*(1-Math.max(0,colReorderScrollX-rect.left)/margin);
+    else if(colReorderScrollX>rect.right-margin) dx=maxSpeed*(1-Math.max(0,rect.right-colReorderScrollX)/margin);
+    if(dx) wrap.scrollLeft+=dx;
+  },30);
+}
+function stopColReorderAutoScroll(){
+  if(colReorderScrollTimer){clearInterval(colReorderScrollTimer);colReorderScrollTimer=null;}
+  colReorderScrollX=null; colReorderCompId=null;
+}
+// Dragging a split container's divider bar: adjusts c.pos (0.15-0.85) live as the mouse moves.
+function startSplitDrag(e,c){
+  e.stopPropagation(); e.preventDefault();
+  drag={mode:'split',c,sx:e.clientX,sy:e.clientY,opos:c.pos!=null?c.pos:0.5,committed:false,pre:snapshot()};
+}
+document.addEventListener('mousemove',e=>{
+  if(!drag)return;
+  const dx=(e.clientX-drag.sx)/zoom, dy=(e.clientY-drag.sy)/zoom;
+
+  if(drag.mode==='ctrlpending'){
+    if(Math.abs(dx)<=3&&Math.abs(dy)<=3) return; // not enough movement yet; might still be a plain click
+    // threshold crossed: duplicate the selected group (including any Tab children) and switch into a normal group move
+    const fullIds=collectWithChildren(drag.groupIds);
+    const idMap={};
+    const dupGroup=[];
+    fullIds.forEach(id=>{
+      const orig=comps.find(x=>x.id===id);
+      if(!orig)return;
+      const nc=JSON.parse(JSON.stringify(orig));
+      nc.id=uid++;
+      comps.push(nc);
+      idMap[id]=nc;
+      dupGroup.push({c:nc, ox:orig.x, oy:orig.y});
+    });
+    dupGroup.forEach(g=>{ if(g.c.parent&&idMap[g.c.parent]) g.c.parent=idMap[g.c.parent].id; });
+    if(!dupGroup.length){drag=null;return;}
+    const clickedDup = idMap[drag.c.id] || dupGroup[0].c;
+    selIds=new Set(dupGroup.map(g=>g.c.id));
+    sel = clickedDup.id;
+    undoStack.push(drag.pre);
+    if(undoStack.length>HIST_MAX)undoStack.shift();
+    redoStack=[]; updateHistBtns();
+    drag={mode:'move',c:clickedDup,sx:drag.sx,sy:drag.sy,ox:clickedDup.x,oy:clickedDup.y,committed:true,pre:drag.pre,group:dupGroup};
+    canvas.classList.add('reparent-drag');
+    renderProps();
+    // fall through below using the same dx/dy to apply the first move increment
+  }
+
+  // Remember the cursor's live canvas-space position so a reparent decision (which pane/tab a
+  // dropped component lands in) can be based on where the mouse actually is, not the dragged
+  // component's center - otherwise grabbing a large component by a corner near a container edge
+  // can drop it into the wrong pane even though the cursor is clearly over the intended one.
+  const canvasRect=canvas.getBoundingClientRect();
+  drag.curX=(e.clientX-canvasRect.left)/zoom;
+  drag.curY=(e.clientY-canvasRect.top)/zoom;
+
+  if(!drag.committed&&(Math.abs(dx)>1||Math.abs(dy)>1)){
+    undoStack.push(drag.pre);
+    if(undoStack.length>HIST_MAX)undoStack.shift();
+    redoStack=[]; updateHistBtns();
+    drag.committed=true;
+    if(drag.mode==='move') canvas.classList.add('reparent-drag');
+  }
+  let pendingGuides=null;
+  if(drag.mode==='move'){
+    const group = drag.group||[];
+    if(group.length>1){
+      // group move: apply same delta to all, grid-snap the delta
+      // (skip comps whose parent container is also in this group - they move automatically since their x/y are relative to the parent)
+      const groupIdSet=new Set(group.map(g=>g.c.id));
+      let sdx=dx, sdy=dy;
+      // Smart guides for multi-select move (PowerPoint style): guide against the bounding box of
+      // the selected group's outermost top/bottom/left/right edges. Only top-level (non-nested)
+      // members count toward that box - guides are canvas-relative, same reasoning as single-move
+      // skipping nested Tab children above.
+      const topLevel=group.filter(g=>!g.c.parent);
+      const smart=document.getElementById('smartChk').checked&&topLevel.length>0;
+      let snappedX=false, snappedY=false;
+      if(smart){
+        const bx=Math.min(...topLevel.map(g=>g.ox+dx));
+        const by=Math.min(...topLevel.map(g=>g.oy+dy));
+        const bx2=Math.max(...topLevel.map(g=>g.ox+dx+g.c.w));
+        const by2=Math.max(...topLevel.map(g=>g.oy+dy+g.c.h));
+        const excludeIds=new Set(topLevel.map(g=>g.c.id));
+        const gg=computeGuides({w:bx2-bx,h:by2-by},bx,by,excludeIds);
+        snappedX=gg.x!==bx; snappedY=gg.y!==by;
+        if(snappedX) sdx=Math.round(gg.x-bx+dx);
+        if(snappedY) sdy=Math.round(gg.y-by+dy);
+        if(gg.lines.length) pendingGuides=gg.lines;
+      }
+      if(document.getElementById('snapChk').checked){const s=parseInt(document.getElementById('snapSize').value)||10;if(!snappedX)sdx=Math.round(sdx/s)*s;if(!snappedY)sdy=Math.round(sdy/s)*s;}
+      group.forEach(g=>{
+        if(g.c.parent&&groupIdSet.has(g.c.parent))return;
+        const gnx=g.ox+sdx, gny=g.oy+sdy;
+        g.c.x=g.c.parent?gnx:Math.max(0,gnx);
+        g.c.y=g.c.parent?gny:Math.max(0,gny);
+      });
+    } else {
+      let nx=drag.ox+dx, ny=drag.oy+dy;
+      if(!drag.c.parent){ nx=Math.max(0,nx); ny=Math.max(0,ny); }
+      const smart=document.getElementById('smartChk').checked&&!drag.c.parent; // guides are canvas-relative; skip for nested Tab children
+      let snappedX=false, snappedY=false;
+      if(smart){
+        const g=computeGuides(drag.c,nx,ny);
+        snappedX=g.x!==nx; snappedY=g.y!==ny;
+        nx=g.x; ny=g.y; pendingGuides=g.lines;
+      }
+      // grid snap only on axes not caught by a smart guide
+      drag.c.x=snappedX?Math.round(nx):snap(nx);
+      drag.c.y=snappedY?Math.round(ny):snap(ny);
+    }
+  }
+  else if(drag.mode==='resize'){
+    // 파워포인트 방식 8방향 리사이즈: 핸들 방향에 따라 활성화된 변만 움직이고, 반대편 변은
+    // 고정된다(예: 'w' 핸들은 왼쪽만 움직이고 오른쪽 변 위치는 그대로 유지).
+    const dir=drag.dir;
+    const activeE=dir.includes('e'), activeW=dir.includes('w'), activeN=dir.includes('n'), activeS=dir.includes('s');
+    let nx=drag.ox, ny=drag.oy, nw=drag.ow, nh=drag.oh;
+    if(activeE) nw=Math.max(30,drag.ow+dx);
+    if(activeW){ nw=Math.max(30,drag.ow-dx); nx=drag.ox+(drag.ow-nw); }
+    if(activeS) nh=Math.max(20,drag.oh+dy);
+    if(activeN){ nh=Math.max(20,drag.oh-dy); ny=drag.oy+(drag.oh-nh); }
+
+    const smart=document.getElementById('smartChk').checked&&!drag.c.parent;
+    let snappedX=false, snappedY=false;
+    if(smart&&(activeE||activeW||activeN||activeS)){
+      const g=computeResizeGuides(drag.c,dir,nx,ny,nw,nh);
+      nx=g.nx; ny=g.ny; nw=g.nw; nh=g.nh;
+      snappedX=g.snappedX; snappedY=g.snappedY;
+      if(g.lines.length) pendingGuides=g.lines;
+    }
+    drag.c.w=snappedX?Math.round(nw):snap(nw);
+    drag.c.h=snappedY?Math.round(nh):snap(nh);
+    if(activeW) drag.c.x=snappedX?Math.round(nx):snap(nx);
+    if(activeN) drag.c.y=snappedY?Math.round(ny):snap(ny);
+    if(drag.c.type==='grid'&&(activeE||activeW)) drag.c._sizeModeManual=false;
+  }
+  else if(drag.mode==='colresize'){
+    const w=Math.round(Math.max(40,drag.ow+dx));
+    if(!Array.isArray(drag.c.colWidths))drag.c.colWidths=[];
+    drag.c.colWidths[drag.ci]=w;
+  }
+  else if(drag.mode==='colreorder'){
+    colReorderScrollX=e.clientX;
+    updateColReorderHover(e.clientX);
+  }
+  else if(drag.mode==='sfreorder'){
+    updateSFReorderHover(e.clientX,e.clientY);
+  }
+  else if(drag.mode==='split'){
+    const dim = drag.c.dir==='v' ? drag.c.h : drag.c.w;
+    const delta = drag.c.dir==='v' ? dy : dx;
+    let pos = drag.opos + delta/dim;
+    drag.c.pos = Math.min(0.85,Math.max(0.15,pos));
+  }
+  // drawCanvas() itself now preserves every grid's horizontal scroll across the rebuild (see the
+  // comment there), so this can just be a plain call regardless of drag mode.
+  drawCanvas();
+  if(pendingGuides)drawGuides(pendingGuides);
+  syncPropFields(drag.c);
+});
+document.addEventListener('mouseup',()=>{
+  if(drag){
+    if(drag.mode==='ctrlpending'){
+      // ctrl was held but the mouse never moved beyond the threshold: treat as a plain ctrl+click
+      toggleSel(drag.c.id);
+      drag=null;render();
+      return;
+    }
+    if(drag.mode==='move'&&drag.committed) finalizeReparentDrag(drag);
+    if(drag.mode==='split'&&!drag.committed){
+      // divider was clicked but never actually dragged: select the split container itself
+      selectSingle(drag.c.id);
+    }
+    if(drag.mode==='colreorder'){
+      stopColReorderAutoScroll();
+      // Not moved at all (plain click) -> nothing to reorder, startColReorder() already selected
+      // the grid on mousedown. Otherwise commit the drop position recorded by the last
+      // updateColReorderHover() call: "놓일 컬럼 + before/after" converts to a single final index
+      // exactly the way gcDrop's drag-and-drop in the property panel already does.
+      if(drag.committed&&drag.hoverCi!=null){
+        const i=drag.hoverSide==='after'?drag.hoverCi+1:drag.hoverCi;
+        const insertAt=drag.ci<i?i-1:i;
+        moveGridColumn(drag.c,drag.ci,insertAt);
+      }
+    }
+    if(drag.mode==='sfreorder'){
+      // 이동 없이 누르기만 한 경우(순수 클릭) - startSFReorder에서 이미 필드를 선택해두었으므로
+      // 별도 처리 없이 그대로 선택 상태만 유지한다. 실제로 옮겨졌으면 마지막 hover 위치로 확정.
+      if(drag.committed&&drag.hoverFi!=null){
+        const i=drag.hoverSide==='after'?drag.hoverFi+1:drag.hoverFi;
+        const insertAt=drag.fi<i?i-1:i;
+        moveSearchField(drag.c,drag.fi,insertAt);
+      }
+    }
+    // render() -> drawCanvas() also preserves scroll here, same as above.
+    drag=null;clearGuides();canvas.classList.remove('reparent-drag');render();
+  }
+});
+// After a real (non-resize) move ends, check whether each moved top-level comp was dropped onto a Tab's
+// content area (reparent into it) or a Tab child was dragged out of its container (promote back to top-level).
+function finalizeReparentDrag(d){
+  const items = (d.group&&d.group.length) ? d.group.map(g=>g.c) : [d.c];
+  const movingIds = new Set(items.map(x=>x.id));
+  // Which tab/pane/panel the drop lands in is decided ONCE, from the actual cursor position -
+  // not from each dragged component's own center - so grabbing a large component by a
+  // corner still drops it wherever the mouse visually is. hitTestContainer() already resolves
+  // ties by nesting depth, so a split sitting inside a tab (or any other combination) is
+  // matched correctly instead of the outer container always winning.
+  const hitX = d.curX!=null ? d.curX : (d.c.x+d.c.w/2);
+  const hitY = d.curY!=null ? d.curY : (d.c.y+d.c.h/2);
+  const targetShared=hitTestContainer(hitX,hitY);
+  items.forEach(comp=>{
+    if(!comp) return;
+    if(comp.parent && movingIds.has(comp.parent)) return; // moves together with its own container automatically
+    // comp's current absolute position (before reparenting) - reuses the same parent-chain
+    // math as absPos() so panel/tabs/split parents are all handled consistently.
+    const {x:absX,y:absY}=absPos(comp);
+    let target=targetShared;
+    // don't allow a tab/split/panel container to be dropped inside itself or one of its own descendants
+    if(target&&
+       ((target.kind==='tab'&&comp.type==='tabs')||(target.kind==='split'&&comp.type==='split')||(target.kind==='panel'&&comp.type==='panel'))&&
+       (target.c.id===comp.id||isDescendantOf(target.c,comp.id))) target=null;
+    if(target&&target.kind==='tab'){
+      comp.parent=target.c.id;
+      comp.tabIdx=target.c.active||0;
+      delete comp.pane; delete comp.dock;
+      comp.x=Math.max(0,snap(absX-target.cx));
+      comp.y=Math.max(0,snap(absY-target.cy));
+    } else if(target&&target.kind==='split'){
+      const paneRect=target.pane===0?target.rects.pane0:target.rects.pane1;
+      const oldParent=target.c.id, oldPane=target.pane;
+      comp.parent=oldParent;
+      comp.pane=oldPane;
+      if(!comp.dock) comp.dock = comp.type==='split' ? 'fill' : 'none';
+      delete comp.tabIdx;
+      if(comp.dock==='fill'){
+        comp.x=0; comp.y=0; comp.w=paneRect.w; comp.h=paneRect.h;
+      } else {
+        // None: keep its own size, just re-anchor its position relative to the new pane's origin
+        comp.x=Math.max(0,snap(absX-target.cx));
+        comp.y=Math.max(0,snap(absY-target.cy));
+      }
+      if(comp.type==='split'){
+        // that pane may already have content - move it into the newly-nested split's
+        // first pane instead of letting it silently overlap
+        comps.forEach(k=>{
+          if(k.id!==comp.id&&!movingIds.has(k.id)&&k.parent===oldParent&&(k.pane||0)===oldPane){
+            k.parent=comp.id; k.pane=0; if(!k.dock)k.dock='fill';
+          }
+        });
+      }
+    } else if(target&&target.kind==='panel'){
+      // 패널/그룹박스 위에 놓으면 탭·스플릿처럼 그 패널의 자식이 된다(상대좌표로 재계산).
+      comp.parent=target.c.id;
+      delete comp.tabIdx; delete comp.pane; delete comp.dock;
+      comp.x=Math.max(0,snap(absX-target.cx));
+      comp.y=Math.max(0,snap(absY-target.cy));
+    } else if(comp.parent){
+      // dropped outside every container's content area: promote back to a top-level component
+      comp.x=Math.max(0,snap(absX));
+      comp.y=Math.max(0,snap(absY));
+      delete comp.parent;
+      delete comp.tabIdx;
+      delete comp.pane;
+      delete comp.dock;
+    }
+  });
+}
+
+// ---- Rubber-band (drag box) selection ----
+let boxSel=null;
+canvas.addEventListener('mousedown',e=>{
+  if(e.target!==canvas)return; // only when clicking empty canvas
+  const r=canvas.getBoundingClientRect();
+  const ctrl=e.ctrlKey||e.metaKey;
+  boxSel={sx:(e.clientX-r.left)/zoom, sy:(e.clientY-r.top)/zoom, ctrl, base:ctrl?new Set(selIds):new Set(), moved:false};
+  if(!ctrl){ selectSingle(null); render(); }
+});
+document.addEventListener('mousemove',e=>{
+  if(!boxSel)return;
+  const r=canvas.getBoundingClientRect();
+  const cx=(e.clientX-r.left)/zoom, cy=(e.clientY-r.top)/zoom;
+  const x=Math.min(cx,boxSel.sx), y=Math.min(cy,boxSel.sy), w=Math.abs(cx-boxSel.sx), h=Math.abs(cy-boxSel.sy);
+  if(w>2||h>2)boxSel.moved=true;
+  // compute intersecting comps (union with ctrl base)
+  const hit=new Set(boxSel.base);
+  comps.forEach(c=>{
+    if(c.parent)return; // nested Tab children use relative coords; select them by clicking directly instead
+    const inter = !(c.x > x+w || c.x+c.w < x || c.y > y+h || c.y+c.h < y);
+    if(inter) hit.add(c.id);
+  });
+  setSelection(hit);
+  drawCanvas();
+  // draw selection box on top (drawCanvas cleared canvas)
+  const box=document.createElement('div');
+  box.id='selbox';
+  box.style.left=x+'px';box.style.top=y+'px';box.style.width=w+'px';box.style.height=h+'px';
+  canvas.appendChild(box);
+});
+document.addEventListener('mouseup',()=>{
+  if(boxSel){
+    const box=document.getElementById('selbox'); if(box)box.remove();
+    boxSel=null;
+    renderProps();
+  }
+});
+
+// ---- Rubber-band selection inside a Tab page / Split pane's content area ----
+// Mirrors the top-level canvas rubber-band above, but scoped to one container's own children
+// (a Tab's current page, or one Split pane), in that container's local content coordinates.
+// Needed because Tabs/Split no longer forward a plain body drag up to their own move handler
+// (see renderComp/renderSplitChildren) - that drag should rubber-band-select the components
+// inside instead, exactly like dragging on the empty canvas does at the top level.
+let localBoxSel=null;
+// contentEl: the .tabs-body-wrap or .split-pane div itself (its background, not a child, must
+// be the actual mousedown target). c: the tabs/split component. pane: 0/1 for split, null for tabs.
+// getMembers(): returns the live list of comps currently shown in that content area.
+function attachContainerBoxSelect(contentEl,c,pane,getMembers){
+  contentEl.addEventListener('mousedown',e=>{
+    if(e.target!==contentEl)return; // only when dragging the empty content background itself
+    e.stopPropagation();
+    const ctrl=e.ctrlKey||e.metaKey;
+    const r=contentEl.getBoundingClientRect();
+    localBoxSel={
+      compId:c.id, pane, getMembers,
+      sx:(e.clientX-r.left)/zoom+(contentEl.scrollLeft||0),
+      sy:(e.clientY-r.top)/zoom+(contentEl.scrollTop||0),
+      ctrl, base:ctrl?new Set(selIds):new Set(), moved:false
+    };
+    if(!ctrl){ selectSingle(null); render(); }
+  });
+}
+// The content <div> is torn down and rebuilt by every drawCanvas() call (including the ones this
+// very drag triggers on each mousemove), so it can never be held onto directly across the drag -
+// it's re-located each time via the stable data-cid its wrapper always carries.
+function findContainerContentEl(compId,pane){
+  const wrap=canvas.querySelector('.cmp[data-cid="'+compId+'"]');
+  if(!wrap)return null;
+  const c=comps.find(x=>x.id===compId);
+  if(!c)return null;
+  if(c.type==='tabs') return wrap.querySelector(':scope > .tabs-body-wrap');
+  if(c.type==='split'){
+    const panes=wrap.querySelectorAll(':scope > .split-pane');
+    return panes[pane||0]||null;
+  }
+  return null;
+}
+document.addEventListener('mousemove',e=>{
+  if(!localBoxSel)return;
+  const el=findContainerContentEl(localBoxSel.compId,localBoxSel.pane);
+  if(!el)return; // container got deleted, or its tab page is no longer the active one
+  const r=el.getBoundingClientRect();
+  const cx=(e.clientX-r.left)/zoom+(el.scrollLeft||0), cy=(e.clientY-r.top)/zoom+(el.scrollTop||0);
+  const x=Math.min(cx,localBoxSel.sx), y=Math.min(cy,localBoxSel.sy);
+  const w=Math.abs(cx-localBoxSel.sx), h=Math.abs(cy-localBoxSel.sy);
+  if(w>2||h>2)localBoxSel.moved=true;
+  const hit=new Set(localBoxSel.base);
+  localBoxSel.getMembers().forEach(k=>{
+    const inter = !(k.x > x+w || k.x+k.w < x || k.y > y+h || k.y+k.h < y);
+    if(inter) hit.add(k.id);
+  });
+  setSelection(hit);
+  drawCanvas();
+  // re-locate again post-rebuild (drawCanvas just replaced it) to append the box in the right place
+  const el2=findContainerContentEl(localBoxSel.compId,localBoxSel.pane);
+  if(el2){
+    const box=document.createElement('div');
+    box.id='selbox';
+    box.style.left=x+'px';box.style.top=y+'px';box.style.width=w+'px';box.style.height=h+'px';
+    el2.appendChild(box);
+  }
+});
+document.addEventListener('mouseup',()=>{
+  if(localBoxSel){
+    const box=document.getElementById('selbox'); if(box)box.remove();
+    localBoxSel=null;
+    renderProps();
+  }
+});
+
+// ---- Smart guides (PowerPoint-style) ----
+const SNAP_TOL=6; // px snapping threshold
+// excludeIds: which comps to leave out of the target set (defaults to just the moving comp itself -
+// group-move passes every selected top-level comp's id so the whole group is excluded, not just one).
+function computeGuides(moving,x,y,excludeIds){
+  const ex=excludeIds||new Set([moving.id]);
+  const w=moving.w, h=moving.h;
+  const cw=canvas.offsetWidth, ch=canvas.offsetHeight;
+  // moving edges (candidate)
+  const mV={left:x, cx:x+w/2, right:x+w};      // vertical lines (x positions)
+  const mH={top:y, cy:y+h/2, bottom:y+h};      // horizontal lines (y positions)
+  // build target edge sets from other comps + canvas
+  const vTargets=[], hTargets=[];
+  comps.forEach(c=>{
+    if(ex.has(c.id))return;
+    vTargets.push({pos:c.x,span:[c.y,c.y+c.h]},{pos:c.x+c.w/2,span:[c.y,c.y+c.h]},{pos:c.x+c.w,span:[c.y,c.y+c.h]});
+    hTargets.push({pos:c.y,span:[c.x,c.x+c.w]},{pos:c.y+c.h/2,span:[c.x,c.x+c.w]},{pos:c.y+c.h,span:[c.x,c.x+c.w]});
+  });
+  // canvas center + edges
+  vTargets.push({pos:cw/2,span:[0,ch]},{pos:0,span:[0,ch]},{pos:cw,span:[0,ch]});
+  hTargets.push({pos:ch/2,span:[0,cw]},{pos:0,span:[0,cw]},{pos:ch,span:[0,cw]});
+
+  let bestVX=null,bestVLine=null,bestVDelta=SNAP_TOL+1;
+  Object.entries(mV).forEach(([k,val])=>{
+    vTargets.forEach(t=>{
+      const d=Math.abs(val-t.pos);
+      if(d<bestVDelta){bestVDelta=d;bestVX={key:k,shift:t.pos-val};bestVLine={pos:t.pos,span:t.span,my:[y,y+h]};}
+    });
+  });
+  let bestHY=null,bestHLine=null,bestHDelta=SNAP_TOL+1;
+  Object.entries(mH).forEach(([k,val])=>{
+    hTargets.forEach(t=>{
+      const d=Math.abs(val-t.pos);
+      if(d<bestHDelta){bestHDelta=d;bestHY={key:k,shift:t.pos-val};bestHLine={pos:t.pos,span:t.span,mx:[x,x+w]};}
+    });
+  });
+
+  const lines=[];
+  if(bestVX){x+=bestVX.shift;
+    const s0=Math.min(bestVLine.span[0],y),s1=Math.max(bestVLine.span[1],y+h);
+    lines.push({dir:'v',pos:bestVLine.pos,a:s0,b:s1});
+  }
+  if(bestHY){y+=bestHY.shift;
+    const s0=Math.min(bestHLine.span[0],x),s1=Math.max(bestHLine.span[1],x+w);
+    lines.push({dir:'h',pos:bestHLine.pos,a:s0,b:s1});
+  }
+  return {x,y,lines};
+}
+// Resize guides: unlike a move (which snaps the whole box's left/center/right against targets),
+// a resize only snaps the edge(s) actually being dragged - e.g. dragging the right edge only
+// checks the right edge against other comps' edges, never the left edge or center.
+function computeResizeGuides(c,dir,nx,ny,nw,nh){
+  const activeE=dir.includes('e'), activeW=dir.includes('w'), activeN=dir.includes('n'), activeS=dir.includes('s');
+  const cw=canvas.offsetWidth, ch=canvas.offsetHeight;
+  const vTargets=[], hTargets=[];
+  comps.forEach(o=>{
+    if(o.id===c.id)return;
+    vTargets.push({pos:o.x,span:[o.y,o.y+o.h]},{pos:o.x+o.w/2,span:[o.y,o.y+o.h]},{pos:o.x+o.w,span:[o.y,o.y+o.h]});
+    hTargets.push({pos:o.y,span:[o.x,o.x+o.w]},{pos:o.y+o.h/2,span:[o.x,o.x+o.w]},{pos:o.y+o.h,span:[o.x,o.x+o.w]});
+  });
+  vTargets.push({pos:cw/2,span:[0,ch]},{pos:0,span:[0,ch]},{pos:cw,span:[0,ch]});
+  hTargets.push({pos:ch/2,span:[0,cw]},{pos:0,span:[0,cw]},{pos:ch,span:[0,cw]});
+
+  const lines=[];
+  let snappedX=false, snappedY=false;
+  if(activeW){
+    let best=null,bestD=SNAP_TOL+1;
+    vTargets.forEach(t=>{const d=Math.abs(nx-t.pos);if(d<bestD){bestD=d;best=t;}});
+    if(best){
+      const delta=nx-best.pos; nw=nw+delta; nx=best.pos; snappedX=true;
+      const s0=Math.min(best.span[0],ny),s1=Math.max(best.span[1],ny+nh);
+      lines.push({dir:'v',pos:best.pos,a:s0,b:s1});
+    }
+  } else if(activeE){
+    let best=null,bestD=SNAP_TOL+1;
+    const right=nx+nw;
+    vTargets.forEach(t=>{const d=Math.abs(right-t.pos);if(d<bestD){bestD=d;best=t;}});
+    if(best){
+      nw=best.pos-nx; snappedX=true;
+      const s0=Math.min(best.span[0],ny),s1=Math.max(best.span[1],ny+nh);
+      lines.push({dir:'v',pos:best.pos,a:s0,b:s1});
+    }
+  }
+  if(activeN){
+    let best=null,bestD=SNAP_TOL+1;
+    hTargets.forEach(t=>{const d=Math.abs(ny-t.pos);if(d<bestD){bestD=d;best=t;}});
+    if(best){
+      const delta=ny-best.pos; nh=nh+delta; ny=best.pos; snappedY=true;
+      const s0=Math.min(best.span[0],nx),s1=Math.max(best.span[1],nx+nw);
+      lines.push({dir:'h',pos:best.pos,a:s0,b:s1});
+    }
+  } else if(activeS){
+    let best=null,bestD=SNAP_TOL+1;
+    const bottom=ny+nh;
+    hTargets.forEach(t=>{const d=Math.abs(bottom-t.pos);if(d<bestD){bestD=d;best=t;}});
+    if(best){
+      nh=best.pos-ny; snappedY=true;
+      const s0=Math.min(best.span[0],nx),s1=Math.max(best.span[1],nx+nw);
+      lines.push({dir:'h',pos:best.pos,a:s0,b:s1});
+    }
+  }
+  return {nx,ny,nw,nh,snappedX,snappedY,lines};
+}
+function drawGuides(lines){
+  clearGuides();
+  lines.forEach(l=>{
+    const el=document.createElement('div');
+    if(l.dir==='v'){el.className='guideline v';el.style.left=l.pos+'px';el.style.top=l.a+'px';el.style.height=(l.b-l.a)+'px';el.style.bottom='auto';}
+    else{el.className='guideline h';el.style.top=l.pos+'px';el.style.left=l.a+'px';el.style.width=(l.b-l.a)+'px';el.style.right='auto';}
+    canvas.appendChild(el);
+  });
+}
+function clearGuides(){canvas.querySelectorAll('.guideline,.gl-dist').forEach(e=>e.remove());}
+// +/- 단축키 처리: 선택된 컴포넌트 유형에 맞는 추가/삭제 함수로 위임한다.
+// 삭제(-)는 항상 "맨 뒤" 항목을 지운다. 처리했으면 true 를 반환한다.
+function itemShortcut(action){
+  const c=comps.find(x=>x.id===sel);if(!c)return false;
+  if(c.type==='grid'){
+    if(action==='add'){ addGridCol(); return true; }
+    const n=gridColsArr(c).length; if(n>0){ delGridCol(n-1); } return true;
+  }
+  if(c.type==='searchbar'){
+    if(action==='add'){ addSearchField(); return true; }
+    const n=(c.fields||[]).length; if(n>0){ delSearchField(n-1); } return true;
+  }
+  if(c.type==='tabs'){
+    if(action==='add'){ ilAdd('text','탭'); return true; }
+    const n=ilItems(c,'text').length; if(n>0){ ilDel('text',n-1); } return true;
+  }
+  if(c.type==='combo'||c.type==='radio'){
+    if(action==='add'){ ilAdd('options','옵션'); return true; }
+    const n=ilItems(c,'options').length; if(n>0){ ilDel('options',n-1); } return true;
+  }
+  return false;
+}
+document.addEventListener('keydown',e=>{
+  const typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
+  const mod=e.ctrlKey||e.metaKey;
+  if(mod&&(e.key==='z'||e.key==='Z')&&!e.shiftKey){e.preventDefault();undo();return;}
+  if(mod&&((e.key==='y'||e.key==='Y')||((e.key==='z'||e.key==='Z')&&e.shiftKey))){e.preventDefault();redo();return;}
+  if(mod&&(e.key==='c'||e.key==='C')&&!typing){e.preventDefault();copySelectionToSystem();return;}
+  if(mod&&(e.key==='v'||e.key==='V')&&!typing){e.preventDefault();pasteFromClipboard();return;}
+  if((e.key==='Delete'||e.key==='Backspace')&&sel!==null&&!typing){
+    e.preventDefault();
+    delSel();
+  }
+  // +/- 단축키: 선택한 컴포넌트에서 항목(탭/조회조건/옵션/컬럼)을 하나 추가(+)하거나
+  // 맨 뒤에서 하나 삭제(-)한다. 입력 중이거나 단일 선택이 아니면 무시한다.
+  if(!typing && sel!==null && selIds.size===1){
+    const plus = e.key==='+' || e.key==='=' || e.code==='NumpadAdd';
+    const minus = e.key==='-' || e.key==='_' || e.code==='NumpadSubtract';
+    if(plus||minus){
+      if(itemShortcut(plus?'add':'del')){ e.preventDefault(); return; }
+    }
+  }
+  if(e.key==='Escape'){
+    // 열려 있는 팝업을 닫는다. 여러 개가 겹쳐 있을 수 있으므로 위에 뜬 것부터 순서대로
+    // 하나씩만 닫고 빠져나간다. 마지막으로 배치 대기 중인 컴포넌트를 해제한다.
+    // 입력 중(typing)에는 팝업을 닫지 않는다. 이미지 변환 창은 닫을 때 붙여넣은 JSON과
+    // 이미지를 비우기 때문에, 입력칸에서 무심코 Esc 를 눌러 내용을 날리는 일을 막는다.
+    const modal = id => { const el=document.getElementById(id); return el&&el.classList.contains('on') ? el : null; };
+    // 둘러보기는 다른 모달보다 위에 그려지므로 가장 먼저 처리한다.
+    const tour=document.getElementById('tourOverlay');
+    if(tour && tour.style.display==='block'){ closeTour(); return; }
+    if(!typing){
+      if(modal('patchBg')){ closePatch(); return; }
+      if(modal('guideBg')){ closeGuide(); return; }
+      if(modal('tmplBg')){ closeTemplates(); return; }
+      if(modal('convBg')){ closeConvert(); return; }
+      if(modal('skinBg')){ closeSkinPicker(); return; }
+      if(modal('cloudBg')){ closeCloud(); return; }
+      if(modal('signupBg')){ closeSignup(); return; }
+      if(modal('loginBg')){ closeLogin(); return; }
+    }
+    // 자동 저장 복구 안내는 Esc 로 닫지 않는다. 무심코 눌러 닫으면 직전 작업을
+    // 되살릴 기회가 사라지므로, 「이어서 작업」/「새로 시작」을 직접 고르게 둔다.
+    if(armedType){ armedType=null; updateArmedUI(); }
+  }
+});
+
+// ---- Properties panel ----
+// "입력 컴포넌트" 그룹(툴박스의 입력 컴포넌트 섹션과 동일한 타입 집합).
+// 정렬/간격 기능은 이 타입들로만 구성된 다중 선택에서만 노출한다.
+const INPUT_COMPONENT_TYPES=['label','input','combo','date','daterange','check','radio','popup','attach'];
+function isInputComponent(c){ return INPUT_COMPONENT_TYPES.includes(c.type); }
+// Builds the small "?" badge whose tooltip replaces the old always-visible hint paragraphs.
+function qh(text){
+  return `<span class="qhelp" tabindex="0">?<span class="qtip">${text}</span></span>`;
+}
+function renderProps(){
+  const p=document.getElementById('props');
+  if(selIds.size>1){
+    const selComps=comps.filter(c=>selIds.has(c.id));
+    const allInput=selComps.every(isInputComponent);
+    let alignSection='';
+    if(allInput){
+      // 정렬 대상(같은 parent 공유) 확정. 기준은 항상 좌측 상단 컴포넌트.
+      const info=alignTargets();
+      const crossParent=info && info.targets.length<selComps.length;
+      // 슬라이더 기본값=현재 실제 간격, 최대값=캔버스 기준. 현재값이 max보다 크면 max를 늘려 표시.
+      const gapMaxH0=gapSliderMax('x'), gapMaxV0=gapSliderMax('y');
+      const curGapH=currentGap('x'), curGapV=currentGap('y');
+      const gapMaxH=Math.max(gapMaxH0, curGapH);
+      const gapMaxV=Math.max(gapMaxV0, curGapV);
+      alignSection=`
+      <div class="hint" style="margin:2px 0 8px;">정렬 기준은 항상 선택된 컴포넌트 중 <b>좌측 상단</b>에 위치한 컴포넌트입니다.</div>
+      <div class="lp-grid" style="grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+        <button class="lp-btn" onclick="alignHorizontal()">↔ 수평 정렬</button>
+        <button class="lp-btn" onclick="alignVertical()">↕ 수직 정렬</button>
+      </div>
+      <button class="lp-btn" style="width:100%;margin-bottom:12px;" onclick="alignSmart()">✦ 스마트 정렬 (수평 → 수직)</button>
+
+      <div class="gap-adjust">
+        <div class="gap-row">
+          <label>↔ 가로 위치 간격
+            <input type="number" id="gapHInput" class="gap-num" value="${curGapH}" min="0" max="${gapMaxH}" step="1"
+              onchange="onGapNumber('x', this.value)" onkeydown="if(event.key==='Enter'){onGapNumber('x',this.value);this.blur();}"><span class="gap-unit">px</span>
+          </label>
+          <input type="range" id="gapHRange" min="0" max="${gapMaxH}" value="${curGapH}" step="1"
+            onmousedown="gapSliderStart('x')" ontouchstart="gapSliderStart('x')"
+            oninput="onGapSlider('x', this.value)"
+            onchange="gapSliderEnd('x')" onmouseup="gapSliderEnd('x')" ontouchend="gapSliderEnd('x')">
+        </div>
+        <div class="gap-row">
+          <label>↕ 세로 위치 간격
+            <input type="number" id="gapVInput" class="gap-num" value="${curGapV}" min="0" max="${gapMaxV}" step="1"
+              onchange="onGapNumber('y', this.value)" onkeydown="if(event.key==='Enter'){onGapNumber('y',this.value);this.blur();}"><span class="gap-unit">px</span>
+          </label>
+          <input type="range" id="gapVRange" min="0" max="${gapMaxV}" value="${curGapV}" step="1"
+            onmousedown="gapSliderStart('y')" ontouchstart="gapSliderStart('y')"
+            oninput="onGapSlider('y', this.value)"
+            onchange="gapSliderEnd('y')" onmouseup="gapSliderEnd('y')" ontouchend="gapSliderEnd('y')">
+        </div>
+        <div class="hint" style="margin-top:4px;">기준(좌측 상단) 컴포넌트를 고정한 채, 각 컴포넌트의 <b>좌측(시작 위치)</b>이 균일한 간격으로 줄을 서도록 조절됩니다. 컴포넌트 크기는 바뀌지 않습니다.</div>
+      </div>
+      ${crossParent?`<div class="hint" style="margin-bottom:10px;color:#c47a00;">※ 서로 다른 컨테이너에 걸친 컴포넌트는 정렬 대상에서 제외됩니다. 같은 영역의 ${info.targets.length}개만 정렬됩니다.</div>`:''}
+      `;
+    }else{
+      alignSection=`<div class="hint" style="margin:2px 0 12px;color:#8a94a0;">정렬·간격 조절 기능은 <b>입력 컴포넌트</b>(라벨/텍스트박스/콤보박스/날짜/기간/체크박스/라디오/팝업)만 선택했을 때 사용할 수 있습니다.</div>`;
+    }
+    p.innerHTML=`<h3>${selIds.size}개 선택됨</h3>
+      <div class="hint" style="margin-bottom:10px;">여러 컴포넌트가 선택되었습니다. 드래그로 함께 이동하거나 Del 키로 모두 삭제할 수 있습니다.<br>Ctrl(⌘)+클릭으로 선택에서 빼거나 추가, Ctrl(⌘)+드래그로 복사 이동할 수 있습니다.</div>
+      ${alignSection}
+      <button class="del-btn" onclick="delSel()">선택한 ${selIds.size}개 삭제 (Del)</button>`;
+    return;
+  }
+  const c=comps.find(x=>x.id===sel);
+  if(!c){p.innerHTML='<div class="empty-props">컴포넌트를 선택하면<br>여기에 속성이 표시됩니다.<br><br>왼쪽 도구상자에서 캔버스로<br>끌어다 놓으세요.<br><br>여러 개 선택: 빈 곳에서 드래그<br>또는 Ctrl(⌘)+클릭<br><br>복사: Ctrl(⌘)+드래그 또는<br>Ctrl(⌘)+C / Ctrl(⌘)+V<div style="margin-top:22px;padding-top:16px;border-top:1px solid #e2e8f0;text-align:left;font-size:12px;line-height:1.7;color:#64748b;"><b style="color:#334155;">사용 안내</b><br>본 프로그램은 <b style="color:#185fa5;">인가된 업무 목적</b>으로만 사용할 수 있습니다.<br><br><span style="color:#94a2ae;">다음 행위를 금지합니다</span><br>· 목적 외 사용<br>· 데이터의 외부 유출 및 무단 배포<br><br>원활한 운영과 보안을 위해 <b style="color:#334155;">접속 정보(IP, 사용자명 등)가 기록</b>될 수 있으며, 사용에 따른 <b style="color:#334155;">모든 책임은 사용자 본인</b>에게 있습니다.</div></div>';return;}
+  const fatMode=document.body.classList.contains('skin-classic');
+  const names={title:'화면 제목',section:'섹션 헤더',panel:'패널',tabs:'탭(Tab)',split:'스플릿 컨테이너',label:'라벨',input:'텍스트박스',combo:'콤보박스',date:'날짜선택',daterange:'기간',check:'체크박스',radio:'라디오',button:'버튼',grid:'그리드',chart:'차트',tree:'트리',searchbar:'조회조건 패널',popup:'팝업',attach:'첨부파일'};
+  let html=`<h3>${names[c.type]} 속성</h3>`;
+  // 변경상태(기본/추가/변경/삭제/이동) - 모든 컴포넌트 공통, 항상 속성 최상단. 그리드·조회조건
+  // 패널도 "그 컴포넌트 자체"는 다른 컴포넌트와 동일하게 여기서 지정한다(내부 컬럼/필드별 상태는
+  // 각 타입의 개별 속성 목록 쪽에 별도로 있음).
+  {
+    const dst=c.diffStatus||'base';
+    const seg=DIFF_ORDER.map(v=>{
+      const lbl=v==='base'?'기본':DIFF_LABEL[v];
+      return `<button type="button" class="status-seg-btn st-${v}${dst===v?' on':''}" onclick="upd('diffStatus','${v}')">${lbl}</button>`;
+    }).join('');
+    html+=`<div class="status-seg">${seg}</div>`;
+  }
+  // 입력 컴포넌트 타입 변경 - 라벨|텍스트박스|콤보박스|날짜선택|기간|체크박스|라디오|팝업|첨부파일 9종
+  // 사이를 즉시 전환한다(예: 텍스트박스→콤보박스, 라디오→체크박스). 변경상태 선택과 아래
+  // 텍스트/라벨 속성 사이에 위치. changeCompType()이 실제 변환을 담당.
+  if(INPUT_TYPES.includes(c.type)){
+    const tOpts=INPUT_TYPES.map(t=>{const m=INPUT_TYPE_META[t];return `<option value="${t}"${c.type===t?' selected':''}>${m.icon} ${m.label}</option>`;}).join('');
+    html+=`<div class="prop"><label>타입${qh('다른 입력 컴포넌트 종류로 바로 바꿉니다. 위치·크기는 그대로 유지되고, 라벨 문구·필수·읽기전용 등 공통 속성은 옮겨집니다.')}</label><select onchange="changeCompType(${c.id},this.value)">${tOpts}</select></div>`;
+  }
+  if(c.type!=='panel'&&c.type!=='split'){
+    if(c.type==='tree'){
+      html+=`<div class="prop"><label>트리 항목${qh('한 줄에 하나씩 입력합니다. 앞에 <b>공백 2칸</b>을 넣을 때마다 한 단계씩 하위 항목이 됩니다.<br><br>하위가 있는 항목에는 자동으로 −/+ 접기 버튼이 표시됩니다.')}</label>
+        <textarea class="tree-ta" rows="9" oninput="upd('text',this.value)" spellcheck="false">${esc(c.text||'')}</textarea></div>`;
+
+    } else if(c.type!=='grid'&&c.type!=='tabs'&&c.type!=='searchbar'){
+      if(c.type==='daterange'&&fatMode){
+        const parts=(c.text||'').split('~').map(s=>s.trim());
+        const tip=qh('두 날짜를 각각 입력합니다. "YYYY-MM-DD" 형식 권장(내보내기 결과물에서 실제 날짜 입력칸 두 개로 표시됩니다).');
+        const drStyle=(rq,ro)=> ro?'readonly':(rq?'required':'none');
+        const drStyleRadios=(idx,rq,ro)=>{
+          const cur=drStyle(rq,ro);
+          const opts=[['none','없음'],['required','필수'],['readonly','읽기전용']];
+          return `<div class="prop"><label>날짜${idx+1} 스타일</label><div class="lp-grid">`+
+            opts.map(([v,t])=>`<button class="lp-btn${cur===v?' on':''}" onclick="updDrStyle(${idx},'${v}')">${t}</button>`).join('')+
+            `</div></div>`;
+        };
+        html+=`<div class="prop"><label>날짜1${tip}</label><input value="${(parts[0]||'').replace(/"/g,'&quot;')}" oninput="updDateRangePart(0,this.value)"></div>`;
+        html+=drStyleRadios(0,c.required,c.readonly);
+        html+=`<div class="prop"><label>날짜2</label><input value="${(parts[1]||'').replace(/"/g,'&quot;')}" oninput="updDateRangePart(1,this.value)"></div>`;
+        html+=drStyleRadios(1,c.required2,c.readonly2);
+      } else if(c.type==='date' || c.type==='daterange'){
+        // 날짜·기간 컴포넌트는 더 이상 텍스트를 직접 입력하지 않는다 - 값은 아래 달력 아이콘의
+        // 빠른 날짜 팝업으로만 정하고, 이 입력칸은 그 결과를 보여주는 읽기전용 표시로만 쓴다.
+        const isDr=c.type==='daterange';
+        let val;
+        if(isDr){
+          const drp=(c.text||'').split('~').map(s=>s.trim());
+          const dv1=c.startBlank?'(빈값)':qdDisplayText(qdResolvedText(drp[0],c.startSpec)||todayStr(),c.dateFmt), dv2=c.endBlank?'(빈값)':qdDisplayText(qdResolvedText(drp[1],c.endSpec)||todayStr(),c.dateFmt);
+          val=dv1+' ~ '+dv2;
+        }else{
+          val=c.blank?'(빈값)':qdDisplayText(qdResolvedText(c.text,c.dateSpec)||todayStr(),c.dateFmt);
+        }
+        const lbl=isDr?'표시 텍스트':'텍스트';
+        const tip=isDr?qh('"YYYY-MM-DD ~ YYYY-MM-DD" 형식으로 저장됩니다. 내보내기 결과물에서 <b>시작일·종료일 두 개의 실제 날짜 입력</b>으로 표시됩니다.'):'';
+        html+=`<div class="prop"><label>${lbl}${tip}</label><input value="${escAttr(val)}" disabled title="아래 달력 아이콘으로 값을 선택하세요"></div>`;
+        if(isDr){
+          html+=`<div class="qd-open-row">
+            <button class="qd-open-btn" onclick="openQuickDateComp(this,${c.id},'start')">📅 시작일</button>
+            <button class="qd-open-btn" onclick="openQuickDateComp(this,${c.id},'end')">📅 종료일</button>
+          </div>`;
+        }else{
+          html+=`<button class="qd-open-btn" onclick="openQuickDateComp(this,${c.id},'single')">📅 날짜 선택</button>`;
+        }
+      } else {
+        const lbl=(c.type==='daterange'?'표시 텍스트':'텍스트');
+        const tip=c.type==='daterange'?qh('"YYYY-MM-DD ~ YYYY-MM-DD" 형식으로 입력하면 내보내기 결과물에서 <b>시작일·종료일 두 개의 실제 날짜 입력</b>으로 표시됩니다.'):'';
+        html+=`<div class="prop"><label>${lbl}${tip}</label><div class="prop-inline-btn"><input value="${(c.text||'').replace(/"/g,'&quot;')}" oninput="upd('text',this.value)"><button type="button" class="sf-fmtbtn sf-fmtbtn-text" title="텍스트 서식 (볼드·기울임·밑줄·글자색·배경색)" onclick="openCompTextFormat(this)"${textFmtStyle(c)}>가</button></div></div>`;
+      }
+    }
+  }
+  {
+    const dockParent = c.parent ? comps.find(x=>x.id===c.parent) : null;
+    if(dockParent && dockParent.type==='split'){
+      const dock=c.dock==='fill'?'fill':'none';
+      html+=`<div class="prop"><label>배치 방식 (Dock)${qh('<b>Fill</b>로 두면 컴포넌트가 영역 크기에 자동으로 맞춰지고(경계선을 옮기면 같이 조절됨), 직접 이동·크기조절은 할 수 없습니다.<br><br><b>None</b>은 영역 안에서 자유롭게 배치합니다.')}</label><select onchange="upd('dock',this.value)">
+        <option value="none"${dock==='none'?' selected':''}>None · 자유 배치·크기조절 (기본값)</option>
+        <option value="fill"${dock==='fill'?' selected':''}>Fill · 영역에 꽉 채우기</option>
+      </select></div>`;
+    }
+  }
+  const posHtml=`<div class="prop-row">
+    <div class="prop"><label>X</label><input type="number" data-prop="x" value="${c.x}" oninput="upd('x',+this.value)"></div>
+    <div class="prop"><label>Y</label><input type="number" data-prop="y" value="${c.y}" oninput="upd('y',+this.value)"></div>
+  </div>
+  <div class="prop-row">
+    <div class="prop"><label>너비</label><input type="number" data-prop="w" value="${c.w}" oninput="upd('w',+this.value)"></div>
+    <div class="prop"><label>높이</label><input type="number" data-prop="h" value="${c.h}" oninput="upd('h',+this.value)"></div>
+  </div>`;
+  if(['label','input','combo','date','daterange','section','check','popup','attach'].includes(c.type)&&!(c.type==='daterange'&&fatMode))
+    html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.required?'checked':''} onchange="upd('required',this.checked)"> 필수 항목 (*)</label></div>`;
+  if(c.type==='label'&&fatMode){
+    const lblStyle=(c.style==='ref'||c.style==='jump')?c.style:'none';
+    html+=`<div class="grp"><div class="grp-h">스타일${qh('라벨 왼쪽에 작은 아이콘을 붙입니다. <b>Ref</b>는 참조 정보, <b>Jump</b>는 다른 화면으로 이동함을 나타낼 때 씁니다.')}</div>
+      <div class="prop"><label class="cbx"><input type="radio" name="lblStyle${c.id}" ${lblStyle==='none'?'checked':''} onchange="upd('style','none')"> 없음</label></div>
+      <div class="prop"><label class="cbx"><input type="radio" name="lblStyle${c.id}" ${lblStyle==='ref'?'checked':''} onchange="upd('style','ref')"> Ref</label></div>
+      <div class="prop"><label class="cbx"><input type="radio" name="lblStyle${c.id}" ${lblStyle==='jump'?'checked':''} onchange="upd('style','jump')"> Jump</label></div>
+    </div>`;
+  }
+  if(LABELED_TYPES.includes(c.type)){
+    const show=c.showLabel===true;
+    const pos=c.labelPos||'top';
+    html+=`<div class="grp"><div class="grp-h">라벨</div>
+      <div class="prop"><label class="cbx"><input type="checkbox" ${show?'checked':''} onchange="upd('showLabel',this.checked)"> 라벨 표시</label></div>`;
+    if(show){
+      html+=`<div class="prop"><label>라벨 내용</label><div class="prop-inline-btn"><input value="${(c.labelText||'').replace(/"/g,'&quot;')}" oninput="upd('labelText',this.value)" placeholder="예: 결제기간"><button type="button" class="sf-fmtbtn sf-fmtbtn-label" title="라벨 서식 (볼드·기울임·밑줄·글자색·배경색)" onclick="openCompLabelFormat(this)"${labelFmtStyle(c)}>가</button></div></div>`;
+      html+=`<div class="prop"><label>라벨 위치</label><div class="lp-grid">
+        ${['top','left','right','bottom'].map(p=>`<button class="lp-btn${pos===p?' on':''}" onclick="upd('labelPos','${p}')">${({top:'위',left:'왼쪽',right:'오른쪽',bottom:'아래'})[p]}</button>`).join('')}
+      </div></div>`;
+    }
+    html+=`</div>`;
+  }
+  if(['input','combo','date','daterange','popup','attach'].includes(c.type)&&!(c.type==='daterange'&&fatMode))
+    html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.readonly?'checked':''} onchange="upd('readonly',this.checked)"> 읽기전용${(c.type==='popup'&&fatMode)?qh('첫 번째(코드) 텍스트박스에만 적용됩니다. 명칭 표시칸은 항상 읽기전용입니다.'):''}</label></div>`;
+  if(c.type==='popup'&&fatMode){
+    const popStyle=c.style==='code'?'code':'code_name';
+    html+=`<div class="grp"><div class="grp-h">스타일${qh('<b>코드/명</b>은 코드 입력칸 옆에 명칭 표시칸까지 함께 둡니다(기본값). <b>코드</b>를 고르면 명칭 표시칸 없이 코드 입력칸만 남습니다.')}</div>
+      <div class="prop"><label class="cbx"><input type="radio" name="popStyle${c.id}" ${popStyle==='code_name'?'checked':''} onchange="upd('style','code_name')"> 코드/명</label></div>
+      <div class="prop"><label class="cbx"><input type="radio" name="popStyle${c.id}" ${popStyle==='code'?'checked':''} onchange="upd('style','code')"> 코드</label></div>
+    </div>`;
+  }
+  if(c.type==='button')
+    html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.outline?'checked':''} onchange="upd('outline',this.checked)"> 아웃라인 스타일</label></div>`;
+  if(c.type==='combo'){
+    html+=itemListEditor(c,'options','옵션',qh('＋ 옵션 추가 버튼으로 항목을 추가하고, 각 칸에 옵션명을 입력합니다. 드래그로 순서를 바꾸거나 ×로 삭제할 수 있습니다.<br><br>내보내기 결과물에서 클릭 시 실제 목록이 펼쳐지고 항목을 선택할 수 있습니다.'),'옵션');
+  }
+  if(c.type==='radio'){
+    const ropts=(c.options||'').split(',').map(s=>s.trim()).filter(Boolean);
+    html+=itemListEditor(c,'options','옵션',qh('＋ 옵션 추가 버튼으로 항목을 추가하고, 각 칸에 옵션명을 입력합니다. 드래그로 순서를 바꾸거나 ×로 삭제할 수 있습니다.<br><br>내보내기 결과물에서 클릭하면 그룹 내에서 하나만 선택되도록 동작합니다.<br><br>비워두면 이전처럼 단일 라디오로 표시됩니다.'),'옵션');
+    if(ropts.length){
+      const rsel=c.selected||0;
+      const ropts_html=ropts.map((n,i)=>`<option value="${i}"${i===rsel?' selected':''}>${esc(n)||'(이름없음)'}</option>`).join('');
+      html+=`<div class="prop"><label>기본 선택</label><select onchange="upd('selected',+this.value)">${ropts_html}</select></div>`;
+    }
+  }
+  if(c.type==='grid'){
+    html+=`<div class="prop"><label>표시 행 수</label><input type="number" value="${gridRowCount(c)}" min="0" max="20" oninput="upd('rows',+this.value)"></div>`;
+    if(!fatMode){
+      html+=`<div class="prop"><label>그리드 제목</label><input value="${(c.gtitle||'').replace(/"/g,'&quot;')}" oninput="upd('gtitle',this.value)"></div>`;
+    }
+    html+=`<div class="grp"><div class="grp-h">컬럼 폭 방식${qh('<b>자동</b>: 각 컬럼 폭이 글자가 잘리지 않는 가장 작은 크기로 자동 조절되고, 컬럼명을 바꾸면 실시간으로 다시 맞춰집니다. 전체 폭이 넘칠 때만 가로 스크롤이 나타납니다.<br><br><b>수동</b>: 모든 컬럼이 아래 슬라이더로 지정한 폭으로 고정되고, 전체 폭이 그리드보다 넓어지면 가로 스크롤바가 나타납니다.<br><br><b>고정</b>: 컬럼 폭이 그리드 너비에 맞춰 균등하게 나눠집니다(스크롤 없음).<br><br>세 방식 모두 그리드에서 컬럼 경계선을 직접 드래그해 폭을 자유롭게 바꿀 수 있습니다.')}</div>
+      <div class="prop"><label class="cbx"><input type="radio" name="colSizeMode${c.id}" ${gridSizeMode(c)==='auto'?'checked':''} onchange="updGridSizeMode('auto')"> 자동</label></div>
+      <div class="prop"><label class="cbx"><input type="radio" name="colSizeMode${c.id}" ${gridSizeMode(c)==='scroll'?'checked':''} onchange="updGridSizeMode('scroll')"> 수동</label></div>
+      <div class="prop"><label class="cbx"><input type="radio" name="colSizeMode${c.id}" ${gridSizeMode(c)==='default'?'checked':''} onchange="updGridSizeMode('default')"> 고정</label></div>
+    </div>`;
+    if(gridSizeMode(c)==='scroll'){
+      html+=`<div class="prop"><label>컬럼 폭 (${Math.max(60,+c.colMinW||120)}px)</label>
+        <input type="range" min="60" max="300" step="10" value="${Math.max(60,+c.colMinW||120)}" oninput="updGridColMinW(+this.value)"></div>`;
+    }
+    if(!fatMode){
+      html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.pagination?'checked':''} onchange="upd('pagination',this.checked)"> Pagination 사용${qh('그리드 하단에 페이지 이동 UI(페이지 번호·Show rows·Go to·전체 건수)를 표시합니다.<br><br>목업이므로 실제 페이지 이동은 되지 않고 항상 1페이지만 표시되며, 건수는 <b>표시 행 수</b> 값을 그대로 보여줍니다.<br><br>씬모드 전용 기능으로, 팻모드에서는 이 옵션과 하단 UI가 표시되지 않습니다.')}</label></div>`;
+      html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.rowOrderCol!==false?'checked':''} onchange="upd('rowOrderCol',this.checked)"> Row Order 사용${qh('그리드 맨 왼쪽에 순번 컬럼을 추가합니다.<br><br>헤더에는 설정·필터·고정 아이콘이 표시되고, 데이터 행에는 <b>표시 행 수</b> 만큼 1부터 차례대로 번호가 매겨집니다.<br><br>씬모드 전용 기능으로, 팻모드에서는 표시되지 않습니다.')}</label></div>`;
+      html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.checkboxCol!==false?'checked':''} onchange="upd('checkboxCol',this.checked)"> CheckBox 사용${qh('그리드 왼쪽(Row Order 다음)에 행 선택용 체크박스 컬럼을 추가합니다.<br><br>헤더와 <b>표시 행 수</b> 만큼의 각 데이터 행에 체크박스가 표시됩니다.<br><br>씬모드 전용 기능으로, 팻모드에서는 표시되지 않습니다.')}</label></div>`;
+      html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.excelDownload!==false?'checked':''} onchange="upd('excelDownload',this.checked)"> Excel Download 사용${qh('그리드 제목 우측에 <b>(건수)건</b> 문구를 표시합니다.<br><br>건수는 <b>표시 행 수</b> 값을 그대로 보여주며, 표시 행 수를 바꾸면 바로 반영됩니다. 체크를 해제하면 건수 문구가 숨겨집니다.<br><br>씬모드 전용 기능으로, 팻모드에서는 표시되지 않습니다.')}</label></div>`;
+    }
+    const gcols=(c.text||'').split(',').map(s=>s.trim());
+    const groupCollapsed=gcolGroupCollapsed.has(String(c.id));
+    html+=`<div class="grp"><div class="grp-h gcol-grp-h">
+      <span>컬럼 (${gcols.length})${qh('조회조건 필드처럼 드래그로 순서를 바꾸거나, ×로 삭제할 수 있습니다.<br><br>유형을 텍스트박스·콤보박스·날짜·체크박스·첨부파일·검색 중 하나로 지정하면 내보내기 결과물에서 해당 컴포넌트처럼 동작합니다 (콤보는 클릭 시 목록 펼침, 체크박스는 클릭 시 체크, 첨부파일은 업로드 아이콘 표시, 검색은 조회조건의 검색 필드처럼 입력칸 우측에 돋보기 표시).<br><br>정렬 아이콘(≡)으로 헤더 텍스트의 좌/가운데/우 정렬을 고를 수 있고, <b>*</b>(필수)를 켜면 헤더 라벨 앞에 빨간 *가 붙고 데이터 행이 크림색으로, <b>🔒</b>(읽기전용)을 켜면 데이터 행이 회색으로 표시됩니다 (헤더 색은 바뀌지 않습니다).<br><br>각 컬럼의 <b>상위헤더</b> 칸에 같은 이름을 연속으로 입력하면 그 컬럼들이 헤더에서 하나로 병합되어 표시됩니다 (예: 기준정보 아래 품목·품목명).')}</span>
+      <button class="gcol-grp-toggle" title="컬럼 목록 펼치기/접기" onclick="toggleGcolGroup('${c.id}')">${groupCollapsed?'펼치기 ▸':'접기 ▾'}</button>
+    </div>`;
+    if(!groupCollapsed){
+      html+=`<div class="sfield-list">`;
+      gcols.forEach((colName,gi)=>{
+        const ctype=(c.colTypes&&c.colTypes[gi])||'input';
+        const calign=(c.colAligns&&c.colAligns[gi])||'left';
+        const creq=!!(c.colRequired&&c.colRequired[gi]);
+        const cro=!!(c.colReadonly&&c.colReadonly[gi]);
+        const gcSelCls=(selGC&&selGC.compId===c.id&&selGC.ci===gi)?' sf-row-selected':'';
+        html+=`<div class="sfield-row${gcSelCls}" id="gcolrow-${gi}"
+          ondragover="gcDragOver(event)"
+          ondragleave="gcDragLeave(event)" ondrop="gcDrop(event,${gi})">
+          <div class="sf-row1">
+            <span class="sf-handle" draggable="true" ondragstart="gcDragStart(event,${gi})" ondragend="gcDragEnd(event)" title="드래그해서 순서 변경">⠿</span>
+            <input type="number" class="sf-pos" title="순서 번호 (직접 입력하면 그 위치로 이동)" min="1" max="${gcols.length}" value="${gi+1}" onchange="gcMoveTo(${gi},this.value)">
+            <input class="sf-label" value="${colName.replace(/"/g,'&quot;')}" oninput="updGridColLabel(${gi},this.value)" placeholder="컬럼명">
+            <select class="sf-type gcol-type" onchange="updGridColType(${gi},this.value)">
+              <option value="input"${ctype==='input'?' selected':''}>텍스트박스</option>
+              <option value="combo"${ctype==='combo'?' selected':''}>콤보박스</option>
+              <option value="date"${ctype==='date'?' selected':''}>날짜</option>
+              <option value="check"${ctype==='check'?' selected':''}>체크박스</option>
+              <option value="file"${ctype==='file'?' selected':''}>첨부파일</option>
+              <option value="search"${ctype==='search'?' selected':''}>검색</option>
+            </select>
+            ${ctype==='date'?`<button class="sf-datebtn" title="컬럼 기본값 날짜 선택 (현재: ${(c.colDateBlank&&c.colDateBlank[gi])?'빈값':escAttr(qdDisplayText(qdResolvedText((c.colDateVals&&c.colDateVals[gi])||'',(c.colDateSpec&&c.colDateSpec[gi])||'')||todayStr(),c.colDateFmt&&c.colDateFmt[gi]))})" onclick="openQuickDateGridCol(this,${gi})">📅</button>`:''}
+            <button class="ubtn-del" title="삭제" onclick="delGridCol(${gi})">×</button>
+          </div>`;
+        {
+          const cgroup=(c.colGroups&&c.colGroups[gi])||'';
+          const cst=(c.colStatus&&c.colStatus[gi])||'base';
+          const cstOpts=DIFF_ORDER.map(v=>`<option value="${v}"${cst===v?' selected':''}>${v==='base'?'기본':DIFF_LABEL[v]}</option>`).join('');
+          html+=`<div class="sf-row2">
+            <input class="grp-input" value="${cgroup.replace(/"/g,'&quot;')}" oninput="updGridColGroup(${gi},this.value)" placeholder="상위헤더(그룹명)">
+            <select class="sf-status" data-v="${cst}" title="변경상태" onchange="updGridColStatus(${gi},this.value)">${cstOpts}</select>
+            <div class="align-seg" title="헤더 텍스트 정렬">
+              <button type="button" class="sf-fmtbtn" title="컬럼 헤더 서식 (볼드·기울임·밑줄·글자색·배경색·정렬)" onclick="openGridColFormat(this,${gi})"${colLabelFmtStyle(c,gi)}>가</button>
+            </div>
+            <button class="sf-req${creq?' on':''}" title="필수 (헤더에 * 표시 + 데이터 행을 크림색으로)" onclick="updGridColRequired(${gi},${!creq})">*</button>
+            <button class="sf-ro${cro?' on':''}" title="읽기전용 (데이터 행을 회색으로 표시)" onclick="updGridColReadonly(${gi},${!cro})">🔒</button>
+          </div>`;
+        }
+        if(ctype==='combo'){
+          const copts=(c.colOptions&&c.colOptions[gi])||'';
+          html+=`<div class="sfield-opts"><input value="${copts.replace(/"/g,'&quot;')}" oninput="updGridColOptions(${gi},this.value)" placeholder="옵션 (쉼표 구분) 예: 옵션1,옵션2"></div>`;
+        }
+        html+=`</div>`;
+      });
+      html+=`</div><button class="ubtn-add" onclick="addGridCol()">＋ 컬럼 추가</button>`;
+    }
+    html+=`</div>`;
+    if(!fatMode){
+      html+=`<div class="grp"><div class="grp-h">그리드 툴바</div>`;
+      html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.showToolbar!==false?'checked':''} onchange="upd('showToolbar',this.checked)"> 툴바 표시</label></div>`;
+      html+=`<div class="prop"><label style="margin-bottom:5px;">기본 버튼</label>
+        <label class="cbx" style="margin-bottom:3px;"><input type="checkbox" ${c.stdAdd?'checked':''} onchange="upd('stdAdd',this.checked)"> 행추가</label>
+        <label class="cbx" style="margin-bottom:3px;"><input type="checkbox" ${c.stdCancel?'checked':''} onchange="upd('stdCancel',this.checked)"> 행취소</label>
+        <label class="cbx" style="margin-bottom:3px;"><input type="checkbox" ${c.stdCopy?'checked':''} onchange="upd('stdCopy',this.checked)"> 행복사</label>
+        <label class="cbx"><input type="checkbox" ${c.stdDelete?'checked':''} onchange="upd('stdDelete',this.checked)"> 행삭제</label></div>`;
+      // user buttons editor
+      html+=`<div class="prop"><label>사용자 버튼</label><div class="ubtn-list">`;
+      (c.userBtns||[]).forEach((b,i)=>{
+        const label=typeof b==='string'?b:b.label;
+        const disabled=(typeof b==='object'&&b.disabled)||false;
+        html+=`<div class="ubtn-row">
+          <input value="${(label||'').replace(/"/g,'&quot;')}" oninput="updUserBtn(${i},'label',this.value)" placeholder="버튼명">
+          <button class="ubtn-tgl${disabled?' on':''}" title="비활성 표시" onclick="updUserBtn(${i},'disabled',${!disabled})">비활성</button>
+          <button class="ubtn-del" title="삭제" onclick="delUserBtn(${i})">×</button>
+        </div>`;
+      });
+      html+=`</div><button class="ubtn-add" onclick="addUserBtn()">＋ 사용자 버튼 추가</button></div>`;
+      html+=`</div>`;
+    }
+    // 그리드 합계 - "합계 표시"를 켜면 그 아래 컬럼 목록(합계컬럼)이 나타난다. 이 목록은 현재
+    // gridColsArr(c)를 그대로 훑으므로 컬럼을 추가/삭제/이름변경/순서변경하면 다음 렌더링에서
+    // 바로 그대로 반영된다("실시간으로 표시").
+    {
+      const gcols=gridColsArr(c);
+      const totalCols=(c.totalCols||[]).slice(0,gcols.length);
+      html+=`<div class="grp"><div class="grp-h">그리드 합계</div>
+        <div class="prop"><label class="cbx"><input type="checkbox" ${c.showTotal?'checked':''} onchange="upd('showTotal',this.checked)"> 합계 표시</label></div>`;
+      if(c.showTotal){
+        html+=`<div class="prop"><label style="margin-bottom:5px;">합계컬럼</label>`;
+        gcols.forEach((name,gi)=>{
+          html+=`<label class="cbx" style="margin-bottom:3px;"><input type="checkbox" ${totalCols[gi]?'checked':''} onchange="updGridTotalCol(${gi},this.checked)"> <span class="total-col-name" data-total-gi="${gi}">${esc(name.trim()||('컬럼'+(gi+1)))}</span></label>`;
+        });
+        html+=`</div>`;
+      }
+      html+=`</div>`;
+    }
+  }
+  if(c.type==='tree'){
+    const tnodes=parseTree(c.text||'');
+    const sel0=c.selectedLine||0;
+    const opts=tnodes.map(n=>`<option value="${n.i}"${n.i===sel0?' selected':''}>${esc('  '.repeat(n.depth)+n.label)}</option>`).join('');
+    html+=`<div class="prop"><label>선택된 항목 (강조 표시)</label><select onchange="upd('selectedLine',+this.value)">${opts||'<option>(항목 없음)</option>'}</select></div>`;
+    html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.showLines!==false?'checked':''} onchange="upd('showLines',this.checked)"> 계층 연결선 표시</label></div>`;
+  }
+  if(c.type==='chart'){
+    html+=`<div class="prop"><label>차트 제목</label><input value="${(c.ctitle||'').replace(/"/g,'&quot;')}" oninput="upd('ctitle',this.value)"></div>`;
+    html+=`<div class="prop"><label>차트 종류</label><select onchange="upd('chartType',this.value)">
+      <option value="bar"${c.chartType==='bar'?' selected':''}>막대형</option>
+      <option value="line"${c.chartType==='line'?' selected':''}>꺾은선형</option>
+      <option value="area"${c.chartType==='area'?' selected':''}>영역형</option>
+      <option value="donut"${c.chartType==='donut'?' selected':''}>도넛형</option>
+    </select></div>`;
+    html+=`<div class="prop"><label>색상 팔레트</label><select onchange="upd('color',this.value)">
+      <option value="green"${c.color==='green'?' selected':''}>그린</option>
+      <option value="blue"${c.color==='blue'?' selected':''}>블루</option>
+      <option value="yellow"${c.color==='yellow'?' selected':''}>옐로우</option>
+      <option value="mixed"${c.color==='mixed'?' selected':''}>혼합(도넛용)</option>
+    </select></div>`;
+    html+=`<div class="prop"><label>데이터 값 (쉼표 구분)</label><input value="${(c.text||'').replace(/"/g,'&quot;')}" oninput="upd('text',this.value)" placeholder="예: 25,45,30,60"></div>`;
+    html+=`<div class="prop"><label class="cbx"><input type="checkbox" ${c.showArrow!==false?'checked':''} onchange="upd('showArrow',this.checked)"> 제목 화살표(›) 표시</label></div>`;
+  }
+  if(c.type==='split'){
+    const pos=Math.round((c.pos!=null?c.pos:0.5)*100);
+    html+=`<div class="prop"><label>분할 방향</label><select onchange="upd('dir',this.value)">
+      <option value="h"${(c.dir||'h')==='h'?' selected':''}>좌우 분할</option>
+      <option value="v"${c.dir==='v'?' selected':''}>상하 분할</option>
+    </select></div>`;
+    html+=`<div class="prop"><label>분할 위치 (${pos}%)${qh('캔버스에서 두 영역 사이의 <b>경계선을 마우스로 끌어도</b> 크기를 조절할 수 있습니다.<br><br>각 영역에 그리드 등을 끌어놓으면 영역 크기에 맞춰 자동으로 채워지고, 경계선을 옮기면 그 크기도 함께 조절됩니다.')}</label>
+      <input type="range" min="15" max="85" value="${pos}" oninput="upd('pos',this.value/100)"></div>`;
+
+  }
+  if(c.type==='searchbar'){
+    html+=`<div class="prop prop-perrow"><label>한 줄 표시 개수${qh('한 행(줄)에 표시할 조회 조건의 최대 개수입니다. 이 개수를 넘어가는 조건은 자동으로 다음 줄로 넘어갑니다.')}</label><input type="number" min="1" max="10" step="1" value="${sbPerRow(c)}" onchange="upd('perRow', Math.max(1,Math.min(10,parseInt(this.value,10)||4)))"></div>`;
+    html+=`<div class="grp"><div class="grp-h">조회 조건 필드${qh('타입을 <b>빈값</b>으로 지정하면 라벨·입력칸 없이 해당 칸을 <b>비워둔 채</b> 그대로 자리만 차지합니다.<br><br>여러 칸짜리 레이아웃에서 특정 칸만 건너뛰고 싶을 때 사용하세요.<br><br>가로 폭을 <b>½칸</b>으로 지정하면, 바로 다음(또는 바로 앞) 필드도 ½칸일 때 두 필드가 한 칸을 <b>반반씩 나눠서</b> 표시됩니다(요청조직/구매조직처럼). 옆에 ½칸이 붙어있지 않으면 그 필드 혼자 한 칸의 <b>절반만</b> 채우고 나머지 절반은 비워둡니다.<br><br>타입이 <b>날짜</b>·<b>기간</b>이면 라벨 옆에 📅 아이콘이 나타나며, 클릭하면 뜨는 팝업에서 화면에 보여줄 날짜를 고를 수 있습니다(오늘/어제 등 원클릭 또는 연·월·일 조합). 비워두면 기본값(오늘 날짜)이 표시됩니다.')}</div><div class="sfield-list">`;
+    (c.fields||[]).forEach((f,i)=>{
+      const sfSelCls=(selSF&&selSF.compId===c.id&&selSF.fi===i)?' sf-row-selected':'';
+      html+=`<div class="sfield-row${sfSelCls}" id="sfrow-${i}"
+        ondragover="sfDragOver(event)"
+        ondragleave="sfDragLeave(event)" ondrop="sfDrop(event,${i})">
+        <div class="sf-row1">
+          <span class="sf-handle" draggable="true" ondragstart="sfDragStart(event,${i})" ondragend="sfDragEnd(event)" title="드래그해서 순서 변경">⠿</span>
+          <input type="number" class="sf-pos" title="순서 번호 (직접 입력하면 그 위치로 이동)" min="1" max="${(c.fields||[]).length}" value="${i+1}" onchange="sfMoveTo(${i},this.value)">
+          <input class="sf-label" value="${(f.label||'').replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'label',this.value)" placeholder="라벨"${f.type==='empty'?' disabled style="opacity:.5;"':''}>
+          ${f.type==='empty'?'':`<button type="button" class="sf-fmtbtn" title="라벨 서식 (볼드·기울임·밑줄·글자색·배경색)" onclick="openLabelFormat(this,${i})"${labelFmtStyle(f)}>가</button>`}
+          ${f.type==='date'?`<button class="sf-datebtn" title="빠른 날짜 선택 (현재: ${f.blank?'빈값':qdDisplayText(sfDateCurrent(f,'single'),f.dateFmt)})" onclick="openQuickDate(this,${i},'single')">📅</button>`:''}
+          ${f.type==='daterange'?`<button class="sf-datebtn" title="시작일 빠른 선택 (현재: ${f.startBlank?'빈값':qdDisplayText(sfDateCurrent(f,'start'),f.dateFmt)})" onclick="openQuickDate(this,${i},'start')">📅</button><span class="sf-tilde">~</span><button class="sf-datebtn" title="종료일 빠른 선택 (현재: ${f.endBlank?'빈값':qdDisplayText(sfDateCurrent(f,'end'),f.dateFmt)})" onclick="openQuickDate(this,${i},'end')">📅</button>`:''}
+          <button class="ubtn-del" title="삭제" onclick="delSearchField(${i})">×</button>
+        </div>
+        <div class="sf-row2">
+          <select class="sf-type" onchange="updSearchField(${i},'type',this.value)">
+            <option value="text"${f.type==='text'?' selected':''}>텍스트</option>
+            <option value="combo"${f.type==='combo'?' selected':''}>콤보</option>
+            <option value="date"${f.type==='date'?' selected':''}>날짜</option>
+            <option value="daterange"${f.type==='daterange'?' selected':''}>기간</option>
+            <option value="search"${f.type==='search'?' selected':''}>검색</option>
+            <option value="radio"${f.type==='radio'?' selected':''}>라디오</option>
+            <option value="empty"${f.type==='empty'?' selected':''}>빈값</option>
+          </select>
+          <select class="sf-span" title="가로 폭 (전체 4칸 중 몇 칸을 차지할지). ½칸은 바로 옆에 다른 ½칸이 붙으면 한 칸을 반씩 나눠 쓰고, 혼자면 한 칸의 절반만 채웁니다." onchange="updSearchField(${i},'span',+this.value)">
+            <option value="0.5"${f.span===0.5?' selected':''}>½칸</option>
+            <option value="1"${(f.span||1)===1?' selected':''}>1칸</option>
+            <option value="2"${f.span===2?' selected':''}>2칸</option>
+            <option value="3"${f.span===3?' selected':''}>3칸</option>
+            <option value="4"${f.span===4?' selected':''}>4칸(전체)</option>
+          </select>
+          <select class="sf-status" data-v="${f.status||'base'}" title="변경상태" onchange="updSearchField(${i},'status',this.value)">${DIFF_ORDER.map(v=>`<option value="${v}"${(f.status||'base')===v?' selected':''}>${v==='base'?'기본':DIFF_LABEL[v]}</option>`).join('')}</select>
+          ${f.type==='empty'?'':`<button class="sf-req${f.required?' on':''}" title="필수" onclick="updSearchField(${i},'required',${!f.required})">*</button>
+          <button class="sf-ro${f.readonly?' on':''}" title="읽기전용 (회색 표시)" onclick="updSearchField(${i},'readonly',${!f.readonly})">🔒</button>`}
+        </div>
+      </div>`;
+      if(f.type==='radio'||f.type==='combo'){
+        const optDefault=f.type==='combo'?'전체,선택1,선택2':'전체,확정,미확정';
+        html+=`<div class="sfield-opts"><input value="${(f.options||optDefault).replace(/"/g,'&quot;')}" oninput="updSearchField(${i},'options',this.value)" placeholder="옵션 (쉼표 구분)"></div>`;
+      }
+    });
+    html+=`</div><button class="ubtn-add" onclick="addSearchField()">＋ 조건 필드 추가</button></div>`;
+  }
+  if(c.type==='tabs'){
+    html+=itemListEditor(c,'text','탭',qh('＋ 탭 추가 버튼으로 탭(페이지)을 추가하고, 각 칸에 탭 이름을 입력합니다. 드래그로 순서를 바꾸거나 ×로 삭제할 수 있습니다.'),'탭');
+    const tnames=ilItems(c,'text');
+    const tactive=c.active||0;
+    const topts=tnames.map((n,i)=>`<option value="${i}"${i===tactive?' selected':''}>${esc(n)||'(이름없음)'}</option>`).join('');
+    html+=`<div class="prop"><label>편집할 탭(페이지)${qh('도구상자의 컴포넌트를 캔버스로 끌어와 <b>탭 헤더 아래 콘텐츠 영역</b>(점선 표시)에 놓으면 여기서 선택한 탭 페이지에 배치됩니다.<br><br>캔버스에서 탭 헤더를 직접 클릭해도 편집할 탭을 전환할 수 있습니다.')}</label><select onchange="upd('active',+this.value)">${topts||'<option>(탭 없음)</option>'}</select></div>`;
+
+  }
+  html+=`<div class="prop"><label>정렬 (Z순서)</label><div class="zi-row"><button onclick="zorder('front')">맨 앞</button><button onclick="zorder('back')">맨 뒤</button></div></div>`;
+    html+=`<button class="del-btn" onclick="delSel()">삭제 (Del)</button>`;
+  html+=`<div class="grp possize-grp${posSizeExpanded?'':' collapsed'}" style="margin-top:12px;"><div class="grp-h gcol-grp-h">
+      <span>위치 · 크기</span>
+      <button class="gcol-grp-toggle" title="위치·크기 보기/숨기기" onclick="togglePosSize()">${posSizeExpanded?'숨기기 ▾':'보기 ▸'}</button>
+    </div>${posSizeExpanded?posHtml:''}</div>`;
+  html+=`<div class="hint">Tip: 컴포넌트를 드래그해 이동, 모서리 핸들로 크기 조절. Del 키로 삭제.</div>`;
+  p.innerHTML=html;
+  // 캔버스에서 조회조건 필드를 선택하면(selSF) 속성패널의 해당 필드 행이 스크롤 밖에 있을 수
+  // 있으므로 자동으로 보이는 위치까지 스크롤한다. block:'nearest'라서 이미 보이는 중이면
+  // 스크롤이 발생하지 않고, 드래그로 순서를 바꾸는 동안(매 프레임 재렌더링)에는 계속 같은
+  // 위치를 가리키게 되어 화면이 튀지 않는다.
+  if(selSF&&c&&selSF.compId===c.id){
+    const row=document.getElementById('sfrow-'+selSF.fi);
+    if(row) row.scrollIntoView({block:'nearest'});
+  }
+  if(selGC&&c&&selGC.compId===c.id){
+    const row=document.getElementById('gcolrow-'+selGC.ci);
+    if(row) row.scrollIntoView({block:'nearest'});
+  }
+}
+// ---- Generic item-list editor (탭 이름 / 콤보·라디오 옵션) ----
+// tabs/combo/radio 는 항목을 콤마 문자열 하나(c.text 또는 c.options)로 저장한다.
+// 렌더링·내보내기는 그대로 두고, 속성 패널만 그리드 컬럼/조회조건 필드처럼
+// "＋ 추가" 버튼 + 개별 입력칸 + 드래그 정렬 + × 삭제 방식으로 바꾼다.
+function ilItems(c,prop){
+  const raw=c[prop]||'';
+  // 빈 문자열(''.split(',')==['']))이면 항목 0개, 그 외에는 각 칸을 그대로 유지한다.
+  // 예전에는 .filter(Boolean)으로 빈 이름 칸을 통째로 걸러냈는데, 그러면 탭/옵션 이름을
+  // 전부 지운 순간(빈 문자열이 되는 순간) 그 칸이 배열에서 사라지면서 캔버스의 탭이 즉시
+  // 없어지고, 이후 칸들의 인덱스(tabIdx 등)까지 밀려버렸다. 이름이 비어 있어도 칸 자체는
+  // 그대로 유지해야 사용자가 다시 입력을 마칠 때까지 탭이 사라지지 않는다.
+  if(raw==='') return [];
+  return raw.split(',').map(s=>s.trim());
+}
+function itemListEditor(c,prop,itemLabel,tip,ph){
+  const items=ilItems(c,prop);
+  let h=`<div class="grp"><div class="grp-h">
+    <span>${itemLabel} (${items.length})${tip||''}</span></div>`;
+  h+=`<div class="sfield-list">`;
+  items.forEach((name,i)=>{
+    h+=`<div class="sfield-row"
+      ondragover="ilDragOver(event)"
+      ondragleave="ilDragLeave(event)" ondrop="ilDrop(event,'${prop}',${i})">
+      <div class="sf-row1">
+        <span class="sf-handle" draggable="true" ondragstart="ilDragStart(event,${i})" ondragend="ilDragEnd(event)" title="드래그해서 순서 변경">⠿</span>
+        <input class="sf-label" value="${name.replace(/"/g,'&quot;')}" oninput="ilUpd('${prop}',${i},this.value)" placeholder="${ph||itemLabel}명">
+        <button class="ubtn-del" title="삭제" onclick="ilDel('${prop}',${i})">×</button>
+      </div>
+    </div>`;
+  });
+  h+=`</div><button class="ubtn-add" onclick="ilAdd('${prop}','${ph||itemLabel}')">＋ ${itemLabel} 추가</button></div>`;
+  return h;
+}
+// tabs 는 active, radio 는 selected 인덱스를 항목 수 범위 안으로 보정한다.
+function ilClampIdx(c){
+  const nText=ilItems(c,'text').length;
+  const nOpts=ilItems(c,'options').length;
+  if(c.type==='tabs'&&c.active!=null) c.active=Math.max(0,Math.min(c.active,Math.max(0,nText-1)));
+  if(c.type==='radio'&&c.selected!=null) c.selected=Math.max(0,Math.min(c.selected,Math.max(0,nOpts-1)));
+}
+function ilAdd(prop,ph){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  pushHistory();
+  const items=ilItems(c,prop);
+  items.push((ph||'항목')+(items.length+1));
+  c[prop]=items.join(',');
+  ilClampIdx(c);
+  render();
+}
+function ilUpd(prop,i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  const items=ilItems(c,prop);if(i<0||i>=items.length)return;
+  items[i]=v;
+  c[prop]=items.join(',');
+  drawCanvas();
+}
+function ilDel(prop,i){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  const items=ilItems(c,prop);if(i<0||i>=items.length)return;
+  pushHistory();
+  // 탭을 삭제하면 그 탭 페이지(tabIdx===i)에 들어있던 자식 컴포넌트들도 함께 삭제하고,
+  // 뒤쪽 탭(tabIdx>i)에 있던 자식들은 인덱스를 한 칸씩 당겨 원래 탭에 그대로 남게 한다.
+  // comps 전체가 pushHistory 로 스냅샷되므로 Ctrl+Z 한 번이면 탭과 자식 전부 복구된다.
+  if(c.type==='tabs'){
+    const removeIds=collectWithChildren(
+      comps.filter(k=>k.parent===c.id&&(k.tabIdx||0)===i).map(k=>k.id)
+    );
+    const removeSet=new Set(removeIds);
+    comps=comps.filter(k=>!removeSet.has(k.id));
+    comps.forEach(k=>{ if(k.parent===c.id&&(k.tabIdx||0)>i) k.tabIdx=(k.tabIdx||0)-1; });
+    if(selIds.size){ const kept=[...selIds].filter(id=>!removeSet.has(id)); selIds=new Set(kept); if(!selIds.has(sel)) sel=c.id, selIds.add(c.id); }
+  }
+  items.splice(i,1);
+  c[prop]=items.join(',');
+  ilClampIdx(c);
+  render();
+}
+let ilDragIdx=null;
+function ilDragStart(e,i){
+  ilDragIdx=i;
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain',String(i));
+  // draggable="true"는 손잡이(⠿)에만 있으므로(라벨 입력칸 안에서 마우스로 텍스트를 드래그
+  // 선택할 때 행 전체가 끌려가 버리는 것을 막기 위함), 스타일은 그 조상인 행에 입혀야 한다.
+  e.currentTarget.closest('.sfield-row')?.classList.add('dragging');
+}
+function ilDragOver(e){ e.preventDefault(); e.dataTransfer.dropEffect='move'; e.currentTarget.classList.add('drag-over'); }
+function ilDragLeave(e){ e.currentTarget.classList.remove('drag-over'); }
+function ilDrop(e,prop,i){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  const from=ilDragIdx; ilDragIdx=null;
+  if(from===null||from===i)return;
+  pushHistory();
+  const items=ilItems(c,prop);
+  const [item]=items.splice(from,1);
+  const insertAt=from<i?i-1:i;
+  items.splice(insertAt,0,item);
+  c[prop]=items.join(',');
+  // 탭 순서를 바꾸면 각 탭의 자식 컴포넌트(tabIdx)도 함께 따라가야 한다.
+  // 이전 인덱스 → 새 인덱스 매핑을 만들어 자식들의 tabIdx 를 재배치한다.
+  if(c.type==='tabs'){
+    // 이전 인덱스 → 새 인덱스 매핑 재현 (items 는 이미 이동 반영된 상태이므로 length=원본 개수)
+    const N=items.length;
+    const src=[];for(let k=0;k<N;k++)src.push(k);
+    const moved=src.splice(from,1)[0];
+    src.splice(insertAt,0,moved);
+    // src[newIdx] = oldIdx  →  oldIdx 를 newIdx 로 매핑
+    const remap={};src.forEach((oldIdx,newIdx)=>{remap[oldIdx]=newIdx;});
+    comps.forEach(k=>{ if(k.parent===c.id){ const o=k.tabIdx||0; if(remap[o]!=null) k.tabIdx=remap[o]; } });
+    if(c.active!=null&&remap[c.active]!=null) c.active=remap[c.active];
+  }
+  render();
+}
+function ilDragEnd(e){
+  e.currentTarget.closest('.sfield-row')?.classList.remove('dragging');
+  document.querySelectorAll('.sfield-row.drag-over').forEach(el=>el.classList.remove('drag-over'));
+  ilDragIdx=null;
+}
+const STACKED_EXTRA=22; // label line height added when the label sits above/below
+const LABEL_SIDE_W=76;  // width reserved for a label placed to the left/right
+function upd(k,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  if(k==='labelPos'&&LABELED_TYPES.includes(c.type)&&c.showLabel===true){
+    const wasStacked=(c.labelPos||'top')==='top'||(c.labelPos||'top')==='bottom';
+    const willStack=(v==='top'||v==='bottom');
+    if(wasStacked&&!willStack){ c.h=Math.max(26,c.h-STACKED_EXTRA); c.w=c.w+LABEL_SIDE_W; }
+    else if(!wasStacked&&willStack){ c.h=c.h+STACKED_EXTRA; c.w=Math.max(80,c.w-LABEL_SIDE_W); }
+  }
+  if(k==='showLabel'&&LABELED_TYPES.includes(c.type)){
+    const stacked=(c.labelPos||'top')==='top'||(c.labelPos||'top')==='bottom';
+    if(stacked){ c.h = v ? c.h+STACKED_EXTRA : Math.max(26,c.h-STACKED_EXTRA); }
+  }
+  c[k]=v;
+  if(k==='w'&&c.type==='grid'){ c._sizeModeManual=false; } // resizing is a fresh chance to re-suggest
+  if(k==='perRow'&&c.type==='searchbar'){
+    // 한 줄 표시 개수가 바뀌면 줄바꿈 위치가 달라지므로 패널 높이를 다시 맞춘다.
+    fitSearchbar(c);
+  }
+  if(k==='style'&&c.type==='popup'){
+    // 명칭칸(.ax-popup-name)이 빠지는 만큼만 정확히 줄이기 위해, 아직 이전 렌더링이 남아있는
+    // 실제 DOM에서 명칭칸의 화면 폭을 재서 뺀다(라벨 유무·위치에 따라 비율 계산이 달라지는 문제를 피함).
+    const GAP=4;
+    if(v==='code'){
+      if(c._popupFullW==null) c._popupFullW=c.w;
+      const nameEl=document.querySelector('.cmp.selected .ax-popup-name');
+      if(nameEl && nameEl.offsetWidth>0){
+        // 캔버스는 CSS transform:scale()로 확대/축소되므로 offsetWidth는 이미 확대 이전(캔버스 단위) 값이다.
+        c.w=Math.max(60, Math.round(c._popupFullW - nameEl.offsetWidth - GAP));
+      } else {
+        // 측정 실패 시 대략적인 비율로 대체(코드칸1 : 아이콘22px : 명칭칸1.6, gap 4px)
+        const availFlex=Math.max(0,c._popupFullW-22-GAP*2);
+        c.w=Math.max(60,Math.round(availFlex*(1/2.6)+GAP+22));
+      }
+    } else if(v==='code_name'){
+      if(c._popupFullW!=null){ c.w=c._popupFullW; delete c._popupFullW; }
+    }
+  }
+  if(k==='showLabel'||k==='labelPos'||k==='perRow'||k==='xscroll'||k==='style'||k==='diffStatus'||k==='showTotal'){render();}else{drawCanvas();}
+}
+// 팻모드 기간(daterange) 속성 패널의 "날짜1"/"날짜2" 입력칸 - 두 값을 합쳐서 기존 text
+// 형식("YYYY-MM-DD ~ YYYY-MM-DD")으로 저장한다. idx는 0(날짜1) 또는 1(날짜2).
+function updDateRangePart(idx,v){
+  const c=comps.find(x=>x.id===sel); if(!c)return;
+  const parts=(c.text||'').split('~').map(s=>s.trim());
+  parts[idx]=v;
+  upd('text',(parts[0]||'')+' ~ '+(parts[1]||''));
+}
+// 팻모드 기간(daterange) 날짜1/날짜2 스타일(없음·필수·읽기전용). idx 0=날짜1, 1=날짜2.
+// 필수와 읽기전용은 상호배타이며 기본값은 "없음"이다.
+function updDrStyle(idx,style){
+  const c=comps.find(x=>x.id===sel); if(!c)return;
+  const rq=idx===0?'required':'required2';
+  const ro=idx===0?'readonly':'readonly2';
+  pushHistory();
+  c[rq]=(style==='required');
+  c[ro]=(style==='readonly');
+  render();
+}
+function setActiveTab(id,idx){
+  const c=comps.find(x=>x.id===id);
+  if(!c)return;
+  c.active=idx;
+  const selComp=comps.find(x=>x.id===sel);
+  if(selComp&&selComp.parent===id&&(selComp.tabIdx||0)!==idx) selectSingle(id);
+  render();
+}
+
+// ---- Grid user-button editors ----
+function normUserBtns(c){
+  c.userBtns=(c.userBtns||[]).map(b=>typeof b==='string'?{label:b,disabled:false}:b);
+  return c.userBtns;
+}
+function addUserBtn(){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  pushHistory();
+  normUserBtns(c).push({label:'새 버튼',disabled:false});
+  render();
+}
+function updUserBtn(i,k,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  const arr=normUserBtns(c);if(!arr[i])return;
+  arr[i][k]=v;
+  if(k==='disabled')render(); else drawCanvas();
+}
+function delUserBtn(i){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  pushHistory();
+  normUserBtns(c).splice(i,1);
+  render();
+}
+
+// ---- Grid column editors (mirrors the searchbar field editor's UX) ----
+// Tracks which grids have their whole "컬럼" list collapsed (key: compId as string).
+let gcolGroupCollapsed=new Set();
+function toggleGcolGroup(cid){
+  if(gcolGroupCollapsed.has(cid))gcolGroupCollapsed.delete(cid); else gcolGroupCollapsed.add(cid);
+  renderProps();
+  if(window.mbSyncProps)try{window.mbSyncProps();}catch(e){}
+}
+// 위치·크기(X/Y/너비/높이) 그룹은 기본 숨김. "보기"를 누르면 펼친다.
+let posSizeExpanded=false;
+function togglePosSize(){
+  posSizeExpanded=!posSizeExpanded;
+  renderProps();
+  if(window.mbSyncProps)try{window.mbSyncProps();}catch(e){}
+}
+function gridColsArr(c){
+  return (c.text||'').split(',').map(s=>s.trim());
+}
+// 그리드 컬럼 폭 방식(고정/수동/자동)의 실제 적용값. colSizeMode가 아직 없는 그리드는(레거시
+// 목업 포함) 예전 xscroll 값이 있으면 그걸 따르고(수동), 그마저 없으면 새 기본값인 자동으로 본다.
+function gridSizeMode(c){ return c.colSizeMode || (c.xscroll ? 'scroll' : 'auto'); }
+// Keeps colTypes/colOptions the SAME length as the column list at all times. This matters because
+// a sparse array (shorter than cols) makes Array.splice's insert index silently clamp to the array's
+// current length when reordering, which can drop a type/option onto the wrong (unrelated) column.
+function normGridColArrays(c){
+  const n=gridColsArr(c).length;
+  if(!Array.isArray(c.colTypes))c.colTypes=[];
+  while(c.colTypes.length<n)c.colTypes.push('input');
+  if(c.colTypes.length>n)c.colTypes.length=n;
+  if(!Array.isArray(c.colOptions))c.colOptions=[];
+  while(c.colOptions.length<n)c.colOptions.push('');
+  if(c.colOptions.length>n)c.colOptions.length=n;
+  if(!Array.isArray(c.colGroups))c.colGroups=[];
+  while(c.colGroups.length<n)c.colGroups.push('');
+  if(c.colGroups.length>n)c.colGroups.length=n;
+  if(!Array.isArray(c.colAligns))c.colAligns=[];
+  while(c.colAligns.length<n)c.colAligns.push('left');
+  if(c.colAligns.length>n)c.colAligns.length=n;
+  if(!Array.isArray(c.colRequired))c.colRequired=[];
+  while(c.colRequired.length<n)c.colRequired.push(false);
+  if(c.colRequired.length>n)c.colRequired.length=n;
+  if(!Array.isArray(c.colReadonly))c.colReadonly=[];
+  while(c.colReadonly.length<n)c.colReadonly.push(false);
+  if(c.colReadonly.length>n)c.colReadonly.length=n;
+  if(!Array.isArray(c.colDateVals))c.colDateVals=[];
+  while(c.colDateVals.length<n)c.colDateVals.push('');
+  if(c.colDateVals.length>n)c.colDateVals.length=n;
+  if(!Array.isArray(c.colDateBlank))c.colDateBlank=[];
+  while(c.colDateBlank.length<n)c.colDateBlank.push(false);
+  if(c.colDateBlank.length>n)c.colDateBlank.length=n;
+  if(!Array.isArray(c.colDateSpec))c.colDateSpec=[];
+  while(c.colDateSpec.length<n)c.colDateSpec.push('');
+  if(c.colDateSpec.length>n)c.colDateSpec.length=n;
+  if(!Array.isArray(c.colDateFmt))c.colDateFmt=[];
+  while(c.colDateFmt.length<n)c.colDateFmt.push('');
+  if(c.colDateFmt.length>n)c.colDateFmt.length=n;
+  if(!Array.isArray(c.totalCols))c.totalCols=[];
+  while(c.totalCols.length<n)c.totalCols.push(false);
+  if(c.totalCols.length>n)c.totalCols.length=n;
+  // 컬럼별 수동 폭(드래그로 조절한 값) - 다른 컬럼별 배열과 같은 길이로 맞춰야 컬럼 추가/삭제/
+  // 순서변경 시 엉뚱한 컬럼의 폭이 섞이지 않는다. 기본값은 "덮어쓰기 없음"을 뜻하는 undefined.
+  if(!Array.isArray(c.colWidths))c.colWidths=[];
+  while(c.colWidths.length<n)c.colWidths.push(undefined);
+  if(c.colWidths.length>n)c.colWidths.length=n;
+  // 컬럼별 변경상태(기본/추가/변경/삭제/이동) - 다른 컬럼별 배열과 동일한 방식으로 길이를 맞춘다.
+  if(!Array.isArray(c.colStatus))c.colStatus=[];
+  while(c.colStatus.length<n)c.colStatus.push('base');
+  if(c.colStatus.length>n)c.colStatus.length=n;
+  // 컬럼 헤더 서식(볼드/기울임/밑줄/글자색/배경색) - 조회조건 필드 라벨 서식과 같은 방식으로
+  // 컬럼별 배열에 저장한다. 색상 두 개는 문자열(빈 문자열=기본값), 나머지는 불리언.
+  if(!Array.isArray(c.colLabelBold))c.colLabelBold=[];
+  while(c.colLabelBold.length<n)c.colLabelBold.push(false);
+  if(c.colLabelBold.length>n)c.colLabelBold.length=n;
+  if(!Array.isArray(c.colLabelItalic))c.colLabelItalic=[];
+  while(c.colLabelItalic.length<n)c.colLabelItalic.push(false);
+  if(c.colLabelItalic.length>n)c.colLabelItalic.length=n;
+  if(!Array.isArray(c.colLabelUnderline))c.colLabelUnderline=[];
+  while(c.colLabelUnderline.length<n)c.colLabelUnderline.push(false);
+  if(c.colLabelUnderline.length>n)c.colLabelUnderline.length=n;
+  if(!Array.isArray(c.colLabelColor))c.colLabelColor=[];
+  while(c.colLabelColor.length<n)c.colLabelColor.push('');
+  if(c.colLabelColor.length>n)c.colLabelColor.length=n;
+  if(!Array.isArray(c.colLabelBg))c.colLabelBg=[];
+  while(c.colLabelBg.length<n)c.colLabelBg.push('');
+  if(c.colLabelBg.length>n)c.colLabelBg.length=n;
+}
+function addGridCol(){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  pushHistory();
+  normGridColArrays(c);
+  const cols=gridColsArr(c);
+  cols.push('컬럼'+(cols.length+1));
+  c.text=cols.join(',');
+  c.colTypes.push('input');
+  c.colOptions.push('');
+  c.colGroups.push('');
+  c.colAligns.push('left');
+  c.colRequired.push(false);
+  c.colReadonly.push(false);
+  c.colDateVals.push('');
+  c.colDateBlank.push(false);
+  c.colDateSpec.push('');
+  c.colDateFmt.push('');
+  c.totalCols.push(false);
+  c.colWidths.push(undefined);
+  c.colStatus.push('base');
+  c.colLabelBold.push(false);
+  c.colLabelItalic.push(false);
+  c.colLabelUnderline.push(false);
+  c.colLabelColor.push('');
+  c.colLabelBg.push('');
+  render();
+}
+function updGridColLabel(i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  const cols=gridColsArr(c);if(i<0||i>=cols.length)return;
+  cols[i]=v;
+  c.text=cols.join(',');
+  // 자동 폭 모드에서는 컬럼명이 바뀌면 드래그로 조절해둔 그 컬럼의 폭은 더 이상 의미가 없으므로
+  // 지워서, 새 이름 길이에 맞춰 실시간으로 다시 자동 계산되도록 한다.
+  const sizeMode=gridSizeMode(c);
+  if(sizeMode==='auto'&&Array.isArray(c.colWidths)) c.colWidths[i]=undefined;
+  drawCanvas();
+  // "그리드 합계" 섹션의 합계컬럼 체크박스 목록도 컬럼명을 그대로 보여주므로, 여기서 이름이
+  // 바뀌면 그 목록도 즉시 맞춰줘야 한다. render()를 다시 부르면 지금 컬럼명을 치고 있는 이
+  // input 자체가 새로 만들어져 커서 위치를 잃으므로, 해당 항목의 텍스트만 직접 DOM으로 갱신한다.
+  const nameEl=document.querySelector(`.total-col-name[data-total-gi="${i}"]`);
+  if(nameEl) nameEl.textContent=(v||'').trim()||('컬럼'+(i+1));
+}
+// 그리드 컬럼 폭 방식(고정/수동/자동) 라디오 버튼 핸들러. 사람이 명시적으로 고른 값이므로
+// _sizeModeManual을 켜서, 컬럼이 안 맞아 자동으로 스크롤 모드를 제안하는 로직이 이 선택을
+// 다시 덮어쓰지 않게 한다. 드래그로 개별 조절해둔 컬럼 폭(colWidths)은 방식이 바뀌면 의미가
+// 없어지므로 - 예를 들어 자동으로 바꿨는데 예전에 수동으로 넓혀둔 컬럼만 그 폭 그대로 남으면
+// "자동으로 맞췄다"는 말과 안 맞다 - 전부 지워서 모든 컬럼이 새 방식 기준으로 다시 계산되게 한다.
+function updGridSizeMode(mode){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  c.colSizeMode=mode;
+  c._sizeModeManual=true;
+  c.colWidths=[];
+  render();
+}
+// 스크롤 모드의 "컬럼 폭" 슬라이더 - 개별 드래그로 조절해둔 컬럼 폭(colWidths)이 있어도
+// 슬라이더를 움직이면 전부 무시하고 모든 컬럼에 새 값을 균일하게 다시 적용한다.
+function updGridColMinW(v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  c.colMinW=v;
+  c.colWidths=[];
+  drawCanvas();
+}
+function delGridCol(i){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  const cols=gridColsArr(c);if(i<0||i>=cols.length)return;
+  pushHistory();
+  normGridColArrays(c);
+  cols.splice(i,1);
+  c.text=cols.join(',');
+  c.colTypes.splice(i,1);
+  c.colOptions.splice(i,1);
+  c.colGroups.splice(i,1);
+  c.colAligns.splice(i,1);
+  c.colRequired.splice(i,1);
+  c.colReadonly.splice(i,1);
+  c.colDateVals.splice(i,1);
+  c.colDateBlank.splice(i,1);
+  c.colDateSpec.splice(i,1);
+  c.colDateFmt.splice(i,1);
+  c.totalCols.splice(i,1);
+  c.colWidths.splice(i,1);
+  c.colStatus.splice(i,1);
+  c.colLabelBold.splice(i,1);
+  c.colLabelItalic.splice(i,1);
+  c.colLabelUnderline.splice(i,1);
+  c.colLabelColor.splice(i,1);
+  c.colLabelBg.splice(i,1);
+  // 삭제된 컬럼을 가리키고 있던 강조 표시(selGC)·서식 팝업(lf)은 지우고, 그 뒤쪽 컬럼을
+  // 가리키고 있던 것은 한 칸씩 당겨준다 - 그러지 않으면 삭제 후 인덱스가 하나씩 밀리면서
+  // 엉뚱한(바로 뒤) 컬럼이 계속 선택된 것처럼 보이거나 서식 팝업이 다른 컬럼에 적용된다.
+  if(selGC&&selGC.compId===c.id){
+    if(selGC.ci===i) selGC=null;
+    else if(selGC.ci>i) selGC.ci--;
+  }
+  if(lf&&lf.kind==='gridcol'&&lf.compId===c.id){
+    if(lf.idx===i) closeLabelFormat();
+    else if(lf.idx>i) lf.idx--;
+  }
+  render();
+}
+function updGridColType(i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  if(i>=c.colTypes.length)return;
+  c.colTypes[i]=v;
+  // 새로 "날짜" 타입이 됐는데 아직 기본값이 없으면 오늘 날짜로 채운다(다시 열 때마다 재계산되도록
+  // "오늘" spec도 같이 붙여둔다).
+  if(v==='date' && !(c.colDateVals[i]||'').trim()){
+    c.colDateVals[i]=todayStr();
+    c.colDateSpec[i]='chip:today';
+  }
+  render();
+}
+function updGridColOptions(i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  if(i>=c.colOptions.length)return;
+  c.colOptions[i]=v;
+  drawCanvas();
+}
+// Sets/clears the merged-header group label for column i. Consecutive columns that share the
+// exact same (trimmed) label render as one spanning cell above their individual names - see
+// the 'grid' case in innerRaw(). An empty label removes the column from any group.
+function updGridColGroup(i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  if(i>=c.colGroups.length)return;
+  c.colGroups[i]=v;
+  drawCanvas();
+}
+// 헤더 텍스트 정렬(left/center/right). 어느 아이콘이 눌려있는지 즉시 반영해야 하므로
+// (다른 토글 버튼들처럼) 속성 패널을 다시 그린다.
+function updGridColAlign(i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  if(i>=c.colAligns.length)return;
+  c.colAligns[i]=v;
+  render();
+}
+// 컬럼별 변경상태(기본/추가/변경/삭제/이동) - "상위헤더" 입력칸과 "정렬" 버튼 사이의 콤보에서 호출.
+function updGridColStatus(i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  if(i>=c.colStatus.length)return;
+  c.colStatus[i]=v;
+  render();
+}
+// 필수 - 헤더 라벨 앞에 빨간 "*"를 붙이고(헤더 색은 그대로), 데이터 행 배경을 크림색으로 표시한다.
+function updGridColRequired(i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  if(i>=c.colRequired.length)return;
+  c.colRequired[i]=v;
+  render();
+}
+// 읽기전용 - 헤더 색은 그대로 두고, 데이터 행 배경을 회색으로 표시하며 데이터 셀 입력을 잠근다.
+function updGridColReadonly(i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  if(i>=c.colReadonly.length)return;
+  c.colReadonly[i]=v;
+  render();
+}
+// 그리드 합계 행 - "합계 표시"는 컴포넌트 공통 upd('showTotal',...)로 처리되고, 이 함수는 합계컬럼
+// 목록에서 컬럼별 체크박스를 토글할 때만 쓴다(체크하면 합계 행의 그 칸에 "0"이 나타난다).
+function updGridTotalCol(i,v){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  if(i>=c.totalCols.length)return;
+  c.totalCols[i]=v;
+  drawCanvas();
+}
+// Drag-and-drop reorder: drag a column row's handle and drop it on another row.
+let gcDragIdx=null;
+function gcDragStart(e,i){
+  gcDragIdx=i;
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain',String(i));
+  // draggable="true"는 손잡이(⠿)에만 있으므로(컬럼명 입력칸 안에서 마우스로 텍스트를 드래그
+  // 선택할 때 행 전체가 끌려가 버리는 것을 막기 위함), 스타일은 그 조상인 행에 입혀야 한다.
+  e.currentTarget.closest('.sfield-row')?.classList.add('dragging');
+  startDragAutoScroll();
+}
+function gcDragOver(e){
+  e.preventDefault();
+  e.dataTransfer.dropEffect='move';
+  e.currentTarget.classList.add('drag-over');
+  updateDragScrollY(e);
+}
+function gcDragLeave(e){
+  e.currentTarget.classList.remove('drag-over');
+}
+// 어떤 배열에서 한 항목을 from 위치에서 to 위치로 옮기면, 그 사이에 있던 다른 항목들은 한 칸씩
+// 밀린다 - 그 항목들을 "인덱스로" 가리키고 있던 상태(선택 강조 selGC/selSF, 서식 팝업 lf 등)도
+// 함께 갱신해야, 옮긴 컬럼/필드가 아니라 그 사이에 있던 다른 컬럼/필드가 엉뚱하게 강조되거나
+// 서식 팝업이 다른 대상을 가리키는 문제가 생기지 않는다. idx가 옮겨진 항목 자신이면 새 위치(to)를,
+// 그 사이에서 밀린 항목이면 밀린 방향으로 ±1을, 그 외에는 그대로 돌려준다.
+function shiftIndexForMove(idx,from,to){
+  if(idx==null)return idx;
+  if(idx===from)return to;
+  if(from<to){ if(idx>from&&idx<=to)return idx-1; }
+  else if(from>to){ if(idx>=to&&idx<from)return idx+1; }
+  return idx;
+}
+// 컬럼 순서 변경의 실제 배열 이동 로직 - 컬럼 텍스트와 그에 딸린 모든 배열(타입/옵션/그룹/정렬/
+// 필수/읽기전용/개별폭)을 같은 인덱스로 함께 옮긴다. gcDrop(드래그앤드롭)·gcMoveTo(순서번호 직접
+// 입력)·startColReorder(그리드 헤더 자체 드래그) 세 진입점이 모두 이 함수 하나를 공유한다.
+// to는 이동 후 최종 위치(0-based)를 그대로 받는다 - 호출부에서 이미 from<to 시프트를 보정해서 넘긴다.
+function moveGridColumn(c,from,to){
+  normGridColArrays(c);
+  const len=gridColsArr(c).length;
+  to=Math.max(0,Math.min(len-1,to));
+  if(to===from||from<0||from>=len)return false;
+  const cols=gridColsArr(c);
+  const move=arr=>{const [x]=arr.splice(from,1);arr.splice(to,0,x);};
+  move(cols);c.text=cols.join(',');
+  // 컬럼과 함께 움직여야 하는 모든 컬럼별 배열을 여기 전부 나열한다 - 이 목록에서 하나라도
+  // 빠지면(과거 colDateVals/colDateBlank/colDateSpec/colStatus가 빠져 있었던 것처럼) 그 값만
+  // 컬럼 순서를 바꿔도 제자리에 남아 엉뚱한 컬럼의 값처럼 보이게 된다.
+  move(c.colTypes);move(c.colOptions);move(c.colGroups);move(c.colAligns);move(c.colRequired);move(c.colReadonly);
+  move(c.colWidths);move(c.colDateVals);move(c.colDateBlank);move(c.colDateSpec);move(c.colStatus);move(c.colDateFmt);move(c.totalCols);
+  move(c.colLabelBold);move(c.colLabelItalic);move(c.colLabelUnderline);move(c.colLabelColor);move(c.colLabelBg);
+  // 옮긴 컬럼 자신뿐 아니라, 그 사이에서 함께 밀린 다른 컬럼을 가리키고 있었을 수도 있는 상태도
+  // 같이 보정한다(그렇지 않으면 예: 4번째 컬럼을 맨 앞으로 옮겼을 때 강조 표시가 원래 선택했던
+  // 컬럼이 아니라 밀려난 자리의 다른 컬럼으로 옮겨가 버린다).
+  if(selGC&&selGC.compId===c.id) selGC.ci=shiftIndexForMove(selGC.ci,from,to);
+  if(lf&&lf.kind==='gridcol'&&lf.compId===c.id) lf.idx=shiftIndexForMove(lf.idx,from,to);
+  return true;
+}
+function gcDrop(e,i){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  const from=gcDragIdx; gcDragIdx=null;
+  if(from===null||from===i)return;
+  pushHistory();
+  const insertAt=from<i?i-1:i;
+  moveGridColumn(c,from,insertAt);
+  render();
+}
+function gcDragEnd(e){
+  e.currentTarget.closest('.sfield-row')?.classList.remove('dragging');
+  document.querySelectorAll('.sfield-row.drag-over').forEach(el=>el.classList.remove('drag-over'));
+  gcDragIdx=null;
+  stopDragAutoScroll();
+}
+// 순서 번호 직접 입력: N을 입력하면 그 자리로 이동하고 나머지는 한 칸씩 밀린다(1부터 시작).
+function gcMoveTo(i,valStr){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  normGridColArrays(c);
+  const len=gridColsArr(c).length;
+  const v=parseInt(valStr,10);
+  if(!Number.isFinite(v)){render();return;}
+  const to=Math.max(1,Math.min(len,v))-1;
+  if(to===i){render();return;}
+  pushHistory();
+  moveGridColumn(c,i,to);
+  render();
+}
+
+// ---- Search-bar field editors ----
+// Height of a searchbar is driven by how many rows of fields it needs (한 줄 표시 개수 = perRow,
+// component별로 지정 가능, 기본값 4). Keeps the panel from clipping a new row, and from leaving
+// a gap when rows shrink.
+const SB_ROW_H=52, SB_ROW_GAP=12, SB_PAD=28, SB_MIN_H=84;
+// Simulates the CSS grid's row-wrapping (grid-auto-flow: row) so the auto-height estimate
+// stays accurate even when some fields span multiple of the perRow columns at once.
+function searchbarRowCount(fields,perRow){
+  const cols=Math.max(1,perRow||4);
+  let col=0, rows=1;
+  sbLayoutCells(fields,cols).forEach(cell=>{
+    const span=cell.kind==='field'?cell.units:1; // halfpair/halfsolo always occupy exactly 1 column
+    if(col+span>cols){ rows++; col=0; }
+    col+=span;
+  });
+  return rows;
+}
+function searchbarHeight(c){
+  const rows=Math.max(1,searchbarRowCount(c.fields||[],sbPerRow(c)));
+  return Math.max(SB_MIN_H, SB_PAD + rows*SB_ROW_H + (rows-1)*SB_ROW_GAP);
+}
+function fitSearchbar(c){
+  if(!c||c.type!=='searchbar')return;
+  c.h=searchbarHeight(c);
+}
+function addSearchField(){
+  const c=comps.find(x=>x.id===sel);if(!c)return;
+  pushHistory();
+  if(!c.fields)c.fields=[];
+  c.fields.push({label:'조건',type:'text',required:false});
+  fitSearchbar(c);
+  render();
+}
+function updSearchField(i,k,v){
+  const c=comps.find(x=>x.id===sel);if(!c||!c.fields||!c.fields[i])return;
+  c.fields[i][k]=v;
+  // 타입을 날짜·기간으로 바꿨는데 아직 값이 없으면(신규 필드 등) 기본값을 오늘 날짜로 채운다(다시
+  // 열 때마다 재계산되도록 "오늘" spec도 같이 붙여둔다).
+  if(k==='type' && (v==='date'||v==='daterange') && !(c.fields[i].text||'').trim()){
+    c.fields[i].text = v==='daterange' ? (todayStr()+'~'+todayStr()) : todayStr();
+    if(v==='daterange'){ c.fields[i].startSpec='chip:today'; c.fields[i].endSpec='chip:today'; }
+    else c.fields[i].dateSpec='chip:today';
+  }
+  if(k==='span'){ fitSearchbar(c); render(); return; }
+  if(k==='required'||k==='type'||k==='readonly'||k==='status')render(); else drawCanvas();
+}
+// ---- 조회조건 날짜·기간 필드: 빠른 날짜 선택 팝업(qdPopup) ----
+// 아이콘(📅)을 누르면 해당 아이콘 바로 아래에 뜨는 고정(fixed) 위치 팝업으로, 즐겨찾는 값(오늘/어제/
+// 이번달1일/올해1월1일)을 원클릭으로 쓰거나, "직접 조합하기"에서 연도·월·일 축을 조합해 상대 날짜를
+// 만들 수 있다. qd는 팝업이 열려 있는 동안의 임시 상태(어떤 필드의 어느 값을 고르는 중인지)를 담는다.
+let qd=null; // {kind:'field'|'component'|'gridcol', compId, fi, part:'single'|'start'|'end', current, chip, year, month, day, expanded, anchorRect}
+function qdToday(){ const d=new Date(); d.setHours(0,0,0,0); return d; }
+function qdFmt(d){ const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+// 날짜 표시 방법(qd.fmt / f.dateFmt / c.dateFmt / c.colDateFmt[]) - 기본값은 "년-월-일"(=YYYY-MM-DD,
+// 예전과 완전히 같은 표시). 사용자가 프리셋을 고르거나 "일/월/년"처럼 직접 입력한 패턴 문자열을
+// 그대로 저장해두고, 표시할 때마다 그 문자열 안의 년/월/일 글자만 실제 값으로 바꿔치기한다 - 순서와
+// 구분자(/, -, 공백 등 무엇이든)를 사용자가 쓴 그대로 유지하므로 "년/월/일 인식해서 직접입력" 요구를
+// 별도 파싱 없이 만족한다.
+function qdFormatDate(d,pattern){
+  const p2=n=>String(n).padStart(2,'0');
+  const Y=String(d.getFullYear()), M=p2(d.getMonth()+1), D=p2(d.getDate());
+  return (pattern||'년-월-일').replace(/년/g,Y).replace(/월/g,M).replace(/일/g,D);
+}
+// 화면에 실제로 보여줄 문자열 - qdResolvedText() 등이 돌려주는 "YYYY-MM-DD" 형태일 때만 포맷을
+// 적용하고, 그 형태가 아니면(예: "(빈값)" 안내 문구) 그대로 돌려준다. 저장은 항상 표준 ISO
+// 형식(YYYY-MM-DD)으로 하고 "표시할 때만" 포맷을 바꾸므로, 상대 날짜 재계산(오늘/어제 등)이나
+// 다른 로직은 이 함수를 몰라도 예전과 완전히 똑같이 동작한다.
+function qdDisplayText(str,pattern){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(str||'');
+  if(!m) return str;
+  return qdFormatDate(new Date(+m[1],+m[2]-1,+m[3]),pattern);
+}
+// spec 문자열(즐겨찾기 칩 이름, 또는 "직접 조합하기" 연/월/일 축 조합)을 "지금 이 순간의 오늘"을
+// 기준으로 다시 계산해 "YYYY-MM-DD" 문자열로 돌려준다. spec이 없거나 알아볼 수 없으면 null.
+// 내보내기 결과물(저장되는 mockup html)의 인터랙션 스크립트 안에도 이와 똑같은 로직이 그대로
+// 복제돼 있다(buildExportHTML 안의 resolveSpec) - 그래야 그 파일을 나중에 다른 날 열어도 "어제"가
+// 그 날짜 기준 어제로 다시 계산되어 표시된다. 두 로직은 항상 같이 맞춰야 한다.
+function qdResolveSpec(spec){
+  if(!spec) return null;
+  if(spec.indexOf('chip:')===0){
+    const mode=spec.slice(5);
+    if(['today','yesterday','thisMonth1','thisYear0101'].indexOf(mode)===-1) return null;
+    return qdFmt(qdComputeChip(mode));
+  }
+  if(spec.indexOf('axis:')===0){
+    const nums=spec.slice(5).split(',').map(Number);
+    if(nums.length!==3 || nums.some(isNaN)) return null;
+    const d=qdToday();
+    d.setFullYear(d.getFullYear()+nums[0]);
+    d.setMonth(d.getMonth()+nums[1]);
+    d.setDate(d.getDate()+nums[2]);
+    return qdFmt(d);
+  }
+  return null;
+}
+// 저장된 원문 텍스트와 spec을 함께 받아, spec이 유효하면 "오늘" 기준으로 새로 계산한 값을 우선 쓰고,
+// 없으면(빈값 spec, 또는 예전에 만들어져 spec 없이 고정 문자열만 있는 값) 저장된 텍스트를 그대로 쓴다.
+function qdResolvedText(text,spec){
+  return qdResolveSpec(spec) || (text||'').trim();
+}
+// 필드에 이미 저장돼 있는 값(단일 날짜, 또는 기간의 시작/종료 한쪽)을 문자열로 돌려준다. spec이 있으면
+// 오늘 기준으로 다시 계산하고, 없으면(비어있거나 옛 고정값) 저장된 텍스트 또는 오늘을 쓴다.
+function sfDateCurrent(f,part){
+  if(part==='single') return qdResolvedText(f.text,f.dateSpec)||todayStr();
+  const parts=(f.text||'').split('~').map(s=>s.trim());
+  return part==='start' ? (qdResolvedText(parts[0],f.startSpec)||todayStr()) : (qdResolvedText(parts[1],f.endSpec)||todayStr());
+}
+// 해당 part가 지금 "빈값"으로 저장돼 있는지(사용자가 명시적으로 비워둔 상태인지) 읽는다.
+function sfDateBlank(obj,part){
+  if(part==='single') return !!obj.blank;
+  return part==='start' ? !!obj.startBlank : !!obj.endBlank;
+}
+function qdComputeAxis(){
+  const d=qdToday();
+  d.setFullYear(d.getFullYear()+qd.year);
+  d.setMonth(d.getMonth()+qd.month);
+  d.setDate(d.getDate()+qd.day);
+  return d;
+}
+function qdComputeChip(mode){
+  const t=qdToday();
+  if(mode==='yesterday'){ const d=new Date(t); d.setDate(d.getDate()-1); return d; }
+  if(mode==='thisMonth1') return new Date(t.getFullYear(), t.getMonth(), 1);
+  if(mode==='thisYear0101') return new Date(t.getFullYear(), 0, 1);
+  return t; // 'today'
+}
+// 저장된 값이 즐겨찾기 칩(오늘/어제/이번달1일/올해1월1일) 중 하나와 정확히 같으면 그 칩 이름을 돌려준다.
+// 팝업을 다시 열었을 때 "지금 뭐가 선택돼 있는지" 칩이 초록색으로 바로 보이게 하기 위함.
+function qdMatchChip(dateStr){
+  const cands=['today','yesterday','thisMonth1','thisYear0101'];
+  for(const mode of cands){ if(qdFmt(qdComputeChip(mode))===dateStr) return mode; }
+  return null;
+}
+// 칩과 일치하지 않는 값이라면, "직접 조합하기" 축(연도×월×일)의 모든 조합을 대입해봐서 정확히 같은
+// 값을 만드는 조합을 찾는다. 찾으면 팝업을 다시 열었을 때 그 조합 그대로 펼쳐서 보여줄 수 있다.
+function qdMatchAxis(dateStr){
+  for(const year of [-1,0,1]){
+    for(const month of [-1,0,1]){
+      for(const day of [-7,-1,0,1]){
+        const d=qdToday();
+        d.setFullYear(d.getFullYear()+year);
+        d.setMonth(d.getMonth()+month);
+        d.setDate(d.getDate()+day);
+        if(qdFmt(d)===dateStr) return {year,month,day};
+      }
+    }
+  }
+  return null;
+}
+function qdPreviewDate(){
+  if(!qd) return qdToday();
+  if(qd.chip) return qdComputeChip(qd.chip);
+  if(qd.expanded) return qdComputeAxis();
+  // 칩·축 중 아무것도 선택/일치하지 않았다면(예: 가져오기 등으로 들어온 값) 필드에 이미 저장된 값을 그대로 보여준다.
+  const d=new Date((qd.current||todayStr())+'T00:00:00');
+  return isNaN(d.getTime()) ? qdToday() : d;
+}
+// 하단 미리보기 칸에 실제로 표시할 문구. "빈값" 토글이 켜져 있으면 날짜 대신 그 사실을 보여준다.
+function qdPreviewLabel(){
+  if(qd && qd.blank) return '빈값 (선택 안 함)';
+  return qdFormatDate(qdPreviewDate(), qd?qd.fmt:null);
+}
+// qd 상태를 한 곳에서 조립한다. kind로 어떤 대상(조회조건 필드/단일 컴포넌트/그리드 컬럼)인지 구분하고,
+// fi는 kind에 따라 필드 인덱스 또는 그리드 컬럼 인덱스로 재사용한다(단일 컴포넌트는 null). fmt는 그
+// 대상에 이미 저장돼 있던 표시 방법(없으면 기본값 "년-월-일")을 팝업을 다시 열 때 그대로 이어받는다.
+function qdBuildState(kind,compId,fi,part,current,blankFlag,fmt){
+  const chipMatch=qdMatchChip(current);
+  const axisMatch=chipMatch?null:qdMatchAxis(current);
+  return {kind, compId, fi, part, current, chip:chipMatch,
+    year:axisMatch?axisMatch.year:0, month:axisMatch?axisMatch.month:0, day:axisMatch?axisMatch.day:0,
+    expanded:!!axisMatch, blank:!!blankFlag, fmt:fmt||'년-월-일'};
+}
+// 조회조건 패널의 날짜·기간 필드용 (기존).
+function openQuickDate(btn,fi,part){
+  const c=comps.find(x=>x.id===sel); if(!c||!c.fields||!c.fields[fi])return;
+  const f=c.fields[fi];
+  const current=sfDateCurrent(f,part);
+  qd=qdBuildState('field', c.id, fi, part, current, sfDateBlank(f,part), f.dateFmt);
+  renderQuickDate(btn);
+}
+// 캔버스에 단독으로 놓인 날짜·기간 입력 컴포넌트용 - 속성 패널의 값(텍스트)이 읽기전용으로 바뀌고
+// 이 팝업으로만 값을 바꿀 수 있다.
+function openQuickDateComp(btn,compId,part){
+  const c=comps.find(x=>x.id===compId); if(!c)return;
+  const current=sfDateCurrent(c,part);
+  qd=qdBuildState('component', compId, null, part, current, sfDateBlank(c,part), c.dateFmt);
+  renderQuickDate(btn);
+}
+// 그리드 컬럼이 "날짜" 타입일 때, 디자인 화면/내보내기에 보일 기본 날짜 값을 정하는 팝업.
+function openQuickDateGridCol(btn,ci){
+  const c=comps.find(x=>x.id===sel); if(!c)return;
+  normGridColArrays(c);
+  const current=qdResolvedText(c.colDateVals[ci], c.colDateSpec[ci])||todayStr();
+  qd=qdBuildState('gridcol', c.id, ci, 'single', current, !!(c.colDateBlank&&c.colDateBlank[ci]), c.colDateFmt&&c.colDateFmt[ci]);
+  renderQuickDate(btn);
+}
+function qdOutsideClick(e){
+  const el=document.getElementById('qdPopup');
+  if(el && !el.contains(e.target) && e.target.closest('.sf-datebtn')===null) closeQuickDate();
+}
+function closeQuickDate(){
+  const el=document.getElementById('qdPopup');
+  if(el) el.remove();
+  qd=null;
+  document.removeEventListener('mousedown', qdOutsideClick, true);
+}
+function qdSelectChip(mode){
+  if(!qd)return;
+  qd.chip=mode; qd.expanded=false; qd.blank=false;
+  renderQuickDate();
+}
+function qdSelectAxis(axis,val){
+  if(!qd)return;
+  qd[axis]=val; qd.expanded=true; qd.chip=null; qd.blank=false;
+  renderQuickDate();
+}
+function qdToggleExpand(){
+  if(!qd)return;
+  qd.expanded=!qd.expanded;
+  renderQuickDate();
+}
+// "빈값" 칩: 오늘/어제 등과 동일하게 원클릭으로 고르는 선택지 중 하나. 고르면 날짜를 아예 선택하지
+// 않고 비워두는 상태가 되어 미리보기가 "빈값"으로 바뀌고, 이후 다른 칩·축을 고르면 그쪽으로 다시 바뀐다.
+function qdSelectBlank(){
+  if(!qd)return;
+  qd.blank=true; qd.chip=null; qd.expanded=false;
+  renderQuickDate();
+}
+// part가 'single'이면 val을 그대로, 'start'/'end'면 기존 텍스트를 '~'로 나눠 해당 절반만 바꿔 합친다.
+function qdMergeText(existingText,part,val){
+  if(part==='single') return val;
+  const parts=(existingText||'').split('~').map(s=>s.trim());
+  let v1=parts[0]||todayStr(), v2=parts[1]||todayStr();
+  if(part==='start')v1=val; else v2=val;
+  return v1+'~'+v2;
+}
+// part에 맞는 blank 플래그(blank / startBlank / endBlank)를 obj에 기록한다. obj는 조회조건 필드
+// 객체(f)이거나 단독 컴포넌트 객체(c) - 둘 다 같은 방식으로 쓴다.
+function qdSetBlankFlag(obj,part,isBlank){
+  if(part==='single') obj.blank=isBlank;
+  else if(part==='start') obj.startBlank=isBlank;
+  else obj.endBlank=isBlank;
+}
+// part에 맞는 spec 필드명(dateSpec / startSpec / endSpec)을 obj에 기록한다. spec이 없으면(빈값을
+// 골랐거나, 즐겨찾기 칩·직접조합 축 어느 것과도 안 맞는 임의의 값이면) 아예 필드를 지워서 예전처럼
+// 고정 문자열(text)만 쓰는 값으로 남긴다.
+function qdSetSpecFlag(obj,part,spec){
+  const key = part==='single' ? 'dateSpec' : (part==='start' ? 'startSpec' : 'endSpec');
+  if(spec) obj[key]=spec; else delete obj[key];
+}
+// 지금 qd 상태가 즐겨찾기 칩이나 "직접 조합하기" 축과 정확히 일치하면 그 selection을 나중에 다시
+// 계산할 수 있는 spec 문자열로 인코딩해 돌려준다. 빈값이거나(qd.blank) 어느 쪽과도 안 맞는 임의의
+// 값이면 null - 이 경우 예전처럼 그 순간에 계산된 고정 날짜 문자열로만 저장된다.
+function qdCurrentSpec(){
+  if(!qd || qd.blank) return null;
+  if(qd.chip) return 'chip:'+qd.chip;
+  if(qd.expanded) return 'axis:'+qd.year+','+qd.month+','+qd.day;
+  return null;
+}
+function qdApply(){
+  if(!qd)return;
+  const isBlank=!!qd.blank;
+  const val=isBlank?'':qdFmt(qdPreviewDate());
+  const spec=qdCurrentSpec();
+  const fmt=qd.fmt||'년-월-일';
+  pushHistory();
+  if(qd.kind==='component'){
+    const c=comps.find(x=>x.id===qd.compId); if(!c){closeQuickDate();return;}
+    c.text=qdMergeText(c.text, qd.part, val);
+    qdSetBlankFlag(c, qd.part, isBlank);
+    qdSetSpecFlag(c, qd.part, spec);
+    c.dateFmt=fmt;
+  }else if(qd.kind==='gridcol'){
+    const c=comps.find(x=>x.id===qd.compId); if(!c){closeQuickDate();return;}
+    normGridColArrays(c);
+    c.colDateVals[qd.fi]=val;
+    c.colDateBlank[qd.fi]=isBlank;
+    c.colDateSpec[qd.fi]=spec||'';
+    c.colDateFmt[qd.fi]=fmt;
+  }else{
+    const c=comps.find(x=>x.id===qd.compId); if(!c||!c.fields||!c.fields[qd.fi]){closeQuickDate();return;}
+    const f=c.fields[qd.fi];
+    f.text=qdMergeText(f.text, qd.part, val);
+    qdSetBlankFlag(f, qd.part, isBlank);
+    qdSetSpecFlag(f, qd.part, spec);
+    f.dateFmt=fmt;
+  }
+  closeQuickDate();
+  render();
+}
+// 표시 방법 프리셋 버튼(년-월-일/년월일/...) 클릭. 팝업을 다시 그려서 미리보기와 커스텀 입력칸에도
+// 이 패턴이 즉시 반영되게 한다(커스텀 입력칸 value가 qd.fmt를 그대로 보여주므로, 프리셋을 고르면
+// 그 안에 해당 패턴 문자열이 채워져 사용자가 이어서 손으로 다듬을 수도 있다).
+const QD_FMT_PRESETS=['년-월-일','년월일','년-월','년월','년','월','일'];
+function qdSelectFmt(pattern){
+  if(!qd)return;
+  qd.fmt=pattern;
+  renderQuickDate();
+}
+// 커스텀 표시 방법 입력칸 - 매 입력마다 팝업 전체를 다시 그리면(renderQuickDate) input 자체가
+// 새로 만들어져 커서 위치/포커스를 잃으므로, 미리보기 텍스트와 프리셋 버튼의 선택 표시만 직접
+// DOM으로 갱신한다.
+function qdSetCustomFmt(val){
+  if(!qd)return;
+  qd.fmt=val||'년-월-일';
+  const el=document.getElementById('qdPopup'); if(!el)return;
+  const prev=el.querySelector('.qd-preview'); if(prev) prev.textContent=qdPreviewLabel();
+  el.querySelectorAll('.qd-fmt-chip').forEach(btn=>{
+    btn.classList.toggle('sel', btn.dataset.fmt===qd.fmt);
+  });
+}
+function renderQuickDate(anchorBtn){
+  if(!qd)return;
+  let el=document.getElementById('qdPopup');
+  if(!el){
+    el=document.createElement('div');
+    el.id='qdPopup';
+    el.className='qd-popup';
+    document.body.appendChild(el);
+    document.addEventListener('mousedown', qdOutsideClick, true);
+  }
+  const title = qd.kind==='gridcol'
+    ? '컬럼 기본값 날짜 선택'
+    : (qd.part==='end' ? '종료일 빠른 선택' : (qd.part==='start' ? '시작일 빠른 선택' : '날짜 빠른 선택'));
+  const chip=(mode,label)=>`<button class="qd-chip${(!qd.expanded&&!qd.blank&&qd.chip===mode)?' sel':''}" onclick="qdSelectChip('${mode}')">${label}</button>`;
+  const seg=(axis,val,label)=>`<button class="${(qd.expanded&&!qd.blank&&qd[axis]===val)?'sel':''}" onclick="qdSelectAxis('${axis}',${val})">${label}</button>`;
+  el.innerHTML=`
+    <div class="qd-title"><span>${title}</span><span class="qd-close" onclick="closeQuickDate()">×</span></div>
+    <div class="qd-chips">
+      ${chip('today','오늘')}${chip('yesterday','어제')}${chip('thisMonth1','이번달1일')}${chip('thisYear0101','올해1월1일')}
+      <button class="qd-chip qd-chip-blank${qd.blank?' sel':''}" onclick="qdSelectBlank()">빈값</button>
+    </div>
+    <div class="qd-expand-toggle" onclick="qdToggleExpand()">${qd.expanded?'간단히 ▴':'직접 조합하기 ▾'}</div>
+    ${qd.expanded?`
+    <div class="qd-axis"><div class="qd-axis-label">연도</div><div class="qd-seg">${seg('year',-1,'작년')}${seg('year',0,'올해')}${seg('year',1,'내년')}</div></div>
+    <div class="qd-axis"><div class="qd-axis-label">월</div><div class="qd-seg">${seg('month',-1,'전달')}${seg('month',0,'이번달')}${seg('month',1,'다음달')}</div></div>
+    <div class="qd-axis"><div class="qd-axis-label">일</div><div class="qd-seg">${seg('day',-7,'-7일')}${seg('day',-1,'어제')}${seg('day',0,'오늘')}${seg('day',1,'내일')}</div></div>
+    `:''}
+    <div class="qd-fmt-section">
+      <div class="qd-axis-label">표시 방법</div>
+      <div class="qd-fmt-chips">${QD_FMT_PRESETS.map(p=>`<button type="button" class="qd-fmt-chip${qd.fmt===p?' sel':''}" data-fmt="${p}" onclick="qdSelectFmt('${p}')">${p}</button>`).join('')}</div>
+      <input class="qd-fmt-custom" value="${escAttr(qd.fmt)}" oninput="qdSetCustomFmt(this.value)" placeholder="직접 입력 (예: 일/월/년)">
+    </div>
+    <div class="qd-actions"><span class="qd-preview">${qdPreviewLabel()}</span><button class="qd-btn" onclick="qdApply()">적용</button></div>
+  `;
+  if(anchorBtn) qd.anchorRect=anchorBtn.getBoundingClientRect();
+  qdPosition(el);
+}
+// 팝업을 아이콘 바로 아래(기본)에 붙이되, 화면 오른쪽/아래 가장자리에 가까우면 왼쪽/위쪽으로 뒤집어
+// 잘리지 않게 한다.
+function qdPosition(el){
+  if(!qd || !qd.anchorRect)return;
+  const r=qd.anchorRect;
+  const vw=window.innerWidth, vh=window.innerHeight;
+  const pw=el.offsetWidth||236, ph=el.offsetHeight||300;
+  let left=r.left, top=r.bottom+6;
+  if(left+pw>vw-8) left=Math.max(8, vw-8-pw);
+  if(top+ph>vh-8) top=Math.max(8, r.top-ph-6);
+  el.style.left=left+'px';
+  el.style.top=top+'px';
+}
+// ---- 조회조건 필드 라벨 서식(볼드/기울임/밑줄/글자색/배경색) 미니 팝업(lfPopup) ----
+// "가" 트리거 버튼을 누르면 그 버튼 바로 아래에 뜨는 고정(fixed) 위치 팝업. qd-popup(빠른 날짜
+// 선택)과 같은 패턴을 쓴다 - 버튼 위치 기준으로 붙었다가, 색상/토글을 누르면 즉시 캔버스와 트리거
+// 버튼 미리보기에 반영되고 팝업은 계속 열린 채로 다음 선택을 받는다.
+let lf=null; // {kind:'field'|'gridcol'|'comptext'|'complabel', compId, idx, wheelProp, anchorRect}
+const LF_FONT_COLORS=['#e5484d','#d97706','#1e9e6a','#2680eb','#7c5cff','#111111'];
+const LF_BG_COLORS=['#fdecec','#fdf3e3','#e6f5ee','#eaf2fe','#f1edff','#f3f4f6'];
+// lf.kind==='field'일 때 f[prop]에 바로 읽고 쓰던 것을, 'gridcol'일 때는 컬럼별 배열(c.colLabelBold
+// 등)의 lf.idx번째 칸에, 'comptext'일 때는 컴포넌트 자신의 c.textBold 등에 읽고 써야 한다 - 아래
+// 두 표가 그 프로퍼티 이름 대응이다('complabel'은 c.labelBold 등을 이름 그대로 쓰므로 표가 필요
+// 없다 - 조회조건 필드의 f.labelBold와 정확히 같은 이름 규칙이라서).
+const LF_PROP_MAP={labelBold:'colLabelBold',labelItalic:'colLabelItalic',labelUnderline:'colLabelUnderline',labelColor:'colLabelColor',labelBg:'colLabelBg'};
+const LF_COMPTEXT_MAP={labelBold:'textBold',labelItalic:'textItalic',labelUnderline:'textUnderline',labelColor:'textColor',labelBg:'textBg'};
+// lf가 가리키는 대상(조회조건 필드/그리드 컬럼/컴포넌트 자신의 텍스트·라벨)이 지금도 존재하면 그
+// 컴포넌트를, 필드/컬럼이 삭제되었거나 다른 컴포넌트가 선택되어 더 이상 유효하지 않으면 null을
+// 돌려준다. comptext/complabel은 컴포넌트 자신에 직접 저장하므로 c가 있으면 항상 유효하다.
+function lfComp(){
+  if(!lf)return null;
+  const c=comps.find(x=>x.id===lf.compId); if(!c)return null;
+  if(lf.kind==='gridcol'){
+    const cols=gridColsArr(c);
+    if(lf.idx<0||lf.idx>=cols.length)return null;
+  } else if(lf.kind==='field'){
+    if(!c.fields||!c.fields[lf.idx])return null;
+  }
+  return c;
+}
+function lfGet(prop){
+  const c=lfComp(); if(!c)return undefined;
+  if(lf.kind==='gridcol'){ const arr=c[LF_PROP_MAP[prop]]; return arr?arr[lf.idx]:undefined; }
+  if(lf.kind==='comptext') return c[LF_COMPTEXT_MAP[prop]];
+  if(lf.kind==='complabel') return c[prop];
+  return c.fields[lf.idx][prop];
+}
+function lfSet(prop,val){
+  const c=lfComp(); if(!c)return;
+  if(lf.kind==='gridcol'){ normGridColArrays(c); c[LF_PROP_MAP[prop]][lf.idx]=val; }
+  else if(lf.kind==='comptext'){ c[LF_COMPTEXT_MAP[prop]]=val; }
+  else if(lf.kind==='complabel'){ c[prop]=val; }
+  else c.fields[lf.idx][prop]=val;
+}
+function lfRowSel(){
+  if(lf.kind==='gridcol') return '#gcolrow-'+lf.idx+' .sf-fmtbtn';
+  if(lf.kind==='field') return '#sfrow-'+lf.idx+' .sf-fmtbtn';
+  if(lf.kind==='comptext') return '.sf-fmtbtn-text';
+  return '.sf-fmtbtn-label';
+}
+function openLabelFormat(btn,fi){
+  const c=comps.find(x=>x.id===sel); if(!c||!c.fields||!c.fields[fi])return;
+  lf={kind:'field', compId:c.id, idx:fi, wheelProp:null};
+  renderLabelFormat(btn);
+}
+// 그리드 컬럼 헤더 서식 트리거("가") - 조회조건 필드와 똑같은 팝업을 열되, 예전에 "정렬" 아이콘
+// 3개가 있던 자리에 이 트리거 버튼 하나만 남기고 그 정렬 기능은 팝업 안(lfSetAlign)으로 옮겼다.
+function openGridColFormat(btn,ci){
+  const c=comps.find(x=>x.id===sel); if(!c)return;
+  normGridColArrays(c);
+  const cols=gridColsArr(c); if(ci<0||ci>=cols.length)return;
+  lf={kind:'gridcol', compId:c.id, idx:ci, wheelProp:null};
+  renderLabelFormat(btn);
+}
+// 나머지 컴포넌트(제목/버튼/텍스트박스/콤보 등) 공용 - "텍스트" 속성 옆 트리거는 컴포넌트 자신의
+// 화면 텍스트(c.text)에, "라벨 내용" 옆 트리거는 그 컴포넌트의 라벨(c.labelText)에 서식을 건다.
+// idx는 이 두 kind에서는 안 쓰이지만 lf 객체 모양을 다른 kind와 통일해 나머지 함수들이 그대로
+// 동작하게 한다.
+function openCompTextFormat(btn){
+  const c=comps.find(x=>x.id===sel); if(!c)return;
+  lf={kind:'comptext', compId:c.id, idx:0, wheelProp:null};
+  renderLabelFormat(btn);
+}
+function openCompLabelFormat(btn){
+  const c=comps.find(x=>x.id===sel); if(!c)return;
+  lf={kind:'complabel', compId:c.id, idx:0, wheelProp:null};
+  renderLabelFormat(btn);
+}
+function lfOutsideClick(e){
+  const el=document.getElementById('lfPopup');
+  if(el && !el.contains(e.target) && e.target.closest('.sf-fmtbtn')===null) closeLabelFormat();
+}
+function closeLabelFormat(){
+  const el=document.getElementById('lfPopup');
+  if(el) el.remove();
+  lf=null;
+  document.removeEventListener('mousedown', lfOutsideClick, true);
+}
+// 볼드/기울임/밑줄은 클릭할 때마다 즉시 켜고 끈다(체크박스처럼). required/readonly 토글(sf-req/
+// sf-ro)과 같은 방식으로, 이런 개별 서식 토글은 되돌리기(Undo) 스택에 올리지 않는다.
+function lfToggle(prop){
+  if(!lfComp())return;
+  lfSet(prop, !lfGet(prop));
+  render();
+  renderLabelFormat(document.querySelector(lfRowSel()));
+}
+// 색상 스와치를 누르면 그 즉시 적용. 이미 적용된 색을 다시 누르면 해제(기본값으로 복귀)된다.
+function lfSetColor(prop,val){
+  if(!lfComp())return;
+  lfSet(prop, lfGet(prop)===val?'':val);
+  render();
+  renderLabelFormat(document.querySelector(lfRowSel()));
+}
+// 무지개 색상환 토글 - 글자색/배경색 각 줄의 스와치 뒤에 붙는 색상환 아이콘을 누르면 그 줄 아래에
+// 원형 색상환이 펼쳐진다. 두 줄 중 한쪽만 열려 있을 수 있고(lf.wheelProp), 다시 누르면 접힌다.
+function lfToggleWheel(prop){
+  if(!lf)return;
+  lf.wheelProp=(lf.wheelProp===prop)?null:prop;
+  renderLabelFormat();
+}
+// 그리드 컬럼 전용 - 헤더 텍스트 정렬(왼쪽/가운데/오른쪽). 실제 반영은 기존 updGridColAlign()을
+// 그대로 재사용하고, 팝업 자신의 버튼 active 표시만 다시 그린다.
+function lfSetAlign(v){
+  if(!lf||lf.kind!=='gridcol')return;
+  updGridColAlign(lf.idx, v);
+  renderLabelFormat(document.querySelector(lfRowSel()));
+}
+// HSV(색상 0~360, 채도 0~1, 명도 0~1) -> "#rrggbb" 16진 색상 문자열.
+function hsvToHex(h,s,v){
+  h=((h%360)+360)%360;
+  const c=v*s, x=c*(1-Math.abs((h/60)%2-1)), m=v-c;
+  let r=0,g=0,b=0;
+  if(h<60){r=c;g=x;b=0;} else if(h<120){r=x;g=c;b=0;} else if(h<180){r=0;g=c;b=x;}
+  else if(h<240){r=0;g=x;b=c;} else if(h<300){r=x;g=0;b=c;} else {r=c;g=0;b=x;}
+  const toHex=n=>Math.round((n+m)*255).toString(16).padStart(2,'0');
+  return '#'+toHex(r)+toHex(g)+toHex(b);
+}
+// 색상환(.lf-wheel) 위 클릭 지점을 골라 그 즉시 적용한다. 원의 중심 기준 각도(위쪽=0°, 시계방향)가
+// 색상(hue), 중심에서의 거리 비율이 채도(saturation)가 되도록 계산한다 - CSS conic-gradient가
+// "from 0deg"(위쪽 시작, 시계방향)로 그려져 있어 시각적으로 보이는 색과 정확히 같은 색이 골라진다.
+function lfWheelClick(e,prop){
+  const el=e.currentTarget;
+  const rect=el.getBoundingClientRect();
+  const radius=rect.width/2;
+  const dx=e.clientX-rect.left-radius, dy=e.clientY-rect.top-radius;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist>radius)return; // 원 바깥 클릭은 무시
+  let hue=Math.atan2(dx,-dy)*180/Math.PI;
+  if(hue<0)hue+=360;
+  const sat=Math.min(1,dist/radius);
+  if(!lfComp())return;
+  lfSet(prop, hsvToHex(hue,sat,1));
+  render();
+  renderLabelFormat(document.querySelector(lfRowSel()));
+}
+function renderLabelFormat(anchorBtn){
+  const c=lfComp(); if(!c){closeLabelFormat();return;}
+  let el=document.getElementById('lfPopup');
+  if(!el){
+    el=document.createElement('div');
+    el.id='lfPopup';
+    el.className='lf-popup';
+    document.body.appendChild(el);
+    document.addEventListener('mousedown', lfOutsideClick, true);
+  }
+  const swatch=(clr,prop)=>`<span class="lf-sw${lfGet(prop)===clr?' on':''}" style="background:${clr};" title="${clr}" onclick="lfSetColor('${prop}','${clr}')"></span>`;
+  const resetSw=prop=>`<span class="lf-sw lf-sw-reset${!lfGet(prop)?' on':''}" title="기본값" onclick="lfSetColor('${prop}','')">–</span>`;
+  // 무지개 색상환 토글 아이콘 - 지금 적용된 색이 미리 정해둔 스와치 목록에 없는(=색상환에서 직접
+  // 고른) 값이면 이 아이콘 자체에도 선택 표시(on)를 켜서 "커스텀 색이 적용 중"임을 알려준다.
+  const wheelBtn=(prop,list)=>`<span class="lf-sw lf-sw-wheel${(lfGet(prop)&&list.indexOf(lfGet(prop))===-1)?' on':''}" title="색상환에서 직접 선택" onclick="lfToggleWheel('${prop}')"></span>`;
+  const wheelPanel=prop=>lf.wheelProp===prop?`<div class="lf-wheel-wrap"><div class="lf-wheel" onclick="lfWheelClick(event,'${prop}')"></div></div>`:'';
+  // 그리드 컬럼일 때만 정렬 줄을 추가한다 - 예전에 컬럼 목록의 "정렬" 아이콘 3개로 하던 걸 그대로
+  // 이 팝업 안으로 옮긴 것(같은 .align-btn/.align-ic 모양을 그대로 재사용).
+  let alignRow='';
+  if(lf.kind==='gridcol'){
+    const curAlign=(c.colAligns&&c.colAligns[lf.idx])||'left';
+    const abtn=(v,label)=>`<button type="button" class="align-btn${curAlign===v?' on':''}" title="${label}" onclick="lfSetAlign('${v}')"><span class="align-ic ${v==='left'?'l':v==='center'?'c':'r'}"><i></i><i></i><i></i></span></button>`;
+    alignRow=`<div class="lf-row2"><span class="lf-row-label">정렬</span><div class="align-seg">${abtn('left','왼쪽 정렬')}${abtn('center','가운데 정렬')}${abtn('right','오른쪽 정렬')}</div></div>`;
+  }
+  el.innerHTML=`
+    <div class="lf-arrow"></div>
+    <div class="lf-row1">
+      <button type="button" class="lf-btn${lfGet('labelBold')?' on':''}" style="font-weight:700;" title="볼드" onclick="lfToggle('labelBold')">B</button>
+      <button type="button" class="lf-btn${lfGet('labelItalic')?' on':''}" style="font-style:italic;" title="기울임" onclick="lfToggle('labelItalic')">I</button>
+      <button type="button" class="lf-btn${lfGet('labelUnderline')?' on':''}" style="text-decoration:underline;" title="밑줄" onclick="lfToggle('labelUnderline')">U</button>
+    </div>
+    ${alignRow}
+    <div class="lf-row2"><span class="lf-row-label">글자색</span><div class="lf-sw-group">${resetSw('labelColor')}${LF_FONT_COLORS.map(clr=>swatch(clr,'labelColor')).join('')}${wheelBtn('labelColor',LF_FONT_COLORS)}</div></div>
+    ${wheelPanel('labelColor')}
+    <div class="lf-row2"><span class="lf-row-label">배경색</span><div class="lf-sw-group">${resetSw('labelBg')}${LF_BG_COLORS.map(clr=>swatch(clr,'labelBg')).join('')}${wheelBtn('labelBg',LF_BG_COLORS)}</div></div>
+    ${wheelPanel('labelBg')}
+  `;
+  if(anchorBtn) lf.anchorRect=anchorBtn.getBoundingClientRect();
+  lfPosition(el);
+}
+// 트리거 버튼 아래 가운데에 붙이되, 화면 오른쪽/아래 가장자리에 가까우면 안쪽으로 당겨 잘리지 않게
+// 한다(qdPosition과 같은 규칙).
+function lfPosition(el){
+  if(!lf || !lf.anchorRect)return;
+  const r=lf.anchorRect;
+  const vw=window.innerWidth, vh=window.innerHeight;
+  const pw=el.offsetWidth||220, ph=el.offsetHeight||120;
+  let left=r.left+r.width/2-pw/2, top=r.bottom+10;
+  if(left<8) left=8;
+  if(left+pw>vw-8) left=Math.max(8, vw-8-pw);
+  if(top+ph>vh-8) top=Math.max(8, r.top-ph-10);
+  el.style.left=left+'px';
+  el.style.top=top+'px';
+}
+function delSearchField(i){
+  const c=comps.find(x=>x.id===sel);if(!c||!c.fields)return;
+  pushHistory();
+  c.fields.splice(i,1);
+  fitSearchbar(c);
+  // 삭제된 필드를 가리키던 강조 표시(selSF)·서식 팝업(lf)은 지우고, 뒤쪽 필드를 가리키던 것은
+  // 한 칸씩 당긴다 - 그리드 컬럼 삭제(delGridCol)와 같은 규칙. (lf는 idx 프로퍼티를 쓰므로
+  // lf.fi가 아니라 lf.idx로 비교해야 한다.)
+  if(selSF&&selSF.compId===c.id){
+    if(selSF.fi===i) selSF=null;
+    else if(selSF.fi>i) selSF.fi--;
+  }
+  if(lf&&lf.kind==='field'&&lf.compId===c.id){
+    if(lf.idx===i) closeLabelFormat();
+    else if(lf.idx>i) lf.idx--;
+  }
+  render();
+}
+// Drag-and-drop reorder: drag a field row's handle and drop it on another row.
+let sfDragIdx=null;
+function sfDragStart(e,i){
+  sfDragIdx=i;
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain',String(i));
+  // draggable="true"는 손잡이(⠿)에만 있으므로(라벨 입력칸 안에서 마우스로 텍스트를 드래그
+  // 선택할 때 행 전체가 끌려가 버리는 것을 막기 위함), 스타일은 그 조상인 행에 입혀야 한다.
+  e.currentTarget.closest('.sfield-row')?.classList.add('dragging');
+  startDragAutoScroll();
+}
+function sfDragOver(e){
+  e.preventDefault();
+  e.dataTransfer.dropEffect='move';
+  e.currentTarget.classList.add('drag-over');
+  updateDragScrollY(e);
+}
+function sfDragLeave(e){
+  e.currentTarget.classList.remove('drag-over');
+}
+function sfDrop(e,i){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const c=comps.find(x=>x.id===sel);if(!c||!c.fields)return;
+  const from=sfDragIdx; sfDragIdx=null;
+  if(from===null||from===i)return;
+  pushHistory();
+  const [item]=c.fields.splice(from,1);
+  const insertAt=from<i?i-1:i;
+  c.fields.splice(insertAt,0,item);
+  // 옮긴 필드 자신뿐 아니라 그 사이에서 함께 밀린 다른 필드를 가리키던 강조 표시·서식 팝업도
+  // 같이 보정한다 - moveGridColumn과 같은 규칙(shiftIndexForMove).
+  if(selSF&&selSF.compId===c.id) selSF.fi=shiftIndexForMove(selSF.fi,from,insertAt);
+  if(lf&&lf.kind==='field'&&lf.compId===c.id) lf.idx=shiftIndexForMove(lf.idx,from,insertAt);
+  fitSearchbar(c);
+  render();
+}
+function sfDragEnd(e){
+  e.currentTarget.closest('.sfield-row')?.classList.remove('dragging');
+  document.querySelectorAll('.sfield-row.drag-over').forEach(el=>el.classList.remove('drag-over'));
+  sfDragIdx=null;
+  stopDragAutoScroll();
+}
+// 순서 번호 직접 입력: N을 입력하면 그 자리로 이동하고 나머지는 한 칸씩 밀린다(1부터 시작).
+function sfMoveTo(i,valStr){
+  const c=comps.find(x=>x.id===sel);if(!c||!c.fields)return;
+  const len=c.fields.length;
+  const v=parseInt(valStr,10);
+  if(!Number.isFinite(v)){render();return;}
+  const to=Math.max(1,Math.min(len,v))-1;
+  if(to===i){render();return;}
+  pushHistory();
+  const [item]=c.fields.splice(i,1);
+  c.fields.splice(to,0,item);
+  if(selSF&&selSF.compId===c.id) selSF.fi=shiftIndexForMove(selSF.fi,i,to);
+  if(lf&&lf.kind==='field'&&lf.compId===c.id) lf.idx=shiftIndexForMove(lf.idx,i,to);
+  fitSearchbar(c);
+  render();
+}
+
+// ---- 컬럼/필드 순서 변경: 드래그 중 자동 스크롤 ----
+// 리스트가 속성 패널(#props) 안에서 세로 스크롤될 때, 드래그로 원하는 위치까지 끌고 가기 어려운
+// 문제를 보완한다. dragover가 멈춰도(마우스가 가장자리에 정지) 계속 스크롤되도록 setInterval로
+// 별도 타이머를 둔다.
+let dragScrollY=null, dragScrollTimer=null;
+function startDragAutoScroll(){
+  if(dragScrollTimer)return;
+  dragScrollTimer=setInterval(()=>{
+    if(dragScrollY==null)return;
+    const scroller=document.getElementById('props');
+    if(!scroller)return;
+    const rect=scroller.getBoundingClientRect();
+    const margin=48, maxSpeed=16;
+    let dy=0;
+    if(dragScrollY<rect.top+margin) dy=-maxSpeed*(1-Math.max(0,dragScrollY-rect.top)/margin);
+    else if(dragScrollY>rect.bottom-margin) dy=maxSpeed*(1-Math.max(0,rect.bottom-dragScrollY)/margin);
+    if(dy)scroller.scrollTop+=dy;
+  },30);
+}
+function stopDragAutoScroll(){
+  if(dragScrollTimer){clearInterval(dragScrollTimer);dragScrollTimer=null;}
+  dragScrollY=null;
+}
+function updateDragScrollY(e){dragScrollY=e.clientY;}
+
+// property-edit history: snapshot on focus, commit on blur if changed
+let propEditSnap=null;
+document.getElementById('props').addEventListener('focusin',e=>{
+  if(e.target.matches('input,textarea,select'))propEditSnap=snapshot();
+});
+document.getElementById('props').addEventListener('focusout',e=>{
+  if(!propEditSnap)return;
+  if(JSON.stringify(propEditSnap.comps)!==JSON.stringify(comps)){
+    undoStack.push(propEditSnap);
+    if(undoStack.length>HIST_MAX)undoStack.shift();
+    redoStack=[]; updateHistBtns();
+  }
+  propEditSnap=null;
+});
+function syncPropFields(c){
+  ['x','y','w','h'].forEach(k=>{
+    const inp=document.querySelector('#props input[data-prop="'+k+'"]');
+    if(inp&&document.activeElement!==inp)inp.value=c[k];
+  });
+}
+function delSel(){
+  if(!selIds.size)return;
+  pushHistory();
+  const toDelete=collectWithChildren([...selIds]);
+  comps=comps.filter(x=>!toDelete.includes(x.id));
+  selectSingle(null);render();
+}
+// expands a list of ids to also include all descendant children of any Tab containers in the list
+function collectWithChildren(ids){
+  const set=new Set(ids);
+  let changed=true;
+  while(changed){
+    changed=false;
+    comps.forEach(c=>{
+      if(c.parent&&set.has(c.parent)&&!set.has(c.id)){ set.add(c.id); changed=true; }
+    });
+  }
+  return [...set];
+}
+function zorder(d){const i=comps.findIndex(x=>x.id===sel);if(i<0)return;pushHistory();const[c]=comps.splice(i,1);d==='front'?comps.push(c):comps.unshift(c);render();}
+
+// ---- Canvas controls ----
+function toggleGrid(){canvas.classList.toggle('nogrid',!document.getElementById('gridChk').checked);}
+function setCW(){const v=Math.max(400,parseInt(document.getElementById('cw').value)||1100);document.getElementById('cw').value=v;canvas.style.width=v+'px';applyZoom();}
+function setCH(){const v=Math.max(300,parseInt(document.getElementById('ch').value)||700);document.getElementById('ch').value=v;canvas.style.height=v+'px';applyZoom();}
+
+// ---- Canvas zoom ----
+// The canvas is CSS-scaled. Mouse math must divide by `zoom` so that dragging
+// stays aligned with the cursor at any zoom level.
+let zoom=1;
+const ZOOM_STEPS=[0.5,0.75,0.9,1,1.25,1.5,2];
+function applyZoom(){
+  const holder=document.querySelector('.canvas-holder');
+  canvas.style.transform = zoom===1?'':'scale('+zoom+')';
+  canvas.style.transformOrigin='top left';
+  // keep the surrounding layout aware of the scaled footprint
+  if(holder){
+    const bw=parseInt(canvas.style.width)||canvas.offsetWidth||0;
+    const bh=parseInt(canvas.style.height)||canvas.offsetHeight||0;
+    holder.style.width = (zoom===1||!bw)?'':(bw*zoom)+'px';
+    holder.style.height= (zoom===1||!bh)?'':(bh*zoom)+'px';
+  }
+  const sel=document.getElementById('zoomSel');
+  if(sel){
+    const match=[...sel.options].find(o=>Math.abs(+o.value-zoom)<0.001);
+    if(match){ sel.value=match.value; }
+    else {
+      // show a custom value (e.g. from Ctrl+wheel) without losing the preset list
+      let custom=sel.querySelector('option[data-custom]');
+      if(!custom){ custom=document.createElement('option'); custom.setAttribute('data-custom','1'); sel.appendChild(custom); }
+      custom.value=zoom; custom.textContent=Math.round(zoom*100)+'%'; sel.value=zoom;
+    }
+  }
+}
+function setZoom(z){
+  zoom=Math.min(2,Math.max(0.25,z||1));
+  applyZoom();
+}
+// Ctrl/⌘ + wheel zooms the canvas, like most design tools.
+document.addEventListener('wheel',e=>{
+  if(!(e.ctrlKey||e.metaKey))return;
+  const holder=document.querySelector('.canvas-holder');
+  if(!holder||!holder.contains(e.target))return;
+  e.preventDefault();
+  setZoom(zoom*(e.deltaY<0?1.1:1/1.1));
+},{passive:false});
+// A grid on the canvas only scrolls horizontally. Let a plain vertical wheel over a
+// scrollable grid body scroll it left/right, so it's reachable with any mouse (no
+// shift key or horizontal wheel needed). Shift+wheel and native horizontal wheels
+// already produce deltaX and are respected too.
+document.addEventListener('wheel',e=>{
+  if(e.ctrlKey||e.metaKey)return; // that's a zoom gesture, handled above
+  const gbody=e.target.closest && e.target.closest('.ax-grid .gbody.xscroll');
+  if(!gbody)return;
+  if(gbody.scrollWidth<=gbody.clientWidth)return; // nothing to scroll
+  const delta = Math.abs(e.deltaX)>Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  if(!delta)return;
+  const before=gbody.scrollLeft;
+  gbody.scrollLeft += delta;
+  // Only swallow the page/canvas scroll when we actually moved the grid, so that a
+  // grid already at its edge doesn't trap the wheel.
+  if(gbody.scrollLeft!==before) e.preventDefault();
+},{passive:false});
+function zoomStep(dir){
+  const cur=zoom;
+  if(dir>0){ const nx=ZOOM_STEPS.find(s=>s>cur+0.001); setZoom(nx||2); }
+  else { const prev=[...ZOOM_STEPS].reverse().find(s=>s<cur-0.001); setZoom(prev||0.5); }
+}
+
+// ---- Canvas resize by dragging corner ----
+(function(){
+  const handle=document.getElementById('canvasResize');
+  const holder=handle.parentElement;
+  let cdrag=null;
+  handle.addEventListener('mousedown',e=>{
+    e.preventDefault();e.stopPropagation();
+    cdrag={sx:e.clientX,sy:e.clientY,ow:canvas.offsetWidth,oh:canvas.offsetHeight};
+    holder.classList.add('resizing');
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!cdrag)return;
+    let w=cdrag.ow+(e.clientX-cdrag.sx)/zoom, h=cdrag.oh+(e.clientY-cdrag.sy)/zoom;
+    if(document.getElementById('snapChk').checked){const s=parseInt(document.getElementById('snapSize').value)||10;w=Math.round(w/s)*s;h=Math.round(h/s)*s;}
+    w=Math.max(400,w); h=Math.max(300,h);
+    canvas.style.width=w+'px'; canvas.style.height=h+'px';
+    applyZoom();
+    document.getElementById('cw').value=w;
+    document.getElementById('ch').value=h;
+  });
+  document.addEventListener('mouseup',()=>{if(cdrag){cdrag=null;holder.classList.remove('resizing');}});
+})();
+
+// ---- Property panel width resize by dragging the splitter ----
+(function(){
+  const split=document.getElementById('propsSplit');
+  if(!split)return;
+  const app=document.querySelector('.app');
+  const MINW=180, MAXW=560, DEFW=324;
+  const LS_KEY='mb_props_w';
+  function setW(w){
+    w=Math.max(MINW,Math.min(MAXW,Math.round(w)));
+    app.style.setProperty('--props-w',w+'px');
+    return w;
+  }
+  // 저장해둔 폭 복원
+  try{ const s=parseInt(localStorage.getItem(LS_KEY)); if(s&&s>=MINW&&s<=MAXW) app.style.setProperty('--props-w',s+'px'); }catch(e){}
+  let pdrag=null;
+  split.addEventListener('mousedown',e=>{
+    e.preventDefault();e.stopPropagation();
+    const props=document.getElementById('props');
+    pdrag={sx:e.clientX,ow:props.offsetWidth};
+    split.classList.add('dragging');
+    document.body.classList.add('props-resizing');
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!pdrag)return;
+    // 패널은 오른쪽 고정 - 왼쪽으로 끌면(마우스 X 감소) 넓어진다.
+    setW(pdrag.ow + (pdrag.sx - e.clientX));
+  });
+  document.addEventListener('mouseup',()=>{
+    if(!pdrag)return;
+    pdrag=null;
+    split.classList.remove('dragging');
+    document.body.classList.remove('props-resizing');
+    try{ const cur=parseInt(getComputedStyle(app).getPropertyValue('--props-w')); if(cur) localStorage.setItem(LS_KEY,cur); }catch(e){}
+  });
+  // 더블클릭 시 기본 폭으로 초기화
+  split.addEventListener('dblclick',()=>{
+    setW(DEFW);
+    try{ localStorage.setItem(LS_KEY,DEFW); }catch(e){}
+  });
+})();
+// Keeps the canvas' actual width/height values untouched (e.g. stays 1100x700) and instead
+// scales the ZOOM down so a fresh blank canvas fits the visible area without a scrollbar.
+// Never zooms in past 100%. Runs at initial page load and on 전체 지우기 - not on window resize
+// or other actions, so a zoom level the person picked manually isn't overridden mid-work.
+function fitZoomToViewport(){
+  const scrollEl=document.querySelector('.canvas-scroll');
+  if(!scrollEl)return;
+  const PAD=44; // canvas-scroll's 20px padding each side + a few px safety margin
+  const availW=scrollEl.clientWidth-PAD;
+  const availH=scrollEl.clientHeight-PAD;
+  if(availW<=0||availH<=0)return;
+  const cwv=parseInt(document.getElementById('cw').value)||1100;
+  const chv=parseInt(document.getElementById('ch').value)||700;
+  let fit=Math.min(availW/cwv, availH/chv, 1);
+  // Round DOWN to the nearest 1% - rounding to the nearest (as before) could round UP past the
+  // exact fit value and overflow by a fraction of a percent, just enough to show a faint scrollbar.
+  fit=Math.max(0.25, Math.floor(fit*100)/100);
+  setZoom(fit);
+}
+// 캔버스를 초기 상태(빈 화면·기본 크기·기본 설정)로 되돌린다. 전체지우기와, 로고 클릭에 의한
+// 모드 전환 시 재사용된다.
+function resetCanvasToDefault(){
+  comps=defaultScreen();
+  selectSingle(null);
+  clearOriginTracking(); // 전체 초기화이므로 공유파일 파생 추적 값도 함께 지운다
+  // reset canvas size to the built-in default
+  document.getElementById('cw').value=1100; setCW();
+  document.getElementById('ch').value=700; setCH();
+  fitZoomToViewport();
+  // reset view/snap settings to their defaults
+  document.getElementById('snapChk').checked=true;
+  document.getElementById('snapSize').value=10;
+  document.getElementById('gridChk').checked=true;
+  document.getElementById('smartChk').checked=true;
+  toggleGrid();
+  // clear undo/redo history since this is a full reset
+  undoStack=[]; redoStack=[]; updateHistBtns();
+  render();
+}
+function clearCanvas(){
+  if(!comps.length)return;
+  mbConfirm('모든 컴포넌트와 캔버스 크기·설정을 초기 상태로 되돌릴까요?', function(){
+    resetCanvasToDefault();
+  });
+}
+
+// ---- Save / Load JSON ----
+// Builds a yyyyMMdd_HHmm stamp from local time, appended to default file names
+// so repeated saves don't overwrite each other.
+function fileStamp(){
+  const d=new Date(), p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+}
+// The screen's own 화면 제목 component, used for both the exported page title and file names.
+// Top-level titles win over ones nested inside tabs/splits (whose x/y are relative to their
+// container, so they aren't comparable); within a group the topmost, then leftmost, is used.
+function screenTitle(){
+  const pick=list=>{
+    const s=list.filter(c=>c.type==='title'&&(c.text||'').trim())
+                .sort((a,b)=>(a.y-b.y)||(a.x-b.x));
+    return s.length?s[0].text.trim():null;
+  };
+  return pick(comps.filter(c=>!c.parent)) || pick(comps) || '';
+}
+// Makes a title safe for a file name: strips characters Windows/macOS reject (\\ / : * ? " < > |),
+// collapses whitespace to underscores, and trims trailing dots/spaces that Windows silently drops.
+function safeName(s,fallback){
+  let n=(s||'').replace(/[\\/:*?"<>|]/g,'_')   // illegal on Windows
+                .replace(/[\x00-\x1f]/g,'')     // control chars
+                .replace(/\s+/g,'_')            // spaces -> underscore
+                .replace(/_+/g,'_')             // collapse repeats
+                .replace(/^[_.]+|[_. ]+$/g,''); // no leading/trailing dots or underscores
+  if(n.length>60) n=n.slice(0,60).replace(/_+$/,'');
+  return n||fallback;
+}
+// Saves a blob. Where supported (Chrome/Edge over http/https) this opens a
+// "Save as" dialog so the user picks the folder and file name; otherwise it falls
+// back to a normal download. The picker is unavailable on file:// pages.
+// Returns the actual saved file name (string) on success, or false if the user
+// cancelled - never a bare boolean on success, so callers can mirror the real
+// name elsewhere (e.g. the cloud auto-backup) even when the user renamed the
+// suggested name inside the "Save as" dialog.
+async function saveBlob(blob,filename,desc,mime,ext){
+  if(window.showSaveFilePicker){
+    try{
+      const handle=await window.showSaveFilePicker({
+        suggestedName:filename,
+        types:[{description:desc,accept:{[mime]:[ext]}}]
+      });
+      const ws=await handle.createWritable();
+      await ws.write(blob);
+      await ws.close();
+      return handle.name||filename; // 대화상자에서 이름을 바꿨을 수 있으므로 실제 저장된 이름을 돌려준다
+    }catch(err){
+      if(err&&err.name==='AbortError')return false; // user cancelled
+      // Any other failure (e.g. blocked on file://) falls through to download.
+    }
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  return filename;
+}
+// Clears the autosave snapshot. Called once work has been written to a real file,
+// so reopening the tool starts clean instead of offering to restore.
+function clearAutosave(){
+  clearTimeout(autosaveTimer);
+  try{ localStorage.removeItem(AUTOSAVE_KEY); }catch(e){}
+  lastAutosave=Date.now();
+  const el=document.getElementById('autosaveMark');
+  if(el){ el.classList.remove('on'); el.textContent=''; }
+}
+function loadJSON(){document.getElementById('fileIn').click();}
+function doLoad(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    // 실패 원인별로 다른 안내를 준다. 대부분은 "Mockup Builder로 만든 파일이 아님"이지만,
+    // 프로그램 본체를 잘못 고른 경우와 파일이 손상된 경우는 대처가 달라 따로 알려준다.
+    const isHtml=/\.html?$/i.test(f.name);
+    try{
+      let raw=r.result;
+      if(isHtml){
+        // 프로그램 본체(mockup_builder.html)를 실수로 고르는 경우가 흔하다. 본체 소스에는
+        // 데이터 블록을 찾는 정규식 자체가 문자열로 들어 있어 아래 match 가 엉뚱하게 성공해
+        // "데이터 손상"으로 오인될 수 있으므로, 데이터 블록을 찾기 전에 먼저 걸러낸다.
+        if(/id="toolbox"/.test(raw) && /class="canvas-wrap"|id="canvas"/.test(raw)){
+          throw new Error('이 파일은 Mockup Builder 프로그램 본체입니다.\n\n불러오기에는 「저장」으로 만든 화면 파일을 선택해 주세요.');
+        }
+        const m=raw.match(/<script type="application\/json" id="__mb_src__">([\s\S]*?)<\/script>/);
+        if(!m){
+          throw new Error('Mockup Builder로 저장한 파일이 아닙니다.\n\n「저장」 버튼으로 만든 HTML 파일만 불러올 수 있습니다.\n(구버전의 「HTML 내보내기」로 만든 파일에는 편집 데이터가 없어 열 수 없습니다)');
+        }
+        raw=m[1];
+      }
+      let d;
+      try{ d=JSON.parse(raw); }
+      catch(pe){
+        // HTML 안에서 데이터 블록은 찾았는데 깨진 경우 = 저장 후 편집기로 건드린 파일일 가능성.
+        if(isHtml) throw new Error('편집 데이터가 손상되어 읽을 수 없습니다.\n\n파일이 완전히 저장되지 않았거나, 저장 후 내용이 수정된 것 같습니다.');
+        throw new Error('Mockup Builder로 저장한 파일이 아닙니다.\n\n「저장」 버튼으로 만든 HTML 파일을 선택해 주세요.');
+      }
+      if(!d||!Array.isArray(d.comps)){
+        throw new Error('Mockup Builder로 저장한 파일이 아닙니다.\n\n화면 구성 정보를 찾을 수 없습니다.');
+      }
+      pushHistory();
+      // 불러온 파일 자체에 원본 추적값(원본에서 파생된 화면을 로컬 저장할 때 함께 담아둔
+      // originId)이 있으면 그대로 이어받고, 없으면(그런 흔적이 아예 없던 파일이거나 옛날
+      // 파일) 지금 이어오던 추적을 끊는다 - 로컬을 한 번 거쳐도 클라우드 저장까지 자연스럽게
+      // 이어지게 하기 위함.
+      mbCloud.originId=d.originId||null;
+      // 로컬에서 파일을 불러오는 것도 "의도를 가지고 새 작업을 시작"하는 경우이므로, 지금까지
+      // 하던(저장 전) 작업은 임시 작업 목록에 그대로 남기고 이 파일은 새 세션으로 시작한다.
+      mbResetDraftSessionKey();
+      // 파일에 저장된 모드(skin) 정보로 팻/씬모드를 자동으로 맞춘다. 확인창이나 전체초기화 없이
+      // 화면 톤만 바꾼다 - 지금 막 불러온 comps가 그 톤 기준으로 만들어졌기 때문.
+      // skin 정보가 없는 구버전 파일은 항상 씬모드로 연다.
+      setAppSkin(d.skin==='fat');
+      comps=d.comps;
+      uid=Math.max(0,...comps.map(c=>c.id))+1;
+      if(d.cw){document.getElementById('cw').value=d.cw;setCW();}
+      if(d.ch){document.getElementById('ch').value=d.ch;setCH();}
+      selectSingle(null);render();
+    }catch(err){mbAlert(err.message);}
+  };
+  r.onerror=()=>{ mbAlert('파일을 읽지 못했습니다.\n\n파일이 열려 있거나 접근 권한이 없는지 확인해 주세요.'); };
+  r.readAsText(f);e.target.value='';
+}
+
+// ---- Export HTML ----
+function exportHTML(){
+  const t=screenTitle();
+  const out=buildExportHTML();
+  const b=new Blob([out],{type:'text/html'});
+  const baseName=`${safeName(t,'mockup_export')}_${fileStamp()}`;
+  saveBlob(b,`${baseName}.html`,'HTML 파일','text/html','.html')
+    .then(saved=>{
+      if(!saved)return;
+      clearAutosave();
+      // saved 는 실제로 저장된 파일명이다 - 저장 대화상자에서 사용자가 제안된 이름을
+      // 바꿨을 수 있으므로, 클라우드 자동 백업도 baseName이 아니라 이 실제 이름을 그대로
+      // 따라가야 로컬 파일명과 클라우드의 표시 이름이 어긋나지 않는다.
+      const cloudName=String(saved).replace(/\.html?$/i,'');
+      mbLocalAutoSaveToCloud(cloudName);
+    });
+}
+// Opens the same interactive HTML the export produces in a new browser tab,
+// so every component behaves exactly as it will in the saved file (tabs switch,
+// combos open, checkboxes/radios toggle, tree collapses, split dividers drag).
+function previewHTML(){
+  const out=buildExportHTML();
+  // Opening a blob: URL as the new tab's actual navigation target gives that tab an opaque
+  // ("null") origin, and an opaque origin is never a secure context - which silently makes
+  // navigator.mediaDevices (and so getDisplayMedia, the Alt+P capture popup's whole capture
+  // mechanism) undefined in that tab, even though the very same HTML opened normally via
+  // file:// has it. Opening a blank tab and writing the HTML into it directly instead keeps
+  // the new tab on the SAME origin as this page (file://, which Chromium treats as secure),
+  // so 미리보기 gets full capture support just like a saved-and-reopened file does.
+  const w=window.open('','_blank');
+  if(w){
+    w.document.open(); w.document.write(out); w.document.close();
+  } else {
+    // Popup blocked - fall back to a blob: URL navigation so the preview still opens (this
+    // fallback path alone loses capture support, for the reason above).
+    const b=new Blob([out],{type:'text/html'});
+    const url=URL.createObjectURL(b);
+    const a=document.createElement('a');
+    a.href=url; a.target='_blank'; a.rel='noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }
+}
+// index.html/style.css/app.js 세 파일로 나뉘기 전에는 style.css의 내용이 index.html 안에 <style> 태그로 그대로 들어있어서, document.querySelector('style').innerHTML로 앱 자신의 CSS를 그대로 읽어와 내보내기(저장)/미리보기 HTML에 그대로 복사해 넣을 수 있었다.
+// 파일을 분리한 뒤로는 CSS가 <link rel="stylesheet" href="style.css">로 외부 파일에서 로드되는데, file://로 열었을 때는 브라우저가 (1) 그 외부 스타일시트의 cssRules를 보안상 못 읽게 막고(cross-origin 취급), (2) fetch/XHR로 옆에 있는 style.css를 직접 읽어오는 것도 막는다(file:// 특유의 제약). 그래서 이 두 방법 다 못 쓴다.
+// 그 대신 style.css 전체 내용을 미리 base64로 인코딩해 아래 상수로 고정해두고, 내보내기/미리보기를 만들 때마다 이 상수를 그대로 디코딩해서 쓴다 - file:///http(s) 어떤 환경에서 열어도 항상 똑같이 동작한다.
+// *** 주의: style.css 내용을 고치면 이 상수도 반드시 다시 생성해서 갱신해야 한다 (그렇지 않으면 내보내기/미리보기에는 예전 CSS가 실린다). ***
+const MB_APP_CSS_B64='LyogPT09PT0gTW9ja3VwIEJ1aWxkZXIgLSDquLDrs7gg7Iqk7YOA7J28ID09PT09ICovCiAgOnJvb3R7CiAgICAtLWF4LWdyZWVuOiMxZTllNmE7IC0tYXgtZ3JlZW4tZGFyazojMTc4MDU1OyAtLWF4LWdyZWVuLWxpZ2h0OiNlOGY1ZWY7CiAgICAtLWF4LW5hdnk6IzJjM2U1MDsgLS1heC1ncmF5OiM2YjcyODA7IC0tYXgtYm9yZGVyOiNkOWRlZTM7CiAgICAtLWF4LWJnOiNmNGY2Zjg7IC0tYXgtZ3JpZC1oZWFkOiNmMGYyZjQ7IC0tYXgtZ3JpZC1oZWFkLWZnOiM0YjU1NjM7IC0tYXgtcmVxOiNlNTQ4NGQ7CiAgICAtLWF4LXBhbmVsOiNmZmZmZmY7IC0tc2VsOiMyNjgwZWI7CiAgICAtLWF4LXJlYWRvbmx5LWJnOiNmNmY3Zjg7IC0tYXgtcmVxdWlyZWQtYmc6I2ZmZmZmZjsKICAgIC0tYXgtY2FudmFzLWJnOiNmZmZmZmY7IC0tYXgtbGFiZWwtZmc6IzM3NDE1MTsKICAgIC0tYXgtZ3JpZC1saW5lOiNmM2Y1Zjc7CiAgICAvKiDqt7jrpqzrk5wg7Lus65+8L+yhsO2ajOyhsOqxtCDtlYTrk5zsnZggIu2VhOyImCLCtyLsnb3quLDsoITsmqkiIO2RnOyLnOyXkCDqs7XthrXsnLzroZwg7JOw64qUIOuwsOqyveyDiS4KICAgICAgIO2VhOyImOuKlCDsnYDsnYDtlZwg7YGs66a87IOJKFJHQiAyNTUsMjUwLDIzNyksIOydveq4sOyghOyaqeydgCDtmozsg4nsobDroZwg7Ya17J287ZWc64ukLiAqLwogICAgLS1heC1yZXEtZmlsbDogcmdiKDI1NSwyNTAsMjM3KTsKICAgIC8qIOyhsO2ajOyhsOqxtCDtjKjrhJDsnZgg7J296riw7KCE7JqpIOyDiSguYXgtc2VhcmNoIC5zY3RsLnJvKeqzvCDsoJXtmZXtnogg64+Z7J287ZWcIOqwkiAtIOq3uOumrOuTnCDsnb3quLDsoITsmqkg7ZaJ64+ECiAgICAgICDsnbQg7IOJ7J2EIOq3uOuMgOuhnCDsk7Tri6QuICovCiAgICAtLWF4LXJvLWZpbGw6I2Y2ZjdmODsKICAgIC8qIOyDgeuLqOuwlCh0b3BiYXIp64qUIC0tYXgtbmF2eeyZgCDrs4TqsJwg67OA7IiY66W8IOyTtOuLpDogLS1heC1uYXZ564qUIOyEueyFmCDtl6TrjZTCt+q3uOumrOuTnCDsoJzrqqkg65OxCiAgICAgICDtmZTrqbQg6rOz6rOz7J2YIO2FjeyKpO2KuCDsg4nsnLzroZzrj4Qg7JOw7J2066+A66GcLCDsg4Hri6jrsJTrp4wg67CU6r6466Ck66m0IOyghOyaqSDrs4DsiJjqsIAg7ZWE7JqU7ZWY64ukLgogICAgICAg7JSs66qo65Oc64qUIOuhnOqzoMK367KE7Yq86rO8IOqwmeydgCDqs4Tsl7TsnZgg7KeE7ZWcIOq3uOumsCwg7Yy766qo65Oc64qUIOq4sOyhtCDrhKTsnbTruYQg6re464yA66GcLiAqLwogICAgLyog7LKo67aAIOydtOuvuOyngOyymOufvCDsp4TtlZwg6re466awIOuwlO2DleyXkCDrjIDqsIHshKAg7IK86rCB7ZiVIOq0ke2DneydtCDqsrnsuZjripQg7Yyo7YS0LgogICAgICAg7Jes65+sIOqyueydmCBsaW5lYXItZ3JhZGllbnTroZwg67Cd7J2AL+yWtOuRkOyatCDsgrzqsIHrqbTsnYQg7ZGc7ZiE7ZWc64ukLiAqLwogICAgLS10b3BiYXItYmc6CiAgICAgIGxpbmVhci1ncmFkaWVudCgxMjJkZWcsIHJnYmEoMjU1LDI1NSwyNTUsLjEwKSAwJSwgcmdiYSgyNTUsMjU1LDI1NSwwKSAzMCUpLAogICAgICBsaW5lYXItZ3JhZGllbnQoNThkZWcsIHJnYmEoMjU1LDI1NSwyNTUsLjA3KSAwJSwgcmdiYSgyNTUsMjU1LDI1NSwwKSA0NiUpLAogICAgICBsaW5lYXItZ3JhZGllbnQoMzAwZGVnLCByZ2JhKDAsMCwwLC4yMCkgMCUsIHJnYmEoMCwwLDAsMCkgNDAlKSwKICAgICAgbGluZWFyLWdyYWRpZW50KDk2ZGVnLCAjMTJhMTc4IDAlLCAjMGY5NjcwIDUyJSwgIzE0YTY3YyAxMDAlKTsKICAgIC0tdG9wYmFyLWdob3N0LWJvcmRlcjojMmY2YjUzOyAtLXRvcGJhci1naG9zdC1ob3ZlcjojMWM3MzUwOwogICAgLS1hdXRvc2F2ZS1mZzojOGVlOWMzOwogICAgLyog67OA6rK97IOB7YOcIO2RnOyLnCjquLDrs7gv7LaU6rCAL+uzgOqyvS/sgq3soJwv7J2064+ZKSDqs7XthrUg7IOJ7IOBICovCiAgICAtLWRpZmYtYWRkOiMyNjgwZWI7IC0tZGlmZi1hZGQtYmc6I2VhZjJmZTsKICAgIC0tZGlmZi1jaGc6I2Q5NzcwNjsgLS1kaWZmLWNoZy1iZzojZmRmM2UzOwogICAgLS1kaWZmLWRlbDojZTU0ODRkOyAtLWRpZmYtZGVsLWJnOiNmZGVjZWM7CiAgICAtLWRpZmYtbW92OiM3YzVjZmY7IC0tZGlmZi1tb3YtYmc6I2YxZWRmZjsKICB9CiAgLyog7IOB64uoIOuhnOqzoOulvCDriITrpbTrqbQgYm9keeyXkCDsnbQg7YG0656Y7Iqk6rCAIO2GoOq4gOuQmOyWtCDrkZAg67KI7Ke4IO2GpOyVpOunpOuEiChGYXQgTW9kZSnroZwKICAgICDsoITtmZjrkJzri6QuIOyDieyDgeydgCDsnIQg67OA7IiY66W8IOyerOygleydmO2VmOuKlCDqsoPrp4zsnLzroZwg7Lu07Y+s64SM7Yq4IOyghOuwmOyXkCDrsJjsmIHrkJjqs6AsCiAgICAg66qo7ISc66asIOqwgeynkMK36re466as65OcIO2XpOuNlCDsg4kg67CY7KCEIOuTsSDrs4DsiJjroZwg7ZGc7ZiE65CY7KeAIOyViuuKlCDrlJTthYzsnbzsnYAg7JWE656Y7JeQ7IScIOuzhOuPhCDsspjrpqztlZzri6QuICovCiAgYm9keS5za2luLWNsYXNzaWN7CiAgICAtLWF4LWdyZWVuOiMyZjZmYjA7IC0tYXgtZ3JlZW4tZGFyazojMjQ1NjhjOyAtLWF4LWdyZWVuLWxpZ2h0OiNlNWVkZjg7CiAgICAtLWF4LW5hdnk6IzFjM2Y2NjsgLS1heC1ib3JkZXI6I2I3YzNjZjsKICAgIC0tYXgtYmc6I2U5ZWVmNDsgLS1heC1ncmlkLWhlYWQ6IzFjM2Y2NjsgLS1heC1ncmlkLWhlYWQtZmc6I2ZmZmZmZjsKICAgIC0tYXgtcmVhZG9ubHktYmc6I2RkZThmNzsgLS1heC1yZXF1aXJlZC1iZzojZmRlYWNiOwogICAgLS1heC1jYW52YXMtYmc6I2VlZjJmODsgLS1heC1sYWJlbC1mZzojMWExYTFhOwogICAgLS1heC1ncmlkLWxpbmU6I2Q3ZTBlYzsKICAgIC8qIO2Mu+uqqOuTnOuKlCDqsJnsnYAg7IK86rCB66m0IO2MqO2EtOydhCDtjIzrnoAg6rOE7Je066Gc66eMIOuwlOq+vOuLpC4gKi8KICAgIC0tdG9wYmFyLWJnOgogICAgICBsaW5lYXItZ3JhZGllbnQoMTIyZGVnLCByZ2JhKDI1NSwyNTUsMjU1LC4xMCkgMCUsIHJnYmEoMjU1LDI1NSwyNTUsMCkgMzAlKSwKICAgICAgbGluZWFyLWdyYWRpZW50KDU4ZGVnLCByZ2JhKDI1NSwyNTUsMjU1LC4wNykgMCUsIHJnYmEoMjU1LDI1NSwyNTUsMCkgNDYlKSwKICAgICAgbGluZWFyLWdyYWRpZW50KDMwMGRlZywgcmdiYSgwLDAsMCwuMjIpIDAlLCByZ2JhKDAsMCwwLDApIDQwJSksCiAgICAgIGxpbmVhci1ncmFkaWVudCg5NmRlZywgIzJiNmZiMCAwJSwgIzI0NWY5YyA1MiUsICMyZTc3YmIgMTAwJSk7CiAgICAtLXRvcGJhci1naG9zdC1ib3JkZXI6IzRhNWM2ZTsgLS10b3BiYXItZ2hvc3QtaG92ZXI6IzNhNGM1ZTsKICAgIC0tYXV0b3NhdmUtZmc6IzdmZDhiMDsKICB9CiAgKntib3gtc2l6aW5nOmJvcmRlci1ib3g7bWFyZ2luOjA7cGFkZGluZzowO30KICBib2R5e2ZvbnQtZmFtaWx5OiJNYWxndW4gR290aGljIiwi66eR7J2AIOqzoOuUlSIsLWFwcGxlLXN5c3RlbSxzYW5zLXNlcmlmO2ZvbnQtc2l6ZToxM3B4O2NvbG9yOiMzMzM7YmFja2dyb3VuZDp2YXIoLS1heC1iZyk7aGVpZ2h0OjEwMHZoO292ZXJmbG93OmhpZGRlbjt9CiAgLmFwcHstLXByb3BzLXc6MzI0cHg7ZGlzcGxheTpncmlkO2dyaWQtdGVtcGxhdGUtY29sdW1uczoxODBweCAxZnIgNnB4IHZhcigtLXByb3BzLXcpO2dyaWQtdGVtcGxhdGUtcm93czo0NHB4IDFmcjtoZWlnaHQ6MTAwdmg7fQogIC5hcHA+LnRvb2xib3h7Z3JpZC1jb2x1bW46MTtncmlkLXJvdzoyO30KICAuYXBwPi5jYW52YXMtd3JhcHtncmlkLWNvbHVtbjoyO2dyaWQtcm93OjI7fQogIC5hcHA+I3Byb3BzU3BsaXR7Z3JpZC1jb2x1bW46MztncmlkLXJvdzoyO30KICAuYXBwPi5wcm9wc3tncmlkLWNvbHVtbjo0O2dyaWQtcm93OjI7fQogIC8qIOy6lOuyhOyKpOyZgCDsho3shLEg7Yyo64SQIOyCrOydtCDsoozsmrAg7YGs6riw7KGw7KCIIOyKpO2UjOumrO2EsCAqLwogICNwcm9wc1NwbGl0e2JhY2tncm91bmQ6dHJhbnNwYXJlbnQ7Y3Vyc29yOmNvbC1yZXNpemU7cG9zaXRpb246cmVsYXRpdmU7ei1pbmRleDo2MDt9CiAgI3Byb3BzU3BsaXQ6OmJlZm9yZXtjb250ZW50OiIiO3Bvc2l0aW9uOmFic29sdXRlO3RvcDowO2JvdHRvbTowO2xlZnQ6MnB4O3dpZHRoOjFweDtiYWNrZ3JvdW5kOnZhcigtLWF4LWJvcmRlcik7fQogICNwcm9wc1NwbGl0OjphZnRlcntjb250ZW50OiIiO3Bvc2l0aW9uOmFic29sdXRlO3RvcDo1MCU7bGVmdDoxcHg7d2lkdGg6M3B4O2hlaWdodDozNHB4O3RyYW5zZm9ybTp0cmFuc2xhdGVZKC01MCUpO2JvcmRlci1yYWRpdXM6MnB4O2JhY2tncm91bmQ6I2NmZDZkZDt9CiAgI3Byb3BzU3BsaXQ6aG92ZXI6OmFmdGVyLCNwcm9wc1NwbGl0LmRyYWdnaW5nOjphZnRlcntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuKTt9CiAgI3Byb3BzU3BsaXQ6aG92ZXI6OmJlZm9yZSwjcHJvcHNTcGxpdC5kcmFnZ2luZzo6YmVmb3Jle2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO30KICBib2R5LnByb3BzLXJlc2l6aW5ne2N1cnNvcjpjb2wtcmVzaXplO3VzZXItc2VsZWN0Om5vbmU7fQogIGJvZHkucHJvcHMtcmVzaXppbmcgaWZyYW1le3BvaW50ZXItZXZlbnRzOm5vbmU7fQoKICAvKiBUb3AgYmFyICovCiAgLnRvcGJhcntncmlkLWNvbHVtbjoxLzU7Z3JpZC1yb3c6MTtiYWNrZ3JvdW5kLWNvbG9yOiMwZjk2NzA7YmFja2dyb3VuZC1pbWFnZTp2YXIoLS10b3BiYXItYmcpO2NvbG9yOiNmZmY7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtwYWRkaW5nOjAgMTZweCAwIDA7Z2FwOjEycHg7fQogIGJvZHkuc2tpbi1jbGFzc2ljIC50b3BiYXJ7YmFja2dyb3VuZC1jb2xvcjojMjQ1ZjljO30KICAudG9wYmFyIC5icmFuZHtmbGV4OjAgMCAxODBweDt9CiAgLyogQnV0dG9ucyBhcmUgZ3JvdXBlZCBieSBwdXJwb3NlOiB0aGUgdG9wYmFyJ3Mgb3duIDEycHggZ2FwIHNlcGFyYXRlcyB0aGUgdHdvIHNldHMsIGFuZCBhCiAgICAgd2lkZXIgbGVmdCBtYXJnaW4gb24gdGhlIHRyYWlsaW5nIGdyb3VwIHB1c2hlcyB0aGUgc2V0cyBmdXJ0aGVyIGFwYXJ0LCB3aGlsZSBidXR0b25zCiAgICAgaW5zaWRlIGEgc2V0IHNpdCBjbG9zZSB0b2dldGhlciBhdCA2cHguICovCiAgLnRvcGJhciAuYnRuLWdyb3Vwe2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjZweDt9CiAgLnRvcGJhciAuYnRuLWdyb3VwICsgLmJ0bi1ncm91cHttYXJnaW4tbGVmdDoxNnB4O30KICAudG9wYmFyIGgxe2ZvbnQtc2l6ZToxNXB4O2ZvbnQtd2VpZ2h0OjcwMDt9CiAgLnRvcGJhciAuc3B7ZmxleDoxO30KICAudG9wYmFyIGJ1dHRvbntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuKTtjb2xvcjojZmZmO2JvcmRlcjpub25lO3BhZGRpbmc6N3B4IDE0cHg7Ym9yZGVyLXJhZGl1czo0cHg7Zm9udC1zaXplOjEycHg7Y3Vyc29yOnBvaW50ZXI7Zm9udC13ZWlnaHQ6NjAwO30KICAudG9wYmFyIGJ1dHRvbjpob3ZlcntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuLWRhcmspO30KICAudG9wYmFyIGJ1dHRvbi5naG9zdHtiYWNrZ3JvdW5kOnRyYW5zcGFyZW50O2JvcmRlcjoxcHggc29saWQgdmFyKC0tdG9wYmFyLWdob3N0LWJvcmRlcik7fQogIC50b3BiYXIgYnV0dG9uLmdob3N0OmhvdmVye2JhY2tncm91bmQ6dmFyKC0tdG9wYmFyLWdob3N0LWhvdmVyKTt9CiAgLyogQWNjZW50IGJ1dHRvbnMuIFRoZXNlIGNvbG91cnMgbGl2ZSBoZXJlIHJhdGhlciB0aGFuIGluIGlubGluZSBzdHlsZSBhdHRyaWJ1dGVzOiBhbiBpbmxpbmUKICAgICBiYWNrZ3JvdW5kIHdpbnMgb3ZlciBhbnkgc3R5bGVzaGVldCBydWxlLCBzbyA6aG92ZXIgY291bGQgbmV2ZXIgcmVwYWludCBpdC4gKi8KICAudG9wYmFyIGJ1dHRvbi5idG4tdGVhbHtiYWNrZ3JvdW5kOiMwODkxYjI7fQogIC50b3BiYXIgYnV0dG9uLmJ0bi10ZWFsOmhvdmVye2JhY2tncm91bmQ6IzBlNzQ5MDt9CiAgLnRvcGJhciBidXR0b24uYnRuLXZpb2xldHtiYWNrZ3JvdW5kOiM3YzVjZmY7fQogIC50b3BiYXIgYnV0dG9uLmJ0bi12aW9sZXQ6aG92ZXJ7YmFja2dyb3VuZDojNjU0NGUwO30KCiAgLyogPT09PT09PT09PT09PT09PT0g6rOE7KCVKOuhnOq3uOyduC/tmozsm5DqsIDsnoUpIMK3IO2BtOudvOyasOuTnCDsoIDsnqUv7Je06riwID09PT09PT09PT09PT09PT09ICovCiAgLmFjY3QtYXJlYXtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo4cHg7ZmxleDowIDAgYXV0bzt9CiAgLmFjY3QtYXJlYSAuZ2hvc3R7cGFkZGluZzo3cHggMTJweDt9CiAgLmFjY3QtYXJlYSAuc2lnbnVwLWJ0bntiYWNrZ3JvdW5kOiNmZmY7Y29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7Zm9udC13ZWlnaHQ6NzAwO30KICAuYWNjdC1hcmVhIC5zaWdudXAtYnRuOmhvdmVye2JhY2tncm91bmQ6I2VlZjdmMjt9CiAgLmFjY3QtYXZhdGFyLXdyYXB7cG9zaXRpb246cmVsYXRpdmU7fQogIC5hY2N0LWF2YXRhcnt3aWR0aDozMHB4O2hlaWdodDozMHB4O2JvcmRlci1yYWRpdXM6NTAlO2JhY2tncm91bmQ6I2ZmZjtjb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7Zm9udC13ZWlnaHQ6NzAwO2ZvbnQtc2l6ZToxM3B4O2N1cnNvcjpwb2ludGVyO30KICAuYWNjdC1tZW51e2Rpc3BsYXk6bm9uZTtwb3NpdGlvbjphYnNvbHV0ZTt0b3A6Y2FsYygxMDAlICsgOHB4KTtyaWdodDowO21pbi13aWR0aDoxODBweDtiYWNrZ3JvdW5kOiNmZmY7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6OHB4O2JveC1zaGFkb3c6MCA4cHggMjRweCByZ2JhKDAsMCwwLC4xOCk7ei1pbmRleDo1MDA7b3ZlcmZsb3c6aGlkZGVuO2ZvbnQtc2l6ZToxM3B4O30KICAuYWNjdC1tZW51Lm9ue2Rpc3BsYXk6YmxvY2s7fQogIC5hY2N0LW1lbnUgLndob3twYWRkaW5nOjEwcHggMTRweDtmb250LXdlaWdodDo2MDA7Y29sb3I6IzJjM2U1MDtib3JkZXItYm90dG9tOjFweCBzb2xpZCAjZWVlO30KICAuYWNjdC1tZW51IGRpdi5pdGVte3BhZGRpbmc6MTBweCAxNHB4O2NvbG9yOiMyYzNlNTA7Y3Vyc29yOnBvaW50ZXI7fQogIC5hY2N0LW1lbnUgZGl2Lml0ZW06aG92ZXJ7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1saWdodCk7fQogIC5hY2N0LW1lbnUgZGl2LmxvZ291dHtjb2xvcjojYzAzOTJiO30KICAvKiDtmozsm5DqsIDsnoUv66Gc6re47J24IOuqqOuLrCDqs7XsmqkgKi8KICAuYWNjdC1sYWJlbHtkaXNwbGF5OmJsb2NrO2ZvbnQtc2l6ZToxM3B4O2ZvbnQtd2VpZ2h0OjYwMDtjb2xvcjojMmMzZTUwO21hcmdpbi1ib3R0b206N3B4O30KICAuYWNjdC1pbnB1dHt3aWR0aDoxMDAlO3BhZGRpbmc6MTJweCAxNHB4O2JvcmRlcjoxLjVweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6OHB4O2ZvbnQtc2l6ZToxNXB4O2ZvbnQtZmFtaWx5OmluaGVyaXQ7Ym94LXNpemluZzpib3JkZXItYm94O30KICAuYWNjdC1pbnB1dDpmb2N1c3tvdXRsaW5lOm5vbmU7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTt9CiAgLmFjY3QtcHJpbWFyeS1idG57d2lkdGg6MTAwJTtwYWRkaW5nOjEzcHg7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7Y29sb3I6I2ZmZjtib3JkZXI6bm9uZTtib3JkZXItcmFkaXVzOjhweDtmb250LXNpemU6MTVweDtmb250LXdlaWdodDo3MDA7Y3Vyc29yOnBvaW50ZXI7fQogIC5hY2N0LXByaW1hcnktYnRuOmhvdmVye2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tZGFyayk7fQogIC5hY2N0LXByaW1hcnktYnRuOmRpc2FibGVke29wYWNpdHk6LjY7Y3Vyc29yOmRlZmF1bHQ7fQogIC5hY2N0LWxpbmt7Y29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7Zm9udC13ZWlnaHQ6NjAwO2N1cnNvcjpwb2ludGVyO30KICAuYWNjdC1zZWNvbmRhcnktYnRue3dpZHRoOjEwMCU7cGFkZGluZzoxM3B4O2JhY2tncm91bmQ6I2ZmZjtjb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTtib3JkZXI6MS41cHggc29saWQgdmFyKC0tYXgtZ3JlZW4pO2JvcmRlci1yYWRpdXM6OHB4O2ZvbnQtc2l6ZToxNXB4O2ZvbnQtd2VpZ2h0OjcwMDtjdXJzb3I6cG9pbnRlcjt9CiAgLmFjY3Qtc2Vjb25kYXJ5LWJ0bjpob3ZlcntiYWNrZ3JvdW5kOiNlZWY4ZjI7fQogIC5hY2N0LWRpdmlkZXJ7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6MTBweDttYXJnaW46MTZweCAwO2NvbG9yOiM5Y2EzYWY7Zm9udC1zaXplOjExLjVweDt9CiAgLmFjY3QtZGl2aWRlcjo6YmVmb3JlLC5hY2N0LWRpdmlkZXI6OmFmdGVye2NvbnRlbnQ6Jyc7ZmxleDoxO2hlaWdodDoxcHg7YmFja2dyb3VuZDojZTVlOWVkO30KICAuYWNjdC1lcnJ7YmFja2dyb3VuZDojZmRlY2VjO2JvcmRlcjoxcHggc29saWQgI2Y1YzJjNDtjb2xvcjojYTgzMjMyO2ZvbnQtc2l6ZToxMi41cHg7cGFkZGluZzo5cHggMTJweDtib3JkZXItcmFkaXVzOjZweDttYXJnaW4tYm90dG9tOjE2cHg7fQogIC8qIO2UvOuTnOuwsSDrqqjri6wgKi8KICAuZmItdG9vbGJhcntkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDoycHg7cGFkZGluZzo2cHggOHB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItYm90dG9tOm5vbmU7Ym9yZGVyLXJhZGl1czo4cHggOHB4IDAgMDtiYWNrZ3JvdW5kOiNmOWZhZmI7fQogIC5mYi10b29sYmFyIGJ1dHRvbntkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7d2lkdGg6MjZweDtoZWlnaHQ6MjZweDtib3JkZXI6bm9uZTtiYWNrZ3JvdW5kOnRyYW5zcGFyZW50O2JvcmRlci1yYWRpdXM6NXB4O2N1cnNvcjpwb2ludGVyO2NvbG9yOiM0YjU1NjM7Zm9udC1zaXplOjEzcHg7Zm9udC1mYW1pbHk6aW5oZXJpdDt9CiAgLmZiLXRvb2xiYXIgYnV0dG9uOmhvdmVye2JhY2tncm91bmQ6I2VlZjFmNDt9CiAgLmZiLXNlcHt3aWR0aDoxcHg7aGVpZ2h0OjE2cHg7YmFja2dyb3VuZDojZTVlOWVkO21hcmdpbjowIDRweDtmbGV4LXNocmluazowO30KICAuZmItZWRpdG9ye21pbi1oZWlnaHQ6MjQwcHg7bWF4LWhlaWdodDo1MjBweDtvdmVyZmxvdy15OmF1dG87Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6MCAwIDhweCA4cHg7cGFkZGluZzoxMnB4IDE0cHg7Zm9udC1zaXplOjEzLjVweDtjb2xvcjojMmMzZTUwO2xpbmUtaGVpZ2h0OjEuNjt9CiAgLmZiLWVkaXRvcjpmb2N1c3tvdXRsaW5lOm5vbmU7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTt9CiAgLmZiLWVkaXRvcjplbXB0eTo6YmVmb3Jle2NvbnRlbnQ6YXR0cihkYXRhLXBsYWNlaG9sZGVyKTtjb2xvcjojYjBiOGMxO30KICAvKiDtgbTrnbzsmrDrk5wg7KCA7J6lL+yXtOq4sCDrqqjri6wgKi8KICAjY2xvdWRCZyAubW9kYWx7b3ZlcmZsb3c6dmlzaWJsZTt9CiAgI2Nsb3VkQm9keXtkaXNwbGF5OmZsZXg7ZmxleC1kaXJlY3Rpb246Y29sdW1uO2ZsZXg6MTtvdmVyZmxvdzpoaWRkZW47bWluLWhlaWdodDowO30KICAjYWRtaW5Cb2R5e2Rpc3BsYXk6ZmxleDtmbGV4LWRpcmVjdGlvbjpjb2x1bW47ZmxleDoxO292ZXJmbG93OmhpZGRlbjttaW4taGVpZ2h0OjA7fQogIC5jbC1yZXNpemUtaGFuZGxle3Bvc2l0aW9uOmFic29sdXRlO3JpZ2h0OjJweDtib3R0b206MnB4O3dpZHRoOjE2cHg7aGVpZ2h0OjE2cHg7Y3Vyc29yOm53c2UtcmVzaXplO3otaW5kZXg6MTA7CiAgICBiYWNrZ3JvdW5kOmxpbmVhci1ncmFkaWVudCgxMzVkZWcsdHJhbnNwYXJlbnQgNDUlLHZhcigtLWF4LWdyZWVuKSA0NSUsdmFyKC0tYXgtZ3JlZW4pIDU1JSx0cmFuc3BhcmVudCA1NSUsdHJhbnNwYXJlbnQgNzAlLHZhcigtLWF4LWdyZWVuKSA3MCUsdmFyKC0tYXgtZ3JlZW4pIDgwJSx0cmFuc3BhcmVudCA4MCUpOwogICAgYm9yZGVyLXJhZGl1czowIDAgOHB4IDA7fQogIC5jbC1yZXNpemUtaGFuZGxlOmhvdmVye2ZpbHRlcjpicmlnaHRuZXNzKC44NSk7fQogIC5jbC10YWJze2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjZweDtwYWRkaW5nOjE0cHggMThweDtib3JkZXItYm90dG9tOjFweCBzb2xpZCAjZTVlOWVkO2JhY2tncm91bmQ6I2ZhZmJmYztmbGV4LXNocmluazowO30KICAuY2wtdGFicy1ncm91cHtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo4cHg7fQogIC5jbC10YWJ7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NnB4O3BhZGRpbmc6N3B4IDE2cHg7Zm9udC1zaXplOjEzLjVweDtmb250LXdlaWdodDo2MDA7Y29sb3I6IzNmNGE1NjtjdXJzb3I6cG9pbnRlcjtib3JkZXItcmFkaXVzOjhweDtib3JkZXI6MS41cHggc29saWQgI2M3Y2RkMztiYWNrZ3JvdW5kOiNmZmY7fQogIC5jbC10YWIgc3Zne29wYWNpdHk6Ljg7fQogIC5jbC10YWI6aG92ZXJ7YmFja2dyb3VuZDojZjNmNmY1O2JvcmRlci1jb2xvcjojOWFhNWIxO30KICAuY2wtdGFiLm9ue2NvbG9yOiNmZmY7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTtmb250LXdlaWdodDo3MDA7Ym94LXNoYWRvdzowIDFweCAzcHggcmdiYSgwLDAsMCwuMTIpO30KICAuY2wtdGFiLm9uIHN2Z3tvcGFjaXR5OjE7fQogIC5jbC10YWIub246aG92ZXJ7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1kYXJrKTtib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7fQogIC5jbC10b29sYmFye2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjhweDtwYWRkaW5nOjEycHggMThweDtib3JkZXItYm90dG9tOjFweCBzb2xpZCAjZTVlOWVkO2ZsZXgtd3JhcDp3cmFwO2ZsZXgtc2hyaW5rOjA7fQogIC5jbC1jcnVtYntmb250LXNpemU6MTNweDtjb2xvcjojM2E0NTUyO30KICAuY2wtY3J1bWIgLnNlZ3tjdXJzb3I6cG9pbnRlcjt9CiAgLmNsLWNydW1iIC5zZWc6aG92ZXJ7dGV4dC1kZWNvcmF0aW9uOnVuZGVybGluZTt9CiAgLmNsLWNydW1iIC5zZXB7Y29sb3I6I2MzY2FkMTttYXJnaW46MCA0cHg7fQogIC5jbC1jcnVtYiAuY3Vye2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO2ZvbnQtd2VpZ2h0OjcwMDt9CiAgLmNsLW5ld2ZvbGRlci1idG57ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NXB4O3BhZGRpbmc6N3B4IDEycHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JhY2tncm91bmQ6I2ZmZjtib3JkZXItcmFkaXVzOjZweDtmb250LXNpemU6MTIuNXB4O2N1cnNvcjpwb2ludGVyO2NvbG9yOiMzYTQ1NTI7d2hpdGUtc3BhY2U6bm93cmFwO30KICAuY2wtc2VhcmNoLWJveHtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo4cHg7cGFkZGluZzo2cHggMTBweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo2cHg7d2lkdGg6MjIwcHg7fQogIC5jbC1zZWFyY2gtYm94IGlucHV0e2JvcmRlcjpub25lO291dGxpbmU6bm9uZTtmb250LXNpemU6MTIuNXB4O2ZvbnQtZmFtaWx5OmluaGVyaXQ7ZmxleDoxO21pbi13aWR0aDowO2NvbG9yOiMyYzNlNTA7fQogIC5jbC1zdWJmb2xkZXItY2hre2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjZweDtmb250LXNpemU6MTIuNXB4O2NvbG9yOiMzYTQ1NTI7Y3Vyc29yOnBvaW50ZXI7d2hpdGUtc3BhY2U6bm93cmFwO30KICAuY2wtc3ViZm9sZGVyLWNoayBpbnB1dHthY2NlbnQtY29sb3I6dmFyKC0tYXgtZ3JlZW4pO3dpZHRoOjE0cHg7aGVpZ2h0OjE0cHg7fQogIC5jbC1ib2R5e2Rpc3BsYXk6ZmxleDtmbGV4OjE7b3ZlcmZsb3c6aGlkZGVuO21pbi1oZWlnaHQ6MDt9CiAgLmNsLXJlc3VsdHMtd3JhcHtkaXNwbGF5OmZsZXg7ZmxleC1kaXJlY3Rpb246Y29sdW1uO2ZsZXg6MTtvdmVyZmxvdzpoaWRkZW47bWluLWhlaWdodDowO30KICAuY2wtdHJlZXt3aWR0aDoyMDBweDtib3JkZXItcmlnaHQ6bm9uZTtvdmVyZmxvdy15OmF1dG87cGFkZGluZzoxMHB4IDZweDtmbGV4LXNocmluazowO30KICAuY2wtdHJlZS1zZXB7aGVpZ2h0OjFweDtiYWNrZ3JvdW5kOiNlNWU5ZWQ7bWFyZ2luOjhweCA0cHg7fQogIC5jbC1zcGxpdHt3aWR0aDo2cHg7ZmxleC1zaHJpbms6MDtjdXJzb3I6Y29sLXJlc2l6ZTtwb3NpdGlvbjpyZWxhdGl2ZTtiYWNrZ3JvdW5kOiNlNWU5ZWQ7fQogIC5jbC1zcGxpdDo6YWZ0ZXJ7Y29udGVudDonJztwb3NpdGlvbjphYnNvbHV0ZTt0b3A6MDtib3R0b206MDtsZWZ0OjJweDt3aWR0aDoycHg7YmFja2dyb3VuZDp0cmFuc3BhcmVudDt9CiAgLmNsLXNwbGl0OmhvdmVyOjphZnRlciwuY2wtc3BsaXQuZHJhZ2dpbmc6OmFmdGVye2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO30KICAuY2wtdHJlZS1pdGVte2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjVweDtwYWRkaW5nOjdweCA4cHg7Ym9yZGVyLXJhZGl1czo2cHg7Y3Vyc29yOnBvaW50ZXI7Zm9udC1zaXplOjEzcHg7Y29sb3I6IzNhNDU1Mjt9CiAgLmNsLXRyZWUtaXRlbTpob3ZlcntiYWNrZ3JvdW5kOiNmMmY1ZjM7fQogIC5jbC10cmVlLWl0ZW0ub257YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1saWdodCk7Y29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7Zm9udC13ZWlnaHQ6NjAwO30KICAuY2wtcmVuYW1lLWJ0bntmbGV4LXNocmluazowO2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjt3aWR0aDoxOHB4O2hlaWdodDoxOHB4O2JvcmRlci1yYWRpdXM6NHB4O2NvbG9yOiM5Y2EzYWY7b3BhY2l0eTowO2N1cnNvcjpwb2ludGVyO30KICAuY2wtdHJlZS1pdGVtOmhvdmVyIC5jbC1yZW5hbWUtYnRuLC5jbC1yb3c6aG92ZXIgLmNsLXJlbmFtZS1idG57b3BhY2l0eToxO30KICAuY2wtcmVuYW1lLWJ0bjpob3ZlcntiYWNrZ3JvdW5kOiNlNWU5ZWQ7Y29sb3I6IzNhNDU1Mjt9CiAgLmNsLXJvdy1hY3Rpb25ze2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmZsZXgtZW5kO2dhcDo0cHg7fQogIC5jbC1jb3VudHtmbGV4LXNocmluazowO2ZvbnQtc2l6ZToxMXB4O2NvbG9yOiM5Y2EzYWY7bWFyZ2luLWxlZnQ6MnB4O30KICAuY2wtbmFtZS10ZXh0e2ZsZXg6MTttaW4td2lkdGg6MDtvdmVyZmxvdzpoaWRkZW47dGV4dC1vdmVyZmxvdzplbGxpcHNpczt3aGl0ZS1zcGFjZTpub3dyYXA7fQogIC5jbC10cmVlLWl0ZW0ub24gLmNsLWNvdW50e2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO30KICAuY2wtdHJlZS1pdGVtLmNsLWRyb3AtdGFyZ2V0LC5jbC1yb3cuY2wtZHJvcC10YXJnZXR7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1saWdodCkhaW1wb3J0YW50O291dGxpbmU6MS41cHggZGFzaGVkIHZhcigtLWF4LWdyZWVuKTtvdXRsaW5lLW9mZnNldDotMS41cHg7fQogIC5jbC10cmVlLWl0ZW0gLmNoZXZ7d2lkdGg6OXB4O2hlaWdodDo5cHg7ZmxleC1zaHJpbms6MDtkaXNwbGF5OmlubGluZS1mbGV4O2N1cnNvcjpwb2ludGVyO30KICAuY2wtbGlzdHtmbGV4OjE7b3ZlcmZsb3cteTphdXRvO3BhZGRpbmc6MTBweCA4cHg7fQogIC5jbC1saXN0LWhlYWR7ZGlzcGxheTpncmlkO3BhZGRpbmc6NnB4IDE0cHg7Zm9udC1zaXplOjExcHg7Y29sb3I6IzljYTNhZjtmb250LXdlaWdodDo2MDA7fQogIC5jbC1yb3d7ZGlzcGxheTpncmlkO2FsaWduLWl0ZW1zOmNlbnRlcjtwYWRkaW5nOjlweCAxNHB4O2JvcmRlci1yYWRpdXM6NnB4O2N1cnNvcjpwb2ludGVyO30KICAuY2wtcm93OmhvdmVye2JhY2tncm91bmQ6I2Y3ZjlmODt9CiAgLmNsLXJvdy5zZWx7YmFja2dyb3VuZDojZjBmN2ZmO30KICAuY2wtcm93LW5hbWV7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6OXB4O2ZvbnQtc2l6ZToxMy41cHg7Y29sb3I6IzJjM2U1MDtvdmVyZmxvdzpoaWRkZW47dGV4dC1vdmVyZmxvdzplbGxpcHNpczt3aGl0ZS1zcGFjZTpub3dyYXA7fQogIC5jbC1kaW17Zm9udC1zaXplOjEycHg7Y29sb3I6IzhhOTdhMzt9CiAgLmNsLXRvZ2dsZXtwb3NpdGlvbjpyZWxhdGl2ZTtkaXNwbGF5OmlubGluZS1ibG9jazt3aWR0aDozNHB4O2hlaWdodDoxOXB4O2N1cnNvcjpwb2ludGVyO2ZsZXgtc2hyaW5rOjA7fQogIC5jbC10b2dnbGUgaW5wdXR7b3BhY2l0eTowO3dpZHRoOjA7aGVpZ2h0OjA7fQogIC5jbC10b2dnbGUgLnRya3twb3NpdGlvbjphYnNvbHV0ZTtpbnNldDowO2JhY2tncm91bmQ6dmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjE5cHg7dHJhbnNpdGlvbjouMTVzO30KICAuY2wtdG9nZ2xlIC5kb3R7cG9zaXRpb246YWJzb2x1dGU7dG9wOjIuNXB4O2xlZnQ6Mi41cHg7d2lkdGg6MTRweDtoZWlnaHQ6MTRweDtiYWNrZ3JvdW5kOiNmZmY7Ym9yZGVyLXJhZGl1czo1MCU7dHJhbnNpdGlvbjouMTVzO30KICAuY2wtdG9nZ2xlIGlucHV0OmNoZWNrZWQgKyAudHJre2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO30KICAuY2wtdG9nZ2xlIGlucHV0OmNoZWNrZWQgfiAuZG90e2xlZnQ6MTdweDt9CiAgLmNsLWZvb3RlcntkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDoxMHB4O3BhZGRpbmc6MTRweCAyMHB4O2JvcmRlci10b3A6MXB4IHNvbGlkICNlNWU5ZWQ7ZmxleC1zaHJpbms6MDt9CiAgLmNsLWZvb3RlciBpbnB1dFt0eXBlPXRleHRde2ZsZXg6MTtwYWRkaW5nOjlweCAxMnB4O2JvcmRlcjoxLjVweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6NnB4O2ZvbnQtc2l6ZToxM3B4O2ZvbnQtZmFtaWx5OmluaGVyaXQ7fQogIC5jbC1jYW5jZWwtYnRue3BhZGRpbmc6OXB4IDE4cHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JhY2tncm91bmQ6I2ZmZjtib3JkZXItcmFkaXVzOjZweDtmb250LXNpemU6MTNweDtjdXJzb3I6cG9pbnRlcjtjb2xvcjojNTU1O3doaXRlLXNwYWNlOm5vd3JhcDt9CiAgLmNsLXByaW1hcnktYnRue3BhZGRpbmc6OXB4IDIwcHg7Ym9yZGVyOm5vbmU7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7Y29sb3I6I2ZmZjtib3JkZXItcmFkaXVzOjZweDtmb250LXNpemU6MTNweDtmb250LXdlaWdodDo3MDA7Y3Vyc29yOnBvaW50ZXI7d2hpdGUtc3BhY2U6bm93cmFwO30KICAuY2wtcHJpbWFyeS1idG46ZGlzYWJsZWR7b3BhY2l0eTouNTU7Y3Vyc29yOmRlZmF1bHQ7fQogIC5jbC10YWdib3h7ZmxleDoxO2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7ZmxleC13cmFwOndyYXA7Z2FwOjZweDtwYWRkaW5nOjZweCAxMHB4O2JvcmRlcjoxLjVweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6NnB4O30KICAuY2wtdGFnY2hpcHtkaXNwbGF5OmlubGluZS1mbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NXB4O2ZvbnQtc2l6ZToxMnB4O3BhZGRpbmc6NHB4IDlweDtib3JkZXItcmFkaXVzOjk5OXB4O2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tbGlnaHQpO2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO2ZvbnQtd2VpZ2h0OjYwMDt9CiAgLmNsLXRhZ2NoaXAgc3BhbntjdXJzb3I6cG9pbnRlcjtjb2xvcjojOGZiZmE4O30KICAuY2wtdGFnYm94IGlucHV0e2JvcmRlcjpub25lO291dGxpbmU6bm9uZTtmb250LXNpemU6MTIuNXB4O2ZvbnQtZmFtaWx5OmluaGVyaXQ7ZmxleDoxO21pbi13aWR0aDoxMDBweDt9CiAgLmNsLWZpbHRlcmNoaXB7Zm9udC1zaXplOjExLjVweDtwYWRkaW5nOjVweCAxMXB4O2JvcmRlci1yYWRpdXM6OTk5cHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2NvbG9yOiMzYTQ1NTI7Y3Vyc29yOnBvaW50ZXI7ZmxleC1zaHJpbms6MDt9CiAgLmNsLWZpbHRlcmNoaXAub257YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTtjb2xvcjojZmZmO30KICAuY2wtdGFnYmFyLXdyYXB7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmZsZXgtc3RhcnQ7Z2FwOjhweDtwYWRkaW5nOjEwcHggMThweDtmbGV4LXNocmluazowO30KICAuY2wtdGFnYmFye2Rpc3BsYXk6ZmxleDtmbGV4LXdyYXA6d3JhcDtnYXA6NnB4O2ZsZXg6MTttaW4td2lkdGg6MDtvdmVyZmxvdzpoaWRkZW47fQogIC5jbC10YWdiYXItdG9nZ2xle2ZsZXgtc2hyaW5rOjA7Zm9udC1zaXplOjExLjVweDtmb250LXdlaWdodDo2MDA7Y29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7YmFja2dyb3VuZDojZjZmYWY4O2JvcmRlcjoxcHggc29saWQgI2Q5ZWNlMztib3JkZXItcmFkaXVzOjk5OXB4O3BhZGRpbmc6NXB4IDEwcHg7Y3Vyc29yOnBvaW50ZXI7d2hpdGUtc3BhY2U6bm93cmFwO30KICAuY2wtdGFnYmFyLXRvZ2dsZTpob3ZlcntiYWNrZ3JvdW5kOiNlZWY2ZjE7fQogIC5jbC1saW5lYWdlYmFye2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjZweDtwYWRkaW5nOjEwcHggMThweCAwO2ZsZXgtc2hyaW5rOjA7fQogIC5jbC1saW5lYWdlLWNydW1ie2dhcDo4cHg7fQogIC5jbC1saW5lYWdlLWJhY2t7Zm9udC1zaXplOjEycHg7Y29sb3I6IzVmNmM3ODtjdXJzb3I6cG9pbnRlcjtmbGV4LXNocmluazowO30KICAuY2wtbGluZWFnZS1iYWNrOmhvdmVye2NvbG9yOiMyYzNlNTA7fQogIC5jbC1saW5lYWdlLWNydW1iLXRleHR7Zm9udC1zaXplOjEyLjVweDtmb250LXdlaWdodDo2MDA7Y29sb3I6IzJjM2U1MDt9CiAgLmNsLXJldi1iYWRnZXtkaXNwbGF5OmlubGluZS1mbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6Y2VudGVyO21pbi13aWR0aDoxNnB4O2hlaWdodDoxNnB4O3BhZGRpbmc6MCA1cHg7bWFyZ2luLWxlZnQ6NXB4O2JvcmRlci1yYWRpdXM6OTk5cHg7YmFja2dyb3VuZDojZWVlZGZlO2NvbG9yOiMzYzM0ODk7Zm9udC1zaXplOjEwLjVweDtmb250LXdlaWdodDo3MDA7Y3Vyc29yOnBvaW50ZXI7dmVydGljYWwtYWxpZ246MXB4O30KICAuY2wtcmV2LWJhZGdlOmhvdmVye2JhY2tncm91bmQ6I2RhZDdmYjt9CiAgLmNsLWxpbmVhZ2Utc2Vne2Rpc3BsYXk6aW5saW5lLWZsZXg7Ym9yZGVyOjFweCBzb2xpZCAjZDVkYmUwO2JvcmRlci1yYWRpdXM6OHB4O2JhY2tncm91bmQ6I2Y0ZjZmNztwYWRkaW5nOjJweDtmbGV4LXNocmluazowO30KICAuY2wtbGluZWFnZS1zZWcgc3BhbntkaXNwbGF5OmlubGluZS1mbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtmb250LXNpemU6MTEuNXB4O2ZvbnQtd2VpZ2h0OjYwMDtwYWRkaW5nOjVweCAxMnB4O2JvcmRlci1yYWRpdXM6NnB4O2NvbG9yOiM1ZjZjNzg7Y3Vyc29yOnBvaW50ZXI7fQogIC5jbC1saW5lYWdlLXNlZyBzcGFuOmhvdmVyOm5vdCgub24pe2NvbG9yOiMyYzNlNTA7fQogIC5jbC1saW5lYWdlLXNlZyBzcGFuLm9ue2JhY2tncm91bmQ6I2ZmZjtjb2xvcjojMWEyNzMzO2JveC1zaGFkb3c6MCAxcHggMnB4IHJnYmEoMCwwLDAsLjA4KTt9CiAgLmNsLWxpbmVhZ2UtaWN7d2lkdGg6N3B4O2hlaWdodDo3cHg7Ym9yZGVyLXJhZGl1czo1MCU7bWFyZ2luLXJpZ2h0OjZweDtmbGV4LXNocmluazowO30KICAuY2wtbGluZWFnZS1pYy1vcmlnaW57YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7fQogIC5jbC1saW5lYWdlLWljLXJldntiYWNrZ3JvdW5kOiM3Zjc3ZGQ7fQogIC5jbC1saW5lYWdlLWljLWF1dG97YmFja2dyb3VuZDojZTg1OTBjO30KICAuY2wtc29ydHNlbGVjdHstd2Via2l0LWFwcGVhcmFuY2U6bm9uZTstbW96LWFwcGVhcmFuY2U6bm9uZTthcHBlYXJhbmNlOm5vbmU7cGFkZGluZzo2cHggMjZweCA2cHggMTFweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo4cHg7Zm9udC1zaXplOjEycHg7Y29sb3I6IzNhNDU1MjtiYWNrZ3JvdW5kOiNmZmYgdXJsKCdkYXRhOmltYWdlL3N2Zyt4bWw7dXRmOCw8c3ZnIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgd2lkdGg9IjEwIiBoZWlnaHQ9IjYiIHZpZXdCb3g9IjAgMCAxMCA2Ij48cGF0aCBkPSJNMSAxbDQgNCA0LTQiIGZpbGw9Im5vbmUiIHN0cm9rZT0iJTIzNWY2Yzc4IiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+Jykgbm8tcmVwZWF0IHJpZ2h0IDEwcHggY2VudGVyO2N1cnNvcjpwb2ludGVyO2ZsZXgtc2hyaW5rOjA7fQogIC5jbC1zb3J0c2VsZWN0OmhvdmVye2JvcmRlci1jb2xvcjojYjdiZmM2O30KICAuY2wtc29ydHNlbGVjdDpmb2N1c3tvdXRsaW5lOm5vbmU7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTt9CiAgLmNsLXZpZXd0b2dnbGV7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo2cHg7b3ZlcmZsb3c6aGlkZGVuO2ZsZXgtc2hyaW5rOjA7fQogIC5jbC12aWV3dG9nZ2xlIHNwYW57ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6Y2VudGVyO3dpZHRoOjMwcHg7aGVpZ2h0OjMwcHg7Y29sb3I6IzhhOTdhMztjdXJzb3I6cG9pbnRlcjt9CiAgLmNsLXZpZXd0b2dnbGUgc3Bhbjpob3ZlcntiYWNrZ3JvdW5kOiNmM2Y2ZjU7fQogIC5jbC12aWV3dG9nZ2xlIHNwYW4ub257YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1saWdodCk7Y29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7fQogIC5jbC12aWV3dG9nZ2xlIHNwYW4rc3Bhbntib3JkZXItbGVmdDoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTt9CiAgLmNsLXRhZ3BpbGx7Zm9udC1zaXplOjEwLjVweDtwYWRkaW5nOjJweCA3cHg7Ym9yZGVyLXJhZGl1czo5OTlweDtiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuLWxpZ2h0KTtjb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTtmb250LXdlaWdodDo2MDA7fQogIC5jbC10aHVtYi1zbXt3aWR0aDo0MHB4O2hlaWdodDoyNnB4O2JvcmRlci1yYWRpdXM6NHB4O292ZXJmbG93OmhpZGRlbjtiYWNrZ3JvdW5kOiNmNGY2Zjg7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6Y2VudGVyO2ZsZXgtc2hyaW5rOjA7fQogIC5jbC1jYXJkc3tkaXNwbGF5OmdyaWQ7Z3JpZC10ZW1wbGF0ZS1jb2x1bW5zOnJlcGVhdChhdXRvLWZpbGwsMTUwcHgpO2dyaWQtYXV0by1yb3dzOm1pbi1jb250ZW50O2dhcDoxMnB4O3BhZGRpbmc6MTRweCAxOHB4O2ZsZXg6MTtvdmVyZmxvdy15OmF1dG87bWluLWhlaWdodDowO2FsaWduLWNvbnRlbnQ6c3RhcnQ7fQogIC5jbC1jYXJke2JvcmRlcjoxcHggc29saWQgI2U1ZTllZDtib3JkZXItcmFkaXVzOjEwcHg7b3ZlcmZsb3c6aGlkZGVuO2N1cnNvcjpwb2ludGVyO2JhY2tncm91bmQ6I2ZmZjt9CiAgLmNsLWNhcmQuc2Vse2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbik7Ym94LXNoYWRvdzowIDAgMCAycHggdmFyKC0tYXgtZ3JlZW4tbGlnaHQpO30KICAuY2wtY2FyZC10aHVtYntoZWlnaHQ6NThweDtiYWNrZ3JvdW5kOmxpbmVhci1ncmFkaWVudCgxMzVkZWcsI2Y0ZjZmOCwjZWVmMWY0KTtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7Ym9yZGVyLWJvdHRvbToxcHggc29saWQgI2U1ZTllZDt9CiAgLmNsLWNhcmQtYm9keXtwYWRkaW5nOjEwcHggMTJweDt9CiAgLmNsLWNhcmQtdGl0bGV7Zm9udC1zaXplOjEzcHg7Zm9udC13ZWlnaHQ6NjAwO2NvbG9yOiMyYzNlNTA7bWFyZ2luLWJvdHRvbTo1cHg7d2hpdGUtc3BhY2U6bm93cmFwO292ZXJmbG93OmhpZGRlbjt0ZXh0LW92ZXJmbG93OmVsbGlwc2lzO30KICAuY2wtZW1wdHl7cGFkZGluZzo2MHB4IDIwcHg7dGV4dC1hbGlnbjpjZW50ZXI7Y29sb3I6IzljYTNhZjtmb250LXNpemU6MTNweDt9CiAgLmNsLXNoYXJlZC1sb2FkbW9yZXtwYWRkaW5nOjE0cHggMjBweDt0ZXh0LWFsaWduOmNlbnRlcjtjb2xvcjojOWNhM2FmO2ZvbnQtc2l6ZToxMnB4O30KICAvKiDqs7XsnKDtjIzsnbwgLSDrqqnroZ3snLzroZwg67O06riwKO2DkOyDieq4sCDsiqTtg4Dsnbwg7KKM7JqwIOu2hO2VoCkgKi8KICAuY2wtc2hhcmVkLXNwbGl0LWJvZHl7ZGlzcGxheTpmbGV4O2ZsZXg6MTtvdmVyZmxvdzpoaWRkZW47bWluLWhlaWdodDowO30KICAuY2wtc2hhcmVkLWxpc3QtcGFuZXtvdmVyZmxvdy15OmF1dG87cGFkZGluZzoxMHB4IDhweDtmbGV4LXNocmluazowO30KICAuY2wtZXhwbG9yZXItcm93e2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjEwcHg7cGFkZGluZzo4cHggMTBweDtib3JkZXItcmFkaXVzOjZweDtjdXJzb3I6cG9pbnRlcjt9CiAgLmNsLWV4cGxvcmVyLXJvdzpob3ZlcntiYWNrZ3JvdW5kOiNmN2Y5Zjg7fQogIC5jbC1leHBsb3Jlci1yb3cuc2Vse2JhY2tncm91bmQ6I2YwZjdmZjt9CiAgLmNsLWV4cGxvcmVyLW1ldGF7ZmxleDoxO21pbi13aWR0aDowO2Rpc3BsYXk6ZmxleDtmbGV4LWRpcmVjdGlvbjpjb2x1bW47Z2FwOjJweDt9CiAgLmNsLWV4cGxvcmVyLXRpdGxlLXJvd3tkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO21pbi13aWR0aDowO30KICAuY2wtZXhwbG9yZXItbWV0YSAuY2wtc3Vie2ZvbnQtc2l6ZToxMXB4O2NvbG9yOiM5Y2EzYWY7b3ZlcmZsb3c6aGlkZGVuO3RleHQtb3ZlcmZsb3c6ZWxsaXBzaXM7d2hpdGUtc3BhY2U6bm93cmFwO30KICAuY2wtc2hhcmVkLXByZXZpZXctcGFuZXtmbGV4OjE7b3ZlcmZsb3c6aGlkZGVuO2Rpc3BsYXk6ZmxleDtmbGV4LWRpcmVjdGlvbjpjb2x1bW47YWxpZ24taXRlbXM6Y2VudGVyO3BhZGRpbmc6MjBweDtiYWNrZ3JvdW5kOiNmYWZiZmM7Z2FwOjEycHg7bWluLXdpZHRoOjA7fQogIC5jbC1zaGFyZWQtcHJldmlldy1mcmFtZS1vdXRlcntwb3NpdGlvbjpyZWxhdGl2ZTtmbGV4OjE7d2lkdGg6MTAwJTttaW4taGVpZ2h0OjA7ZGlzcGxheTpmbGV4O292ZXJmbG93OmhpZGRlbjt9CiAgLmNsLXNoYXJlZC1wcmV2aWV3LXNjcm9sbHt3aWR0aDoxMDAlO2hlaWdodDoxMDAlO292ZXJmbG93OmF1dG87ZGlzcGxheTpmbGV4O30KICAuY2wtc2hhcmVkLXByZXZpZXctc2NhbGUtd3JhcHtwb3NpdGlvbjpyZWxhdGl2ZTtmbGV4LXNocmluazowO21hcmdpbjphdXRvO2N1cnNvcjpncmFiO30KICAuY2wtc2hhcmVkLXByZXZpZXctc2NhbGUtd3JhcC5kcmFnZ2luZ3tjdXJzb3I6Z3JhYmJpbmc7fQogIC5jbC1zaGFyZWQtem9vbS1jdGx7cG9zaXRpb246YWJzb2x1dGU7cmlnaHQ6MTBweDtib3R0b206MTBweDtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDoycHg7YmFja2dyb3VuZDojZmZmO2JvcmRlcjoxcHggc29saWQgI2U1ZTllZDtib3JkZXItcmFkaXVzOjdweDtib3gtc2hhZG93OjAgMnB4IDhweCByZ2JhKDAsMCwwLC4xMik7cGFkZGluZzozcHg7ei1pbmRleDo1O30KICAuY2wtc2hhcmVkLXpvb20tY3RsIGJ1dHRvbnt3aWR0aDoyNHB4O2hlaWdodDoyNHB4O2JvcmRlcjpub25lO2JhY2tncm91bmQ6dHJhbnNwYXJlbnQ7Ym9yZGVyLXJhZGl1czo1cHg7Y3Vyc29yOnBvaW50ZXI7Y29sb3I6IzRiNTU2Mztmb250LXNpemU6MTVweDtmb250LXdlaWdodDo3MDA7Zm9udC1mYW1pbHk6aW5oZXJpdDtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7fQogIC5jbC1zaGFyZWQtem9vbS1jdGwgYnV0dG9uOmhvdmVye2JhY2tncm91bmQ6I2VlZjFmNDt9CiAgLmNsLXNoYXJlZC16b29tLXBjdHtmb250LXNpemU6MTFweDtjb2xvcjojNmI3MjgwO3BhZGRpbmc6MCA2cHg7Y3Vyc29yOnBvaW50ZXI7dXNlci1zZWxlY3Q6bm9uZTttaW4td2lkdGg6MzZweDt0ZXh0LWFsaWduOmNlbnRlcjt9CiAgLmNsLXNoYXJlZC16b29tLXBjdDpob3Zlcntjb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTt9CiAgLmNsLXNoYXJlZC1wcmV2aWV3LWZyYW1lLW91dGVyIGlmcmFtZXtkaXNwbGF5OmJsb2NrO2JvcmRlcjoxcHggc29saWQgI2U1ZTllZDtib3JkZXItcmFkaXVzOjZweDtib3gtc2hhZG93OjAgMnB4IDEwcHggcmdiYSgwLDAsMCwuMDYpO2JhY2tncm91bmQ6I2ZmZjt0cmFuc2Zvcm0tb3JpZ2luOnRvcCBsZWZ0O3VzZXItc2VsZWN0Om5vbmU7fQogIC5jbC1zaGFyZWQtcHJldmlldy1sb2FkaW5ne2NvbG9yOiM5Y2EzYWY7Zm9udC1zaXplOjEzcHg7bWFyZ2luOmF1dG87fQogIC5jbC1zaGFyZWQtcHJldmlldy1tZXRhe2ZsZXgtc2hyaW5rOjA7bWF4LXdpZHRoOjEwMCU7b3ZlcmZsb3c6aGlkZGVuO3RleHQtb3ZlcmZsb3c6ZWxsaXBzaXM7d2hpdGUtc3BhY2U6bm93cmFwO2ZvbnQtc2l6ZToxMi41cHg7Y29sb3I6IzhhOTdhMzt0ZXh0LWFsaWduOmNlbnRlcjt9CiAgLmNsLXNoYXJlZC1wcmV2aWV3LW1ldGEtdGl0bGV7Zm9udC1zaXplOjE0cHg7Zm9udC13ZWlnaHQ6NzAwO2NvbG9yOiMyYzNlNTA7fQogIC5jbC1zaGFyZWQtcHJldmlldy1tZXRhLXNlcHtjb2xvcjojZDNkOWRlO21hcmdpbjowIDdweDt9CiAgLmNsLXNoYXJlZC1wcmV2aWV3LW1ldGEgLmNsLXRhZ3BpbGx7dmVydGljYWwtYWxpZ246MXB4O30KICAuY2wtc2hhcmVkLXByZXZpZXctZW1wdHl7Y29sb3I6IzljYTNhZjtmb250LXNpemU6MTNweDt0ZXh0LWFsaWduOmNlbnRlcjtwYWRkaW5nOjYwcHggMjBweDttYXJnaW46YXV0bzt9CiAgLmNsLXN0YXItYnRue2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjtjdXJzb3I6cG9pbnRlcjtmbGV4LXNocmluazowO30KICAuY2wtZXhwbG9yZXItcmlnaHR7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NnB4O2ZsZXgtc2hyaW5rOjA7fQogIC5jbC1vcGVuLWNvdW50e2Rpc3BsYXk6aW5saW5lLWZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDozcHg7Zm9udC1zaXplOjExcHg7Y29sb3I6IzhhOTdhMztmbGV4LXNocmluazowO30KCiAgLyogVG9vbGJveCAqLwogIC50b29sYm94e2JhY2tncm91bmQ6I2ZmZjtib3JkZXItcmlnaHQ6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7b3ZlcmZsb3cteTphdXRvO3BhZGRpbmc6MTBweDt9CiAgLnRvb2xib3ggaDN7Zm9udC1zaXplOjExcHg7Y29sb3I6dmFyKC0tYXgtZ3JheSk7dGV4dC10cmFuc2Zvcm06dXBwZXJjYXNlO2xldHRlci1zcGFjaW5nOi41cHg7bWFyZ2luOjEycHggMCA2cHg7cGFkZGluZy1ib3R0b206NHB4O2JvcmRlci1ib3R0b206MXB4IHNvbGlkICNlZWU7fQogIC50b29sYm94IGgzOmZpcnN0LWNoaWxke21hcmdpbi10b3A6MDt9CiAgLnRncnAtaHtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpzcGFjZS1iZXR3ZWVuO2N1cnNvcjpwb2ludGVyO3VzZXItc2VsZWN0Om5vbmU7fQogIC50Z3JwLWlje2ZvbnQtc2l6ZTo5cHg7Y29sb3I6dmFyKC0tYXgtZ3JheSk7dHJhbnNpdGlvbjp0cmFuc2Zvcm0gLjE1cztmbGV4Om5vbmU7fQogIC50Z3JwLmNvbGxhcHNlZCAudGdycC1ib2R5e2Rpc3BsYXk6bm9uZTt9CiAgLnRncnAuY29sbGFwc2VkIC50Z3JwLWlje3RyYW5zZm9ybTpyb3RhdGUoLTkwZGVnKTt9CiAgLmNsaWNrLXBsYWNlLXRvZ2dsZXtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo2cHg7Zm9udC1zaXplOjEycHg7Y29sb3I6dmFyKC0tYXgtbmF2eSk7cGFkZGluZy1ib3R0b206MTBweDttYXJnaW4tYm90dG9tOjZweDtib3JkZXItYm90dG9tOjFweCBzb2xpZCAjZWVlO2N1cnNvcjpwb2ludGVyO30KICAudG9vbGJveC1jcmVkaXR7bWFyZ2luLXRvcDoxNnB4O3BhZGRpbmctdG9wOjEwcHg7Ym9yZGVyLXRvcDoxcHggc29saWQgI2VlZTt0ZXh0LWFsaWduOmNlbnRlcjtmb250LXNpemU6MTBweDtjb2xvcjojYzNjOWNlO3VzZXItc2VsZWN0Om5vbmU7fQogIC8qIOq4sOq4sCDrqqjrk5woUEMv7YOc67iU66a/L+uqqOuwlOydvCkg6rCV7KCc7KCE7ZmYIOuyhO2KvDog7ISgKGJvcmRlci10b3ApIOyVhOuemCwgYnkgSnVuZSDthY3siqTtirgg7JyEIO2VnCDtlokgKi8KICAubW9kZS1zd2l0Y2h7ZGlzcGxheTpmbGV4O2p1c3RpZnktY29udGVudDpjZW50ZXI7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo4cHg7bWFyZ2luOjlweCAwIDdweDt9CiAgLm1vZGUtc3dpdGNoIC5tc2J7cG9zaXRpb246cmVsYXRpdmU7d2lkdGg6MzBweDtoZWlnaHQ6MzBweDtwYWRkaW5nOjA7ZGlzcGxheTppbmxpbmUtZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjsKICAgIGJhY2tncm91bmQ6I2ZmZjtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo3cHg7Y3Vyc29yOnBvaW50ZXI7Y29sb3I6dmFyKC0tYXgtZ3JheSk7CiAgICB0cmFuc2l0aW9uOmJvcmRlci1jb2xvciAuMTVzLGJhY2tncm91bmQgLjE1cyxjb2xvciAuMTVzLGJveC1zaGFkb3cgLjE1czt9CiAgLm1vZGUtc3dpdGNoIC5tc2Igc3Zne3dpZHRoOjE4cHg7aGVpZ2h0OjE4cHg7ZGlzcGxheTpibG9jazt9CiAgLm1vZGUtc3dpdGNoIC5tc2I6aG92ZXJ7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTtjb2xvcjp2YXIoLS1heC1ncmVlbik7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1saWdodCk7fQogIC8qIO2YhOyerCDrqqjrk5w6IOyxhOybjOynhCjtmZzshLEpIOyDge2DnOuhnCDthqDquIAg7ZGc7IucICovCiAgLm1vZGUtc3dpdGNoIC5tc2Iub257YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTtjb2xvcjojZmZmO2JveC1zaGFkb3c6MCAycHggNnB4IHJnYmEoMzAsMTU4LDEwNiwuMzUpO2N1cnNvcjpkZWZhdWx0O30KICAubW9kZS1zd2l0Y2ggLm1zYi5vbjpob3ZlcntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuKTtjb2xvcjojZmZmO30KICAvKiDrp4jsmrDsiqQg7Jik67KEIOyLnOyXkOunjCDrgpjtg4DrgpjripQg652867KoIO2ItO2MgSAqLwogIC5tb2RlLXN3aXRjaCAubXNiIC5tc2ItdGlwe3Bvc2l0aW9uOmFic29sdXRlO2JvdHRvbTpjYWxjKDEwMCUgKyA2cHgpO2xlZnQ6NTAlO3RyYW5zZm9ybTp0cmFuc2xhdGVYKC01MCUpOwogICAgYmFja2dyb3VuZDp2YXIoLS1heC1uYXZ5KTtjb2xvcjojZmZmO2ZvbnQtc2l6ZToxMXB4O2ZvbnQtd2VpZ2h0OjYwMDtsaW5lLWhlaWdodDoxO3doaXRlLXNwYWNlOm5vd3JhcDsKICAgIHBhZGRpbmc6NXB4IDhweDtib3JkZXItcmFkaXVzOjVweDtvcGFjaXR5OjA7dmlzaWJpbGl0eTpoaWRkZW47cG9pbnRlci1ldmVudHM6bm9uZTt0cmFuc2l0aW9uOm9wYWNpdHkgLjEyczt6LWluZGV4OjUwO30KICAubW9kZS1zd2l0Y2ggLm1zYiAubXNiLXRpcDo6YWZ0ZXJ7Y29udGVudDoiIjtwb3NpdGlvbjphYnNvbHV0ZTt0b3A6MTAwJTtsZWZ0OjUwJTt0cmFuc2Zvcm06dHJhbnNsYXRlWCgtNTAlKTsKICAgIGJvcmRlcjo0cHggc29saWQgdHJhbnNwYXJlbnQ7Ym9yZGVyLXRvcC1jb2xvcjp2YXIoLS1heC1uYXZ5KTt9CiAgLm1vZGUtc3dpdGNoIC5tc2I6aG92ZXIgLm1zYi10aXB7b3BhY2l0eToxO3Zpc2liaWxpdHk6dmlzaWJsZTt9CiAgLnRtcGwtZ3JpZHtkaXNwbGF5OmdyaWQ7Z3JpZC10ZW1wbGF0ZS1jb2x1bW5zOnJlcGVhdCgzLDFmcik7Z2FwOjEwcHg7bWFyZ2luLXRvcDoxNHB4O30KICAudG1wbC1jYXJke2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjhweDtwYWRkaW5nOjEycHg7Y3Vyc29yOnBvaW50ZXI7dHJhbnNpdGlvbjouMTJzO2JhY2tncm91bmQ6I2ZhZmJmYzt9CiAgLnRtcGwtY2FyZDpob3Zlcntib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4pO2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tbGlnaHQpO30KICAudG1wbC1jYXJkIC50aXtmb250LXNpemU6MTNweDtmb250LXdlaWdodDo3MDA7Y29sb3I6dmFyKC0tYXgtbmF2eSk7bWFyZ2luLWJvdHRvbTo0cHg7fQogIC50bXBsLWNhcmQgLnRke2ZvbnQtc2l6ZToxMXB4O2NvbG9yOnZhcigtLWF4LWdyYXkpO2xpbmUtaGVpZ2h0OjEuNDt9CiAgLnRtcGwtY2FyZCAudHd7ZGlzcGxheTppbmxpbmUtYmxvY2s7bWFyZ2luLXRvcDo2cHg7Zm9udC1zaXplOjEwcHg7Y29sb3I6I2I4ODYwYjtiYWNrZ3JvdW5kOiNmZmY3ZTA7Ym9yZGVyOjFweCBzb2xpZCAjZjBkY2EwO2JvcmRlci1yYWRpdXM6NHB4O3BhZGRpbmc6MXB4IDZweDt9CiAgLyog7IOB64uoIOuhnOqzoCDtgbTrpq0g7IucIOucqOuKlCBUaGluL0ZhdCDrqqjrk5wg7ISg7YOdIO2MneyXhSAqLwogIC5za2luLXBpY2stZ3JpZHtkaXNwbGF5OmdyaWQ7Z3JpZC10ZW1wbGF0ZS1jb2x1bW5zOjFmciAxZnI7Z2FwOjE2cHg7bWFyZ2luLXRvcDo0cHg7fQogIC5za2luLXBpY2stY2FyZHtwb3NpdGlvbjpyZWxhdGl2ZTtib3JkZXI6MnB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czoxMHB4O3BhZGRpbmc6MTRweDtjdXJzb3I6cG9pbnRlcjsKICAgIHRleHQtYWxpZ246Y2VudGVyO3RyYW5zaXRpb246LjEycztiYWNrZ3JvdW5kOiNmYWZiZmM7fQogIC5za2luLXBpY2stY2FyZDpob3Zlcntib3JkZXItY29sb3I6dmFyKC0tc2VsKTt0cmFuc2Zvcm06dHJhbnNsYXRlWSgtMXB4KTtib3gtc2hhZG93OjAgNHB4IDEycHggcmdiYSgwLDAsMCwuMDgpO30KICAuc2tpbi1waWNrLWNhcmQub257Ym9yZGVyLWNvbG9yOnZhcigtLXNlbCk7YmFja2dyb3VuZDojZWVmNWZmO30KICAuc2tpbi1waWNrLWNhcmQub24gLnNraW4tcGljay10YWd7ZGlzcGxheTppbmxpbmUtYmxvY2s7fQogIC5za2luLXBpY2stc3dhdGNoe3dpZHRoOjEwMCU7YXNwZWN0LXJhdGlvOjQvMztib3JkZXI6MXB4IHNvbGlkICNkOWRlZTM7Ym9yZGVyLXJhZGl1czo2cHg7b3ZlcmZsb3c6aGlkZGVuO21hcmdpbi1ib3R0b206MTBweDtib3gtc2hhZG93Omluc2V0IDAgMCAwIDFweCByZ2JhKDAsMCwwLC4wMik7fQogIC5zcHctaGVhZHtoZWlnaHQ6MjIlO30KICAuc3B3LWJvZHl7cGFkZGluZzoxMCU7ZGlzcGxheTpmbGV4O2ZsZXgtZGlyZWN0aW9uOmNvbHVtbjtnYXA6MTAlO2hlaWdodDo3OCU7Ym94LXNpemluZzpib3JkZXItYm94O30KICAuc3B3LWxhYmVse3dpZHRoOjQwJTtoZWlnaHQ6MTIlO2JvcmRlci1yYWRpdXM6MnB4O30KICAuc3B3LWZpZWxke3dpZHRoOjEwMCU7aGVpZ2h0OjIyJTtib3JkZXI6MXB4IHNvbGlkO2JvcmRlci1yYWRpdXM6M3B4O30KICAuc3B3LWJ0bnt3aWR0aDozMiU7aGVpZ2h0OjE2JTtib3JkZXItcmFkaXVzOjNweDthbGlnbi1zZWxmOmZsZXgtZW5kO30KICAuc2tpbi1waWNrLW5hbWV7Zm9udC1zaXplOjE0cHg7Zm9udC13ZWlnaHQ6ODAwO2NvbG9yOnZhcigtLWF4LW5hdnkpO30KICAuc2tpbi1waWNrLXRhZ3tkaXNwbGF5Om5vbmU7bWFyZ2luLXRvcDo3cHg7Zm9udC1zaXplOjEwcHg7Zm9udC13ZWlnaHQ6NzAwO2NvbG9yOiMxZjZmZDY7YmFja2dyb3VuZDojZTNmMGZmO2JvcmRlcjoxcHggc29saWQgI2JmZGNmYjtib3JkZXItcmFkaXVzOjEwcHg7cGFkZGluZzoycHggOXB4O30KICAudG9vbHtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo4cHg7cGFkZGluZzo2cHggOXB4O2JhY2tncm91bmQ6I2ZhZmJmYztib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo1cHg7bWFyZ2luLWJvdHRvbTo1cHg7Zm9udC1zaXplOjEycHg7dHJhbnNpdGlvbjouMTJzOwogICAgY3Vyc29yOnVybCgiZGF0YTppbWFnZS9zdmcreG1sO3V0ZjgsPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScyNicgaGVpZ2h0PScyNicgdmlld0JveD0nMCAwIDI2IDI2Jz48ZyB0cmFuc2Zvcm09J3RyYW5zbGF0ZSgzLDIpJz48cGF0aCBkPSdNMiAxIEwyIDE1IEw1LjYgMTEuNyBMOC4yIDE3LjYgTDExIDE2LjMgTDguNCAxMC42IEwxMyAxMC4zIFonIGZpbGw9JyUyM2ZmZmZmZicgc3Ryb2tlPSclMjMxMTExMTEnIHN0cm9rZS13aWR0aD0nMS42JyBzdHJva2UtbGluZWpvaW49J3JvdW5kJy8+PC9nPjwvc3ZnPiIpIDUgMywgZ3JhYjt9CiAgLnRvb2w6aG92ZXJ7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTtiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuLWxpZ2h0KTt9CiAgLnRvb2w6YWN0aXZle2N1cnNvcjp1cmwoImRhdGE6aW1hZ2Uvc3ZnK3htbDt1dGY4LDxzdmcgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJyB3aWR0aD0nMjYnIGhlaWdodD0nMjYnIHZpZXdCb3g9JzAgMCAyNiAyNic+PGcgdHJhbnNmb3JtPSd0cmFuc2xhdGUoMywyKSc+PHBhdGggZD0nTTIgMSBMMiAxNSBMNS42IDExLjcgTDguMiAxNy42IEwxMSAxNi4zIEw4LjQgMTAuNiBMMTMgMTAuMyBaJyBmaWxsPSclMjMxZTllNmEnIHN0cm9rZT0nJTIzZmZmZmZmJyBzdHJva2Utd2lkdGg9JzEuNicgc3Ryb2tlLWxpbmVqb2luPSdyb3VuZCcvPjwvZz48L3N2Zz4iKSA1IDMsIGdyYWJiaW5nO30KICAudG9vbCAuaWN7d2lkdGg6MTZweDt0ZXh0LWFsaWduOmNlbnRlcjtjb2xvcjp2YXIoLS1heC1ncmVlbik7Zm9udC13ZWlnaHQ6NzAwO30KICAudG9vbGJveC5jbGljay1wbGFjZS1vbiAudG9vbHtjdXJzb3I6dXJsKCJkYXRhOmltYWdlL3N2Zyt4bWw7dXRmOCw8c3ZnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zycgd2lkdGg9JzI2JyBoZWlnaHQ9JzI2JyB2aWV3Qm94PScwIDAgMjYgMjYnPjxnIHRyYW5zZm9ybT0ndHJhbnNsYXRlKDMsMiknPjxwYXRoIGQ9J00yIDEgTDIgMTUgTDUuNiAxMS43IEw4LjIgMTcuNiBMMTEgMTYuMyBMOC40IDEwLjYgTDEzIDEwLjMgWicgZmlsbD0nJTIzZmZmZmZmJyBzdHJva2U9JyUyMzExMTExMScgc3Ryb2tlLXdpZHRoPScxLjYnIHN0cm9rZS1saW5lam9pbj0ncm91bmQnLz48L2c+PC9zdmc+IikgNSAzLCBwb2ludGVyO30KICAudG9vbC5hcm1lZHtib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4pO2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tZGFyayk7Y29sb3I6I2ZmZjt9CiAgLnRvb2wuYXJtZWQgLmlje2NvbG9yOiNmZmY7fQogIC8qIEZhdCBNb2Rl7JeQ7ISc64qUIOuPhOq1rOyDgeyekOyXkOyEnCDsobDtmozsobDqsbQg7Yyo64SQIO2VreuqqeydhCDsiKjquLTri6QuIFRoaW4gTW9kZeuKlCDqt7jrjIDroZwg64W47LacLiAqLwogIGJvZHkuc2tpbi1jbGFzc2ljIC50b29sYm94IC50b29sW2RhdGEtdHlwZT0ic2VhcmNoYmFyIl17ZGlzcGxheTpub25lO30KICAvKiDssqjrtoDtjIzsnbwo6rKA7IOJ7ZiVIOyVhOydtOy9mCDsu7Ttj6zrhIztirgp7J2AIOyUrOuqqOuTnCDsoITsmqnsnbTrnbwg7Yy766qo65OcIOuPhOq1rOyDgeyekOyXkOyEnOuKlCDsiKjquLTri6QuCiAgICAg7Yyd7JeF7J2AIOydtOygnCDrkZAg66qo65OcIOuqqOuRkOyXkCDrhbjstpztlZjrkJgo7Yy766qo65OcPey9lOuTnC/rqoUsIOyUrOuqqOuTnD3qsoDsg4ntmJUpLCDrqqjrk5zrs4TroZwg64uk66W06rKMCiAgICAg6re466Ck7KeE64ukKGlubmVyUmF37J2YICdwb3B1cCcg67aE6riwIOywuOqzoCkuICovCiAgYm9keS5za2luLWNsYXNzaWMgLnRvb2xib3ggLnRvb2xbZGF0YS10eXBlPSJhdHRhY2giXXtkaXNwbGF5Om5vbmU7fQogIC8qIOyDgeuLqOuwlOydmCDthZztlIzrpr8g67KE7Yq87J2AIOyUrOuqqOuTnMK37Yy766qo65OcIOuqqOuRkOyXkOyEnCDsiKjquLTri6QuICovCiAgI3RlbXBsYXRlQnRue2Rpc3BsYXk6bm9uZTt9CiAgLnRvb2xib3guY2xpY2stcGxhY2Utb24gLnRvb2wuYXJtZWR7Y3Vyc29yOnVybCgiZGF0YTppbWFnZS9zdmcreG1sO3V0ZjgsPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScyNicgaGVpZ2h0PScyNicgdmlld0JveD0nMCAwIDI2IDI2Jz48ZyB0cmFuc2Zvcm09J3RyYW5zbGF0ZSgzLDIpJz48cGF0aCBkPSdNMiAxIEwyIDE1IEw1LjYgMTEuNyBMOC4yIDE3LjYgTDExIDE2LjMgTDguNCAxMC42IEwxMyAxMC4zIFonIGZpbGw9JyUyM2ZmZTY4MCcgc3Ryb2tlPSclMjMxMTExMTEnIHN0cm9rZS13aWR0aD0nMS44JyBzdHJva2UtbGluZWpvaW49J3JvdW5kJy8+PC9nPjwvc3ZnPiIpIDUgMywgcG9pbnRlcjt9CiAgI2NhbnZhcy5jbGljay1wbGFjZS1hcm1lZHtjdXJzb3I6Y3Jvc3NoYWlyO30KCiAgLyogQ2FudmFzICovCiAgLmNhbnZhcy13cmFwe2Rpc3BsYXk6ZmxleDtmbGV4LWRpcmVjdGlvbjpjb2x1bW47cG9zaXRpb246cmVsYXRpdmU7b3ZlcmZsb3c6aGlkZGVuO3BhZGRpbmc6MDt9CiAgLnRvb2xiYXIye2Rpc3BsYXk6ZmxleDtnYXA6NnB4O2FsaWduLWl0ZW1zOmNlbnRlcjtmbGV4LXdyYXA6d3JhcDtmbGV4Om5vbmU7YmFja2dyb3VuZDojZmZmO3BhZGRpbmc6MTJweCAyMHB4O2JvcmRlci1ib3R0b206MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym94LXNoYWRvdzowIDJweCA0cHggcmdiYSgwLDAsMCwuMDQpO30KICAuY2FudmFzLXNjcm9sbHtmbGV4OjE7bWluLWhlaWdodDowO292ZXJmbG93OmF1dG87cGFkZGluZzoyMHB4O30KICAudG9vbGJhcjIgbGFiZWx7Zm9udC1zaXplOjEycHg7Y29sb3I6dmFyKC0tYXgtZ3JheSk7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NHB4O30KICAudG9vbGJhcjIgc2VsZWN0LC50b29sYmFyMiBpbnB1dFt0eXBlPW51bWJlcl17cGFkZGluZzo0cHggNnB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjRweDtmb250LXNpemU6MTJweDt9CiAgLnRvb2xiYXIyIC5jaGt7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NHB4O30KICAjY2FudmFze3Bvc2l0aW9uOnJlbGF0aXZlO2JhY2tncm91bmQ6dmFyKC0tYXgtY2FudmFzLWJnKTtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo2cHg7Ym94LXNoYWRvdzowIDFweCA0cHggcmdiYSgwLDAsMCwuMDYpO3dpZHRoOjExMDBweDtoZWlnaHQ6NzAwcHg7CiAgICBiYWNrZ3JvdW5kLWltYWdlOmxpbmVhci1ncmFkaWVudCh2YXIoLS1heC1ncmlkLWxpbmUpIDFweCx0cmFuc3BhcmVudCAxcHgpLGxpbmVhci1ncmFkaWVudCg5MGRlZyx2YXIoLS1heC1ncmlkLWxpbmUpIDFweCx0cmFuc3BhcmVudCAxcHgpO2JhY2tncm91bmQtc2l6ZToxMHB4IDEwcHg7fQogICNjYW52YXMubm9ncmlke2JhY2tncm91bmQtaW1hZ2U6bm9uZTt9CiAgLmNhbnZhcy1ob2xkZXJ7cG9zaXRpb246cmVsYXRpdmU7ei1pbmRleDoxO2Rpc3BsYXk6aW5saW5lLWJsb2NrO30KICAudGItc2Vwe3dpZHRoOjFweDtoZWlnaHQ6MTZweDtiYWNrZ3JvdW5kOnZhcigtLWF4LWJvcmRlcik7ZGlzcGxheTppbmxpbmUtYmxvY2s7bWFyZ2luOjAgMnB4O30KICAuem9vbS1ib3h7ZGlzcGxheTppbmxpbmUtZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjNweDt9CiAgLnpvb20tYnRue3dpZHRoOjI0cHg7aGVpZ2h0OjI0cHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JhY2tncm91bmQ6I2ZmZjtib3JkZXItcmFkaXVzOjRweDtjdXJzb3I6cG9pbnRlcjtmb250LXNpemU6MTNweDtmb250LXdlaWdodDo3MDA7Y29sb3I6IzQ0NDtsaW5lLWhlaWdodDoxO2Rpc3BsYXk6aW5saW5lLWZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7cGFkZGluZzowO30KICAuem9vbS1idG4ud2lkZXt3aWR0aDphdXRvO3BhZGRpbmc6MCA3cHg7Zm9udC1zaXplOjExcHg7Zm9udC13ZWlnaHQ6NjAwO30KICAuem9vbS1idG46aG92ZXJ7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTtjb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTt9CiAgLnpvb20tc2Vse2hlaWdodDoyNHB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjRweDtiYWNrZ3JvdW5kOiNmZmY7Zm9udC1zaXplOjExcHg7cGFkZGluZzowIDJweDtjdXJzb3I6cG9pbnRlcjt9CiAgLmd1aWRlLWJ0bntiYWNrZ3JvdW5kOiNmZmYhaW1wb3J0YW50O2JvcmRlcjpub25lO2ZvbnQtc2l6ZToxNHB4O2N1cnNvcjpwb2ludGVyO3BhZGRpbmc6MCFpbXBvcnRhbnQ7bGluZS1oZWlnaHQ6MTttYXJnaW4tbGVmdDoycHg7Ym9yZGVyLXJhZGl1czo2cHg7d2lkdGg6MzBweDtoZWlnaHQ6MjJweDtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7Ym94LXNoYWRvdzowIDFweCAzcHggcmdiYSgwLDAsMCwuMjUpO29wYWNpdHk6MTt9CiAgLmd1aWRlLWJ0bjpob3Zlcnt0cmFuc2Zvcm06c2NhbGUoMS4wNik7Ym94LXNoYWRvdzowIDJweCA1cHggcmdiYSgwLDAsMCwuMyk7fQogIC51cGQtYnRue2Rpc3BsYXk6bm9uZTtiYWNrZ3JvdW5kOiNlODU5MGMhaW1wb3J0YW50O2NvbG9yOiNmZmY7Ym9yZGVyOm5vbmU7Ym9yZGVyLXJhZGl1czo2cHg7Zm9udC1zaXplOjEycHg7Zm9udC13ZWlnaHQ6NzAwO2N1cnNvcjpwb2ludGVyO3BhZGRpbmc6NXB4IDEwcHghaW1wb3J0YW50O2xpbmUtaGVpZ2h0OjE7bWFyZ2luLWxlZnQ6NnB4O2JveC1zaGFkb3c6MCAwIDAgMCByZ2JhKDIzMiw4OSwxMiwuNik7YW5pbWF0aW9uOnVwZFB1bHNlIDEuOHMgaW5maW5pdGU7fQogIC51cGQtYnRuOmhvdmVye2JhY2tncm91bmQ6I2Q5NDgwZiFpbXBvcnRhbnQ7fQogIEBrZXlmcmFtZXMgdXBkUHVsc2V7MCV7Ym94LXNoYWRvdzowIDAgMCAwIHJnYmEoMjMyLDg5LDEyLC41NSk7fTcwJXtib3gtc2hhZG93OjAgMCAwIDhweCByZ2JhKDIzMiw4OSwxMiwwKTt9MTAwJXtib3gtc2hhZG93OjAgMCAwIDAgcmdiYSgyMzIsODksMTIsMCk7fX0KICAuYXV0b3NhdmUtbWFya3tmb250LXNpemU6MTFweDtjb2xvcjp2YXIoLS1hdXRvc2F2ZS1mZyk7b3BhY2l0eTowO3RyYW5zaXRpb246b3BhY2l0eSAuM3M7d2hpdGUtc3BhY2U6bm93cmFwO2FsaWduLXNlbGY6Y2VudGVyO30KICAuYXV0b3NhdmUtbWFyay5vbntvcGFjaXR5OjE7fQogIC8qIGNvbGxhcHNlIGVudGlyZWx5IHdoaWxlIGVtcHR5IHNvIGl0IGRvZXNuJ3QgYWRkIGdhcHMgYmV0d2VlbiBidXR0b25zICovCiAgLmF1dG9zYXZlLW1hcms6ZW1wdHl7ZGlzcGxheTpub25lO30KICAvKiBwYXRjaCBub3RlcyAqLwogIC5wdC12ZXJ7Zm9udC1zaXplOjEycHg7Y29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7Zm9udC13ZWlnaHQ6NzAwO2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tbGlnaHQpO2Rpc3BsYXk6aW5saW5lLWJsb2NrO3BhZGRpbmc6NHB4IDEwcHg7Ym9yZGVyLXJhZGl1czoyMHB4O21hcmdpbi1ib3R0b206MTRweDt9CiAgLyogb25lIGJsb2NrIHBlciBwYXN0IHJlbGVhc2UgaW4gdGhlIGhpc3RvcnkgdGFiICovCiAgLnB0LXJlbHtwYWRkaW5nLWJvdHRvbTo2cHg7bWFyZ2luLWJvdHRvbToxNnB4O2JvcmRlci1ib3R0b206MnB4IHNvbGlkICNlZWYxZjQ7fQogIC5wdC1yZWw6bGFzdC1jaGlsZHtib3JkZXItYm90dG9tOm5vbmU7bWFyZ2luLWJvdHRvbTowO30KICAucHQtcmVsIC5wdC12ZXJ7YmFja2dyb3VuZDojZWVmMWY0O2NvbG9yOiM1YjZiN2M7fQogIC8qIGhpc3RvcnkgY2FuIGdyb3cgbG9uZyAtIGtlZXAgdGhlIGRpYWxvZyBhIHNlbnNpYmxlIGhlaWdodCAqLwogICNwYXRjaEJvZHl7bWF4LWhlaWdodDo1MnZoO292ZXJmbG93LXk6YXV0bzt9CiAgLnB0LXZlciBzcGFue2NvbG9yOiM4YTk0OWM7Zm9udC13ZWlnaHQ6NTAwO21hcmdpbi1sZWZ0OjZweDt9CiAgLyogRGF0ZS1ncm91cGVkIGxheW91dDogb25lIGRhdGUgaGVhZGVyLCB0aGVuIGVhY2ggYnVpbGQgKC5OTk4pIGFzIGEgc3ViLXNlY3Rpb24uICovCiAgLnB0LWRheXttYXJnaW4tYm90dG9tOjE4cHg7fQogIC5wdC1kYXk6bGFzdC1jaGlsZHttYXJnaW4tYm90dG9tOjA7fQogIC5wdC1kYXktaGR7Zm9udC1zaXplOjEzcHg7Zm9udC13ZWlnaHQ6ODAwO2NvbG9yOnZhcigtLWF4LW5hdnkpO2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tbGlnaHQpOwogICAgZGlzcGxheTppbmxpbmUtYmxvY2s7cGFkZGluZzo1cHggMTJweDtib3JkZXItcmFkaXVzOjIwcHg7bWFyZ2luLWJvdHRvbToxMnB4O30KICAucHQtYnVpbGR7cGFkZGluZy1sZWZ0OjEycHg7Ym9yZGVyLWxlZnQ6M3B4IHNvbGlkICNlMmU4ZWU7bWFyZ2luOjAgMCAxNHB4IDJweDt9CiAgLnB0LWJ1aWxkOmxhc3QtY2hpbGR7bWFyZ2luLWJvdHRvbTowO30KICAucHQtYnVpbGQtaGR7Zm9udC1zaXplOjExLjVweDtmb250LXdlaWdodDo3MDA7Y29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7CiAgICBiYWNrZ3JvdW5kOiNlZWY2ZjE7ZGlzcGxheTppbmxpbmUtYmxvY2s7cGFkZGluZzoycHggOXB4O2JvcmRlci1yYWRpdXM6MTJweDttYXJnaW4tYm90dG9tOjlweDt9CiAgLnB0LWRheS5oaXN0b3J5IC5wdC1kYXktaGR7YmFja2dyb3VuZDojZWVmMWY0O2NvbG9yOiM1YjZiN2M7fQogIC5wdC1kYXkuaGlzdG9yeSAucHQtYnVpbGQtaGR7YmFja2dyb3VuZDojZWVmMWY0O2NvbG9yOiM2Yjc0ODA7fQogIC5wdC1pdGVte21hcmdpbi1ib3R0b206MTNweDtwYWRkaW5nLWJvdHRvbToxMnB4O2JvcmRlci1ib3R0b206MXB4IHNvbGlkICNmMmY0ZjY7fQogIC5wdC1pdGVtOmxhc3QtY2hpbGR7Ym9yZGVyLWJvdHRvbTpub25lO21hcmdpbi1ib3R0b206MDt9CiAgLnB0LXR7Zm9udC1zaXplOjEzLjVweDtmb250LXdlaWdodDo3MDA7Y29sb3I6dmFyKC0tYXgtbmF2eSk7bWFyZ2luLWJvdHRvbTo0cHg7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6N3B4O30KICAucHQtYmFkZ2V7Zm9udC1zaXplOjEwcHg7Zm9udC13ZWlnaHQ6NzAwO3BhZGRpbmc6MnB4IDZweDtib3JkZXItcmFkaXVzOjNweDtsZXR0ZXItc3BhY2luZzouM3B4O30KICAucHQtYmFkZ2UubmV3e2JhY2tncm91bmQ6I2U2ZjRlZDtjb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTt9CiAgLnB0LWl0ZW0gcHttYXJnaW46MDtmb250LXNpemU6MTIuNXB4O2NvbG9yOiM1YTY1NzA7bGluZS1oZWlnaHQ6MS42NTt9CiAgLnB0LWZvb3R7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6c3BhY2UtYmV0d2Vlbjt9CiAgLnB0LWhpZGV7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NnB4O2ZvbnQtc2l6ZToxMnB4O2NvbG9yOiM2Yjc0ODA7Y3Vyc29yOnBvaW50ZXI7dXNlci1zZWxlY3Q6bm9uZTt9CiAgLnB0LWhpZGUgaW5wdXR7Y3Vyc29yOnBvaW50ZXI7fQogIC8qIHVzZXIgZ3VpZGUgKi8KICAuZ2QtdGFiYm9keXtoZWlnaHQ6NTYwcHg7b3ZlcmZsb3cteTphdXRvO3BhZGRpbmctcmlnaHQ6NHB4O30KICAuZ2QtaW50cm97YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1saWdodCk7Ym9yZGVyLWxlZnQ6M3B4IHNvbGlkIHZhcigtLWF4LWdyZWVuKTtwYWRkaW5nOjExcHggMTNweDtib3JkZXItcmFkaXVzOjVweDtmb250LXNpemU6MTNweDtjb2xvcjojMWYzZDMxO21hcmdpbi1ib3R0b206MTZweDtsaW5lLWhlaWdodDoxLjY7fQogIC5nZC1zdGVwe2Rpc3BsYXk6ZmxleDtnYXA6MTFweDttYXJnaW4tYm90dG9tOjEzcHg7fQogIC5nZC1ue3dpZHRoOjI0cHg7aGVpZ2h0OjI0cHg7ZmxleDpub25lO2JvcmRlci1yYWRpdXM6NTAlO2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO2NvbG9yOiNmZmY7Zm9udC1zaXplOjEycHg7Zm9udC13ZWlnaHQ6NzAwO2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjttYXJnaW4tdG9wOjFweDt9CiAgLmdkLWMgaDR7bWFyZ2luOjJweCAwIDVweDtmb250LXNpemU6MTRweDtjb2xvcjp2YXIoLS1heC1uYXZ5KTt9CiAgLmdkLWMgcHttYXJnaW46MCAwIDRweDtmb250LXNpemU6MTIuNXB4O2NvbG9yOiM0YjU1NjM7bGluZS1oZWlnaHQ6MS42NTt9CiAgLmdkLXRpcHtiYWNrZ3JvdW5kOiNmN2Y5ZmE7Ym9yZGVyLXJhZGl1czo0cHg7cGFkZGluZzo2cHggOXB4O2NvbG9yOiM1YTY1NzAhaW1wb3J0YW50O30KICAuZ2QtaHtmb250LXNpemU6MTNweDtjb2xvcjp2YXIoLS1heC1uYXZ5KTttYXJnaW46MjBweCAwIDlweDtwYWRkaW5nLWJvdHRvbTo2cHg7Ym9yZGVyLWJvdHRvbToxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTt9CiAgLmdkLXRibHt3aWR0aDoxMDAlO2JvcmRlci1jb2xsYXBzZTpjb2xsYXBzZTtmb250LXNpemU6MTIuNXB4O30KICAuZ2QtdGJsIHRke3BhZGRpbmc6N3B4IDhweDtib3JkZXItYm90dG9tOjFweCBzb2xpZCAjZjBmMmY0O2NvbG9yOiM0YjU1NjM7bGluZS1oZWlnaHQ6MS41NTt9CiAgLmdkLXRibCB0ZC5re3dpZHRoOjExMHB4O2NvbG9yOnZhcigtLWF4LW5hdnkpO2ZvbnQtd2VpZ2h0OjYwMDtiYWNrZ3JvdW5kOiNmYWZiZmM7fQogIC5nZC1jYXJkc3tkaXNwbGF5OmdyaWQ7Z3JpZC10ZW1wbGF0ZS1jb2x1bW5zOjFmciAxZnI7Z2FwOjEwcHg7fQogIC5nZC1jYXJke2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjdweDtwYWRkaW5nOjExcHggMTNweDtiYWNrZ3JvdW5kOiNmYWZiZmM7fQogIC5nZC1jYXJkLXR7Zm9udC1zaXplOjEzcHg7Zm9udC13ZWlnaHQ6NzAwO2NvbG9yOnZhcigtLWF4LW5hdnkpO21hcmdpbi1ib3R0b206NXB4O30KICAuZ2QtY2FyZCBwe21hcmdpbjowO2ZvbnQtc2l6ZToxMnB4O2NvbG9yOiM1YTY1NzA7bGluZS1oZWlnaHQ6MS42O30KICAuZ2QtZmFxIHB7bWFyZ2luOjAgMCAxMHB4O2ZvbnQtc2l6ZToxMi41cHg7Y29sb3I6IzRiNTU2MztsaW5lLWhlaWdodDoxLjc7fQogICNjYW52YXNSZXNpemV7cG9zaXRpb246YWJzb2x1dGU7cmlnaHQ6LTNweDtib3R0b206LTNweDt3aWR0aDoxOHB4O2hlaWdodDoxOHB4O2N1cnNvcjpud3NlLXJlc2l6ZTt6LWluZGV4OjcwMDsKICAgIGJhY2tncm91bmQ6bGluZWFyLWdyYWRpZW50KDEzNWRlZyx0cmFuc3BhcmVudCA0NSUsdmFyKC0tYXgtZ3JlZW4pIDQ1JSx2YXIoLS1heC1ncmVlbikgNTUlLHRyYW5zcGFyZW50IDU1JSx0cmFuc3BhcmVudCA3MCUsdmFyKC0tYXgtZ3JlZW4pIDcwJSx2YXIoLS1heC1ncmVlbikgODAlLHRyYW5zcGFyZW50IDgwJSk7CiAgICBib3JkZXItcmFkaXVzOjAgMCA1cHggMDt9CiAgI2NhbnZhc1Jlc2l6ZTpob3ZlcntmaWx0ZXI6YnJpZ2h0bmVzcyguODUpO30KICAuY2FudmFzLWhvbGRlci5yZXNpemluZyAjY2FudmFze291dGxpbmU6MnB4IGRhc2hlZCB2YXIoLS1heC1ncmVlbik7b3V0bGluZS1vZmZzZXQ6MXB4O30KICAuZ3VpZGVsaW5le3Bvc2l0aW9uOmFic29sdXRlO2JhY2tncm91bmQ6I2ZmM2I3Zjt6LWluZGV4OjkwMDtwb2ludGVyLWV2ZW50czpub25lO30KICAuZ3VpZGVsaW5lLnZ7d2lkdGg6MXB4O3RvcDowO2JvdHRvbTowO2JveC1zaGFkb3c6MCAwIDAgLjVweCByZ2JhKDI1NSw1OSwxMjcsLjMpO30KICAuZ3VpZGVsaW5lLmh7aGVpZ2h0OjFweDtsZWZ0OjA7cmlnaHQ6MDtib3gtc2hhZG93OjAgMCAwIC41cHggcmdiYSgyNTUsNTksMTI3LC4zKTt9CiAgI3NlbGJveHtwb3NpdGlvbjphYnNvbHV0ZTtib3JkZXI6MXB4IGRhc2hlZCB2YXIoLS1zZWwpO2JhY2tncm91bmQ6cmdiYSgzOCwxMjgsMjM1LC4xMCk7ei1pbmRleDo3MTA7cG9pbnRlci1ldmVudHM6bm9uZTt9CiAgLmdsLWRpc3R7cG9zaXRpb246YWJzb2x1dGU7YmFja2dyb3VuZDojZmYzYjdmO2NvbG9yOiNmZmY7Zm9udC1zaXplOjEwcHg7cGFkZGluZzoxcHggNHB4O2JvcmRlci1yYWRpdXM6M3B4O3otaW5kZXg6OTAxO3BvaW50ZXItZXZlbnRzOm5vbmU7d2hpdGUtc3BhY2U6bm93cmFwO30KICAvKiBHaG9zdCBwcmV2aWV3IHNob3duIHdoaWxlIGRyYWdnaW5nIGEgbmV3IGNvbXBvbmVudCBmcm9tIHRoZSB0b29sYm94ICovCiAgI2Ryb3BHaG9zdHtwb3NpdGlvbjphYnNvbHV0ZTt6LWluZGV4OjkwNTtwb2ludGVyLWV2ZW50czpub25lO2Rpc3BsYXk6bm9uZTtib3gtc2l6aW5nOmJvcmRlci1ib3g7CiAgICBib3JkZXI6MS41cHggZGFzaGVkIHZhcigtLWF4LWdyZWVuKTtib3JkZXItcmFkaXVzOjVweDtiYWNrZ3JvdW5kOnJnYmEoMzAsMTU4LDEwNiwuMTApOwogICAgYWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7Z2FwOjZweDsKICAgIGZvbnQtc2l6ZToxMnB4O2ZvbnQtd2VpZ2h0OjYwMDtjb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTtvdmVyZmxvdzpoaWRkZW47cGFkZGluZzowIDhweDt9CiAgI2Ryb3BHaG9zdC5vbntkaXNwbGF5OmZsZXg7fQogICNkcm9wR2hvc3QgLmRnLWlje2ZvbnQtd2VpZ2h0OjcwMDt9CgogIC8qIENvbXBvbmVudCBiYXNlICovCiAgLmNtcHtwb3NpdGlvbjphYnNvbHV0ZTtjdXJzb3I6bW92ZTt1c2VyLXNlbGVjdDpub25lO30KICAuY21wLnNlbGVjdGVke291dGxpbmU6MnB4IHNvbGlkIHZhcigtLXNlbCk7b3V0bGluZS1vZmZzZXQ6MXB4O30KICAuY21wIC5oYW5kbGV7cG9zaXRpb246YWJzb2x1dGU7d2lkdGg6OXB4O2hlaWdodDo5cHg7YmFja2dyb3VuZDojZmZmO2JvcmRlcjoxLjVweCBzb2xpZCB2YXIoLS1zZWwpO2JvcmRlci1yYWRpdXM6MnB4O2Rpc3BsYXk6bm9uZTt6LWluZGV4OjYwO30KICAuY21wLnNlbGVjdGVkIC5oYW5kbGV7ZGlzcGxheTpibG9jazt9CiAgLyogRmlsbC1kb2NrZWQgc3BsaXQtcGFuZSBjaGlsZHJlbiAoLmxvY2tlZCkgc2l0IGZsdXNoIGFnYWluc3QgdGhlaXIgcGFuZSdzIGVkZ2VzLCBzbyB0aGUKICAgICBvdXRsaW5lIGFib3ZlIHdvdWxkIGJlIGNsaXBwZWQgYXdheSBieSB0aGUgcGFuZSdzIG92ZXJmbG93LiBVc2UgYW4gaW5zZXQgb3ZlcmxheSBkcmF3bgogICAgIGFzIHRoZSBMQVNUIGNoaWxkIGluc3RlYWQgLSBzZWUgcmVuZGVyQ29tcCgpJ3MgLnNlbC1mcmFtZSAtIHdoaWNoIHBhaW50cyBvbiB0b3Agb2YgdGhlCiAgICAgY29tcG9uZW50J3Mgb3duIGNvbnRlbnQgYW5kIG5ldmVyIG5lZWRzIHRvIGV4dGVuZCBwYXN0IHRoZSBib3ggaXQncyBpbi4gKi8KICAuY21wLmxvY2tlZC5zZWxlY3RlZHtvdXRsaW5lOm5vbmU7fQogIC5jbXAgLnNlbC1mcmFtZXtwb3NpdGlvbjphYnNvbHV0ZTtpbnNldDowO3BvaW50ZXItZXZlbnRzOm5vbmU7Ym94LXNoYWRvdzppbnNldCAwIDAgMCAycHggdmFyKC0tc2VsKTtkaXNwbGF5Om5vbmU7fQogIC5jbXAubG9ja2VkLnNlbGVjdGVkIC5zZWwtZnJhbWV7ZGlzcGxheTpibG9jazt9CiAgLyogOOuwqe2WpSDrpqzsgqzsnbTspogg7ZW465OkKO2MjOybjO2PrOyduO2KuCDrsKnsi50pIC0g64SkIOuqqOyEnOumrCjrjIDqsIHshKApICsg64SkIOuzgCjsg4HtlZjsoozsmrApIOyghOu2gC4gKi8KICAuaGFuZGxlLnNle3JpZ2h0Oi01cHg7Ym90dG9tOi01cHg7Y3Vyc29yOnNlLXJlc2l6ZTt9CiAgLmhhbmRsZS5zd3tsZWZ0Oi01cHg7Ym90dG9tOi01cHg7Y3Vyc29yOnN3LXJlc2l6ZTt9CiAgLmhhbmRsZS5uZXtyaWdodDotNXB4O3RvcDotNXB4O2N1cnNvcjpuZS1yZXNpemU7fQogIC5oYW5kbGUubnd7bGVmdDotNXB4O3RvcDotNXB4O2N1cnNvcjpudy1yZXNpemU7fQogIC5oYW5kbGUuZXtyaWdodDotNXB4O3RvcDo1MCU7dHJhbnNmb3JtOnRyYW5zbGF0ZVkoLTUwJSk7Y3Vyc29yOmUtcmVzaXplO30KICAuaGFuZGxlLnd7bGVmdDotNXB4O3RvcDo1MCU7dHJhbnNmb3JtOnRyYW5zbGF0ZVkoLTUwJSk7Y3Vyc29yOnctcmVzaXplO30KICAuaGFuZGxlLnN7Ym90dG9tOi01cHg7bGVmdDo1MCU7dHJhbnNmb3JtOnRyYW5zbGF0ZVgoLTUwJSk7Y3Vyc29yOnMtcmVzaXplO30KICAuaGFuZGxlLm57dG9wOi01cHg7bGVmdDo1MCU7dHJhbnNmb3JtOnRyYW5zbGF0ZVgoLTUwJSk7Y3Vyc29yOm4tcmVzaXplO30KCiAgLyogQ29tcG9uZW50IGxvb2tzICovCiAgLmF4LWxhYmVse2ZvbnQtc2l6ZToxMnB4O2NvbG9yOnZhcigtLWF4LWxhYmVsLWZnKTtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2hlaWdodDoxMDAlO30KICAvKiDrnbzrsqgg7Iqk7YOA7J28KFJlZi9KdW1wKTog652867KoIOyZvOyqveyXkCDrtpnripQg7J6R7J2AIOyVhOydtOy9mC4g7Iqk7YOA7J28PeyXhuydjCDsnbTrqbQg67aZ7KeAIOyViuuKlOuLpC4gKi8KICAuYXgtbGFiZWwtaWN7ZGlzcGxheTppbmxpbmUtYmxvY2s7ZmxleDpub25lO3dpZHRoOjE0cHg7aGVpZ2h0OjE0cHg7bWFyZ2luLXJpZ2h0OjRweDtiYWNrZ3JvdW5kLXNpemU6Y29udGFpbjtiYWNrZ3JvdW5kLXJlcGVhdDpuby1yZXBlYXQ7YmFja2dyb3VuZC1wb3NpdGlvbjpjZW50ZXI7fQogIC5heC1sYWJlbC1pYy1yZWZ7YmFja2dyb3VuZC1pbWFnZTp1cmwoZGF0YTppbWFnZS9wbmc7YmFzZTY0LGlWQk9SdzBLR2dvQUFBQU5TVWhFVWdBQUFCa0FBQUFhQ0FZQUFBQkNmZmZOQUFBQUFYTlNSMElBcnM0YzZRQUFBQVJuUVUxQkFBQ3hqd3Y4WVFVQUFBQUpjRWhaY3dBQURzTUFBQTdEQWNkdnFHUUFBQUhXU1VSQlZFaEw3Wk5QU0pOaEhNYy96eXIvaGZLV1F4Zk1ZZVFJVWZLUUI0TWRZaEdCUkdLRy9SRkZRYnlFQjhNTVNRajBJSVJJUmtYVW9WdUhGWUtYcUlzZDZ1SkJVQTlhUWZZbXM5akU0YmJXblBWdUhvSjN2ZzhvejBRdjV1ZjA4SHQrWHo0L25vZWZpTVNNRkx1TVRTN3NCdnVTalBpUEpZYVJSUGNIMFAxQitXcFRSQ1o3OG4xeGlhYnVZWmJEVVFCT3VJN2hlOUJOWGs2MjNHcEJXVEw3ZFlHV25vZkU0cXVXZW5HaHhwdG5mZVRsNWxqcUcxRjZybFFxUmY5am55bW9PMWROK3hVdmxlNFNBc3NyRER4NUpVY3NLRW4wSDBHbVAra0FWSlE1R2V5NmpydlV3ZXVSTG9RUXZQMDRoWkZNeWpFVEpjbjhRc0E4OTdSZjR1cXRFZTRNdmVURDVCeGxMZ2VyaVFUZi9Pa2VHU1ZKUExGbW5yL29QN25ncVNJNzZ4Q25UcFlTanY0R0lCcUxiMGhZVVpJVUhNNEZ3R1lUSEhjV2NhMzJERE5qOS9rOHYwZ3dGQWJBcmhWSXFUUktra3EzQzREK3prYUs3UnJlMWdFOFRmZG91L3NVZ0tKQ0RhZkRMcVhTS0VtT2F2blVuNi9CSHdqUmZQc1JrVjl4bGtJUkRPUGZaN2ZWZXhGQ1RxVlJrZ0QwZGpUd2ZtS1dsV2pNckFraDhKd3VwL1d5MTlJcm83eU1BR3QvL3ZKaWRKem52bmNjMGZLNWVhT1dpMmVyT1hoZzYxa3prbXlYclVmWUlmWWxHYkYzSk92K0ZwVC8vRnk2QmdBQUFBQkpSVTVFcmtKZ2dnPT0pO30KICAuYXgtbGFiZWwtaWMtanVtcHtiYWNrZ3JvdW5kLWltYWdlOnVybChkYXRhOmltYWdlL3BuZztiYXNlNjQsaVZCT1J3MEtHZ29BQUFBTlNVaEVVZ0FBQUJjQUFBQVRDQVlBQUFCN3U1YTJBQUFBQVhOU1IwSUFyczRjNlFBQUFBUm5RVTFCQUFDeGp3djhZUVVBQUFBSmNFaFpjd0FBRHNNQUFBN0RBY2R2cUdRQUFBRzJTVVJCVkRoUHRaTmRTRk5oSEllZnJiTVdVbU13b1VpVUdDMWtRMFNqRVFZU2RLRjIwWlVJM2toSUY0R0ZBeSs2RXlVUkJoT0VMaElqeGk3S1FFZ3FGRCs2VVJIblJZT3dEekJFRFJsUm1xS2t5ZmFlMTR2bThaeGp3am5SZnZEQy8vUGhmWCtjNDlqNkpTUjVrdE5jK0ovS0s5eGh4eFlwSmV1YjJ3d01UNVBKWkFsZHVzRDFLMEhjSjEzbVViQUxmekk0enVPQk1YWi83Mm0xa3ZPRlBJKzE0Zk9lTWN4aXg1YlV4MFY2RTI4MGNGVmxLUUJmMDJ2YzdlZ2pLNFJwd3dZOEZuK0ZxaDQrOG1uWFBUeW5Dd0Q0c0xEQzNQc3Z1dWsvc216TDBOc2tRcWhhWGw5VFJmcjdUMjdjYmdlZ29lNGFuZmNiZFJzMjRNZHBaUElkYmRFNDRiSUFpV2lyb1dmSkZpa2xPN3Q3aGdPZ1NzbE02ak1BVHVkUmxHSXUvRTFaSWFpOTAybW9UVDNyWm5CMGhwY1RTUUQ4SmVjTWZhemUzS1VvQkFQRi9Oalkwczc4d2pJZGoxNW9NemVyS3d3N1dJVURSSnB1NFhZZi9pd05rWmdXWHkwUGNEbDBVY3NQWkJsZTZpK2k1MEV6eWduamlyLzRMUDBQV3d5MUE5bitXbGEvclpINnRJUlFCVDZ2aDNCWmdGTzZGK2xsRzI1SGxtMzVGK1VWZnF3dHIyZlhjNUhEMU5IbHVWQ1NRK2hIcFdRZmY2NmtGbGV0TnUwQUFBQUFTVVZPUks1Q1lJST0pO30KICBib2R5LnNraW4tY2xhc3NpYyAuYXgtbGFiZWx7Ym9yZGVyLWJvdHRvbToxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtwYWRkaW5nLWJvdHRvbToycHg7fQogIC5heC1sYWJlbCAucmVxe2NvbG9yOnZhcigtLWF4LXJlcSk7bWFyZ2luLWxlZnQ6MnB4O30KICAucmVxe2NvbG9yOnZhcigtLWF4LXJlcSk7bWFyZ2luLWxlZnQ6MnB4O2ZvbnQtd2VpZ2h0OjcwMDt9CiAgLyogRmF0IE1vZGXsl5DshJzripQg652867Ko7JeQIOu2meuKlCDruajqsIQg7ZWE7IiYKCopIO2RnOyLnOulvCDsk7Dsp4Ag7JWK64qU64ukLiBUaGluIE1vZGXripQg6re464yA66GcLiAqLwogIGJvZHkuc2tpbi1jbGFzc2ljIC5yZXF7ZGlzcGxheTpub25lO30KICAuYXgtaW5wdXR7d2lkdGg6MTAwJTtoZWlnaHQ6MTAwJTtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo0cHg7YmFja2dyb3VuZDojZmZmO3BhZGRpbmc6MCA4cHg7Zm9udC1zaXplOjEycHg7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtjb2xvcjojMTExO30KICAuYXgtaW5wdXQucmVhZG9ubHl7YmFja2dyb3VuZDp2YXIoLS1heC1yZWFkb25seS1iZyk7Y29sb3I6IzU1NTt9CiAgLmF4LWlucHV0LnJlcXVpcmVkLC5heC1jb21iby5yZXF1aXJlZCwuYXgtZGF0ZS5yZXF1aXJlZHtiYWNrZ3JvdW5kOnZhcigtLWF4LXJlcXVpcmVkLWJnKTt9CiAgLyog7Yyd7JeFOiDrnbzrsqgr7YWN7Iqk7Yq467CV7IqkKOy9lOuTnCkr7JWE7J207L2YK+2FjeyKpO2KuOuwleyKpCjrqoXsua0sIO2VreyDgSDsnb3quLDsoITsmqkpICovCiAgLmF4LXBvcHVwe3dpZHRoOjEwMCU7aGVpZ2h0OjEwMCU7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NHB4O30KICAuYXgtcG9wdXA+LmF4LWlucHV0LC5heC1wb3B1cD4uYXgtaW5wdXQteHtmbGV4OjEgMSAwO3dpZHRoOmF1dG87bWluLXdpZHRoOjA7fQogIC5heC1wb3B1cC1pY3tmbGV4Om5vbmU7d2lkdGg6MjJweDtoZWlnaHQ6MjJweDtib3gtc2l6aW5nOmJvcmRlci1ib3g7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6MnB4OwogICAgYmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1saWdodCk7Y29sb3I6dmFyKC0tYXgtZ3JlZW4pO2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjtmb250LXNpemU6MTFweDtsaW5lLWhlaWdodDoxO30KICAuYXgtcG9wdXAtbmFtZXtmbGV4OjEuNiAxIDA7aGVpZ2h0OjEwMCU7bWluLXdpZHRoOjA7Ym94LXNpemluZzpib3JkZXItYm94O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjJweDtiYWNrZ3JvdW5kOnZhcigtLWF4LXJlYWRvbmx5LWJnKTt9CiAgLyogVGhpbiBNb2RlIOyghOyaqSAtIO2MneyXhSjqsoDsg4ntmJUpwrfssqjrtoDtjIzsnbw6IOyhsO2ajOyhsOqxtCDtjKjrhJDsnZggJ+qygOyDiScg7ZWE65Oc7JmAIOqwmeydgCDrqqjslpEo7YWN7Iqk7Yq467CV7IqkICsKICAgICDsmrDsuKEg7JWE7J207L2YKS4g7JWE7J207L2Y66eMIOuLpOultOuLpCjtjJ3sl4U964+L67O06riwIC5zY3RsLXNlYXJjaC1pYyDsnqzsgqzsmqksIOyyqOu2gO2MjOydvD3sl4XroZzrk5wg7JWE7J207L2YKS4gKi8KICAuYXgtcG9wdXAtdGhpbnt3aWR0aDoxMDAlO2hlaWdodDoxMDAlO2JveC1zaXppbmc6Ym9yZGVyLWJveDtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo4cHg7CiAgICBib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo0cHg7YmFja2dyb3VuZDojZmZmO3BhZGRpbmc6MCA4cHg7Zm9udC1zaXplOjEycHg7Y29sb3I6IzExMTt9CiAgLmF4LXBvcHVwLXRoaW4ucmVhZG9ubHl7YmFja2dyb3VuZDp2YXIoLS1heC1yZWFkb25seS1iZyk7Y29sb3I6IzU1NTt9CiAgLmF4LXBvcHVwLXRoaW4ucmVxdWlyZWR7YmFja2dyb3VuZDp2YXIoLS1heC1yZXF1aXJlZC1iZyk7fQogIC5heC1wb3B1cC10aGluPnNwYW46Zmlyc3QtY2hpbGR7ZmxleDoxO21pbi13aWR0aDowO292ZXJmbG93OmhpZGRlbjt0ZXh0LW92ZXJmbG93OmVsbGlwc2lzO3doaXRlLXNwYWNlOm5vd3JhcDt9CiAgLmF4LXBvcHVwLXRoaW4gLnNjdGwtc2VhcmNoLWljLC5heC1wb3B1cC10aGluIC5heC1hdHRhY2gtaWN7ZmxleDpub25lO30KICAuYXgtcG9wdXAtdGhpbi5yZWFkb25seSAuc2N0bC1zZWFyY2gtaWN7b3BhY2l0eTouNDU7fQogIC5heC1wb3B1cC10aGluLXh7d2lkdGg6MTAwJTtoZWlnaHQ6MTAwJTtib3gtc2l6aW5nOmJvcmRlci1ib3g7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6OHB4OwogICAgYm9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6NHB4O2JhY2tncm91bmQ6I2ZmZjtwYWRkaW5nOjAgOHB4O30KICAuYXgtcG9wdXAtdGhpbi14LnJve2JhY2tncm91bmQ6dmFyKC0tYXgtcmVhZG9ubHktYmcpO30KICAuYXgtcG9wdXAtdGhpbi14LnJlcXVpcmVke2JhY2tncm91bmQ6dmFyKC0tYXgtcmVxdWlyZWQtYmcpO30KICAuYXgtcG9wdXAtdGhpbi14IC5heC1pbnB1dC1lbHtib3JkZXI6bm9uZTtwYWRkaW5nOjA7YmFja2dyb3VuZDp0cmFuc3BhcmVudDt9CiAgLmF4LXBvcHVwLXRoaW4teC5ybyAuYXgtaW5wdXQtZWx7YmFja2dyb3VuZDp0cmFuc3BhcmVudDtjb2xvcjojNTU1O2N1cnNvcjpub3QtYWxsb3dlZDt9CiAgLmF4LXBvcHVwLXRoaW4teC5ybyAuc2N0bC1zZWFyY2gtaWN7b3BhY2l0eTouNDU7fQogIC5heC1hdHRhY2gtaWN7d2lkdGg6MTZweDtoZWlnaHQ6MTZweDtmbGV4Om5vbmU7Y29sb3I6IzZiNzI4MDt9CiAgLmF4LXBvcHVwLXRoaW4ucmVhZG9ubHkgLmF4LWF0dGFjaC1pYywuYXgtcG9wdXAtdGhpbi14LnJvIC5heC1hdHRhY2gtaWN7b3BhY2l0eTouNTU7fQogIC5heC1jb21ib3t3aWR0aDoxMDAlO2hlaWdodDoxMDAlO21pbi13aWR0aDowO2JveC1zaXppbmc6Ym9yZGVyLWJveDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo0cHg7YmFja2dyb3VuZDojZmZmO3BhZGRpbmc6MCA4cHg7Zm9udC1zaXplOjEycHg7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6c3BhY2UtYmV0d2Vlbjtjb2xvcjojMTExO30KICAuYXgtY29tYm8gc3BhbntvdmVyZmxvdzpoaWRkZW47dGV4dC1vdmVyZmxvdzplbGxpcHNpczt3aGl0ZS1zcGFjZTpub3dyYXA7bWluLXdpZHRoOjA7fQogIC5heC1jb21iby5yZWFkb25seXtiYWNrZ3JvdW5kOnZhcigtLWF4LXJlYWRvbmx5LWJnKTtjb2xvcjojNTU1O30KICAuYXgtY29tYm86OmFmdGVye2NvbnRlbnQ6IuKWviI7Y29sb3I6dmFyKC0tYXgtZ3JheSk7Zm9udC1zaXplOjExcHg7fQogIC5heC1idG57d2lkdGg6MTAwJTtoZWlnaHQ6MTAwJTtib3JkZXItcmFkaXVzOjRweDtmb250LXNpemU6MTJweDtmb250LXdlaWdodDo2MDA7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6Y2VudGVyO2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtZ3JlZW4pO2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO2NvbG9yOiNmZmY7fQogIC5heC1idG4ub3V0bGluZXtiYWNrZ3JvdW5kOiNmZmY7Y29sb3I6dmFyKC0tYXgtZ3JlZW4pO30KICAuYXgtY2hlY2t7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NXB4O2ZvbnQtc2l6ZToxMnB4O2hlaWdodDoxMDAlO30KICAuYXgtY2hlY2sgLmJveHt3aWR0aDoxNHB4O2hlaWdodDoxNHB4O2JvcmRlcjoxLjVweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6M3B4O30KICAuYXgtZGF0ZXt3aWR0aDoxMDAlO2hlaWdodDoxMDAlO21pbi13aWR0aDowO2JveC1zaXppbmc6Ym9yZGVyLWJveDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo0cHg7YmFja2dyb3VuZDojZmZmO3BhZGRpbmc6MCA4cHg7Zm9udC1zaXplOjEycHg7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6c3BhY2UtYmV0d2Vlbjtjb2xvcjojMTExO30KICAuYXgtZGF0ZS5yZWFkb25seXtiYWNrZ3JvdW5kOnZhcigtLWF4LXJlYWRvbmx5LWJnKTtjb2xvcjojNTU1O30KICAvKiDrgrTrs7TrgrTquLAo7KCA7J6lL+uvuOumrOuztOq4sCkg6rKw6rO866y87JeQ7ISc64+EICLtkZzsi5wg67Cp67KVIuydtCDqt7jrjIDroZwg67O07J206rKMIO2VmOuKlCDsi6TsoJwg7J6l7LmYIC0g7KeE7KecIOqwkuydgAogICAgIO2ZlOuptOyXkCDslYTsmIgg7JWIIOuztOydtOuKlCgw7YGs6riwKSDsp4Tsp5wgPGlucHV0IHR5cGU9ImRhdGUiPuqwgCDqt7jrjIDroZwg65Ok6rOgIOyeiOqzoCjsmKTripgv7Ja07KCcIOuTsSDsg4HrjIAKICAgICDrgqDsp5wg7J6s6rOE7IKw7J2AIOydtCBpbnB1dOydmCBkYXRhLXJlbHNwZWPsnYQg6re464yA66GcIOyTtOuLpCAtIOq4sOyhtCDroZzsp4Eg6re464yA66GcKSwg64iI7JeQIOuztOydtOuKlCDthY3siqTtirjripQKICAgICDqt7gg6rCS7J2EIO2RnOyLnCDrsKnrspXrjIDroZwg67CU6r+UIOuztOyXrOyjvOuKlCDrsJTroZwg64uk7J2MIO2YleygnCAuYXgtZGF0ZS1kaXNwLy5zY3RsLWRhdGUtZGlzcOuLpC4gLmF4LWRhdGUKICAgICDtgbTrnpjsiqTrpbwg6re464yA66GcIOyerOyCrOyaqe2VtOyEnCDrlJTsnpDsnbgg7ZmU66m06rO8IOyZhOyghO2eiCDqsJnsnYAg67CV7IqkK+uLrOugpSDslYTsnbTsvZgoOjphZnRlcikg66qo7JaR7J20IOuQnOuLpC4KICAgICDtgbTrpq3tlZjrqbQobWJPcGVuRGF0ZVBpY2tlcikg67CU66GcIOyVniDtmJXsoJzsnbgg7J20IGhpZGRlbiBpbnB1dOydmCDrhKTsnbTti7DruIwg64us66Cl7J20IOucqOqzoCwg6rOg66W066m0CiAgICAgY2hhbmdlIOydtOuypO2KuOuhnCDri6Tsi5wg7ZGc7IucIO2FjeyKpO2KuOulvCDqsLHsi6DtlZzri6Qo65+w7YOA7J6EIOyKpO2BrOumve2KuCwgYnVpbGRFeHBvcnRIVE1MIOywuOqzoCkuICovCiAgLmF4LWRhdGUtZWwsLnNjdGwtZGF0ZS1lbHt3aWR0aDowO2hlaWdodDowO3BhZGRpbmc6MDttYXJnaW46MDtib3JkZXI6MDtvcGFjaXR5OjA7cG9pbnRlci1ldmVudHM6bm9uZTtvdmVyZmxvdzpoaWRkZW47fQogIC5heC1kYXRlLWRpc3AsLnNjdGwtZGF0ZS1kaXNwe2N1cnNvcjpwb2ludGVyO3doaXRlLXNwYWNlOm5vd3JhcDtvdmVyZmxvdzpoaWRkZW47dGV4dC1vdmVyZmxvdzplbGxpcHNpczt9CiAgLyog6riw6rCEKGRhdGVyYW5nZSkg64K067O064K06riwIC0g7Iuc7J6R7J28L+yiheujjOydvCDrkZAgaGlkZGVuIGlucHV06rO8IOq3uCDtkZzsi5zsmqkg6riA7J6QLCAifiIg6rWs67aE7J6Q66W8IOyghOu2gAogICAgIO2VmOuCmOydmCBzcGFuKC5kci1jb21ibynsnLzroZwg66y264qU64ukLiDslYgg66y27Jy866m0IOydtCDsl6zrn6wg7KGw6rCB65Ok7J20IOu2gOuqqCguc2N0bC5kYXRlcmFuZ2UvLmF4LWRhdGUp7J2YCiAgICAganVzdGlmeS1jb250ZW50OnNwYWNlLWJldHdlZW4g6rec7LmZ7JeQIOqwgeqwgSDqsJzrs4QgZmxleCDslYTsnbTthZzsnLzroZwg6rG466CkLCDsm5DrnpggIuq4gOyekC0gLSAtIOuLrOugpQogICAgIOyVhOydtOy9mCIg7ZWcIOyMjeydtOyWtOyVvCDtlaAg67Cw7LmY6rCAIOyVhOydtO2FnCDqsJzsiJjrp4ztgbwg7IKs7J207IKs7J207JeQIO2BsCDsl6zrsLHsnbQg7IOd6riw66mwIO2dkO2KuOufrOynhOuLpC4g7ZWY64KY66GcCiAgICAg66y27Jy866m0IOuLpOyLnCDsm5Drnpgg6re4IO2VnCDsjI0o6riA7J6Q662J7LmYLCDslYTsnbTsvZgp66eMIOuCqOyVhCDrlJTsnpDsnbgg7LqU67KE7Iqk7JmAIOqwmeydgCDqsITqsqnsnLzroZwg67O07J2464ukLiAqLwogIC5kci1jb21ib3tkaXNwbGF5OmlubGluZS1mbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjttaW4td2lkdGg6MDtmbGV4OjE7b3ZlcmZsb3c6aGlkZGVuO3doaXRlLXNwYWNlOm5vd3JhcDt0ZXh0LW92ZXJmbG93OmVsbGlwc2lzO30KICAuYXgtZGF0ZTo6YWZ0ZXJ7Y29udGVudDoi8J+ThSI7Zm9udC1zaXplOjExcHg7fQogIC8qIO2Mu+uqqOuTnCDsoITsmqk6IOq4sOqwhChkYXRlcmFuZ2UpIO2OuOynkSDtmZTrqbTrj4Qg64K067O064K06riw7LKY65+8IOuCoOynnCDrkZAg7Lm4K+usvOqysCh+KeuhnCDrs7Tsl6zspIDri6QuCiAgICAgLmF4LWRhdGUg7ZWY64KY66GcIO2VqeyzkCDrs7Tsl6zso7zrjZgg6riw7KG0KOyUrOuqqOuTnCkg7ZGc7ZiE6rO8IOuLrOumrCwg7Iuk7KCcIOyCrOyaqSDtmZTrqbTqs7wg65iR6rCZ7J2AIOuqqOyWkeydtCDrkJzri6QuICovCiAgLmF4LWRhdGVyYW5nZXt3aWR0aDoxMDAlO2hlaWdodDoxMDAlO2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjVweDt9CiAgLmF4LWRhdGVyYW5nZSAuYXgtZGF0ZS1wYXJ0LC5heC1kYXRlcmFuZ2UteCAuYXgtZGF0ZS1wYXJ0e2ZsZXg6MTttaW4td2lkdGg6MDtoZWlnaHQ6MTAwJTtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo0cHg7YmFja2dyb3VuZDojZmZmO3BhZGRpbmc6MCA4cHg7Zm9udC1zaXplOjEycHg7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6c3BhY2UtYmV0d2Vlbjtjb2xvcjojMTExO30KICAuYXgtZGF0ZXJhbmdlLnJlYWRvbmx5IC5heC1kYXRlLXBhcnR7YmFja2dyb3VuZDp2YXIoLS1heC1yZWFkb25seS1iZyk7Y29sb3I6IzU1NTt9CiAgLmF4LWRhdGVyYW5nZS5yZXF1aXJlZCAuYXgtZGF0ZS1wYXJ0e2JhY2tncm91bmQ6dmFyKC0tYXgtcmVxdWlyZWQtYmcpO30KICAvKiDrgqDsp5wxL+uCoOynnDIg6rCc67OEIO2VhOyImMK37J296riw7KCE7JqpICovCiAgLmF4LWRhdGVyYW5nZSAuYXgtZGF0ZS1wYXJ0LnJvLC5heC1kYXRlcmFuZ2UteCAuYXgtZGF0ZS1wYXJ0LnJve2JhY2tncm91bmQ6dmFyKC0tYXgtcmVhZG9ubHktYmcpO2NvbG9yOiM1NTU7fQogIC5heC1kYXRlcmFuZ2UgLmF4LWRhdGUtcGFydC5pcy1yZXEsLmF4LWRhdGVyYW5nZS14IC5heC1kYXRlLXBhcnQuaXMtcmVxe2JhY2tncm91bmQ6dmFyKC0tYXgtcmVxdWlyZWQtYmcpO30KICAuYXgtZGF0ZXJhbmdlIC5heC1kYXRlLXBhcnQ6OmFmdGVyLC5heC1kYXRlcmFuZ2UteCAuYXgtZGF0ZS1wYXJ0OjphZnRlcntjb250ZW50OiLwn5OFIjtmb250LXNpemU6MTFweDt9CiAgLmF4LXNlY3Rpb257d2lkdGg6MTAwJTtoZWlnaHQ6MTAwJTtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo2cHg7Zm9udC1zaXplOjEzcHg7Zm9udC13ZWlnaHQ6NzAwO2NvbG9yOnZhcigtLWF4LW5hdnkpO2JvcmRlci1ib3R0b206MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7cGFkZGluZy1ib3R0b206NHB4O30KICAuYXgtc2VjdGlvbjo6YmVmb3Jle2NvbnRlbnQ6IuKMgyI7dHJhbnNmb3JtOnJvdGF0ZSgxODBkZWcpO2NvbG9yOnZhcigtLWF4LWdyZWVuKTtmb250LXdlaWdodDo3MDA7fQogIC5heC1wYW5lbC1je3dpZHRoOjEwMCU7aGVpZ2h0OjEwMCU7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6NXB4O2JhY2tncm91bmQ6cmdiYSgyNTAsMjUxLDI1MiwuNSk7fQogIC5heC1zcGxpdC1je3dpZHRoOjEwMCU7aGVpZ2h0OjEwMCU7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6NXB4O2JhY2tncm91bmQ6cmdiYSgyNTAsMjUxLDI1MiwuMzUpO30KICAuc3BsaXQtcGFuZXtwb3NpdGlvbjphYnNvbHV0ZTt9CiAgLnNwbGl0LXBhbmUtaGludHtvdXRsaW5lOjFweCBkYXNoZWQgcmdiYSgzOCwxMjgsMjM1LC4yKTtvdXRsaW5lLW9mZnNldDotMXB4O30KICAuc3BsaXQtZGl2aWRlcntwb3NpdGlvbjphYnNvbHV0ZTtiYWNrZ3JvdW5kOiNlMmU2ZWE7ei1pbmRleDo1O30KICAuc3BsaXQtZGl2aWRlcjpob3ZlcntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuKTt9CiAgLnNwbGl0LWRpdmlkZXItaHtjdXJzb3I6Y29sLXJlc2l6ZTt9CiAgLnNwbGl0LWRpdmlkZXItdntjdXJzb3I6cm93LXJlc2l6ZTt9CiAgLyogei1pbmRleDogbXVzdCBiZWF0IGFueSBwYW5lIGNoaWxkJ3Mgb3duIHotaW5kZXggKHVwIHRvIDMxMCsyOTk9NjA5LCBzZWUgcmVuZGVyQ29tcCkgc28gdGhlCiAgICAgdGFnIC0gdGhlIG9ubHkgd2F5IHRvIGdyYWIvbW92ZSBhIHNwbGl0IGNvbnRhaW5lciBvbmNlIGl0cyBwYW5lcyBhcmUgZnVsbHkgY292ZXJlZCBieQogICAgIGRvY2s6J2ZpbGwnIGNoaWxkcmVuIC0gaXMgbmV2ZXIgaGlkZGVuIHVuZGVybmVhdGggb25lLiBTdGlsbCB3ZWxsIHVuZGVyIHRoZSBvdmVybGF5CiAgICAgei1pbmRleGVzIChndWlkZWxpbmVzIDkwMCwgbW9kYWxzIDEwMDApLiAqLwogIC5zcGxpdC10YWd7cG9zaXRpb246YWJzb2x1dGU7bGVmdDoycHg7dG9wOjJweDt3aWR0aDoxNnB4O2hlaWdodDoxNnB4O2xpbmUtaGVpZ2h0OjE0cHg7dGV4dC1hbGlnbjpjZW50ZXI7CiAgICBmb250LXNpemU6MTBweDtiYWNrZ3JvdW5kOiNmZmY7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6M3B4O2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspOwogICAgY3Vyc29yOnBvaW50ZXI7ei1pbmRleDo2NTA7dXNlci1zZWxlY3Q6bm9uZTt9CiAgLnNwbGl0LXRhZzpob3Zlcntib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4pO2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tbGlnaHQpO30KICAvKiBUYWJzIGNvbnRhaW5lcidzIG93biBtb3ZlL3NlbGVjdCBoYW5kbGUgLSBzYW1lIGxvb2sgYXMgdGhlIFNwbGl0IHRhZywgYnV0IHBpbm5lZCB0byB0aGUKICAgICB0b3AtcmlnaHQgb2YgdGhlIHRhYiBoZWFkZXIgKHRvcC1sZWZ0IHdvdWxkIHNpdCBvbiB0b3Agb2YgdGhlIGZpcnN0IHRhYidzIGxhYmVsKS4gKi8KICAudGFicy10YWd7bGVmdDphdXRvO3JpZ2h0OjJweDt9CiAgLmNtcC5sb2NrZWR7Y3Vyc29yOmRlZmF1bHQ7fQogIC5heC1ncmlke3dpZHRoOjEwMCU7aGVpZ2h0OjEwMCU7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6NHB4O292ZXJmbG93OmhpZGRlbjtiYWNrZ3JvdW5kOiNmZmY7ZGlzcGxheTpmbGV4O2ZsZXgtZGlyZWN0aW9uOmNvbHVtbjt9CiAgLmF4LWdyaWQgLmd0b29sYmFye2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjVweDtwYWRkaW5nOjZweCA4cHg7Ym9yZGVyLWJvdHRvbToxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtiYWNrZ3JvdW5kOiNmZmY7ZmxleC13cmFwOm5vd3JhcDttaW4taGVpZ2h0OjQxcHg7Ym94LXNpemluZzpib3JkZXItYm94O30KICBib2R5LnNraW4tY2xhc3NpYyAuYXgtZ3JpZCAuZ3Rvb2xiYXJ7ZGlzcGxheTpub25lO30KICAuYXgtZ3JpZCAuZ3Rvb2xiYXIgLmd0aXRsZXtmb250LXNpemU6MTNweDtmb250LXdlaWdodDo3MDA7Y29sb3I6dmFyKC0tYXgtbmF2eSk7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NHB4O2ZsZXg6bm9uZTt3aGl0ZS1zcGFjZTpub3dyYXA7fQogIC5heC1ncmlkIC5ndG9vbGJhciAuZ3RpdGxlOjpiZWZvcmV7Y29udGVudDoi4oyDIjt0cmFuc2Zvcm06cm90YXRlKDE4MGRlZyk7Y29sb3I6dmFyKC0tYXgtZ3JlZW4pO2ZvbnQtd2VpZ2h0OjcwMDt9CiAgLyog7JSs66qo65OcIOq3uOumrOuTnCDsoJzrqqkg7Jqw7LihIC0gIihOKeqxtCIgKEV4Y2VsIERvd25sb2FkIOyCrOyaqSDsmLXshZgpICovCiAgLmF4LWdyaWQgLmd0b29sYmFyIC5nY291bnR7ZGlzcGxheTppbmxpbmUtZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjA7ZmxleDpub25lO21hcmdpbi1sZWZ0OjEwcHg7Zm9udC1zaXplOjEzcHg7Zm9udC13ZWlnaHQ6NjAwO2NvbG9yOiM2YjcyODA7d2hpdGUtc3BhY2U6bm93cmFwO30KICAuYXgtZ3JpZCAuZ3Rvb2xiYXIgLmdjb3VudC1ue2NvbG9yOnZhcigtLWF4LWdyZWVuKTtmb250LXdlaWdodDo3MDA7fQogIC5heC1ncmlkIC5ndG9vbGJhciAuZ3NwYWNlcntmbGV4OjE7bWluLXdpZHRoOjhweDt9CiAgLmF4LWdyaWQgLmd0b29sYmFyIC5nYnRuLXJvd3tkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo4cHg7ZmxleDpub25lO21heC13aWR0aDoxMDAlO292ZXJmbG93LXg6YXV0bztzY3JvbGxiYXItd2lkdGg6dGhpbjt9CiAgLyog6re466as65OcIO2ItOuwlCDrsoTtirwgLSDsi6TsoJwgQVgg7ZmU66m06rO8IOuPmeydvO2VnCDsg4nqsJA6IOyXsO2VnCDrr7ztirgg67Cw6rK9KCNlN2Y3ZjMpICsg7KeE64W57IOJIOq4gOyekMK37JWE7J207L2YKCMwNjg5NjUpLCDthYzrkZDrpqwg7JeG7J2MICovCiAgLmdidG57ZGlzcGxheTppbmxpbmUtZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjZweDtmb250LXNpemU6MTFweDtmb250LXdlaWdodDo1MDA7Y29sb3I6IzA2ODk2NTtiYWNrZ3JvdW5kOiNlN2Y3ZjM7Ym9yZGVyOjFweCBzb2xpZCAjZTdmN2YzO2JvcmRlci1yYWRpdXM6N3B4O3BhZGRpbmc6NS41cHggMTNweCA1LjVweCAxMnB4O3doaXRlLXNwYWNlOm5vd3JhcDt9CiAgLmdidG4gLmdpY3t3aWR0aDoxMnB4O2hlaWdodDoxMnB4O2Rpc3BsYXk6YmxvY2s7ZmxleDpub25lO2NvbG9yOiMwNjg5NjU7fQogIC5nYnRuLmRpc2FibGVke2NvbG9yOiNhOWIxYjg7YmFja2dyb3VuZDojZjFmM2Y1O2JvcmRlci1jb2xvcjojZjFmM2Y1O30KICAuZ2J0bi5kaXNhYmxlZCAuZ2lje2NvbG9yOiNhOWIxYjg7fQogIC5nYnRuLnVzZXJ7YmFja2dyb3VuZDojZTdmN2YzO2JvcmRlci1jb2xvcjojZTdmN2YzO30KICAuYXgtZ3JpZCAuZ2JvZHl7ZmxleDoxO292ZXJmbG93LXg6YXV0bztvdmVyZmxvdy15OmhpZGRlbjtkaXNwbGF5OmZsZXg7ZmxleC1kaXJlY3Rpb246Y29sdW1uO3Njcm9sbGJhci13aWR0aDp0aGluO30KICAvKiAuZ2JvZHktdHJhY2svLmdyb3dzIC0g7ZWp6rOEIO2WieydtCDrjbDsnbTthLAg7ZaJIOqwnOyImOyZgCDsg4HqtIDsl4bsnbQg7ZWt7IOBIOuztOydtOqyjCDtlZjripQg7Iuk7KCcIOyepey5mC4KICAgICBwb3NpdGlvbjpzdGlja3nrpbwg7I2o67Sk7KeA66eMIC5nYm9keeqwgCBvdmVyZmxvdy15OmhpZGRlbuydtOudvCDsiqTtgazroaQg7J6Q7LK06rCAIOyXhuuKlCDsg4HsnpDrnbzshJwKICAgICAi6rOg7KCV65CgIOyKpO2BrOuhpCDrj5nsnpEi7J20IOyXhuyWtCDqt7jrg6Ug7Iic7ISc64yA66GcIOq3uOugpOyngOuLpCDrhJjsuZjrqbQg7ZWp6rOE6rmM7KeAIO2GteynuOuhnCDsnpjroLjri6QuIOq3uOuemOyEnAogICAgIOyInOyImCBmbGV4Ym94IO2BrOq4sCDrsLDrtoTsnLzroZwg67CU6r+o64ukOiDtl6TrjZQoLmdoKeyZgCDtlanqs4QoLmdyLXRvdGFsKeuKlCBmbGV4Om5vbmUo7ZWt7IOBIOyekOq4sCDrqqvsnZgKICAgICDsnpDrpqzrpbwg6re464yA66GcIOywqOyngCnsnbTqs6AsIOuNsOydtO2EsCDtlonrk6Trp4wg64u064qUIC5ncm93c+qwgCDrhJjsuaAg65WM66eMIOq3uCDslYjsl5DshJwg7J6Y66aw64ukLgogICAgIC5ncm93c+uKlCDrsJjrk5zsi5wgZmxleDowIDEgYXV0byjshLHsnqXsnYAgMCwg7LaV7IaM66eMIDEp7Jes7JW8IO2VnOuLpCAtIGZsZXg6MSjshLHsnqUg7Y+s7ZWoKeydhCDsjbzrjZTri4gKICAgICDqt7jrpqzrk5wg64aS7J206rCAIOyLpOygnCDtlYTsmpTtlZwg6rKD67O064ukIOuEieuEie2VoCDrlYwo7Z2U7ZWcIOqyveyasCkgLmdyb3dz6rCAIOuCqOuKlCDqs7XqsITquYzsp4Ag7Ja17KeA66GcCiAgICAg7LCo7KeA7ZWY66m07IScIO2WiTHqs7wg7ZWp6rOEIOyCrOydtOyXkCDruYgg7YuI7J20IOyDneq4sOuKlCDrsoTqt7jqsIAg7J6I7JeI64ukKO2WiSDqsJzsiJjrpbwg7KSE7J206rGw64KYIOy6oeyzkOydmAogICAgICLsu6zrn7wg7KSE67CU6r+IIuycvOuhnCDrhpLsnbTrpbwg7JWV7LaV7ZaI7J2EIOuVjCDtirntnogg65GQ65Oc65+s7KeQKS4gZmxleC1ncm9366W8IDDsnLzroZwg65GQ66m0IO2PieyGjOyXlCDrgrTsmqnrrLwKICAgICAo67O07J2064qUIO2WieuTpCkg64aS7J2066eM7YG866eMIOywqOyngO2VtCDtlanqs4TqsIAg67CU66GcIOu2meqzoCwg7ZaJ7J20IOuEmOy5oCDrlYzripQgZmxleC1zaHJpbms6MSDrjZXrtoTsl5AKICAgICDsl6zsoITtnogg64Ko7J2AIOqzteqwhOunjO2BvCDstpXshozrkJjslrQobWluLWhlaWdodDow7J20IOyeiOyWtOyVvCDsi6TsoJzroZwg7KSE7Ja065Og64ukKSBvdmVyZmxvdzpoaWRkZW7snbQKICAgICDstIjqs7zrtoTsnYQg7J6Y652864K464ukLiAqLwogIC5heC1ncmlkIC5nYm9keS10cmFja3tkaXNwbGF5OmZsZXg7ZmxleC1kaXJlY3Rpb246Y29sdW1uO2ZsZXg6MTttaW4taGVpZ2h0OjA7fQogIC5heC1ncmlkIC5nYm9keS54c2Nyb2xsIC5nYm9keS10cmFja3t3aWR0aDptYXgtY29udGVudDttaW4td2lkdGg6MTAwJTt9CiAgLmF4LWdyaWQgLmdib2R5LXRyYWNrPi5naCwuYXgtZ3JpZCAuZ2JvZHktdHJhY2s+LmdyLXRvdGFse2ZsZXg6bm9uZTt9CiAgLmF4LWdyaWQgLmdyb3dze2ZsZXg6MCAxIGF1dG87bWluLWhlaWdodDowO292ZXJmbG93OmhpZGRlbjtkaXNwbGF5OmZsZXg7ZmxleC1kaXJlY3Rpb246Y29sdW1uO30KICAvKiBIb3Jpem9udGFsIHNjcm9sbCBtb2RlOiB0aGUgYm9keSBzY3JvbGxzIHNpZGV3YXlzIGFuZCBoZWFkZXIvcm93cyBiZWNvbWUgYSBzaW5nbGUKICAgICBtaW4td2lkdGggdHJhY2sgc28gY29sdW1ucyBrZWVwIGEgcmVhZGFibGUgbWluaW11bSBpbnN0ZWFkIG9mIGJlaW5nIHNxdWVlemVkLiAqLwogIC5heC1ncmlkIC5nYm9keS54c2Nyb2xse292ZXJmbG93LXg6YXV0bztvdmVyZmxvdy15OmhpZGRlbjtzY3JvbGxiYXItd2lkdGg6dGhpbjt9CiAgLmF4LWdyaWQgLmdib2R5LnhzY3JvbGwgLmdoLC5heC1ncmlkIC5nYm9keS54c2Nyb2xsIC5ncntkaXNwbGF5OmZsZXg7d2lkdGg6bWF4LWNvbnRlbnQ7bWluLXdpZHRoOjEwMCU7fQogIC5heC1ncmlkIC5nYm9keS54c2Nyb2xsIC5naCBzcGFuLC5heC1ncmlkIC5nYm9keS54c2Nyb2xsIC5nciBzcGFue2ZsZXg6MCAwIGF1dG87Ym94LXNpemluZzpib3JkZXItYm94O30KICAuYXgtZ3JpZCAuZ2JvZHkueHNjcm9sbDo6LXdlYmtpdC1zY3JvbGxiYXJ7aGVpZ2h0OjlweDt9CiAgLmF4LWdyaWQgLmdib2R5LnhzY3JvbGw6Oi13ZWJraXQtc2Nyb2xsYmFyLXRodW1ie2JhY2tncm91bmQ6I2MzY2JkMztib3JkZXItcmFkaXVzOjVweDt9CiAgLmF4LWdyaWQgLmdib2R5LnhzY3JvbGw6Oi13ZWJraXQtc2Nyb2xsYmFyLXRodW1iOmhvdmVye2JhY2tncm91bmQ6I2E5YjNiZDt9CiAgLmF4LWdyaWQgLmdib2R5LnhzY3JvbGw6Oi13ZWJraXQtc2Nyb2xsYmFyLXRyYWNre2JhY2tncm91bmQ6I2YyZjRmNjt9CiAgLyogRXF1YWwtd2lkdGggbW9kZTogQ1NTIEdyaWQgKG5vdCBmbGV4Ym94KSBzbyB0aGUgaGVhZGVyIGFuZCBldmVyeSByb3cgc2hhcmUgdGhlIGV4YWN0CiAgICAgc2FtZSBjb2x1bW4gdHJhY2tzIC0gZ3JpZC10ZW1wbGF0ZS1jb2x1bW5zIGlzIHNldCBpbmxpbmUgcGVyLWluc3RhbmNlIChzZWUgZ3JpZENvbHNTdHlsZQogICAgIGluIHRoZSByZW5kZXJlcikgc28gaXQgY2FuJ3QgZHJpZnQgYmV0d2VlbiByb3dzIHRoZSB3YXkgaW5kZXBlbmRlbnQgZmxleCByb3dzIHNvbWV0aW1lcyBkaWQuICovCiAgLmF4LWdyaWQgLmdoe2Rpc3BsYXk6Z3JpZDtib3JkZXItYm90dG9tOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO30KICAuYXgtZ3JpZCAuZ2ggc3BhbntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyaWQtaGVhZCk7bWluLXdpZHRoOjA7cGFkZGluZzo2cHggOHB4O2ZvbnQtc2l6ZToxMXB4O2ZvbnQtd2VpZ2h0OjcwMDtjb2xvcjp2YXIoLS1heC1ncmlkLWhlYWQtZmcpO2JvcmRlci1yaWdodDoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTt3aGl0ZS1zcGFjZTpub3dyYXA7b3ZlcmZsb3c6aGlkZGVuO3RleHQtb3ZlcmZsb3c6ZWxsaXBzaXM7fQogIC8qIOy7rOufvCDqsJzrs4Qg7Y+tIOyhsOygiDog7Zek642UIOyFgCDsmrDsuKEg6rCA7J6l7J6Q66as66W8IOuTnOuemOq3uO2VmOuptCDqt7gg7Lus65+866eMIO2PreydtCDrsJTrgJDri6QgKOyUrOuqqOuTnCDsupTrsoTsiqQg7KCE7JqpLAogICAgIOuCtOuztOuCuCDtmZTrqbTsl5DripQg64KY7YOA64KY7KeAIOyViuydjCkuIO2PieyGjOyXlCDtiKzrqoXtlZjqs6AsIOuniOyasOyKpOulvCDsmKzrpqzrqbQg7YyM656AIOudvOyduOycvOuhnCDtkZzsi5zrkJzri6QuICovCiAgLmF4LWdyaWQgLmdoIC5jb2wtcmVzaXplLWhhbmRsZXtwb3NpdGlvbjphYnNvbHV0ZTt0b3A6MDtyaWdodDowO2JvdHRvbTowO3dpZHRoOjhweDtjdXJzb3I6Y29sLXJlc2l6ZTt6LWluZGV4OjU7fQogIC5heC1ncmlkIC5naCAuY29sLXJlc2l6ZS1oYW5kbGU6OmFmdGVye2NvbnRlbnQ6Jyc7cG9zaXRpb246YWJzb2x1dGU7dG9wOjA7Ym90dG9tOjA7cmlnaHQ6MDt3aWR0aDoycHg7YmFja2dyb3VuZDp0cmFuc3BhcmVudDt9CiAgLmF4LWdyaWQgLmdoIC5jb2wtcmVzaXplLWhhbmRsZTpob3Zlcjo6YWZ0ZXJ7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7fQogIC8qIOy7rOufvCDsiJzshJwg65Oc656Y6re4KOuUlOyekOyduCDsupTrsoTsiqQg7KCE7JqpKTogW2RhdGEtY2ld6rCAIOu2meydgCDtl6TrjZQg7IWA7J20IOyGkOyeoeydtC4g65Oc656Y6re4IOykkeyduCDsu6zrn7zsnYAKICAgICDrsJjtiKzrqoXtlZjqsowsIOuGk+ydhCDsnITsuZjripQg7KKML+yasCDqsr3qs4Tsl5Ag7LSI66GdIOyEuOuhnOyEoOycvOuhnCDtkZzsi5ztlZzri6Qo7J6s66CM642U66eBIOyXhuydtCBtb3VzZW1vdmXsl5DshJwKICAgICDtgbTrnpjsiqTrp4wg7Yag6riA7ZWY66+A66GcIOunpCDtlITroIjsnoQg6re466as65OcIOyghOyytOulvCDri6Tsi5wg6re466as7KeAIOyViuuKlOuLpCkuICovCiAgLmF4LWdyaWQgLmdoIHNwYW5bZGF0YS1jaV17Y3Vyc29yOmdyYWI7fQogIC5heC1ncmlkIC5naCBzcGFuW2RhdGEtY2ldLmdjb2wtZHJhZ2dpbmd7b3BhY2l0eTouMzU7fQogIC5heC1ncmlkIC5naCBzcGFuW2RhdGEtY2ldLmdjb2wtZHJvcC1iZWZvcmU6OmJlZm9yZXtjb250ZW50OicnO3Bvc2l0aW9uOmFic29sdXRlO2xlZnQ6LTJweDt0b3A6MDtib3R0b206MDt3aWR0aDozcHg7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7ei1pbmRleDo2O30KICAuYXgtZ3JpZCAuZ2ggc3BhbltkYXRhLWNpXS5nY29sLWRyb3AtYWZ0ZXI6OmFmdGVye2NvbnRlbnQ6Jyc7cG9zaXRpb246YWJzb2x1dGU7cmlnaHQ6LTJweDt0b3A6MDtib3R0b206MDt3aWR0aDozcHg7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7ei1pbmRleDo2O30KICAvKiDsupTrsoTsiqTsl5DshJwg6re466as65OcIOy7rOufvOydhCDtgbTrpq3tlZjrqbQoc3RhcnRDb2xSZW9yZGVyKSDshKDtg50g7IOB7YOcKHNlbEdDKeuhnCDtkZzsi5zrkJjripQg7YyM656AIOuwleyKpCAtCiAgICAg7KGw7ZqM7KGw6rG0IO2VhOuTnCguc2Ytc2VsZWN0ZWQp7JmAIOqwmeydgCDsg4kodmFyKC0tc2VsKSnsnLzroZwsIOyGjeyEse2MqOuEkOydmCAuc2Ytcm93LXNlbGVjdGVkIOqwleyhsOyZgAogICAgIOynneydhCDsnbTro6zri6QuIGluc2V0IGJveC1zaGFkb3frnbwg7J247KCRIOy7rOufvCDshYDsnZgg66CI7J207JWE7JuDKO2PrcK36rK96rOE7ISgKeyXkCDsmIHtlqXsnYQg7KO87KeAIOyViuuKlOuLpC4gKi8KICAuYXgtZ3JpZCAuZ2ggc3BhbltkYXRhLWNpXS5nY29sLXNlbGVjdGVke2JveC1zaGFkb3c6aW5zZXQgMCAwIDAgMnB4IHZhcigtLXNlbCk7ei1pbmRleDoyO30KICAuYXgtZ3JpZCAuZ3J7ZGlzcGxheTpncmlkO2JvcmRlci1ib3R0b206MXB4IHNvbGlkICNlZWYwZjI7aGVpZ2h0OjMycHg7fQogIC8qIOy7rOufvCDsooXrpZgo7L2k67O0L+uCoOynnC/ssrTtgazrsJXsiqQv7LKo67aAIOuTsSnrp4jri6Qg64aS7J206rCAIOygnOqwgeqwgeydtOuNmCDrrLjsoJwgLSDtlokg64aS7J206rCAIOybkOuemCDsoJXtlbTsoLgKICAgICDsnojsp4Ag7JWK6rOgIOq3uCDtlonsl5DshJwg6rCA7J6lIO2BsCDsubjsnZgg64K07Jqp7JeQIOunnuy2sCDsnpDrj5nsnLzroZwg64qY7Ja064KY64ukIOuztOuLiCwg7L2k67O0L+uCoOynnCDrsJXsiqQo7YWM65GQ66aswrcKICAgICDspITqsITqsqkg7KGw7ZWpKeqwgCDquLDrs7gg7YWN7Iqk7Yq4IOy5uOuztOuLpCDsobDquIgg642UIO2BrOqyjCDqs4TsgrDrkJjrqbQg6re4IO2WiSDsoITssrTqsIAg6re466eM7YG8IOuKmOyWtOuCmCDrsoTroLjri6QuCiAgICAg7ZaJIOuGkuydtOulvCAzMnB466GcIOqzoOygle2VmOqzoCwg7Lm4IOyekOyytOuPhCBmbGV466GcIOyEuOuhnCDspJHslZkg7KCV66Cs7ZW07IScIOyWtOuWpCDsu6zrn7wg7KKF66WY6rCAIOyEnuyXrCDsnojslrTrj4QKICAgICDtla3sg4Eg6rCZ7J2AIOuGkuydtOuhnCDrs7TsnbTqsowg7ZWc64ukLiB3aGl0ZS1zcGFjZTpub3dyYXDsnYAg64Kg7Kec7LKY65+8IOqwkuydtCDquLgg65WMIOykhOuwlOq/iOycvOuhnCDsubgv7ZaJ7J20CiAgICAg64qY7Ja064KY64qUIOqxuCDrp4nripTri6Qo64SY7LmY66m0IOyemOudvOyEnCDrs7Tsl6zspIwpLgogICovCiAgLmF4LWdyaWQgLmdyIHNwYW57bWluLXdpZHRoOjA7cGFkZGluZzowIDhweDtmb250LXNpemU6MTFweDtjb2xvcjojNmI3MjgwO2JvcmRlci1yaWdodDoxcHggc29saWQgI2YwZjJmNDtvdmVyZmxvdzpoaWRkZW47Ym94LXNpemluZzpib3JkZXItYm94O2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7d2hpdGUtc3BhY2U6bm93cmFwO3RleHQtb3ZlcmZsb3c6ZWxsaXBzaXM7fQogIC8qIOq3uOumrOuTnCDtlanqs4Qg7ZaJIC0g642w7J207YSwIO2WiSDrp6gg7JWE656Y7JeQIOyYheydgCDstIjroZ0g67Cw6rK97Jy866GcIOqwleyhsO2VtOyEnCDrtpnripTri6QuIOyFgCDsnpDssrTripQg7J2867CYIOuNsOydtO2EsAogICAgIOyFgOqzvCDrmJHqsJnsnYAgZ3JpZC10ZW1wbGF0ZShncmlkQ29sc1N0eWxlKeydhCDsk7Drr4DroZwg7Lus65+8IO2PrcK37KCV66Cs7J20IO2VreyDgSDsnIQg7ZaJ65Ok6rO8IOq3uOuMgOuhnCDrp57ripTri6QuICovCiAgLmF4LWdyaWQgLmdyLmdyLXRvdGFse2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tbGlnaHQpO2ZvbnQtd2VpZ2h0OjcwMDt9CiAgLmF4LWdyaWQgLmdyLmdyLXRvdGFsIC5ndG90YWwtbGFiZWx7Y29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7d2hpdGUtc3BhY2U6bm93cmFwO30KICAvKiAi7ZWp6rOEIiDquIDsnpDqsIAg7KKB7J2AIOyInOuyiCDsu6zrn7wg7Y+tKDQ4cHgp67O064ukIOq4uOuptCDquLDrs7gg6rec7LmZKC5heC1ncmlkIC5nciBzcGFue292ZXJmbG93OmhpZGRlbn0pCiAgICAg65WM66y47JeQIOuSt+u2gOu2hOydtCDsnpjrpqzqsbDrgpgo7KSE67CU6r+I7J2AIOychOyXkOyEnCDsnbTrr7gg66eJ7J2MKSDrs7TsnbTsp4Ag7JWK64qU64ukIC0g7J20IOy5uOydgCDslrTssKjtlLwg7JiGKOyytO2BrOuwleyKpCkKICAgICDsubjsnbQg7ZWp6rOEIO2WieyXkOyEnOuKlCDruYTslrQg7J6I7Jy866+A66GcLCDrhJjsuZjripQg67aA67aE7J20IOq3uOyqveycvOuhnCDsnpDsl7DsiqTrn73qsowg7IKQ7KC464KY7JmAIOuztOydtOqyjCDrkZTri6QuICovCiAgLmF4LWdyaWQgLmdyLmdyLXRvdGFsPnNwYW46Zmlyc3QtY2hpbGR7b3ZlcmZsb3c6dmlzaWJsZTt9CiAgLmF4LWdyaWQgLmdyIHNwYW4uZ2NlbGwtZWRpdHtwYWRkaW5nOjA7fQogIC5heC1ncmlkIC5nciAuZ2NlbGwtaW5wdXR7d2lkdGg6MTAwJTtoZWlnaHQ6MTAwJTtib3gtc2l6aW5nOmJvcmRlci1ib3g7Ym9yZGVyOjA7YmFja2dyb3VuZDp0cmFuc3BhcmVudDtwYWRkaW5nOjZweCA4cHg7Zm9udC1zaXplOjExcHg7Zm9udC1mYW1pbHk6aW5oZXJpdDtjb2xvcjojMWYyOTM3O291dGxpbmU6bm9uZTttaW4td2lkdGg6MDt9CiAgLmF4LWdyaWQgLmdyIC5nY2VsbC1pbnB1dDpmb2N1c3tiYWNrZ3JvdW5kOiNlZWY2ZjE7Ym94LXNoYWRvdzppbnNldCAwIDAgMCAxcHggdmFyKC0tYXgtZ3JlZW4pO30KICAuYXgtZ3JpZCAuZ3IgLmdjZWxsLWNoZWNre3dpZHRoOjEwMCU7aGVpZ2h0OjEwMCU7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6Y2VudGVyO2JveC1zaXppbmc6Ym9yZGVyLWJveDt9CiAgLmF4LWdyaWQgLmdyIC5nY2VsbC1jaGVjayAuYm94e3dpZHRoOjE0cHg7aGVpZ2h0OjE0cHg7ZmxleDpub25lO2JvcmRlcjoxLjVweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6M3B4O2JveC1zaXppbmc6Ym9yZGVyLWJveDt9CiAgLmF4LWdyaWQgLmdyIC5nY2VsbC1jaGVjay5pbnRlcmFjdGl2ZXtjdXJzb3I6cG9pbnRlcjt9CiAgLmF4LWdyaWQgLmdyIC5nY2VsbC1jaGVjay5pbnRlcmFjdGl2ZSAuYm94Lm9ue2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbik7cG9zaXRpb246cmVsYXRpdmU7fQogIC5heC1ncmlkIC5nciAuZ2NlbGwtY2hlY2suaW50ZXJhY3RpdmUgLmJveC5vbjo6YWZ0ZXJ7Y29udGVudDoi4pyTIjtwb3NpdGlvbjphYnNvbHV0ZTtpbnNldDowO2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjtjb2xvcjojZmZmO2ZvbnQtc2l6ZTo5cHg7bGluZS1oZWlnaHQ6MTt9CiAgLmF4LWdyaWQgLmdyIC5nY2VsbC1maWxle3dpZHRoOjEwMCU7aGVpZ2h0OjEwMCU7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6Y2VudGVyO2JveC1zaXppbmc6Ym9yZGVyLWJveDt9CiAgLmF4LWdyaWQgLmdyIC5nY2VsbC1maWxlLWlje3dpZHRoOjE4cHg7aGVpZ2h0OjE4cHg7ZmxleDpub25lO2NvbG9yOiM5YWExYTk7fQogIC8qIOq3uOumrOuTnCDsoozsuKEg7Jyg7Yu466as7YuwIOy7rOufvDogUm93IE9yZGVyKOyInOuyiCkgLyBDaGVja0JveCAtIOyUrOuqqOuTnCDsoITsmqkgKi8KICAuYXgtZ3JpZCAuZ2ggLmdyaC1pY29uc3t3aWR0aDoxMDAlO2hlaWdodDoxMDAlO2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjtnYXA6NXB4O2xpbmUtaGVpZ2h0OjA7fQogIC5heC1ncmlkIC5naCAuZ3JoLWljb25zIHN2Z3t3aWR0aDoxM3B4O2hlaWdodDoxM3B4O2ZsZXg6bm9uZTtjb2xvcjojNmI3MjgwO2Rpc3BsYXk6YmxvY2s7fQogIC5heC1ncmlkIC5nciAuZ2NlbGwtcm93b3JkZXItbnVte3dpZHRoOjEwMCU7aGVpZ2h0OjEwMCU7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6Y2VudGVyO2NvbG9yOnZhcigtLWF4LW5hdnkpO2ZvbnQtd2VpZ2h0OjYwMDt9CiAgLyog7LK07YGs67CV7IqkIOy7rOufvCDtl6TrjZQgLSDquLDsobQgLmdjZWxsLWNoZWNrLy5ib3gg6rec7LmZ7J2AIOuNsOydtO2EsCDtlokoLmdyKSDsoITsmqnsnbTrnbwsIO2XpOuNlCguZ2gp7JeQ64+ECiAgICAg64+Z7J287ZWcIO2BrOq4sMK37KSR7JWZ7KCV66Cs7J2EIOuzhOuPhOuhnCDsoIHsmqntlbTslbwg7LK07YGs67CV7Iqk6rCAIOuztOyduOuLpC4gKi8KICAuYXgtZ3JpZCAuZ2ggLmdjZWxsLWNoZWNre3dpZHRoOjEwMCU7aGVpZ2h0OjEwMCU7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6Y2VudGVyO2JveC1zaXppbmc6Ym9yZGVyLWJveDt9CiAgLmF4LWdyaWQgLmdoIC5nY2VsbC1jaGVjayAuYm94e3dpZHRoOjE0cHg7aGVpZ2h0OjE0cHg7ZmxleDpub25lO2JvcmRlcjoxLjVweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6M3B4O2JveC1zaXppbmc6Ym9yZGVyLWJveDt9CiAgLyog6re466as65OcIOy7rOufvCDsnKDtmJUgIuqygOyDiSI6IOyhsO2ajOyhsOqxtCDtjKjrhJDsnZgg6rKA7IOJIO2VhOuTnOyZgCDrj5nsnbztlZjqsowg64+L67O06riw66W8IOyasOy4oeyXkCDrsLDsuZggKi8KICAuYXgtZ3JpZCAuZ3IgLmdjZWxsLXNlYXJjaHt3aWR0aDoxMDAlO2hlaWdodDoxMDAlO2JveC1zaXppbmc6Ym9yZGVyLWJveDtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpmbGV4LWVuZDtnYXA6NnB4O3BhZGRpbmc6MCA4cHg7fQogIC5heC1ncmlkIC5nciAuZ2NlbGwtc2VhcmNoLWlucHV0e2ZsZXg6MTttaW4td2lkdGg6MDtib3JkZXI6MDtiYWNrZ3JvdW5kOnRyYW5zcGFyZW50O3BhZGRpbmc6MDtmb250LXNpemU6MTFweDtmb250LWZhbWlseTppbmhlcml0O2NvbG9yOiMxZjI5Mzc7b3V0bGluZTpub25lO30KICAuYXgtZ3JpZCAuZ3IgLmdjZWxsLXNlYXJjaC1pbnB1dDpmb2N1c3tiYWNrZ3JvdW5kOiNlZWY2ZjE7Ym94LXNoYWRvdzppbnNldCAwIDAgMCAxcHggdmFyKC0tYXgtZ3JlZW4pO30KICAvKiDsu6zrn7wg64uo7JyEICLtlYTsiJgiLyLsnb3quLDsoITsmqkiIO2RnOyLnDog7Zek642U64qUIOyDieydtCDqt7jrjIDroZzsnbTqs6AsIOuNsOydtO2EsCDtloko67CU65SUIOyFgCnrp4wg67Cw6rK97IOJ7J20CiAgICAg67CU64CQ64ukLiDtl6TrjZTsl5DripQg67mo6rCEICog7ZGc7Iuc66eMIOu2meuKlOuLpC4g65GYIOuLpCDsvJzsoLgg7J6I7Jy866m0IOydveq4sOyghOyaqSjtmozsg4kp7J20IOyasOyEoO2VnOuLpCAtCiAgICAg66CM642U66eBIOyqveyXkOyEnCDtgbTrnpjsiqTrpbwg67Cw7YOA7KCB7Jy866GcIOu2gOyXrC4gKi8KICAuYXgtZ3JpZCAuZ2ggc3BhbiAuY29sLXJlcS1tYXJre2NvbG9yOnZhcigtLWF4LXJlcSk7bWFyZ2luLXJpZ2h0OjJweDtmb250LXdlaWdodDo3MDA7CiAgICAvKiAuYXgtZ3JpZCAuZ2ggc3BhbiDqt5zsuZnsnYAg7J6Q7IaQIOyEoO2DneyekOudvCDsnbQg7JWI7JeQIOykkeyyqeuQnCBzcGFu7JeQ64+EIOuwsOqyvS/tjKjrlKkv7YWM65GQ66as6rCACiAgICAgICDqt7jrjIDroZwg7IOB7IaN65CY7Ja0ICIqIuunjCDrs4Trj4Qg7IOB7J6Q7LKY65+8IOuztOydtOuKlCDrrLjsoJzqsIAg7J6I7JeI64ukIC0g7Jes6riw7IScIOybkOuemCDshYAg7Iqk7YOA7J287J2ECiAgICAgICDrqqjrkZAg7KeA7JuMIOyInOyImO2VnCDsnbjrnbzsnbgg7ZGc7Iuc66GcIOuQmOuPjOumsOuLpC4gKi8KICAgIGRpc3BsYXk6aW5saW5lO2JhY2tncm91bmQ6bm9uZTtwYWRkaW5nOjA7Ym9yZGVyLXJpZ2h0OjA7d2hpdGUtc3BhY2U6bm93cmFwO292ZXJmbG93OnZpc2libGU7dGV4dC1vdmVyZmxvdzpjbGlwO30KICAvKiBGYXQgTW9kZeyXkOyEnOuKlCDri6Trpbgg7Lu07Y+s64SM7Yq47J2YIO2VhOyImCgqKSDtkZzsi5zsmYAg66eI7LCs6rCA7KeA66GcIOq3uOumrOuTnCDtl6TrjZTsnZggKiDrj4Qg7JOw7KeAIOyViuuKlOuLpAogICAgIChsaW5lIH4yNzUg7J2YIGJvZHkuc2tpbi1jbGFzc2ljIC5yZXF7ZGlzcGxheTpub25lfSDqs7wg64+Z7J287ZWcIOq3nOy5mSkuIFRoaW4gTW9kZeuKlCDqt7jrjIDroZwuICovCiAgYm9keS5za2luLWNsYXNzaWMgLmF4LWdyaWQgLmdoIHNwYW4gLmNvbC1yZXEtbWFya3tkaXNwbGF5Om5vbmU7fQogIC8qIOy7rOufvCDtl6TrjZQg7ISc7IudKOuzvOuTnC/quLDsmrjsnoQv67CR7KSEL+q4gOyekOyDiS/rsLDqsr3sg4kp7Jqp7Jy866GcIOudvOuyqCDthY3siqTtirjrpbwg6rCQ7Iu8IOykkeyyqSBzcGFuCiAgICAgKC5nY29sLWxhYmVsKSAtIC5jb2wtcmVxLW1hcmvsmYAg65iR6rCZ7J2AIOydtOycoOuhnCDquLDrs7gg7IWAIOyKpO2DgOydvCjrsLDqsr0v7Yyo65SpL+2FjOuRkOumrC/rp5DspITsnoQp7J2ECiAgICAg7KeA7JuMIOyInOyImO2VnCDsnbjrnbzsnbgg7ZGc7Iuc66GcIOuQmOuPjOumsOuLpC4g7ISc7Iud7J20IOyggeyaqeuQmOuptCDqt7gg7J2465287J24IHN0eWxl7J20IOydtCDqt5zsuZkg7JyE7JeQIOq3uOuMgOuhnAogICAgIOuNruyWtOyNqOyngOuvgOuhnCjquIDsnpDsg4kv67Cw6rK97IOJIOuTsSkg66y47KCcIOyXhuuLpC4gKi8KICAuYXgtZ3JpZCAuZ2ggc3BhbiAuZ2NvbC1sYWJlbHtkaXNwbGF5OmlubGluZTtiYWNrZ3JvdW5kOm5vbmU7cGFkZGluZzowO2JvcmRlci1yaWdodDowO3doaXRlLXNwYWNlOm5vd3JhcDtvdmVyZmxvdzp2aXNpYmxlO3RleHQtb3ZlcmZsb3c6Y2xpcDt9CiAgLmF4LWdyaWQgLmdyIHNwYW4uY29sLXJlcXVpcmVke2JhY2tncm91bmQ6dmFyKC0tYXgtcmVxLWZpbGwpO30KICAuYXgtZ3JpZCAuZ3Igc3Bhbi5jb2wtcmVhZG9ubHl7YmFja2dyb3VuZDp2YXIoLS1heC1yby1maWxsKTtjb2xvcjojOWFhNGFkO30KICAuYXgtZ3JpZCAuZ3Igc3Bhbi5jb2wtcmVhZG9ubHkgLmdjZWxsLWlucHV0e2JhY2tncm91bmQ6dHJhbnNwYXJlbnQ7Y29sb3I6IzlhYTRhZDtwb2ludGVyLWV2ZW50czpub25lO30KICAuYXgtZ3JpZCAuZ3Igc3Bhbi5jb2wtcmVhZG9ubHkgLmdjZWxsLWNoZWNre3BvaW50ZXItZXZlbnRzOm5vbmU7b3BhY2l0eTouNjU7fQogIC5heC1ncmlkIC5nciBzcGFuLmNvbC1yZWFkb25seSAuYXgtY29tYm97cG9pbnRlci1ldmVudHM6bm9uZTtvcGFjaXR5Oi43O30KICAuYXgtZ3JpZCAuZ3Igc3Bhbi5jb2wtcmVhZG9ubHkgLmdjZWxsLXNlYXJjaC1pbnB1dHtiYWNrZ3JvdW5kOnRyYW5zcGFyZW50O2NvbG9yOiM5YWE0YWQ7cG9pbnRlci1ldmVudHM6bm9uZTt9CiAgLmF4LWdyaWQgLmdyIHNwYW4uY29sLXJlYWRvbmx5IC5nY2VsbC1zZWFyY2ggLnNjdGwtc2VhcmNoLWlje29wYWNpdHk6LjQ1O30KICAuYXgtZ3JpZCAuZ3BhZ2luYXRpb257cG9zaXRpb246cmVsYXRpdmU7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6ZmxleC1lbmQ7Z2FwOjEwcHg7cGFkZGluZzo4cHggMTBweDtib3JkZXItdG9wOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JhY2tncm91bmQ6I2ZmZjtmbGV4Om5vbmU7ZmxleC13cmFwOndyYXA7Zm9udC1zaXplOjExcHg7Y29sb3I6IzRiNTU2MzttaW4taGVpZ2h0OjI0cHg7fQogIC5heC1ncmlkIC5ncGFnaW5hdGlvbiAuZ3AtbmF2e3Bvc2l0aW9uOmFic29sdXRlO2xlZnQ6NTAlO3RvcDo1MCU7dHJhbnNmb3JtOnRyYW5zbGF0ZSgtNTAlLC01MCUpO2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjRweDtmbGV4Om5vbmU7fQogIC5heC1ncmlkIC5ncGFnaW5hdGlvbiAuZ3AtYnRue2Rpc3BsYXk6aW5saW5lLWZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7bWluLXdpZHRoOjI0cHg7aGVpZ2h0OjI0cHg7cGFkZGluZzowIDZweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo0cHg7YmFja2dyb3VuZDojZmZmO2NvbG9yOiM2YjcyODA7Zm9udC1zaXplOjExcHg7Ym94LXNpemluZzpib3JkZXItYm94O30KICAuYXgtZ3JpZCAuZ3BhZ2luYXRpb24gLmdwLWJ0bi5vbntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuKTtib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4pO2NvbG9yOiNmZmY7Zm9udC13ZWlnaHQ6NzAwO30KICAuYXgtZ3JpZCAuZ3BhZ2luYXRpb24gLmdwLWJ0bi5ncC1hcnJvd3tjb2xvcjojOWFhMWE5O30KICAuYXgtZ3JpZCAuZ3BhZ2luYXRpb24gLmdwLXJpZ2h0e2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjE0cHg7ZmxleC13cmFwOndyYXA7fQogIC5heC1ncmlkIC5ncGFnaW5hdGlvbiAuZ3AtaXRlbXtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo0cHg7d2hpdGUtc3BhY2U6bm93cmFwO30KICAuYXgtZ3JpZCAuZ3BhZ2luYXRpb24gLmdwLXNlbGVjdCwuYXgtZ3JpZCAuZ3BhZ2luYXRpb24gLmdwLWlucHV0e2Rpc3BsYXk6aW5saW5lLWZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7aGVpZ2h0OjIycHg7cGFkZGluZzowIDhweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo0cHg7YmFja2dyb3VuZDojZmZmO2NvbG9yOiMzNzQxNTE7Zm9udC1zaXplOjExcHg7Ym94LXNpemluZzpib3JkZXItYm94O21pbi13aWR0aDoyMHB4O30KICAuYXgtdGl0bGV7d2lkdGg6MTAwJTtoZWlnaHQ6MTAwJTtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2ZvbnQtc2l6ZToxOHB4O2ZvbnQtd2VpZ2h0OjgwMDtjb2xvcjp2YXIoLS1heC1uYXZ5KTtnYXA6OHB4O30KICBib2R5LnNraW4tY2xhc3NpYyAuYXgtdGl0bGV7Y29sb3I6I2MxNjEwYTt9CiAgLyogbGFiZWwgKyBmaWVsZCBzZXQgKi8KICAuZmwtd3JhcHt3aWR0aDoxMDAlO2hlaWdodDoxMDAlO2Rpc3BsYXk6ZmxleDtnYXA6NXB4O21pbi13aWR0aDowO30KICAuZmwtd3JhcCAuZmwtbGFiZWx7Zm9udC1zaXplOjEycHg7Y29sb3I6dmFyKC0tYXgtbGFiZWwtZmcpO2ZvbnQtd2VpZ2h0OjUwMDt3aGl0ZS1zcGFjZTpub3dyYXA7bGluZS1oZWlnaHQ6MS4zO30KICBib2R5LnNraW4tY2xhc3NpYyAuZmwtd3JhcCAuZmwtbGFiZWx7Ym9yZGVyLWJvdHRvbToxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtwYWRkaW5nLWJvdHRvbToycHg7fQogIC5mbC13cmFwIC5mbC1ib2R5e21pbi13aWR0aDowO21pbi1oZWlnaHQ6MDtmbGV4OjE7ZGlzcGxheTpmbGV4O30KICAuZmwtd3JhcCAuZmwtYm9keT4qe3dpZHRoOjEwMCU7fQogIC5mbC10b3B7ZmxleC1kaXJlY3Rpb246Y29sdW1uO30KICAuZmwtYm90dG9te2ZsZXgtZGlyZWN0aW9uOmNvbHVtbi1yZXZlcnNlO30KICAvKiBzaWRlIGxheW91dHM6IGxhYmVsIGtlZXBzIGl0cyB3aWR0aCwgZmllbGQgZmlsbHMgcmVtYWluaW5nIHdpZHRoIEFORCBmdWxsIGhlaWdodCAqLwogIC5mbC1sZWZ0e2ZsZXgtZGlyZWN0aW9uOnJvdzthbGlnbi1pdGVtczpzdHJldGNoO2dhcDo4cHg7fQogIC5mbC1yaWdodHtmbGV4LWRpcmVjdGlvbjpyb3ctcmV2ZXJzZTthbGlnbi1pdGVtczpzdHJldGNoO2dhcDo4cHg7fQogIC5mbC1sZWZ0Pi5mbC1sYWJlbCwuZmwtcmlnaHQ+LmZsLWxhYmVse2ZsZXg6bm9uZTtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO21pbi13aWR0aDo2NHB4O30KICAuZmwtbGVmdD4uZmwtYm9keSwuZmwtcmlnaHQ+LmZsLWJvZHl7aGVpZ2h0OjEwMCU7YWxpZ24taXRlbXM6Y2VudGVyO30KICAuZmwtbGVmdD4uZmwtYm9keT4qLC5mbC1yaWdodD4uZmwtYm9keT4qe2hlaWdodDoxMDAlO30KICAubHAtZ3JpZHtkaXNwbGF5OmdyaWQ7Z3JpZC10ZW1wbGF0ZS1jb2x1bW5zOnJlcGVhdCg0LDFmcik7Z2FwOjRweDt9CiAgLmxwLWJ0bntwYWRkaW5nOjZweCAycHg7Zm9udC1zaXplOjExcHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JhY2tncm91bmQ6I2ZhZmJmYztib3JkZXItcmFkaXVzOjRweDtjdXJzb3I6cG9pbnRlcjtjb2xvcjojNTU1O30KICAubHAtYnRuOmhvdmVye2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbik7fQogIC5scC1idG4ub257YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTtjb2xvcjojZmZmO2ZvbnQtd2VpZ2h0OjYwMDt9CiAgLyogdHJlZSAqLwogIC5heC10cmVle3dpZHRoOjEwMCU7aGVpZ2h0OjEwMCU7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6NnB4O2JhY2tncm91bmQ6I2ZmZjtvdmVyZmxvdzphdXRvO3BhZGRpbmc6OHB4IDA7Zm9udC1zaXplOjEzcHg7fQogIC5heC10cmVlIC50dy1yb3d7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NnB4O2hlaWdodDoyOHB4O3BhZGRpbmctcmlnaHQ6MTBweDtwb3NpdGlvbjpyZWxhdGl2ZTt3aGl0ZS1zcGFjZTpub3dyYXA7Y29sb3I6IzM3NDE1MTt9CiAgLmF4LXRyZWUgLnR3LXJvdyAudHctdG9ne3dpZHRoOjE0cHg7ZmxleDpub25lO3RleHQtYWxpZ246Y2VudGVyO2NvbG9yOnZhcigtLWF4LWdyZWVuKTtmb250LXdlaWdodDo3MDA7Zm9udC1zaXplOjEzcHg7bGluZS1oZWlnaHQ6MTt1c2VyLXNlbGVjdDpub25lO30KICAuYXgtdHJlZSAudHctcm93IC50dy10b2cubGVhZntjb2xvcjojYzNjYWQxO2ZvbnQtd2VpZ2h0OjQwMDt9CiAgLmF4LXRyZWUgLnR3LXJvdyAudHctbGJse292ZXJmbG93OmhpZGRlbjt0ZXh0LW92ZXJmbG93OmVsbGlwc2lzO30KICAuYXgtdHJlZSAudHctcm93Lm9ue2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tbGlnaHQpO2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO2ZvbnQtd2VpZ2h0OjYwMDt9CiAgLmF4LXRyZWUgLnR3LWd1aWRle3Bvc2l0aW9uOmFic29sdXRlO3RvcDowO2JvdHRvbTowO3dpZHRoOjA7Ym9yZGVyLWxlZnQ6MXB4IGRhc2hlZCAjZDZkY2UyO30KICAuYXgtdHJlZS5ub2xpbmVzIC50dy1ndWlkZXtkaXNwbGF5Om5vbmU7fQogIC50cmVlLXRhe3dpZHRoOjEwMCU7cGFkZGluZzo2cHggOHB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjRweDtmb250LXNpemU6MTJweDtmb250LWZhbWlseTppbmhlcml0O2xpbmUtaGVpZ2h0OjEuNjtyZXNpemU6dmVydGljYWw7d2hpdGUtc3BhY2U6cHJlO292ZXJmbG93LXg6YXV0bzt9CiAgLmF4LWNoYXJ0e3dpZHRoOjEwMCU7aGVpZ2h0OjEwMCU7Ym9yZGVyOjFweCBzb2xpZCAjZWVmMGYyO2JvcmRlci1yYWRpdXM6MTBweDtiYWNrZ3JvdW5kOiNmZmY7Ym94LXNoYWRvdzowIDFweCA0cHggcmdiYSgwLDAsMCwuMDUpO3BhZGRpbmc6MTJweCAxNHB4O2Rpc3BsYXk6ZmxleDtmbGV4LWRpcmVjdGlvbjpjb2x1bW47b3ZlcmZsb3c6aGlkZGVuO30KICAuYXgtY2hhcnQgLmN0aXRsZXtmb250LXNpemU6MTRweDtmb250LXdlaWdodDo4MDA7Y29sb3I6dmFyKC0tYXgtbmF2eSk7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NnB4O21hcmdpbi1ib3R0b206OHB4O30KICAuYXgtY2hhcnQgLmN0aXRsZSAuYXJ3e2NvbG9yOiM5YWE0YWQ7Zm9udC13ZWlnaHQ6NjAwO30KICAuYXgtY2hhcnQgLmNib2R5e2ZsZXg6MTttaW4taGVpZ2h0OjA7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6Y2VudGVyO30KICAuYXgtY2hhcnQgc3Zne3dpZHRoOjEwMCU7aGVpZ2h0OjEwMCU7ZGlzcGxheTpibG9jazt9CiAgLmF4LWNoYXJ0IC5sZWdlbmR7Zm9udC1zaXplOjExcHg7Y29sb3I6IzU1NTtkaXNwbGF5OmZsZXg7ZmxleC1kaXJlY3Rpb246Y29sdW1uO2dhcDo0cHg7anVzdGlmeS1jb250ZW50OmNlbnRlcjtwYWRkaW5nLWxlZnQ6MTBweDt9CiAgLmF4LWNoYXJ0IC5sZWdlbmQgLmxne2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjVweDt3aGl0ZS1zcGFjZTpub3dyYXA7fQogIC5heC1jaGFydCAubGVnZW5kIC5zd3t3aWR0aDoxMXB4O2hlaWdodDoxMXB4O2JvcmRlci1yYWRpdXM6M3B4O2ZsZXg6bm9uZTt9CiAgLmF4LXNlYXJjaHt3aWR0aDoxMDAlO2hlaWdodDoxMDAlO2JhY2tncm91bmQ6I2ZmZjtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo4cHg7cGFkZGluZzoxNHB4IDE2cHg7ZGlzcGxheTpmbGV4O2dhcDoxNHB4O292ZXJmbG93OmhpZGRlbjtib3gtc2hhZG93OjAgMXB4IDNweCByZ2JhKDAsMCwwLC4wNCk7fQogIC5heC1zZWFyY2ggLnNmaWVsZHN7ZmxleDoxO2Rpc3BsYXk6Z3JpZDtncmlkLXRlbXBsYXRlLWNvbHVtbnM6cmVwZWF0KDQsMWZyKTtnYXA6MTJweCAyMHB4O2FsaWduLWNvbnRlbnQ6c3RhcnQ7bWluLXdpZHRoOjA7fQogIC8qIOyhsO2ajOyhsOqxtCDtlYTrk5wg6rCc67OEIOyEoO2DnS/rk5zrnpjqt7go65SU7J6Q7J24IOy6lOuyhOyKpCDsoITsmqkpOiBbZGF0YS1maV3qsIAg67aZ7J2AIO2VhOuTnCDrsJXsiqTqsIAg7IaQ7J6h7J20LgogICAgIOq3uOumrOuTnCDsu6zrn7woLmdoIHNwYW5bZGF0YS1jaV0p6rO8IOuPmeydvO2VnCDtjIzrnoAg7ISg7YOdIOuwleyKpCh2YXIoLS1zZWwpKcK37LSI66GdIOyCveyeheyEoCDqt5zsuZkuICovCiAgLmF4LXNlYXJjaCBbZGF0YS1maV17Y3Vyc29yOmdyYWI7fQogIC5heC1zZWFyY2ggLnNmaWVsZC5zZi1zZWxlY3RlZCwuYXgtc2VhcmNoIC5zZmllbGQtaGFsZi5zZi1zZWxlY3RlZHtvdXRsaW5lOjJweCBzb2xpZCB2YXIoLS1zZWwpO291dGxpbmUtb2Zmc2V0OjFweDt6LWluZGV4OjI7fQogIC5heC1zZWFyY2ggLnNmaWVsZC5zZi1kcmFnZ2luZywuYXgtc2VhcmNoIC5zZmllbGQtaGFsZi5zZi1kcmFnZ2luZ3tvcGFjaXR5Oi4zNTt9CiAgLmF4LXNlYXJjaCAuc2ZpZWxkLnNmLWRyb3AtYmVmb3JlOjpiZWZvcmUsLmF4LXNlYXJjaCAuc2ZpZWxkLWhhbGYuc2YtZHJvcC1iZWZvcmU6OmJlZm9yZXtjb250ZW50OicnO3Bvc2l0aW9uOmFic29sdXRlO2xlZnQ6LTRweDt0b3A6MDtib3R0b206MDt3aWR0aDozcHg7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7ei1pbmRleDo2O30KICAuYXgtc2VhcmNoIC5zZmllbGQuc2YtZHJvcC1hZnRlcjo6YWZ0ZXIsLmF4LXNlYXJjaCAuc2ZpZWxkLWhhbGYuc2YtZHJvcC1hZnRlcjo6YWZ0ZXJ7Y29udGVudDonJztwb3NpdGlvbjphYnNvbHV0ZTtyaWdodDotNHB4O3RvcDowO2JvdHRvbTowO3dpZHRoOjNweDtiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuKTt6LWluZGV4OjY7fQogIC5heC1zZWFyY2ggLnNmaWVsZHtkaXNwbGF5OmZsZXg7ZmxleC1kaXJlY3Rpb246Y29sdW1uO2dhcDo1cHg7bWluLXdpZHRoOjA7fQogIC5heC1zZWFyY2ggLnNmaWVsZC5yYWRpb3tqdXN0aWZ5LWNvbnRlbnQ6ZmxleC1zdGFydDt9CiAgLyogwr3subgoaGFsZi1jb2x1bW4pOiDrkZAg6rCc6rCAIOyXsOuLrOyVhCDsnojsnLzrqbQg7ZWcIOy5uOydhCDrsJjrsJjslKkg64KY64igIOyTsOqzoCjsmpTssq3sobDsp4Ev6rWs66ek7KGw7KeB7LKY65+8KSwKICAgICDtmLzsnpDrqbQg7ZWcIOy5uOydmCDsoIjrsJjrp4wg7LGE7Jqw6rOgIOuCmOuouOyngCDsoIjrsJjsnYAg67mE7JuM65GU64ukKOuLpOydjCDtlYTrk5zqsIAg6re4IOyekOumrOuhnCDrsIDroKTsmKTsp4Ag7JWK6rKMKS4gKi8KICAuYXgtc2VhcmNoIC5zZmllbGQtaGFsZnNsb3R7ZGlzcGxheTpmbGV4O2dhcDoxMHB4O21pbi13aWR0aDowO30KICAuYXgtc2VhcmNoIC5zZmllbGQtaGFsZnNsb3QgLnNmaWVsZC1oYWxme2ZsZXg6MSAxIDA7bWluLXdpZHRoOjA7fQogIC5heC1zZWFyY2ggLnNmaWVsZC1oYWxmc2xvdCAuc2ZpZWxkLWhhbGYtYmxhbmt7ZmxleDoxIDEgMDttaW4td2lkdGg6MDt9CiAgLmF4LXNlYXJjaCAuc2ZpZWxkIC5zbGFiZWx7Zm9udC1zaXplOjEycHg7Y29sb3I6dmFyKC0tYXgtbGFiZWwtZmcpO2ZvbnQtd2VpZ2h0OjUwMDt3aGl0ZS1zcGFjZTpub3dyYXA7CiAgICBtaW4taGVpZ2h0OjE1cHg7bGluZS1oZWlnaHQ6MTVweDt9CiAgLyoga2VlcCBhbiBlbXB0eSBsYWJlbCBvY2N1cHlpbmcgaXRzIGxpbmUgc28gZmllbGRzIHdpdGggYW5kIHdpdGhvdXQgYSBsYWJlbCBhbGlnbiAqLwogIC5heC1zZWFyY2ggLnNmaWVsZCAuc2xhYmVsOmVtcHR5OjpiZWZvcmV7Y29udGVudDoiXDAwYTAiO30KICAuYXgtc2VhcmNoIC5zZmllbGQgLnNsYWJlbCAucmVxe2NvbG9yOnZhcigtLWF4LXJlcSk7bWFyZ2luLWxlZnQ6MnB4O30KICAvKiBGYXQgTW9kZeyXkOyEnOuKlCDsobDtmozsobDqsbQg652867Ko64+EIOychOyqvSDrjIDsi6Ag7Jm87Kq97JeQIOuGk+yduOuLpC4gVGhpbiBNb2Rl64qUIOq3uOuMgOuhnCDsnITsqr0uICovCiAgYm9keS5za2luLWNsYXNzaWMgLmF4LXNlYXJjaCAuc2ZpZWxke2ZsZXgtZGlyZWN0aW9uOnJvdzthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjhweDt9CiAgYm9keS5za2luLWNsYXNzaWMgLmF4LXNlYXJjaCAuc2ZpZWxkIC5zbGFiZWx7ZmxleDpub25lO21pbi13aWR0aDo2NHB4O21pbi1oZWlnaHQ6MDtsaW5lLWhlaWdodDoxLjM7d2hpdGUtc3BhY2U6bm93cmFwO30KICAuYXgtc2VhcmNoIC5zY3Rse2hlaWdodDozMnB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjRweDtiYWNrZ3JvdW5kOiNmZmY7cGFkZGluZzowIDhweDtmb250LXNpemU6MTJweDtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2NvbG9yOiM4Yjk1YTE7d2lkdGg6MTAwJTt9CiAgLyogcmVhZC1vbmx5IHNlYXJjaCBjb25kaXRpb246IGdyZXllZCBvdXQgYW5kIG5vbi1pbnRlcmFjdGl2ZSAqLwogIC5heC1zZWFyY2ggLnNjdGwucm8sLmF4LXNlYXJjaCAuc2N0bC5yby50ZXh0e2JhY2tncm91bmQ6I2Y2ZjdmODtjb2xvcjojOWFhNGFkO2N1cnNvcjpkZWZhdWx0O30KICAuYXgtc2VhcmNoIC5zY3RsLnJvIGlucHV0e2JhY2tncm91bmQ6dHJhbnNwYXJlbnQ7Y29sb3I6IzlhYTRhZDtjdXJzb3I6ZGVmYXVsdDtwb2ludGVyLWV2ZW50czpub25lO30KICAuYXgtc2VhcmNoIC5zY3RsLnJvOjphZnRlcntvcGFjaXR5Oi40NTt9CiAgLmF4LXNlYXJjaCAuc3JhZGlvLnJve29wYWNpdHk6LjU1O2N1cnNvcjpkZWZhdWx0O3BvaW50ZXItZXZlbnRzOm5vbmU7fQogIC5heC1zZWFyY2ggLnNjdGwuY29tYm8sLmF4LXNlYXJjaCAuc2N0bC5kYXRlLC5heC1zZWFyY2ggLnNjdGwuZGF0ZXJhbmdle2p1c3RpZnktY29udGVudDpzcGFjZS1iZXR3ZWVuO30KICAuYXgtc2VhcmNoIC5zY3RsLmNvbWJvOjphZnRlcntjb250ZW50OiLilr4iO2NvbG9yOnZhcigtLWF4LWdyYXkpO2ZvbnQtc2l6ZToxMXB4O30KICAuYXgtc2VhcmNoIC5zY3RsLmRhdGU6OmFmdGVyLC5heC1zZWFyY2ggLnNjdGwuZGF0ZXJhbmdlOjphZnRlcntjb250ZW50OiLwn5OFIjtmb250LXNpemU6MTJweDt9CiAgLmF4LXNlYXJjaCAuc2N0bC5zZWFyY2h7anVzdGlmeS1jb250ZW50OmZsZXgtZW5kO2dhcDo4cHg7fQogIC5zY3RsLXNlYXJjaC1pY3t3aWR0aDoxNHB4O2hlaWdodDoxNHB4O2ZsZXg6bm9uZTtiYWNrZ3JvdW5kLWNvbG9yOiM2YjcyODA7CiAgICAtd2Via2l0LW1hc2s6bm8tcmVwZWF0IGNlbnRlci9jb250YWluIHVybCgiZGF0YTppbWFnZS9zdmcreG1sLCUzQ3N2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNCAyNCcgZmlsbD0nbm9uZScgc3Ryb2tlPSclMjMwMDAnIHN0cm9rZS13aWR0aD0nMi4yJyBzdHJva2UtbGluZWNhcD0ncm91bmQnIHN0cm9rZS1saW5lam9pbj0ncm91bmQnJTNFJTNDY2lyY2xlIGN4PScxMScgY3k9JzExJyByPSc3Jy8lM0UlM0NsaW5lIHgxPScyMScgeTE9JzIxJyB4Mj0nMTYuNjUnIHkyPScxNi42NScvJTNFJTNDL3N2ZyUzRSIpOwogICAgbWFzazpuby1yZXBlYXQgY2VudGVyL2NvbnRhaW4gdXJsKCJkYXRhOmltYWdlL3N2Zyt4bWwsJTNDc3ZnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zycgdmlld0JveD0nMCAwIDI0IDI0JyBmaWxsPSdub25lJyBzdHJva2U9JyUyMzAwMCcgc3Ryb2tlLXdpZHRoPScyLjInIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcgc3Ryb2tlLWxpbmVqb2luPSdyb3VuZCclM0UlM0NjaXJjbGUgY3g9JzExJyBjeT0nMTEnIHI9JzcnLyUzRSUzQ2xpbmUgeDE9JzIxJyB5MT0nMjEnIHgyPScxNi42NScgeTI9JzE2LjY1Jy8lM0UlM0Mvc3ZnJTNFIik7fQogIC8qIGh0bWwyY2FudmFzKO2ZlOuptCDsuqHsspjqsIAg7JOw64qUIOudvOydtOu4jOufrOumrCnripQgQ1NTIG1hc2svLXdlYmtpdC1tYXNr66W8IOugjOuNlOunge2VmOyngCDrqrvtlbTshJwsIOychAogICAgIOuPi+uztOq4sCDslYTsnbTsvZgobWFzayDrsKnsi50p7J20IOy6oeyymCDqsrDqs7zrrLzsl5DripQg6re464OlIO2ajOyDiSDrhKTrqqjroZwg64KY7Jio64ukIC0g7Iuk7KCcIO2ZlOuptMK366+466as67O06riw7JeQ7ISc64qUCiAgICAg66mA7Kmh7Z6IIOuztOydtOuKlOuNsCAi7Lqh7LKY7ZaI7J2EIOuVjOunjCIg6rmo7KeA64qUIOydtOycoOqwgCDsnbTqsbDri6QuIOy6oeyymO2VmOuKlCDqt7gg7Iic6rCE7JeQ66eMKG1iQ2FwdHVyZeqwgCDsupTrsoTsiqTsl5AKICAgICAubWItY2FwdHVyaW5nIO2BtOuemOyKpOulvCDsnqDquZAg67aZ7JiA64ukIOuXgOuLpCkgbWFza+ulvCDsp4DsmrDqs6Ag7J2066qo7KeAKPCfk4Ug64Kg7KecIOyVhOydtOy9mOqzvCDqsJnsnYAg67Cp7IudIC0KICAgICDsnbTqsbQgaHRtbDJjYW52YXPqsIAg66y47KCc7JeG7J20IOq3uOugpOuCuOuLpCnroZwg7J6g6rmQIOuwlOq/lOy5mOq4sO2VtOyEnCwg7Lqh7LKYIOqysOqzvOusvOyXkOyEnOunjCDsoJXsg4HsoIHsnbgg64+L67O06riwCiAgICAg66qo7JaR7J20IOuCmOyYpOqyjCDtlZzri6QuIO2PieyGjCDtmZTrqbTCt+uvuOumrOuztOq4sCDrqqjslpEobWFzayDrsKnsi50sIOyDieyDgSDsnpDsnKDsnpDsnqwp7J2AIOq3uOuMgOuhnCDsnKDsp4DrkJzri6QuICovCiAgLm1iLWNhcHR1cmluZyAuc2N0bC1zZWFyY2gtaWN7YmFja2dyb3VuZDpub25lIWltcG9ydGFudDstd2Via2l0LW1hc2s6bm9uZSFpbXBvcnRhbnQ7bWFzazpub25lIWltcG9ydGFudDt9CiAgLm1iLWNhcHR1cmluZyAuc2N0bC1zZWFyY2gtaWM6OmFmdGVye2NvbnRlbnQ6IvCflI0iO2ZvbnQtc2l6ZToxMXB4O2xpbmUtaGVpZ2h0OjE0cHg7ZGlzcGxheTpibG9jazt0ZXh0LWFsaWduOmNlbnRlcjt9CiAgLmF4LXNlYXJjaCAuc2N0bC5ybyAuc2N0bC1zZWFyY2gtaWN7b3BhY2l0eTouNDU7fQogIC5heC1zZWFyY2ggLnNzZWFyY2ggLnNjdGwtc2VhcmNoLWlje2JhY2tncm91bmQtY29sb3I6I2ZmZjt9CiAgLmF4LXNlYXJjaCAuc2N0bC50ZXh0e2NvbG9yOiMxMTE7fQogIC5heC1zZWFyY2ggLnNyYWRpb3tkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDoxNHB4O2hlaWdodDozMnB4O30KICAuYXgtc2VhcmNoIC5zcmFkaW8gLm9wdHtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo1cHg7Zm9udC1zaXplOjEycHg7Y29sb3I6IzM3NDE1MTt9CiAgLmF4LXNlYXJjaCAuc3JhZGlvIC5vcHQgLmRvdHt3aWR0aDoxNHB4O2hlaWdodDoxNHB4O2JvcmRlcjoxLjVweCBzb2xpZCB2YXIoLS1heC1ncmVlbik7Ym9yZGVyLXJhZGl1czo1MCU7cG9zaXRpb246cmVsYXRpdmU7ZmxleDpub25lO30KICAuYXgtc2VhcmNoIC5zcmFkaW8gLm9wdCAuZG90OjphZnRlcntjb250ZW50OiIiO3Bvc2l0aW9uOmFic29sdXRlO2luc2V0OjNweDtiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuKTtib3JkZXItcmFkaXVzOjUwJTtkaXNwbGF5Om5vbmU7fQogIC5heC1zZWFyY2ggLnNyYWRpbyAub3B0Lm9uIC5kb3Q6OmFmdGVye2Rpc3BsYXk6YmxvY2s7fQogIC5heC1zZWFyY2ggLnNhY3Rpb25ze2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpmbGV4LXN0YXJ0O2dhcDo2cHg7ZmxleDpub25lO3BhZGRpbmctdG9wOjIwcHg7fQogIC5heC1zZWFyY2ggLnNzZWFyY2h7aGVpZ2h0OjMycHg7Ym9yZGVyLXJhZGl1czo0cHg7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7Y29sb3I6I2ZmZjtmb250LXNpemU6MTNweDtmb250LXdlaWdodDo2MDA7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NXB4O3BhZGRpbmc6MCAxOHB4O30KCiAgLyogVGFiIGNvbXBvbmVudCAqLwogIC5heC10YWJzLXdyYXB7d2lkdGg6MTAwJTtoZWlnaHQ6MTAwJTtwb3NpdGlvbjpyZWxhdGl2ZTt9CiAgLmF4LXRhYnMtd3JhcCAuYXgtdGFicy1oZWFke3Bvc2l0aW9uOmFic29sdXRlO2xlZnQ6MDt0b3A6MDtyaWdodDowO2hlaWdodDo0MHB4O2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpmbGV4LWVuZDtnYXA6MjJweDtib3JkZXItYm90dG9tOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO3BhZGRpbmc6MCAycHg7fQogIC5heC10YWJzLXdyYXAgLmF4dGFiLWl0ZW17cGFkZGluZzowIDJweCAxMHB4O2ZvbnQtc2l6ZToxM3B4O2NvbG9yOnZhcigtLWF4LWdyYXkpO2N1cnNvcjpwb2ludGVyO2JvcmRlci1ib3R0b206MnB4IHNvbGlkIHRyYW5zcGFyZW50O3doaXRlLXNwYWNlOm5vd3JhcDt1c2VyLXNlbGVjdDpub25lO30KICAuYXgtdGFicy13cmFwIC5heHRhYi1pdGVtLm9ue2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO2ZvbnQtd2VpZ2h0OjcwMDtib3JkZXItYm90dG9tLWNvbG9yOnZhcigtLWF4LWdyZWVuKTt9CiAgLmF4LXRhYnMtd3JhcCAuYXh0YWItaXRlbTpob3Zlcntjb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTt9CiAgLnRhYnMtYm9keS1oaW50e291dGxpbmU6MXB4IGRhc2hlZCByZ2JhKDM4LDEyOCwyMzUsLjIyKTtvdXRsaW5lLW9mZnNldDotMXB4O30KICAucGFuZWwtYm9keS1oaW50e291dGxpbmU6MXB4IGRhc2hlZCByZ2JhKDM4LDEyOCwyMzUsLjIyKTtvdXRsaW5lLW9mZnNldDotMXB4O30KICAvKiAhaW1wb3J0YW50IGlzIHJlcXVpcmVkIGhlcmU6IHRoZSBwYW5lL2JvZHkgZWxlbWVudHMgc2V0IG92ZXJmbG93IHZpYSBpbmxpbmUgc3R5bGUKICAgICAoc28gaXQgY2FuJ3QgYmUgb3ZlcnJpZGRlbiBieSBhIHBsYWluIGNsYXNzIHJ1bGUpLCBidXQgd2hpbGUgYSBjb21wb25lbnQgaXMgYmVpbmcKICAgICBkcmFnZ2VkIG91dCB3ZSBuZWVkIGl0IHRvIHN0YXkgZnVsbHkgdmlzaWJsZSBpbnN0ZWFkIG9mIGdldHRpbmcgY2xpcHBlZCBhdCB0aGUgZWRnZS4gKi8KICAjY2FudmFzLnJlcGFyZW50LWRyYWcgLnRhYnMtYm9keS13cmFwe292ZXJmbG93OnZpc2libGUhaW1wb3J0YW50O30KICAjY2FudmFzLnJlcGFyZW50LWRyYWcgLnNwbGl0LXBhbmV7b3ZlcmZsb3c6dmlzaWJsZSFpbXBvcnRhbnQ7fQogIC5heC1yYWRpb3tkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo2cHg7Zm9udC1zaXplOjEycHg7aGVpZ2h0OjEwMCU7fQogIC5heC1yYWRpbyAuZG90e3dpZHRoOjE0cHg7aGVpZ2h0OjE0cHg7Ym9yZGVyOjEuNXB4IHNvbGlkIHZhcigtLWF4LWdyZWVuKTtib3JkZXItcmFkaXVzOjUwJTtwb3NpdGlvbjpyZWxhdGl2ZTt9CiAgLmF4LXJhZGlvIC5kb3Q6OmFmdGVye2NvbnRlbnQ6IiI7cG9zaXRpb246YWJzb2x1dGU7aW5zZXQ6M3B4O2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO2JvcmRlci1yYWRpdXM6NTAlO30KCiAgLyogUHJvcGVydGllcyAqLwogIC5wcm9wc3tiYWNrZ3JvdW5kOiNmZmY7Ym9yZGVyLWxlZnQ6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7b3ZlcmZsb3cteTphdXRvO3BhZGRpbmc6MTJweDt9CiAgLnByb3BzIGgze2ZvbnQtc2l6ZToxMnB4O2NvbG9yOnZhcigtLWF4LW5hdnkpO21hcmdpbi1ib3R0b206MTBweDtwYWRkaW5nLWJvdHRvbTo2cHg7Ym9yZGVyLWJvdHRvbToycHggc29saWQgdmFyKC0tYXgtZ3JlZW4pO2ZvbnQtd2VpZ2h0OjcwMDt9CiAgLnByb3B7bWFyZ2luLWJvdHRvbTo5cHg7fQogIC5wcm9wIGxhYmVse2Rpc3BsYXk6YmxvY2s7Zm9udC1zaXplOjExcHg7Y29sb3I6dmFyKC0tYXgtZ3JheSk7bWFyZ2luLWJvdHRvbTozcHg7fQogIC5wcm9wIGlucHV0LC5wcm9wIHNlbGVjdCwucHJvcCB0ZXh0YXJlYXt3aWR0aDoxMDAlO3BhZGRpbmc6NXB4IDdweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo0cHg7Zm9udC1zaXplOjEycHg7Zm9udC1mYW1pbHk6aW5oZXJpdDt9CiAgLnByb3Atcm93e2Rpc3BsYXk6ZmxleDtnYXA6NnB4O30KICAvKiAi7YWN7Iqk7Yq4Ii8i652867KoIOuCtOyaqSIg7J6F66Cl7Lm4IOyYhuyXkCDshJzsi50oIuqwgCIpIO2KuOumrOqxsCDrsoTtirzsnYQg64KY656A7Z6IIOu2meydvCDrlYwg7JOw64qUIOykhCAtCiAgICAgLnByb3AgaW5wdXTsnZgg6riw67O4IHdpZHRoOjEwMCXripQgZmxleCDslYTsnbTthZzsl5DshJzripQgZmxleC1iYXNpc+uhnCDsnpHrj5ntlbQg67KE7Yq8IOyekOumrOulvCDrgqjquLDsp4AKICAgICDslYrsnLzrr4DroZwsIOyXrOq4sOyEnCBpbnB1dCDsqr3rp4wgZmxleDox66GcIOuLpOyLnCDsnqHslYTspIDri6QuICovCiAgLnByb3AtaW5saW5lLWJ0bntkaXNwbGF5OmZsZXg7Z2FwOjZweDthbGlnbi1pdGVtczpjZW50ZXI7fQogIC5wcm9wLWlubGluZS1idG4gaW5wdXR7ZmxleDoxO21pbi13aWR0aDowO3dpZHRoOmF1dG87fQogIC5wcm9wLXJvdyAucHJvcHtmbGV4OjE7fQogIC8qIOyhsO2ajOyhsOqxtCDtjKjrhJDsnZggIu2VnCDspIQg7ZGc7IucIOqwnOyImCIgLSDrnbzrsqjqs7wg7Iir7J6Q7Lm47J2EIO2VnCDspITsl5Ag64KY656A7Z6IIOuwsOy5mO2VmOqzoCwKICAgICDsnpDso7wg7KGw7KCV7ZWY64qUIOykkeyalO2VnCDsmLXshZjsnoTsnYQg67Cw6rK97IOJwrfthYzrkZDrpqzroZwg6rCV7KGw7ZWc64ukLiAqLwogIC5wcm9wLnByb3AtcGVycm93e2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OnNwYWNlLWJldHdlZW47Z2FwOjhweDsKICAgIGJhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tbGlnaHQpO2JvcmRlcjoxLjVweCBzb2xpZCB2YXIoLS1heC1ncmVlbik7Ym9yZGVyLXJhZGl1czo2cHg7cGFkZGluZzo3cHggOXB4O30KICAucHJvcC5wcm9wLXBlcnJvdyBsYWJlbHtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo0cHg7bWFyZ2luLWJvdHRvbTowO2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO2ZvbnQtd2VpZ2h0OjcwMDt9CiAgLnByb3AucHJvcC1wZXJyb3cgaW5wdXR7d2lkdGg6NDRweDtmbGV4Om5vbmU7dGV4dC1hbGlnbjpjZW50ZXI7Zm9udC13ZWlnaHQ6NzAwO2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtZ3JlZW4pO2JhY2tncm91bmQ6I2ZmZjt9CiAgLnByb3AucHJvcC1wZXJyb3cgaW5wdXQ6Zm9jdXN7b3V0bGluZTpub25lO2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTtib3gtc2hhZG93OjAgMCAwIDJweCByZ2JhKDMwLDE1OCwxMDYsLjIpO30KICAucHJvcCAuY2J4e2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjZweDtmb250LXNpemU6MTJweDt9CiAgLnByb3AgLmNieCBpbnB1dHt3aWR0aDphdXRvO30KICAuZW1wdHktcHJvcHN7Y29sb3I6IzljYTNhZjtmb250LXNpemU6MTJweDt0ZXh0LWFsaWduOmNlbnRlcjtwYWRkaW5nOjMwcHggMTBweDtsaW5lLWhlaWdodDoxLjY7fQogIC5kZWwtYnRue3dpZHRoOjEwMCU7YmFja2dyb3VuZDojZmRlY2VjO2NvbG9yOnZhcigtLWF4LXJlcSk7Ym9yZGVyOjFweCBzb2xpZCAjZjVjMmM0O3BhZGRpbmc6N3B4O2JvcmRlci1yYWRpdXM6NHB4O2N1cnNvcjpwb2ludGVyO2ZvbnQtc2l6ZToxMnB4O21hcmdpbi10b3A6OHB4O2ZvbnQtd2VpZ2h0OjYwMDt9CiAgLmRlbC1idG46aG92ZXJ7YmFja2dyb3VuZDojZmJkY2RjO30KICAuZ2FwLWFkanVzdHtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo2cHg7cGFkZGluZzoxMHB4O21hcmdpbi1ib3R0b206MTJweDtiYWNrZ3JvdW5kOiNmYWZiZmM7fQogIC5nYXAtcm93e21hcmdpbi1ib3R0b206OHB4O30KICAuZ2FwLXJvdzpsYXN0LW9mLXR5cGV7bWFyZ2luLWJvdHRvbTowO30KICAuZ2FwLXJvdyBsYWJlbHtkaXNwbGF5OmJsb2NrO2ZvbnQtc2l6ZToxMnB4O2NvbG9yOiM1NTU7bWFyZ2luLWJvdHRvbTo0cHg7Zm9udC13ZWlnaHQ6NjAwO30KICAuZ2FwLXJvdyAuZ2FwLXZhbHtmb250LXdlaWdodDo0MDA7Y29sb3I6dmFyKC0tYXgtZ3JlZW4pO21hcmdpbi1sZWZ0OjRweDt9CiAgLmdhcC1yb3cgLmdhcC1udW17d2lkdGg6NTZweDtwYWRkaW5nOjJweCA0cHg7Zm9udC1zaXplOjEycHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6M3B4O2NvbG9yOnZhcigtLWF4LWdyZWVuKTtmb250LXdlaWdodDo2MDA7dGV4dC1hbGlnbjpyaWdodDttYXJnaW4tbGVmdDo0cHg7fQogIC5nYXAtcm93IC5nYXAtbnVtOmZvY3Vze291dGxpbmU6bm9uZTtib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4pO30KICAuZ2FwLXJvdyAuZ2FwLXVuaXR7Zm9udC1zaXplOjExcHg7Y29sb3I6IzljYTNhZjttYXJnaW4tbGVmdDoycHg7Zm9udC13ZWlnaHQ6NDAwO30KICAuZ2FwLXJvdyBpbnB1dFt0eXBlPXJhbmdlXXt3aWR0aDoxMDAlO2FjY2VudC1jb2xvcjp2YXIoLS1heC1ncmVlbik7Y3Vyc29yOnBvaW50ZXI7fQogIC5oaW50e2ZvbnQtc2l6ZToxMXB4O2NvbG9yOiM5Y2EzYWY7bWFyZ2luLXRvcDo0cHg7bGluZS1oZWlnaHQ6MS41O30KICAvKiBTbWFsbCAiPyIgYmFkZ2UgdGhhdCByZXZlYWxzIGl0cyBleHBsYW5hdGlvbiBhcyBhIGhvdmVyIHRvb2x0aXAsIHNvIGxvbmcKICAgICBkZXNjcmlwdGlvbnMgbm8gbG9uZ2VyIHRha2UgdXAgcGVybWFuZW50IHNwYWNlIGluIHRoZSBwcm9wZXJ0eSBwYW5lbC4gKi8KICAvKiBUaGUgLnByb3Agcm93IGlzIHRoZSBwb3NpdGlvbmluZyBjb250ZXh0IHNvIHRoZSB0b29sdGlwIGNhbiBzcGFuIHRoZSBmdWxsIHBhbmVsCiAgICAgd2lkdGggcmVnYXJkbGVzcyBvZiB3aGVyZSB0aGUgYmFkZ2Ugc2l0cywgaW5zdGVhZCBvZiBvdmVyZmxvd2luZyBwYXN0IHRoZSBsZWZ0IGVkZ2UuICovCiAgLnByb3B7cG9zaXRpb246cmVsYXRpdmU7fQogIC5xaGVscHtkaXNwbGF5OmlubGluZS1mbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6Y2VudGVyO3dpZHRoOjE0cHg7aGVpZ2h0OjE0cHg7Ym9yZGVyLXJhZGl1czo1MCU7CiAgICBiYWNrZ3JvdW5kOiNjM2NiZDM7Y29sb3I6I2ZmZjtmb250LXNpemU6MTBweDtmb250LXdlaWdodDo3MDA7bGluZS1oZWlnaHQ6MTtjdXJzb3I6aGVscDtwb3NpdGlvbjpzdGF0aWM7CiAgICBtYXJnaW4tbGVmdDo1cHg7dmVydGljYWwtYWxpZ246bWlkZGxlO2ZsZXg6bm9uZTt1c2VyLXNlbGVjdDpub25lO30KICAucWhlbHA6aG92ZXJ7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7fQogIC5wcm9wIC5jYnggLnFoZWxwe21hcmdpbi1sZWZ0OjA7fSAgIC8qIGZsZXggbGFiZWwgYWxyZWFkeSBzdXBwbGllcyB0aGUgZ2FwICovCiAgLnFoZWxwIC5xdGlwe2Rpc3BsYXk6bm9uZTtwb3NpdGlvbjphYnNvbHV0ZTtsZWZ0OjA7cmlnaHQ6MDt0b3A6MTAwJTt3aWR0aDphdXRvO2JhY2tncm91bmQ6IzJmMzk0NDtjb2xvcjojZjFmNGY3OwogICAgZm9udC1zaXplOjExcHg7Zm9udC13ZWlnaHQ6NDAwO2xpbmUtaGVpZ2h0OjEuNTU7dGV4dC1hbGlnbjpsZWZ0O3BhZGRpbmc6OHB4IDEwcHg7Ym9yZGVyLXJhZGl1czo2cHg7CiAgICBib3gtc2hhZG93OjAgNHB4IDE0cHggcmdiYSgwLDAsMCwuMjIpO3otaW5kZXg6OTAwO3doaXRlLXNwYWNlOm5vcm1hbDtjdXJzb3I6ZGVmYXVsdDtib3gtc2l6aW5nOmJvcmRlci1ib3g7bWFyZ2luLXRvcDozcHg7fQogIC5xaGVscCAucXRpcCBie2NvbG9yOiM4ZmUzYjg7Zm9udC13ZWlnaHQ6NzAwO30KICAucWhlbHA6aG92ZXIgLnF0aXB7ZGlzcGxheTpibG9jazt9CiAgLnppLXJvd3tkaXNwbGF5OmZsZXg7Z2FwOjRweDttYXJnaW4tdG9wOjRweDt9CiAgLnppLXJvdyBidXR0b257ZmxleDoxO3BhZGRpbmc6NHB4O2ZvbnQtc2l6ZToxMXB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtiYWNrZ3JvdW5kOiNmYWZiZmM7Ym9yZGVyLXJhZGl1czo0cHg7Y3Vyc29yOnBvaW50ZXI7fQogIC56aS1yb3cgYnV0dG9uOmhvdmVye2JhY2tncm91bmQ6I2VlZjJmNTt9CiAgLmdycHtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo2cHg7cGFkZGluZzo5cHg7bWFyZ2luLWJvdHRvbTo5cHg7YmFja2dyb3VuZDojZmFmYmZjO30KICAuZ3JwLWh7Zm9udC1zaXplOjExcHg7Zm9udC13ZWlnaHQ6NzAwO2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO21hcmdpbi1ib3R0b206N3B4O3RleHQtdHJhbnNmb3JtOnVwcGVyY2FzZTtsZXR0ZXItc3BhY2luZzouM3B4O30KICAvKiDsoJHtnowg7JyE7LmYwrftgazquLAg6re466O57J2AIOyWh+ydgCDrsJTsspjrn7wg67O07J2064+E66GdIOuwleyKpCDsl6zrsLEv67Cw6rK97J2EIOykhOyduOuLpCAqLwogIC5wb3NzaXplLWdycC5jb2xsYXBzZWR7cGFkZGluZzozcHggNnB4O2JhY2tncm91bmQ6dHJhbnNwYXJlbnQ7fQogIC5wb3NzaXplLWdycC5jb2xsYXBzZWQgLmdycC1oe21hcmdpbi1ib3R0b206MDt9CiAgLnVidG4tbGlzdHtkaXNwbGF5OmZsZXg7ZmxleC1kaXJlY3Rpb246Y29sdW1uO2dhcDo1cHg7bWFyZ2luLWJvdHRvbTo2cHg7fQogIC51YnRuLXJvd3tkaXNwbGF5OmZsZXg7Z2FwOjRweDthbGlnbi1pdGVtczpjZW50ZXI7fQogIC51YnRuLXJvdyBpbnB1dHtmbGV4OjE7cGFkZGluZzo0cHggNnB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjRweDtmb250LXNpemU6MTJweDt9CiAgLnVidG4tdGdse2ZvbnQtc2l6ZToxMHB4O3BhZGRpbmc6NHB4IDZweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7YmFja2dyb3VuZDojZmZmO2JvcmRlci1yYWRpdXM6NHB4O2N1cnNvcjpwb2ludGVyO2NvbG9yOiM4ODg7d2hpdGUtc3BhY2U6bm93cmFwO30KICAudWJ0bi10Z2wub257YmFja2dyb3VuZDojZjVmNmY3O2NvbG9yOnZhcigtLWF4LXJlcSk7Ym9yZGVyLWNvbG9yOiNlNWMyYzQ7Zm9udC13ZWlnaHQ6NjAwO30KICAudWJ0bi1kZWx7d2lkdGg6MjRweDtwYWRkaW5nOjRweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7YmFja2dyb3VuZDojZmZmO2JvcmRlci1yYWRpdXM6NHB4O2N1cnNvcjpwb2ludGVyO2NvbG9yOnZhcigtLWF4LXJlcSk7Zm9udC1zaXplOjE0cHg7bGluZS1oZWlnaHQ6MTt9CiAgLnVidG4tZGVsOmhvdmVye2JhY2tncm91bmQ6I2ZkZWNlYzt9CiAgLnVidG4tYWRke3dpZHRoOjEwMCU7cGFkZGluZzo2cHg7Ym9yZGVyOjFweCBkYXNoZWQgdmFyKC0tYXgtZ3JlZW4pO2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tbGlnaHQpO2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO2JvcmRlci1yYWRpdXM6NHB4O2N1cnNvcjpwb2ludGVyO2ZvbnQtc2l6ZToxMnB4O2ZvbnQtd2VpZ2h0OjYwMDt9CiAgLnVidG4tYWRkOmhvdmVye2JhY2tncm91bmQ6I2RjZjBlNjt9CiAgLnNmaWVsZC1saXN0e2Rpc3BsYXk6ZmxleDtmbGV4LWRpcmVjdGlvbjpjb2x1bW47Z2FwOjVweDttYXJnaW4tYm90dG9tOjZweDt9CiAgLnNmaWVsZC1yb3d7ZGlzcGxheTpmbGV4O2ZsZXgtZGlyZWN0aW9uOmNvbHVtbjtnYXA6NXB4O3BhZGRpbmctYm90dG9tOjhweDttYXJnaW4tYm90dG9tOjhweDtib3JkZXItYm90dG9tOjFweCBzb2xpZCAjZWVlO30KICAuc2ZpZWxkLXJvdzpsYXN0LW9mLXR5cGV7Ym9yZGVyLWJvdHRvbTpub25lO21hcmdpbi1ib3R0b206MDtwYWRkaW5nLWJvdHRvbTowO30KICAuc2ZpZWxkLXJvdyAuc2Ytcm93MSwuc2ZpZWxkLXJvdyAuc2Ytcm93MntkaXNwbGF5OmZsZXg7Z2FwOjRweDthbGlnbi1pdGVtczpjZW50ZXI7fQogIC5zZmllbGQtcm93IC5zZi1sYWJlbHtmbGV4OjE7bWluLXdpZHRoOjA7cGFkZGluZzo0cHggNnB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjRweDtmb250LXNpemU6MTJweDt9CiAgLnNmaWVsZC1yb3cgLnNmLXZhbHVle2ZsZXg6MSAxIDA7bWluLXdpZHRoOjA7cGFkZGluZzo0cHggNnB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjRweDtmb250LXNpemU6MTFweDtjb2xvcjojMzMzO30KICAuc2ZpZWxkLXJvdyAuc2YtdHlwZXtwYWRkaW5nOjRweCA0cHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6NHB4O2ZvbnQtc2l6ZToxMXB4O2JhY2tncm91bmQ6I2ZmZjt9CiAgLnNmaWVsZC1yb3cgLnNmLXNwYW57cGFkZGluZzo0cHggMnB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjRweDtmb250LXNpemU6MTFweDtiYWNrZ3JvdW5kOiNmZmY7d2lkdGg6NTZweDtmbGV4Om5vbmU7fQogIC5zZmllbGQtcm93IC5zZi1yZXF7d2lkdGg6MjRweDtwYWRkaW5nOjRweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7YmFja2dyb3VuZDojZmZmO2JvcmRlci1yYWRpdXM6NHB4O2N1cnNvcjpwb2ludGVyO2NvbG9yOiNhYWE7Zm9udC13ZWlnaHQ6NzAwO2ZvbnQtc2l6ZToxM3B4O30KICAuc2ZpZWxkLXJvdyAuc2YtcmVxLm9ue2JhY2tncm91bmQ6I2ZkZWNlYztjb2xvcjp2YXIoLS1heC1yZXEpO2JvcmRlci1jb2xvcjojZTVjMmM0O30KICAuc2ZpZWxkLXJvdyAuc2Ytcm97d2lkdGg6MjZweDtwYWRkaW5nOjRweCAycHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JhY2tncm91bmQ6I2ZmZjtib3JkZXItcmFkaXVzOjRweDtjdXJzb3I6cG9pbnRlcjtmb250LXNpemU6MTFweDtmaWx0ZXI6Z3JheXNjYWxlKDEpO29wYWNpdHk6LjQ1O30KICAuc2ZpZWxkLXJvdyAuc2Ytcm8ub257YmFja2dyb3VuZDojZWVmMWY0O2JvcmRlci1jb2xvcjojYjljMmNiO2ZpbHRlcjpub25lO29wYWNpdHk6MTt9CiAgLyog7KGw7ZqM7KGw6rG0IO2VhOuTnOydmCDrgqDsp5wv6riw6rCEIOqwkjog7JiI7KCE7JeUIFlZWVktTU0tREQg7YWN7Iqk7Yq47Lm47J207JeI7Jy864KYLCDslYTsnbTsvZjsnYQg64iM65+sIOu5oOuluCDrgqDsp5wg7Yyd7JeFKCNxZFBvcHVwKeydhAogICAgIOyXrOuKlCDrsKnsi53snLzroZwg67CU64CM7JeI64ukLiDrsoTtirzsnYAg7ZWE7IiYKCopwrfsnb3quLDsoITsmqko8J+UkinCt+yCreygnCjDlykg7JWE7J207L2Y6rO8IOqwmeydgCDspIQocm93MSnsl5Ag64KY656A7Z6IIOuGk+yduOuLpC4gKi8KICAuc2ZpZWxkLXJvdyAuc2YtZGF0ZWJ0bnt3aWR0aDoyMnB4O2hlaWdodDoyNHB4O2ZsZXg6bm9uZTtwYWRkaW5nOjA7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JhY2tncm91bmQ6I2ZmZjtib3JkZXItcmFkaXVzOjRweDtjdXJzb3I6cG9pbnRlcjtmb250LXNpemU6MTJweDtjb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTt9CiAgLnNmaWVsZC1yb3cgLnNmLWRhdGVidG46aG92ZXJ7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTtiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuLWxpZ2h0KTt9CiAgLnNmaWVsZC1yb3cgLnNmLWRhdGVidG4ub257YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1saWdodCk7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTt9CiAgLyog7LqU67KE7Iqk7JeQIOuLqOuPheycvOuhnCDrhpPsnbgg64Kg7KecwrfquLDqsIQg7Lu07Y+s64SM7Yq4OiDsho3shLEg7Yyo64SQ7J2YIOqwkiDsnoXroKXsubjsnYAg7J296riw7KCE7JqpKO2ajOyDiSnsnLzroZwg65GQ6rOgLAogICAgIOq3uCDslYTrnpjsl5Ag7Iuk7KCcIOqwkuydhCDsoJXtlZjripQg67KE7Yq8KHFkLW9wZW4tYnRuKeydhCDrsLDsuZjtlZzri6QuICovCiAgLnByb3AgaW5wdXQ6ZGlzYWJsZWR7YmFja2dyb3VuZDojZjZmN2Y4O2NvbG9yOiM2YjcyODA7Y3Vyc29yOm5vdC1hbGxvd2VkO30KICAucWQtb3Blbi1idG57d2lkdGg6MTAwJTtwYWRkaW5nOjdweCAxMHB4O21hcmdpbi10b3A6NnB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuLWxpZ2h0KTtjb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTtib3JkZXItcmFkaXVzOjVweDtjdXJzb3I6cG9pbnRlcjtmb250LXNpemU6MTJweDtmb250LXdlaWdodDo2MDA7fQogIC5xZC1vcGVuLWJ0bjpob3ZlcntiYWNrZ3JvdW5kOiNkY2YwZTY7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTt9CiAgLnFkLW9wZW4tcm93e2Rpc3BsYXk6ZmxleDtnYXA6NnB4O21hcmdpbi10b3A6NnB4O30KICAucWQtb3Blbi1yb3cgLnFkLW9wZW4tYnRue21hcmdpbi10b3A6MDtmbGV4OjE7fQogIC5zZmllbGQtcm93IC5zZi10aWxkZXtjb2xvcjojYWFhO2ZvbnQtc2l6ZToxMXB4O2ZsZXg6bm9uZTtwYWRkaW5nOjAgMXB4O30KICAuc2ZpZWxkLW9wdHN7bWFyZ2luOi0ycHggMCAzcHggMDtwYWRkaW5nLWxlZnQ6MnB4O30KICAvKiDruaDrpbgg64Kg7KecIOyEoO2DnSDtjJ3sl4UocWRQb3B1cCk6IOyVhOydtOy9mOydhCDtgbTrpq3tlZwg7JyE7LmYIOq4sOykgOycvOuhnCDrnKjripQg6rOg7KCVKGZpeGVkKSDsnITsuZgg7Yyd7JeFLgogICAgIO2ZlOuptCDqsIDsnqXsnpDrpqzsl5DshJzripQgb3BlblF1aWNrRGF0ZS9xZFBvc2l0aW9uKCnsnbQg7KKM7Jqwwrfsg4HtlZjroZwg65Kk7KeR7Ja0IOyemOumrOyngCDslYrqsowg7ZWc64ukLiAqLwogIC5xZC1wb3B1cHtwb3NpdGlvbjpmaXhlZDt6LWluZGV4Ojk5OTk7YmFja2dyb3VuZDojZmZmO2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjhweDtib3gtc2hhZG93OjAgOHB4IDI0cHggcmdiYSgyMCwzMCw0MCwuMTgpO3BhZGRpbmc6MTBweDt3aWR0aDoyMzZweDtmb250LWZhbWlseTppbmhlcml0O30KICAvKiDsobDtmozsobDqsbQg7ZWE65OcIOudvOuyqCDshJzsi50g7Yq466as6rGwKCLqsIAiKeyZgCDrr7jri4gg7Yyd7JeFKGxmUG9wdXApIC0gcWQtcG9wdXDqs7wg6rCZ7J2AIOychOy5mOyeoeq4sCDqt5zsuZnsnYQKICAgICDsk7DrkJgsIOyyqOu2gCDssLjqs6Ag7J2066+47KeA7LKY65+8IOychOyqveyXkCDrp5Dtko3shKAg7ZmU7IK07ZGc66W8IOu2meyduCDsubTrk5wg66qo7JaR7Jy866GcIOuRpeq4gOqyjCgxNHB4KSDrp4zrk6Dri6QuICovCiAgLnNmaWVsZC1yb3cgLnNmLWZtdGJ0biwucHJvcC1pbmxpbmUtYnRuIC5zZi1mbXRidG57d2lkdGg6MjZweDtoZWlnaHQ6MjRweDtmbGV4Om5vbmU7cGFkZGluZzowO2JvcmRlcjoxLjVweCBzb2xpZCB2YXIoLS1zZWwpO2JhY2tncm91bmQ6I2ZmZjtib3JkZXItcmFkaXVzOjRweDtjdXJzb3I6cG9pbnRlcjtmb250LXNpemU6MTJweDtmb250LXdlaWdodDo3MDA7Y29sb3I6dmFyKC0tc2VsKTtmb250LWZhbWlseTppbmhlcml0O30KICAuc2ZpZWxkLXJvdyAuc2YtZm10YnRuOmhvdmVyLC5wcm9wLWlubGluZS1idG4gLnNmLWZtdGJ0bjpob3ZlcntiYWNrZ3JvdW5kOiNlYWYyZmU7fQogIC5sZi1wb3B1cHtwb3NpdGlvbjpmaXhlZDt6LWluZGV4Ojk5OTk7YmFja2dyb3VuZDojZmZmO2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjE0cHg7Ym94LXNoYWRvdzowIDhweCAyNHB4IHJnYmEoMjAsMzAsNDAsLjE4KTtwYWRkaW5nOjEwcHggMTJweDtmb250LWZhbWlseTppbmhlcml0O30KICAubGYtYXJyb3d7cG9zaXRpb246YWJzb2x1dGU7dG9wOi03cHg7bGVmdDo1MCU7dHJhbnNmb3JtOnRyYW5zbGF0ZVgoLTUwJSkgcm90YXRlKDQ1ZGVnKTt3aWR0aDoxMnB4O2hlaWdodDoxMnB4O2JhY2tncm91bmQ6I2ZmZjtib3JkZXItbGVmdDoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItdG9wOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6MnB4O30KICAubGYtcm93MXtkaXNwbGF5OmZsZXg7Z2FwOjRweDttYXJnaW4tYm90dG9tOjhweDt9CiAgLmxmLWJ0bnt3aWR0aDoyOHB4O2hlaWdodDoyNnB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjZweDtiYWNrZ3JvdW5kOiNmZmY7Y3Vyc29yOnBvaW50ZXI7Zm9udC1zaXplOjEzcHg7Y29sb3I6IzMzMztmb250LWZhbWlseTppbmhlcml0O30KICAubGYtYnRuOmhvdmVye2JhY2tncm91bmQ6I2YzZjRmNjt9CiAgLmxmLWJ0bi5vbntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuLWxpZ2h0KTtib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4pO2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO30KICAubGYtcm93MntkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo4cHg7bWFyZ2luLWJvdHRvbTo2cHg7fQogIC5sZi1yb3cyOmxhc3QtY2hpbGR7bWFyZ2luLWJvdHRvbTowO30KICAubGYtcm93LWxhYmVse2ZvbnQtc2l6ZToxMC41cHg7Y29sb3I6dmFyKC0tYXgtZ3JheSk7d2lkdGg6MzRweDtmbGV4Om5vbmU7fQogIC5sZi1zdy1ncm91cHtkaXNwbGF5OmZsZXg7Z2FwOjVweDt9CiAgLmxmLXN3e3dpZHRoOjE2cHg7aGVpZ2h0OjE2cHg7Ym9yZGVyLXJhZGl1czo1MCU7Ym9yZGVyOjFweCBzb2xpZCByZ2JhKDAsMCwwLC4wOCk7Y3Vyc29yOnBvaW50ZXI7ZGlzcGxheTppbmxpbmUtYmxvY2s7fQogIC5sZi1zdy5vbntvdXRsaW5lOjJweCBzb2xpZCB2YXIoLS1zZWwpO291dGxpbmUtb2Zmc2V0OjFweDt9CiAgLmxmLXN3LXJlc2V0e2JhY2tncm91bmQ6I2ZmZjtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Y29sb3I6I2FhYTtmb250LXNpemU6MTBweDtsaW5lLWhlaWdodDoxNHB4O3RleHQtYWxpZ246Y2VudGVyO30KICAvKiDrrLTsp4DqsJwg7IOJ7IOB7ZmYIO2GoOq4gCDslYTsnbTsvZggLSDsi6TsoJzroZwg6rOg66W064qUIOyDieyDge2ZmCgubGYtd2hlZWwp6rO8IOqwmeydgCBjb25pYy1ncmFkaWVudOulvCDsnpHqsowg7I2o7IScCiAgICAgIuyXrOq4sOulvCDriITrpbTrqbQg7J20IOybkO2MkOyXkOyEnCDqs6Drpbwg7IiYIOyeiOuLpCLripQg6rG4IOq3uOuMgOuhnCDrs7Tsl6zspIDri6QuICovCiAgLmxmLXN3LXdoZWVse2JhY2tncm91bmQ6Y29uaWMtZ3JhZGllbnQoZnJvbSAwZGVnLCNmZjAwMDAsI2ZmZmYwMCwjMDBmZjAwLCMwMGZmZmYsIzAwMDBmZiwjZmYwMGZmLCNmZjAwMDApO30KICAubGYtd2hlZWwtd3JhcHtkaXNwbGF5OmZsZXg7anVzdGlmeS1jb250ZW50OmNlbnRlcjtwYWRkaW5nOjhweCAwIDJweDt9CiAgLmxmLXdoZWVse3dpZHRoOjEyMHB4O2hlaWdodDoxMjBweDtib3JkZXItcmFkaXVzOjUwJTtjdXJzb3I6Y3Jvc3NoYWlyOwogICAgYmFja2dyb3VuZDpyYWRpYWwtZ3JhZGllbnQoY2lyY2xlIGF0IGNlbnRlciwjZmZmIDAlLHJnYmEoMjU1LDI1NSwyNTUsMCkgNjIlKSwKICAgICAgY29uaWMtZ3JhZGllbnQoZnJvbSAwZGVnLCNmZjAwMDAsI2ZmZmYwMCwjMDBmZjAwLCMwMGZmZmYsIzAwMDBmZiwjZmYwMGZmLCNmZjAwMDApOwogICAgYm9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO30KICAucWQtdGl0bGV7Zm9udC1zaXplOjExcHg7Zm9udC13ZWlnaHQ6NzAwO2NvbG9yOnZhcigtLWF4LW5hdnkpO21hcmdpbi1ib3R0b206OHB4O2Rpc3BsYXk6ZmxleDtqdXN0aWZ5LWNvbnRlbnQ6c3BhY2UtYmV0d2VlbjthbGlnbi1pdGVtczpjZW50ZXI7fQogIC5xZC10aXRsZSAucWQtY2xvc2V7Y3Vyc29yOnBvaW50ZXI7Y29sb3I6I2FhYTtmb250LXNpemU6MTRweDtsaW5lLWhlaWdodDoxO30KICAucWQtY2hpcHN7ZGlzcGxheTpncmlkO2dyaWQtdGVtcGxhdGUtY29sdW1uczpyZXBlYXQoNCwxZnIpO2dhcDo1cHg7fQogIC5xZC1jaGlwe3BhZGRpbmc6NnB4IDNweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7YmFja2dyb3VuZDojZmZmO2JvcmRlci1yYWRpdXM6NXB4O2ZvbnQtc2l6ZToxMXB4O2NvbG9yOiMzMzM7Y3Vyc29yOnBvaW50ZXI7dGV4dC1hbGlnbjpjZW50ZXI7fQogIC5xZC1jaGlwOmhvdmVye2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbik7fQogIC5xZC1jaGlwLnNlbHtiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuLWxpZ2h0KTtib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4pO2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO2ZvbnQtd2VpZ2h0OjcwMDt9CiAgLnFkLWNoaXAtYmxhbmt7Z3JpZC1jb2x1bW46MSAvIC0xO30KICAucWQtZXhwYW5kLXRvZ2dsZXt0ZXh0LWFsaWduOmNlbnRlcjtmb250LXNpemU6MTFweDtjb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTtmb250LXdlaWdodDo3MDA7bWFyZ2luOjlweCAwIDdweDtjdXJzb3I6cG9pbnRlcjt1c2VyLXNlbGVjdDpub25lO30KICAucWQtYXhpc3ttYXJnaW4tYm90dG9tOjlweDt9CiAgLnFkLWF4aXM6bGFzdC1vZi10eXBle21hcmdpbi1ib3R0b206MDt9CiAgLnFkLWF4aXMtbGFiZWx7Zm9udC1zaXplOjEwcHg7Zm9udC13ZWlnaHQ6NzAwO2NvbG9yOiM5YWEzYWQ7bWFyZ2luLWJvdHRvbTo0cHg7fQogIC5xZC1zZWd7ZGlzcGxheTpmbGV4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjZweDtvdmVyZmxvdzpoaWRkZW47fQogIC5xZC1zZWcgYnV0dG9ue2ZsZXg6MTtwYWRkaW5nOjZweCAycHg7Ym9yZGVyOm5vbmU7YmFja2dyb3VuZDojZmZmO2ZvbnQtc2l6ZToxMXB4O2N1cnNvcjpwb2ludGVyO2NvbG9yOiM0NDQ7Ym9yZGVyLXJpZ2h0OjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO30KICAucWQtc2VnIGJ1dHRvbjpsYXN0LWNoaWxke2JvcmRlci1yaWdodDpub25lO30KICAucWQtc2VnIGJ1dHRvbi5zZWx7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7Y29sb3I6I2ZmZjtmb250LXdlaWdodDo3MDA7fQogIC5xZC1hY3Rpb25ze2Rpc3BsYXk6ZmxleDtqdXN0aWZ5LWNvbnRlbnQ6c3BhY2UtYmV0d2VlbjthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjZweDttYXJnaW4tdG9wOjEwcHg7cGFkZGluZy10b3A6OHB4O2JvcmRlci10b3A6MXB4IHNvbGlkICNmMGYwZjA7fQogIC8qIO2RnOyLnCDrsKnrspUocWQtZm10LXNlY3Rpb24pIC0g7ZSE66as7IWLIOy5qSDtlZwg7KSEICsg6re4IOyVhOuemCDsu6TsiqTthYAg7Yyo7YS0IOyeheugpey5uC4g7Luk7Iqk7YWAIOyeheugpey5uOydgAogICAgIHFkLWF4aXMtbGFiZWzqs7wg6rCZ7J2AIOudvOuyqCDslYTrnpgsIO2UhOumrOyFiyDsuanqs7wg6rCZ7J2AIO2PreycvOuhnCDrtpnsl6wg7ZWY64KY7J2YIOustuydjOyymOufvCDrs7TsnbTqsowg7ZWc64ukLiAqLwogIC5xZC1mbXQtc2VjdGlvbnttYXJnaW4tdG9wOjEwcHg7cGFkZGluZy10b3A6OHB4O2JvcmRlci10b3A6MXB4IHNvbGlkICNmMGYwZjA7fQogIC5xZC1mbXQtY2hpcHN7ZGlzcGxheTpmbGV4O2ZsZXgtd3JhcDp3cmFwO2dhcDo0cHg7bWFyZ2luLWJvdHRvbTo2cHg7fQogIC5xZC1mbXQtY2hpcHtwYWRkaW5nOjRweCA4cHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JhY2tncm91bmQ6I2ZmZjtib3JkZXItcmFkaXVzOjVweDtmb250LXNpemU6MTAuNXB4O2NvbG9yOiMzMzM7Y3Vyc29yOnBvaW50ZXI7fQogIC5xZC1mbXQtY2hpcDpob3Zlcntib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4pO30KICAucWQtZm10LWNoaXAuc2Vse2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tbGlnaHQpO2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbik7Y29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7Zm9udC13ZWlnaHQ6NzAwO30KICAucWQtZm10LWN1c3RvbXt3aWR0aDoxMDAlO3BhZGRpbmc6NXB4IDdweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo0cHg7Zm9udC1zaXplOjExcHg7Zm9udC1mYW1pbHk6aW5oZXJpdDtib3gtc2l6aW5nOmJvcmRlci1ib3g7fQogIC5xZC1wcmV2aWV3e2ZsZXg6MTttaW4td2lkdGg6MDtmb250LXNpemU6MTFweDtjb2xvcjp2YXIoLS1heC1uYXZ5KTtmb250LXdlaWdodDo3MDA7YmFja2dyb3VuZDojZjRmNmY4O2JvcmRlci1yYWRpdXM6NHB4O3BhZGRpbmc6NHB4IDhweDtvdmVyZmxvdzpoaWRkZW47dGV4dC1vdmVyZmxvdzplbGxpcHNpczt3aGl0ZS1zcGFjZTpub3dyYXA7fQogIC5xZC1idG57cGFkZGluZzo1cHggMTJweDtib3JkZXItcmFkaXVzOjRweDtmb250LXNpemU6MTFweDtmb250LXdlaWdodDo2MDA7Y3Vyc29yOnBvaW50ZXI7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbik7Y29sb3I6I2ZmZjt9CiAgLnNmLWhhbmRsZXtjdXJzb3I6Z3JhYjtmb250LXNpemU6MTRweDtjb2xvcjojOWFhM2FkO3BhZGRpbmc6MCAzcHg7dXNlci1zZWxlY3Q6bm9uZTtsaW5lLWhlaWdodDoxO2ZsZXg6bm9uZTt9CiAgLnNmLWhhbmRsZTphY3RpdmV7Y3Vyc29yOmdyYWJiaW5nO30KICAuc2YtcG9ze3dpZHRoOjM0cHg7ZmxleDpub25lO3BhZGRpbmc6NHB4IDJweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo0cHg7Zm9udC1zaXplOjExcHg7dGV4dC1hbGlnbjpjZW50ZXI7YmFja2dyb3VuZDojZmZmO30KICAuc2YtcG9zOmZvY3Vze2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbik7b3V0bGluZTpub25lO30KICAuc2YtcG9zOjotd2Via2l0LW91dGVyLXNwaW4tYnV0dG9uLC5zZi1wb3M6Oi13ZWJraXQtaW5uZXItc3Bpbi1idXR0b257LXdlYmtpdC1hcHBlYXJhbmNlOm5vbmU7bWFyZ2luOjA7fQogIC5zZi1wb3N7LW1vei1hcHBlYXJhbmNlOnRleHRmaWVsZDt9CiAgLnNmLW1vdmV7d2lkdGg6MjBweDtwYWRkaW5nOjNweCAwO2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtiYWNrZ3JvdW5kOiNmZmY7Ym9yZGVyLXJhZGl1czo0cHg7Y3Vyc29yOnBvaW50ZXI7Zm9udC1zaXplOjlweDtsaW5lLWhlaWdodDoxO2NvbG9yOiM1NTY7ZmxleDpub25lO30KICAuc2YtbW92ZTpob3Zlcjpub3QoOmRpc2FibGVkKXtiYWNrZ3JvdW5kOiNlZWYyZjU7fQogIC5zZi1tb3ZlOmRpc2FibGVke29wYWNpdHk6LjM7Y3Vyc29yOmRlZmF1bHQ7fQogIC5nY29sLXR5cGV7ZmxleDpub25lO3dpZHRoOjg0cHg7fQogIC5nY29sLWdycC1oe2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OnNwYWNlLWJldHdlZW47Z2FwOjZweDt9CiAgLmdjb2wtZ3JwLXRvZ2dsZXtmbGV4Om5vbmU7cGFkZGluZzo0cHggOHB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtiYWNrZ3JvdW5kOiNmZmY7Ym9yZGVyLXJhZGl1czo0cHg7Y3Vyc29yOnBvaW50ZXI7Zm9udC1zaXplOjEwcHg7Y29sb3I6IzU1Njt3aGl0ZS1zcGFjZTpub3dyYXA7dGV4dC10cmFuc2Zvcm06bm9uZTtsZXR0ZXItc3BhY2luZzpub3JtYWw7Zm9udC13ZWlnaHQ6NjAwO30KICAuZ2NvbC1ncnAtdG9nZ2xlOmhvdmVye2JhY2tncm91bmQ6I2VlZjJmNTt9CiAgLnNmaWVsZC1yb3d7dHJhbnNpdGlvbjpvcGFjaXR5IC4xMnM7Ym9yZGVyLXRvcDoycHggc29saWQgdHJhbnNwYXJlbnQ7fQogIC5zZmllbGQtcm93LmRyYWdnaW5ne29wYWNpdHk6LjM1O30KICAuc2ZpZWxkLXJvdy5kcmFnLW92ZXJ7Ym9yZGVyLXRvcC1jb2xvcjp2YXIoLS1heC1ncmVlbik7fQogIC8qIOy6lOuyhOyKpOyXkOyEnCDsobDtmozsobDqsbQg7ZWE65Oc66W8IOyEoO2Dne2VmOuptChzZWxTRikg7IaN7ISx7Yyo64SQ7J2YIO2VtOuLuSDtlonsl5Ag7ZGc7Iuc65CY64qUIOqwleyhsCAtCiAgICAg7KKM7LihIO2MjOuegCDshLjroZwg67CUICsg7Jew7ZWcIO2MjOuegCDrsLDqsr0o7Ji17IWYIDEpLiDsupTrsoTsiqTsnZggLnNmaWVsZC5zZi1zZWxlY3RlZCDtjIzrnoAg67CV7Iqk7JmACiAgICAg6rCZ7J2AIOyDiSh2YXIoLS1zZWwpKeycvOuhnCDthrXsnbztlbQsIOy6lOuyhOyKpCDshKDtg53qs7wg7IaN7ISx7Yyo64SQIOqwleyhsOqwgCDtlZzriIjsl5Ag7Ked7KeA7Ja0IOuztOydtOqyjCDtlZzri6QuICovCiAgLnNmaWVsZC1yb3cuc2Ytcm93LXNlbGVjdGVkewogICAgYm9yZGVyLWxlZnQ6M3B4IHNvbGlkIHZhcigtLXNlbCk7YmFja2dyb3VuZDojZWFmMmZlO2JvcmRlci1yYWRpdXM6MCA2cHggNnB4IDA7CiAgICBwYWRkaW5nOjhweCA4cHggOHB4IDZweDttYXJnaW4tbGVmdDotM3B4OwogIH0KICAuc2ZpZWxkLW9wdHMgaW5wdXR7d2lkdGg6MTAwJTtwYWRkaW5nOjRweCA2cHg7Ym9yZGVyOjFweCBkYXNoZWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjRweDtmb250LXNpemU6MTFweDtiYWNrZ3JvdW5kOiNmYWZiZmM7fQogIC8qIOq3uOumrOuTnCDsu6zrn7wg7ZaJ7J2YIOyDgeychO2XpOuNlCDsnoXroKUoMu2WiSkgLSBzZmllbGQtb3B0cyBpbnB1dOqzvCDrj5nsnbztlZwg7Yak7J207KeA66eMLCDqsJnsnYAg7ZaJ7JeQ7IScCiAgICAg7ZWE7IiYL+ydveq4sOyghOyaqSDrsoTtirzqs7wg64KY656A7Z6IIOuGk+ydtOuPhOuhnSBmbGV4IOyVhOydtO2FnOycvOuhnCDsk7Tri6QuICovCiAgLnNmaWVsZC1yb3cgLmdycC1pbnB1dHtmbGV4OjE7bWluLXdpZHRoOjA7cGFkZGluZzo0cHggNnB4O2JvcmRlcjoxcHggZGFzaGVkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo0cHg7Zm9udC1zaXplOjExcHg7YmFja2dyb3VuZDojZmFmYmZjO2ZvbnQtZmFtaWx5OmluaGVyaXQ7Y29sb3I6IzMzMzt9CiAgLyog6re466as65OcIOy7rOufvOydmCAi7Zek642UIO2FjeyKpO2KuCDsoJXroKwiIOy7qO2KuOuhpCAtIOyZvOyqvS/qsIDsmrTrjbAv7Jik66W47Kq9IDPrsoTtirwg7IS46re466i87Yq4ICovCiAgLmFsaWduLXNlZ3tkaXNwbGF5OmZsZXg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6NHB4O292ZXJmbG93OmhpZGRlbjtmbGV4Om5vbmU7fQogIC5hbGlnbi1idG57d2lkdGg6MjBweDtoZWlnaHQ6MjRweDtwYWRkaW5nOjA7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6Y2VudGVyO2JhY2tncm91bmQ6I2ZmZjtib3JkZXI6MDtib3JkZXItcmlnaHQ6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Y3Vyc29yOnBvaW50ZXI7fQogIC5hbGlnbi1idG46bGFzdC1jaGlsZHtib3JkZXItcmlnaHQ6MDt9CiAgLmFsaWduLWJ0bjpob3ZlcntiYWNrZ3JvdW5kOiNmM2Y2Zjk7fQogIC5hbGlnbi1idG4ub257YmFja2dyb3VuZDojZThmMGZiO30KICAuYWxpZ24taWN7d2lkdGg6MTJweDtoZWlnaHQ6MTBweDtkaXNwbGF5OmZsZXg7ZmxleC1kaXJlY3Rpb246Y29sdW1uO2p1c3RpZnktY29udGVudDpzcGFjZS1iZXR3ZWVuO3BvaW50ZXItZXZlbnRzOm5vbmU7fQogIC5hbGlnbi1pYyBpe2Rpc3BsYXk6YmxvY2s7aGVpZ2h0OjJweDtib3JkZXItcmFkaXVzOjFweDtiYWNrZ3JvdW5kOiM2YjcyODA7fQogIC5hbGlnbi1idG4ub24gLmFsaWduLWljIGl7YmFja2dyb3VuZDp2YXIoLS1zZWwpO30KICAuYWxpZ24taWMubCBpOm50aC1jaGlsZCgxKXt3aWR0aDoxMDAlO30gLmFsaWduLWljLmwgaTpudGgtY2hpbGQoMil7d2lkdGg6NzAlO30gLmFsaWduLWljLmwgaTpudGgtY2hpbGQoMyl7d2lkdGg6ODUlO30KICAuYWxpZ24taWMuY3thbGlnbi1pdGVtczpjZW50ZXI7fQogIC5hbGlnbi1pYy5jIGk6bnRoLWNoaWxkKDEpe3dpZHRoOjEwMCU7fSAuYWxpZ24taWMuYyBpOm50aC1jaGlsZCgyKXt3aWR0aDo2NSU7fSAuYWxpZ24taWMuYyBpOm50aC1jaGlsZCgzKXt3aWR0aDo4MCU7fQogIC5hbGlnbi1pYy5ye2FsaWduLWl0ZW1zOmZsZXgtZW5kO30KICAuYWxpZ24taWMuciBpOm50aC1jaGlsZCgxKXt3aWR0aDoxMDAlO30gLmFsaWduLWljLnIgaTpudGgtY2hpbGQoMil7d2lkdGg6NzAlO30gLmFsaWduLWljLnIgaTpudGgtY2hpbGQoMyl7d2lkdGg6ODUlO30KCiAgLyogQ29udmVydCBtb2RhbCAqLwogIC5tb2RhbC1iZ3twb3NpdGlvbjpmaXhlZDtpbnNldDowO2JhY2tncm91bmQ6cmdiYSgyMCwyOCwzOCwuNTUpO3otaW5kZXg6MTAwMDtkaXNwbGF5Om5vbmU7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7fQogIC5tb2RhbC1iZy5vbntkaXNwbGF5OmZsZXg7fQogIC5tb2RhbHtiYWNrZ3JvdW5kOiNmZmY7Ym9yZGVyLXJhZGl1czoxMHB4O3dpZHRoOjYyMHB4O21heC13aWR0aDo5NHZ3O21heC1oZWlnaHQ6OTB2aDtvdmVyZmxvdy15OmF1dG87Ym94LXNoYWRvdzowIDEycHggNDBweCByZ2JhKDAsMCwwLC4zKTt9CiAgLm1vZGFsLWh7YmFja2dyb3VuZDp2YXIoLS1heC1uYXZ5KTtjb2xvcjojZmZmO3BhZGRpbmc6MTRweCAxOHB4O2JvcmRlci1yYWRpdXM6MTBweCAxMHB4IDAgMDtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpzcGFjZS1iZXR3ZWVuO30KICAubW9kYWwtaCBoMntmb250LXNpemU6MTVweDtmb250LXdlaWdodDo3MDA7fQogIC5tb2RhbC1oIC54e2N1cnNvcjpwb2ludGVyO2ZvbnQtc2l6ZToyMHB4O2xpbmUtaGVpZ2h0OjE7b3BhY2l0eTouODt9CiAgLm1vZGFsLWggLng6aG92ZXJ7b3BhY2l0eToxO30KICAubW9kYWwtYntwYWRkaW5nOjE4cHg7fQoKICAvKiBJbnRlcmFjdGl2ZSBvbmJvYXJkaW5nIHRvdXIgKi8KICAudG91ci1vdmVybGF5e3Bvc2l0aW9uOmZpeGVkO2luc2V0OjA7ei1pbmRleDoyMDAwO3BvaW50ZXItZXZlbnRzOm5vbmU7fQogIC50b3VyLXNwb3R7cG9zaXRpb246Zml4ZWQ7Ym9yZGVyLXJhZGl1czo4cHg7Ym94LXNoYWRvdzowIDAgMCA5OTk5cHggcmdiYSgxNSwyMywzMiwuNik7dHJhbnNpdGlvbjp0b3AgLjI1cyBlYXNlLGxlZnQgLjI1cyBlYXNlLHdpZHRoIC4yNXMgZWFzZSxoZWlnaHQgLjI1cyBlYXNlO3BvaW50ZXItZXZlbnRzOm5vbmU7fQogIC50b3VyLXNwb3Qubm9uZXtib3gtc2hhZG93Om5vbmU7YmFja2dyb3VuZDpyZ2JhKDE1LDIzLDMyLC42KTtpbnNldDowO3RvcDowIWltcG9ydGFudDtsZWZ0OjAhaW1wb3J0YW50O3dpZHRoOjEwMCUhaW1wb3J0YW50O2hlaWdodDoxMDAlIWltcG9ydGFudDtib3JkZXItcmFkaXVzOjA7fQogIC50b3VyLWNhcmR7cG9zaXRpb246Zml4ZWQ7d2lkdGg6MzAwcHg7bWF4LXdpZHRoOjkydnc7YmFja2dyb3VuZDojZmZmO2JvcmRlci1yYWRpdXM6MTRweDsKICAgIGJveC1zaGFkb3c6MCAyMHB4IDUwcHggcmdiYSgxNSwyMywzMiwuMjgpLDAgMnB4IDhweCByZ2JhKDE1LDIzLDMyLC4wOCk7CiAgICBwb2ludGVyLWV2ZW50czphdXRvO3RyYW5zaXRpb246dG9wIC4yNXMgZWFzZSxsZWZ0IC4yNXMgZWFzZSx3aWR0aCAuMnMgZWFzZTtvdmVyZmxvdzpoaWRkZW47fQogIC50b3VyLWNhcmQtaHtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6ZmxleC1zdGFydDtnYXA6MTBweDtqdXN0aWZ5LWNvbnRlbnQ6c3BhY2UtYmV0d2VlbjtwYWRkaW5nOjE4cHggMThweCAycHg7fQogIC50b3VyLWNhcmQtaCAudG91ci1kb3R7ZmxleDpub25lO3dpZHRoOjhweDtoZWlnaHQ6OHB4O2JvcmRlci1yYWRpdXM6NTAlO2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO21hcmdpbi10b3A6N3B4O2JveC1zaGFkb3c6MCAwIDAgM3B4IHZhcigtLWF4LWdyZWVuLWxpZ2h0KTt9CiAgLnRvdXItY2FyZC1oIGg0e2ZsZXg6MTtmb250LXNpemU6MTZweDtmb250LXdlaWdodDo4MDA7Y29sb3I6dmFyKC0tYXgtbmF2eSk7bGluZS1oZWlnaHQ6MS4zNTt3b3JkLWJyZWFrOmtlZXAtYWxsO292ZXJmbG93LXdyYXA6YnJlYWstd29yZDtsZXR0ZXItc3BhY2luZzotLjFweDt9CiAgLnRvdXItY2FyZC1oIC54e2N1cnNvcjpwb2ludGVyO2ZvbnQtc2l6ZToyMHB4O2xpbmUtaGVpZ2h0OjE7Y29sb3I6I2I3YmVjNjtmbGV4Om5vbmU7cGFkZGluZzoycHg7Ym9yZGVyLXJhZGl1czo2cHg7dHJhbnNpdGlvbjouMTJzO30KICAudG91ci1jYXJkLWggLng6aG92ZXJ7Y29sb3I6IzU1NjtiYWNrZ3JvdW5kOiNmMmY0ZjY7fQogIC50b3VyLWNhcmQtYntwYWRkaW5nOjhweCAxOHB4IDRweDtmb250LXNpemU6MTNweDtsaW5lLWhlaWdodDoxLjc1O2NvbG9yOiM0YjU1NjM7d29yZC1icmVhazprZWVwLWFsbDtvdmVyZmxvdy13cmFwOmJyZWFrLXdvcmQ7fQogIC50b3VyLWNhcmQtYiBie2NvbG9yOiMxNzgwNTU7Zm9udC13ZWlnaHQ6NzAwO30KICAudG91ci1jYXJkLWZ7cGFkZGluZzoxNHB4IDE4cHggMThweDt9CiAgLnRvdXItcHJvZ3Jlc3N7aGVpZ2h0OjNweDtib3JkZXItcmFkaXVzOjNweDtiYWNrZ3JvdW5kOiNlZWYxZjQ7b3ZlcmZsb3c6aGlkZGVuO21hcmdpbi1ib3R0b206MTJweDt9CiAgLnRvdXItcHJvZ3Jlc3MtZmlsbHtoZWlnaHQ6MTAwJTtiYWNrZ3JvdW5kOmxpbmVhci1ncmFkaWVudCg5MGRlZyx2YXIoLS1heC1ncmVlbiksdmFyKC0tYXgtZ3JlZW4tZGFyaykpO2JvcmRlci1yYWRpdXM6M3B4O3RyYW5zaXRpb246d2lkdGggLjI1cyBlYXNlO30KICAudG91ci1mLXJvd3tkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpzcGFjZS1iZXR3ZWVuO2dhcDoxMHB4O30KICAudG91ci1zdGVwLW57Zm9udC1zaXplOjExLjVweDtjb2xvcjojOWFhM2FkO2ZvbnQtd2VpZ2h0OjcwMDtsZXR0ZXItc3BhY2luZzouMnB4O2ZsZXg6bm9uZTt9CiAgLnRvdXItZi1yaWdodHtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo2cHg7fQogIC50b3VyLXNraXB7Zm9udC1zaXplOjEycHg7Y29sb3I6IzlhYTNhZDt0ZXh0LWRlY29yYXRpb246bm9uZTttYXJnaW4tcmlnaHQ6NHB4O3doaXRlLXNwYWNlOm5vd3JhcDt9CiAgLnRvdXItc2tpcDpob3Zlcntjb2xvcjojNTU2O3RleHQtZGVjb3JhdGlvbjp1bmRlcmxpbmU7fQogIC50b3VyLWJ0bntwYWRkaW5nOjdweCAxNXB4O2JvcmRlci1yYWRpdXM6MjBweDtmb250LXNpemU6MTIuNXB4O2ZvbnQtd2VpZ2h0OjcwMDtjdXJzb3I6cG9pbnRlcjtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7dHJhbnNpdGlvbjouMTJzO30KICAudG91ci1idG4uZ2hvc3R7YmFja2dyb3VuZDojZmZmO2NvbG9yOiM1NTY7fQogIC50b3VyLWJ0bi5naG9zdDpob3ZlcntiYWNrZ3JvdW5kOiNmMmY0ZjY7fQogIC50b3VyLWJ0bi5wcmltYXJ5e2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbik7Y29sb3I6I2ZmZjtib3gtc2hhZG93OjAgMnB4IDZweCByZ2JhKDMwLDE1OCwxMDYsLjM1KTt9CiAgLnRvdXItYnRuLnByaW1hcnk6aG92ZXJ7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1kYXJrKTtib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7fQogIC50b3VyLWJ0bjpkaXNhYmxlZHtvcGFjaXR5Oi40O2N1cnNvcjpkZWZhdWx0O2JveC1zaGFkb3c6bm9uZTt9CiAgLnRvdXItY2FyZC1mIC5wdC1oaWRle2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjZweDtmb250LXNpemU6MTJweDtjb2xvcjojOGE5NGEwO21hcmdpbi1ib3R0b206MTJweDtjdXJzb3I6cG9pbnRlcjt9CiAgLnRhYnN7ZGlzcGxheTpmbGV4O2dhcDowO2JvcmRlci1ib3R0b206MnB4IHNvbGlkICNlZWU7bWFyZ2luLWJvdHRvbToxNHB4O30KICAudGFie3BhZGRpbmc6OXB4IDE2cHg7Y3Vyc29yOnBvaW50ZXI7Zm9udC1zaXplOjEzcHg7Y29sb3I6dmFyKC0tYXgtZ3JheSk7Ym9yZGVyLWJvdHRvbToycHggc29saWQgdHJhbnNwYXJlbnQ7bWFyZ2luLWJvdHRvbTotMnB4O2ZvbnQtd2VpZ2h0OjYwMDt9CiAgLnRhYi5vbntjb2xvcjp2YXIoLS1heC1ncmVlbik7Ym9yZGVyLWJvdHRvbS1jb2xvcjp2YXIoLS1heC1ncmVlbik7fQogIC5ndWlkZXtiYWNrZ3JvdW5kOiNmMGY3ZmY7Ym9yZGVyOjFweCBzb2xpZCAjY2ZlNGZiO2JvcmRlci1yYWRpdXM6NnB4O3BhZGRpbmc6MTJweCAxNHB4O2ZvbnQtc2l6ZToxMnB4O2xpbmUtaGVpZ2h0OjEuNztjb2xvcjojMzM0OyBtYXJnaW4tYm90dG9tOjE0cHg7fQogIC5ndWlkZS10b2dnbGUtYnRue3dpZHRoOjEwMCU7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6OHB4O2JhY2tncm91bmQ6I2YwZjdmZjtib3JkZXI6MXB4IHNvbGlkICNjZmU0ZmI7Ym9yZGVyLXJhZGl1czo2cHg7cGFkZGluZzoxMHB4IDE0cHg7Zm9udC1zaXplOjEyLjVweDtmb250LXdlaWdodDo3MDA7Y29sb3I6IzFmNGE3NTtjdXJzb3I6cG9pbnRlcjttYXJnaW4tYm90dG9tOjA7dHJhbnNpdGlvbjpiYWNrZ3JvdW5kIC4xMnM7fQogIC5ndWlkZS10b2dnbGUtYnRuOmhvdmVye2JhY2tncm91bmQ6I2UzZjBmZDt9CiAgLmd1aWRlLXRvZ2dsZS1pY3tmb250LXNpemU6MTFweDtjb2xvcjojMWU3OGQ2O3RyYW5zaXRpb246dHJhbnNmb3JtIC4xNXM7ZmxleDpub25lO30KICAuZ3VpZGUtdG9nZ2xlLWJ0biArIC5ndWlkZXttYXJnaW4tdG9wOjA7Ym9yZGVyLXRvcDpub25lO2JvcmRlci1yYWRpdXM6MCAwIDZweCA2cHg7fQogIC5ndWlkZS5wdXJwbGV7YmFja2dyb3VuZDojZjVmMmZmO2JvcmRlci1jb2xvcjojZGVkNGZmO30KICAuZ3VpZGUgYntjb2xvcjp2YXIoLS1heC1uYXZ5KTt9CiAgLmd1aWRlIG9se21hcmdpbjo2cHggMCAwIDE4cHg7fQogIC5ndWlkZSAud2Fybntjb2xvcjojYjQ1MzA5O2ZvbnQtc2l6ZToxMXB4O21hcmdpbi10b3A6NnB4O2Rpc3BsYXk6YmxvY2s7fQogIC5ndWlkZSAudGlwbGluZXtkaXNwbGF5OmJsb2NrO21hcmdpbi10b3A6OHB4O3BhZGRpbmc6N3B4IDlweDtiYWNrZ3JvdW5kOiNmZmY7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6NXB4O2ZvbnQtc2l6ZToxMS41cHg7Y29sb3I6IzRiNTU2MztsaW5lLWhlaWdodDoxLjY7fQogIC5maWVsZHttYXJnaW4tYm90dG9tOjEycHg7fQogIC5maWVsZCBsYWJlbHtkaXNwbGF5OmJsb2NrO2ZvbnQtc2l6ZToxMnB4O2NvbG9yOnZhcigtLWF4LW5hdnkpO2ZvbnQtd2VpZ2h0OjYwMDttYXJnaW4tYm90dG9tOjVweDt9CiAgLmZpZWxkIGlucHV0W3R5cGU9dGV4dF0sLmZpZWxkIGlucHV0W3R5cGU9cGFzc3dvcmRde3dpZHRoOjEwMCU7cGFkZGluZzo4cHggMTBweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo1cHg7Zm9udC1zaXplOjEycHg7fQogIC5maWVsZCB0ZXh0YXJlYXt3aWR0aDoxMDAlO3BhZGRpbmc6OHB4IDEwcHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6NXB4O2ZvbnQtc2l6ZToxMnB4O2ZvbnQtZmFtaWx5OmluaGVyaXQ7fQogIC5idG4tZ2hvc3Qtc217YmFja2dyb3VuZDojZWVmMWY0O2NvbG9yOnZhcigtLWF4LW5hdnkpO2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtwYWRkaW5nOjZweCAxMnB4O2JvcmRlci1yYWRpdXM6NXB4O2ZvbnQtc2l6ZToxMnB4O2ZvbnQtd2VpZ2h0OjYwMDtjdXJzb3I6cG9pbnRlcjttYXJnaW4tdG9wOjZweDt9CiAgLmJ0bi1naG9zdC1zbTpob3ZlcntiYWNrZ3JvdW5kOiNlMmU2ZWE7fQogIC5idG4tY2xhdWRlLXNte2JhY2tncm91bmQ6I2Q5Nzc1Nztjb2xvcjojZmZmO2JvcmRlcjoxcHggc29saWQgI2M4NjU0NDtwYWRkaW5nOjZweCAxMnB4O2JvcmRlci1yYWRpdXM6NXB4O2ZvbnQtc2l6ZToxMnB4O2ZvbnQtd2VpZ2h0OjYwMDtjdXJzb3I6cG9pbnRlcjttYXJnaW4tdG9wOjZweDttYXJnaW4tcmlnaHQ6NnB4O30KICAuYnRuLWNsYXVkZS1zbTpob3ZlcntiYWNrZ3JvdW5kOiNjODY1NDQ7fQogIC5kcm9wLXpvbmV7Ym9yZGVyOjJweCBkYXNoZWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjhweDtwYWRkaW5nOjI2cHg7dGV4dC1hbGlnbjpjZW50ZXI7Y29sb3I6dmFyKC0tYXgtZ3JheSk7Y3Vyc29yOnBvaW50ZXI7dHJhbnNpdGlvbjouMTVzO2JhY2tncm91bmQ6I2ZhZmJmYzt9CiAgLmRyb3Atem9uZTpob3ZlciwuZHJvcC16b25lLmhvdmVye2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbik7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1saWdodCk7Y29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7fQogIC5kcm9wLXpvbmUgLmJpZ3tmb250LXNpemU6MjhweDttYXJnaW4tYm90dG9tOjZweDt9CiAgLnByZXZpZXd7bWFyZ2luLXRvcDoxMnB4O3RleHQtYWxpZ246Y2VudGVyO30KICAucHJldmlldyBpbWd7bWF4LXdpZHRoOjEwMCU7bWF4LWhlaWdodDoyMjBweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo2cHg7fQogIC5tb2RhbC1me2Rpc3BsYXk6ZmxleDtnYXA6OHB4O2p1c3RpZnktY29udGVudDpmbGV4LWVuZDtwYWRkaW5nOjE0cHggMThweDtib3JkZXItdG9wOjFweCBzb2xpZCAjZWVlO30KICAvKiDsnoTsi5wg7J6R7JeFIOuqqeuhnShkcmFmdExpc3RCZykgLSDsoIDsnqXtlZjsp4Ag7JWK6rOgIOuCqOqyqOuRlCDsnpHsl4Xrk6TsnYQg7ZWcIOykhOyUqSDrs7Tsl6zspIDri6QuIOuqqeuhnSDsnpDssrTripQKICAgICBtb2RhbC1i66W8IOq3uOuMgOuhnCDsk7DrkJgo7JyE7JeQ7IScIHBhZGRpbmc6MOycvOuhnCDruYTsm4zrkaApIOqwgSDspITsnbQg7J6Q6riwIOuqq+ydmCDsl6zrsLHsnYQg6rCW64qU64ukLiAqLwogIC5kcmFmdC1yb3d7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6OHB4O3BhZGRpbmc6MTBweCAxNnB4O2JvcmRlci1ib3R0b206MXB4IHNvbGlkICNmMGYyZjQ7fQogIC5kcmFmdC1yb3ctY3VycmVudHtiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuLWxpZ2h0KTt9CiAgLmRyYWZ0LWN1cnJlbnQtYmFkZ2V7ZGlzcGxheTppbmxpbmUtYmxvY2s7bWFyZ2luLWxlZnQ6NnB4O3BhZGRpbmc6MXB4IDdweDtib3JkZXItcmFkaXVzOjIwcHg7Zm9udC1zaXplOjEwcHg7Zm9udC13ZWlnaHQ6NzAwO2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO2NvbG9yOiNmZmY7dmVydGljYWwtYWxpZ246bWlkZGxlO30KICAuZHJhZnQtcm93OmhvdmVye2JhY2tncm91bmQ6I2Y3ZjlmYjt9CiAgLmRyYWZ0LXJvdy1tYWlue2ZsZXg6MTttaW4td2lkdGg6MDtjdXJzb3I6cG9pbnRlcjt9CiAgLmRyYWZ0LXJvdy10aXRsZXtmb250LXNpemU6MTNweDtjb2xvcjojMWYyOTM3O292ZXJmbG93OmhpZGRlbjt0ZXh0LW92ZXJmbG93OmVsbGlwc2lzO3doaXRlLXNwYWNlOm5vd3JhcDt9CiAgLmRyYWZ0LXJvdy10aW1le2ZvbnQtc2l6ZToxMXB4O2NvbG9yOiM5YWE0YWQ7bWFyZ2luLXRvcDoycHg7fQogIC5kcmFmdC1yb3ctZGVse2ZvbnQtc2l6ZToxMXB4O3BhZGRpbmc6NHB4IDhweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7YmFja2dyb3VuZDojZmZmO2JvcmRlci1yYWRpdXM6NHB4O2NvbG9yOiM2YjcyODA7Y3Vyc29yOnBvaW50ZXI7ZmxleDpub25lO30KICAuZHJhZnQtcm93LWRlbDpob3ZlcntiYWNrZ3JvdW5kOiNmZGVjZWM7Ym9yZGVyLWNvbG9yOiNmMGM5Yzk7Y29sb3I6I2MwMzkyYjt9CiAgLmRyYWZ0LWVtcHR5e3BhZGRpbmc6MzJweCAxNnB4O3RleHQtYWxpZ246Y2VudGVyO2NvbG9yOiM5YWE0YWQ7Zm9udC1zaXplOjEzcHg7fQogIC5tb2RhbC1mIGJ1dHRvbntwYWRkaW5nOjhweCAxOHB4O2JvcmRlci1yYWRpdXM6NXB4O2ZvbnQtc2l6ZToxM3B4O2N1cnNvcjpwb2ludGVyO2ZvbnQtd2VpZ2h0OjYwMDtib3JkZXI6bm9uZTt9CiAgLmJ0bi1wcmltYXJ5e2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO2NvbG9yOiNmZmY7fQogIC5idG4tcHJpbWFyeTpob3ZlcntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuLWRhcmspO30KICAuYnRuLXByaW1hcnk6ZGlzYWJsZWR7YmFja2dyb3VuZDojYThjOWI5O2N1cnNvcjpub3QtYWxsb3dlZDt9CiAgLmJ0bi1jYW5jZWx7YmFja2dyb3VuZDojZWVmMWY0O2NvbG9yOiM1NTU7fQogIC5zdGF0dXN7Zm9udC1zaXplOjEycHg7Y29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7bWFyZ2luLXRvcDoxMHB4O3RleHQtYWxpZ246Y2VudGVyO21pbi1oZWlnaHQ6MThweDt9CiAgLnN0YXR1cy5lcnJ7Y29sb3I6dmFyKC0tYXgtcmVxKTt9CiAgLnNwaW5uZXJ7ZGlzcGxheTppbmxpbmUtYmxvY2s7d2lkdGg6MTRweDtoZWlnaHQ6MTRweDtib3JkZXI6MnB4IHNvbGlkICNjZmU0ZDk7Ym9yZGVyLXRvcC1jb2xvcjp2YXIoLS1heC1ncmVlbik7Ym9yZGVyLXJhZGl1czo1MCU7YW5pbWF0aW9uOnNwaW4gLjdzIGxpbmVhciBpbmZpbml0ZTt2ZXJ0aWNhbC1hbGlnbjotMnB4O21hcmdpbi1yaWdodDo2cHg7fQogIEBrZXlmcmFtZXMgc3Bpbnt0b3t0cmFuc2Zvcm06cm90YXRlKDM2MGRlZyk7fX0KCiAgLyogLS0tLSBDb252ZXJ0IG1vZGFsOiBiZWdpbm5lci1mcmllbmRseSBzdGVwIFVJIC0tLS0gKi8KICAuY3YtaW50cm97YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1saWdodCk7Ym9yZGVyOjFweCBzb2xpZCAjYmZlM2QyO2JvcmRlci1yYWRpdXM6OHB4O3BhZGRpbmc6MTNweCAxNXB4O21hcmdpbi1ib3R0b206MTZweDtmb250LXNpemU6MTIuNXB4O2xpbmUtaGVpZ2h0OjEuNztjb2xvcjojMmY1MzQ2O30KICAuY3YtaW50cm8gYntjb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTt9CiAgLmN2LWludHJvIC5jdi1mcmVle2Rpc3BsYXk6aW5saW5lLWJsb2NrO2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO2NvbG9yOiNmZmY7Zm9udC1zaXplOjExcHg7Zm9udC13ZWlnaHQ6NzAwO3BhZGRpbmc6MnB4IDhweDtib3JkZXItcmFkaXVzOjIwcHg7bWFyZ2luLWxlZnQ6NHB4O3ZlcnRpY2FsLWFsaWduOjFweDt9CiAgLmN2LXN0ZXBze2Rpc3BsYXk6ZmxleDtmbGV4LWRpcmVjdGlvbjpjb2x1bW47Z2FwOjEwcHg7bWFyZ2luLWJvdHRvbToxNnB4O30KICAuY3Ytc3RlcHtwb3NpdGlvbjpyZWxhdGl2ZTtkaXNwbGF5OmZsZXg7Z2FwOjEycHg7YWxpZ24taXRlbXM6ZmxleC1zdGFydDtiYWNrZ3JvdW5kOiNmZmY7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6OXB4O3BhZGRpbmc6MTNweCAxNXB4IDE0cHg7dHJhbnNpdGlvbjpib3JkZXItY29sb3IgLjE1cyxib3gtc2hhZG93IC4xNXM7fQogIC5jdi1zdGVwLm9ue2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbik7Ym94LXNoYWRvdzowIDAgMCAycHggcmdiYSgzMCwxNTgsMTA2LC4xMyk7fQogIC5jdi1zdGVwLmRvbmV7Ym9yZGVyLWNvbG9yOiNiZmUzZDI7YmFja2dyb3VuZDojZmJmZWZjO30KICAuY3Ytc3RlcC1udW17ZmxleDpub25lO3dpZHRoOjI2cHg7aGVpZ2h0OjI2cHg7Ym9yZGVyLXJhZGl1czo1MCU7YmFja2dyb3VuZDp2YXIoLS1heC1uYXZ5KTtjb2xvcjojZmZmO2ZvbnQtc2l6ZToxM3B4O2ZvbnQtd2VpZ2h0OjcwMDtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7bWFyZ2luLXRvcDoxcHg7dHJhbnNpdGlvbjpiYWNrZ3JvdW5kIC4xNXM7fQogIC5jdi1zdGVwLm9uIC5jdi1zdGVwLW51bXtiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuKTt9CiAgLmN2LXN0ZXAuZG9uZSAuY3Ytc3RlcC1udW17YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7fQogIC5jdi1zdGVwLWJvZHl7ZmxleDoxO21pbi13aWR0aDowO30KICAuY3Ytc3RlcC10aXRsZXtmb250LXNpemU6MTNweDtmb250LXdlaWdodDo3MDA7Y29sb3I6dmFyKC0tYXgtbmF2eSk7bWFyZ2luLWJvdHRvbToycHg7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NnB4O2ZsZXgtd3JhcDp3cmFwO30KICAuY3Ytc3RlcC1kZXNje2ZvbnQtc2l6ZToxMS41cHg7Y29sb3I6dmFyKC0tYXgtZ3JheSk7bGluZS1oZWlnaHQ6MS42O30KICAuY3Ytc3RlcC1hY3Rpb25ze21hcmdpbi10b3A6OXB4O2Rpc3BsYXk6ZmxleDtnYXA6N3B4O2ZsZXgtd3JhcDp3cmFwO30KICAuY3YtYnRuLXByaW1hcnl7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7Y29sb3I6I2ZmZjtib3JkZXI6bm9uZTtwYWRkaW5nOjhweCAxNXB4O2JvcmRlci1yYWRpdXM6NnB4O2ZvbnQtc2l6ZToxMi41cHg7Zm9udC13ZWlnaHQ6NzAwO2N1cnNvcjpwb2ludGVyO2Rpc3BsYXk6aW5saW5lLWZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo2cHg7dHJhbnNpdGlvbjpiYWNrZ3JvdW5kIC4xMnM7fQogIC5jdi1idG4tcHJpbWFyeTpob3ZlcntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuLWRhcmspO30KICAuY3YtYnRuLWNsYXVkZXtiYWNrZ3JvdW5kOiNkOTc3NTc7Y29sb3I6I2ZmZjtib3JkZXI6bm9uZTtwYWRkaW5nOjhweCAxNXB4O2JvcmRlci1yYWRpdXM6NnB4O2ZvbnQtc2l6ZToxMi41cHg7Zm9udC13ZWlnaHQ6NzAwO2N1cnNvcjpwb2ludGVyO2Rpc3BsYXk6aW5saW5lLWZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo2cHg7dHJhbnNpdGlvbjpiYWNrZ3JvdW5kIC4xMnM7fQogIC5jdi1idG4tY2xhdWRlOmhvdmVye2JhY2tncm91bmQ6I2M4NjU0NDt9CiAgLmN2LWJ0bi1zb2Z0e2JhY2tncm91bmQ6I2VlZjFmNDtjb2xvcjp2YXIoLS1heC1uYXZ5KTtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7cGFkZGluZzo4cHggMTNweDtib3JkZXItcmFkaXVzOjZweDtmb250LXNpemU6MTIuNXB4O2ZvbnQtd2VpZ2h0OjYwMDtjdXJzb3I6cG9pbnRlcjtkaXNwbGF5OmlubGluZS1mbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NXB4O3RyYW5zaXRpb246YmFja2dyb3VuZCAuMTJzO30KICAuY3YtYnRuLXNvZnQ6aG92ZXJ7YmFja2dyb3VuZDojZTJlNmVhO30KICAuY3YtYnRuLWNvcHl7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbik7Y29sb3I6I2ZmZjtib3JkZXI6bm9uZTtwYWRkaW5nOjhweCAxNXB4O2JvcmRlci1yYWRpdXM6NnB4O2ZvbnQtc2l6ZToxMi41cHg7Zm9udC13ZWlnaHQ6NzAwO2N1cnNvcjpwb2ludGVyO2Rpc3BsYXk6aW5saW5lLWZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo2cHg7dHJhbnNpdGlvbjpiYWNrZ3JvdW5kIC4xMnMsYm94LXNoYWRvdyAuMTJzO2JveC1zaGFkb3c6MCAwIDAgM3B4IHJnYmEoMzAsMTU4LDEwNiwuMTYpO30KICAuY3YtYnRuLWNvcHk6aG92ZXJ7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1kYXJrKTtib3gtc2hhZG93OjAgMCAwIDNweCByZ2JhKDMwLDE1OCwxMDYsLjI0KTt9CiAgLmN2LWJ0bi1iYWRnZXtiYWNrZ3JvdW5kOnJnYmEoMjU1LDI1NSwyNTUsLjI4KTtwYWRkaW5nOjFweCA2cHg7Ym9yZGVyLXJhZGl1czo5OTlweDtmb250LXNpemU6OS41cHg7Zm9udC13ZWlnaHQ6ODAwO2xldHRlci1zcGFjaW5nOi4ycHg7fQogIC5jdi1jb3B5LXRpcHttYXJnaW4tdG9wOjhweDtwYWRkaW5nOjdweCAxMXB4O2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tbGlnaHQpO2JvcmRlcjoxcHggc29saWQgI2M5ZTZkODtib3JkZXItcmFkaXVzOjdweDtmb250LXNpemU6MTEuNXB4O2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO2xpbmUtaGVpZ2h0OjEuNjt9CiAgLmN2LXBhc3Rle3dpZHRoOjEwMCU7cGFkZGluZzoxMHB4IDEycHg7Ym9yZGVyOjEuNXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo3cHg7Zm9udC1zaXplOjEycHg7Zm9udC1mYW1pbHk6dWktbW9ub3NwYWNlLFNGTW9uby1SZWd1bGFyLE1lbmxvLG1vbm9zcGFjZTtsaW5lLWhlaWdodDoxLjU7cmVzaXplOnZlcnRpY2FsO3RyYW5zaXRpb246Ym9yZGVyLWNvbG9yIC4xNXMsYm94LXNoYWRvdyAuMTVzO30KICAuY3YtcGFzdGU6Zm9jdXN7b3V0bGluZTpub25lO2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbik7Ym94LXNoYWRvdzowIDAgMCAycHggcmdiYSgzMCwxNTgsMTA2LC4xMik7fQogIC5jdi1wYXN0ZS5maWxsZWR7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuKTtiYWNrZ3JvdW5kOiNmYmZlZmM7fQogIC5jdi1vcHRyb3d7bWFyZ2luLXRvcDoxMHB4O2ZvbnQtc2l6ZToxMS41cHg7fQogIC5jdi1vcHRyb3cgbGFiZWx7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6N3B4O2N1cnNvcjpwb2ludGVyO2NvbG9yOiM0YjU1NjM7bGluZS1oZWlnaHQ6MS41O2ZvbnQtd2VpZ2h0OjQwMDt9CiAgLmN2LWRldGFpbHttYXJnaW4tdG9wOjhweDtmb250LXNpemU6MTEuNXB4O30KICAuY3YtZGV0YWlsIHN1bW1hcnl7Y3Vyc29yOnBvaW50ZXI7Y29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7Zm9udC13ZWlnaHQ6NjAwO2xpc3Qtc3R5bGU6bm9uZTtkaXNwbGF5OmlubGluZS1mbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6NXB4O3VzZXItc2VsZWN0Om5vbmU7fQogIC5jdi1kZXRhaWwgc3VtbWFyeTo6LXdlYmtpdC1kZXRhaWxzLW1hcmtlcntkaXNwbGF5Om5vbmU7fQogIC5jdi1kZXRhaWwgc3VtbWFyeTo6YmVmb3Jle2NvbnRlbnQ6J+KWuCc7Zm9udC1zaXplOjEwcHg7dHJhbnNpdGlvbjp0cmFuc2Zvcm0gLjE1czt9CiAgLmN2LWRldGFpbFtvcGVuXSBzdW1tYXJ5OjpiZWZvcmV7dHJhbnNmb3JtOnJvdGF0ZSg5MGRlZyk7fQogIC5jdi1kZXRhaWwtYm9keXttYXJnaW4tdG9wOjhweDtwYWRkaW5nOjExcHggMTNweDtiYWNrZ3JvdW5kOiNmN2Y5ZmI7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6N3B4O2NvbG9yOiM0YjU1NjM7bGluZS1oZWlnaHQ6MS43O30KICAuY3YtZGV0YWlsLWJvZHkgLmN2LXByb21wdHttYXJnaW4tdG9wOjhweDt3aWR0aDoxMDAlO3BhZGRpbmc6OHB4IDEwcHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6NXB4O2ZvbnQtc2l6ZToxMXB4O2ZvbnQtZmFtaWx5OnVpLW1vbm9zcGFjZSxtb25vc3BhY2U7YmFja2dyb3VuZDojZmZmO2NvbG9yOiM1NTU7fQogIC5jdi10aXB7ZGlzcGxheTpmbGV4O2dhcDo3cHg7bWFyZ2luLXRvcDoxMnB4O3BhZGRpbmc6OXB4IDEycHg7YmFja2dyb3VuZDojZmZmZGY1O2JvcmRlcjoxcHggc29saWQgI2YwZTZjODtib3JkZXItcmFkaXVzOjdweDtmb250LXNpemU6MTEuNXB4O2NvbG9yOiM3YTZhM2E7bGluZS1oZWlnaHQ6MS42O30KICAuY3Ytc3RhdHVzLWJveHttYXJnaW4tdG9wOjRweDtwYWRkaW5nOjExcHggMTNweDtib3JkZXItcmFkaXVzOjdweDtmb250LXNpemU6MTJweDtsaW5lLWhlaWdodDoxLjY7dGV4dC1hbGlnbjpsZWZ0O2Rpc3BsYXk6bm9uZTt9CiAgLmN2LXN0YXR1cy1ib3guc2hvd3tkaXNwbGF5OmJsb2NrO30KICAuY3Ytc3RhdHVzLWJveC5va3tiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuLWxpZ2h0KTtib3JkZXI6MXB4IHNvbGlkICNiZmUzZDI7Y29sb3I6dmFyKC0tYXgtZ3JlZW4tZGFyayk7fQogIC5jdi1zdGF0dXMtYm94LmVycntiYWNrZ3JvdW5kOiNmZGYwZjA7Ym9yZGVyOjFweCBzb2xpZCAjZjNjOWNiO2NvbG9yOiNhMzM4M2M7fQogIC5jdi1zdGF0dXMtYm94LmluZm97YmFja2dyb3VuZDojZjBmN2ZmO2JvcmRlcjoxcHggc29saWQgI2NmZTRmYjtjb2xvcjojMWY0YTc1O30KICAuY3Ytc3RhdHVzLWJveCBie2ZvbnQtd2VpZ2h0OjcwMDt9CiAgLmN2LXN0YXR1cy1ib3ggLmN2LWZpeHttYXJnaW4tdG9wOjVweDtmb250LXNpemU6MTEuNXB4O29wYWNpdHk6LjkyO30KCiAgLyogLS0tLSBFeHBvcnQtbW9kZSBpbnRlcmFjdGl2ZSBjb21wb25lbnQgc3RhdGVzIChvbmx5IHVzZWQgYnkgZXhwb3J0ZWQgSFRNTCBtYXJrdXApIC0tLS0gKi8KICAuYXgtaW5wdXQteCwuYXgtZGF0ZS14e3dpZHRoOjEwMCU7aGVpZ2h0OjEwMCU7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6M3B4O30KICAuYXgtaW5wdXQtZWx7ZmxleDoxO21pbi13aWR0aDowO2hlaWdodDoxMDAlO2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjRweDtiYWNrZ3JvdW5kOiNmZmY7cGFkZGluZzowIDhweDtmb250LXNpemU6MTJweDtjb2xvcjojMTExO291dGxpbmU6bm9uZTtmb250LWZhbWlseTppbmhlcml0O3RyYW5zaXRpb246Ym9yZGVyLWNvbG9yIC4xMnMsYm94LXNoYWRvdyAuMTJzO30KICAuYXgtaW5wdXQtZWw6aG92ZXJ7Ym9yZGVyLWNvbG9yOiM5ZmI4Y2U7fQogIC5heC1pbnB1dC1lbDpmb2N1c3tib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4pO2JveC1zaGFkb3c6MCAwIDAgMnB4IHJnYmEoMzAsMTU4LDEwNiwuMTIpO30KICAuYXgtaW5wdXQteC5ybyAuYXgtaW5wdXQtZWx7YmFja2dyb3VuZDp2YXIoLS1heC1yZWFkb25seS1iZyk7Y29sb3I6IzU1NTtjdXJzb3I6bm90LWFsbG93ZWQ7fQogIC5heC1pbnB1dC14LnJlcXVpcmVkIC5heC1pbnB1dC1lbHtiYWNrZ3JvdW5kOnZhcigtLWF4LXJlcXVpcmVkLWJnKTt9CiAgLyog64Kg7KecKC5heC1kYXRlLWVsKeuKlCDsnbTsoJwg7ZWt7IOBIOyIqOq5gCjsnITsqr0gLmF4LWRhdGUtZWwsLnNjdGwtZGF0ZS1lbCDqt5zsuZkpIC0g7Iuk7KCc66GcIOuztOydtOuKlCDqsbQKICAgICAuYXgtZGF0ZS1kaXNwKOuUlOyekOyduCDtmZTrqbTqs7wg6rCZ7J2AIC5heC1kYXRlIOuwleyKpCvri6zroKUg7JWE7J207L2YIOuqqOyWkSnsnbTrr4DroZwsIOq3uCBkaXNw6rCAIOydtCBmbGV4CiAgICAg7KSE7JeQ7IScIOuCqOuKlCDtj63snYQg7KCV7ZmV7Z6IIOywqOyngO2VmOuPhOuhnSBmbGV4OjHrp4wg7LaU6rCA66GcIOyngOygle2VnOuLpC4gcm8v7ZWE7IiYIOuwsOqyveyDieydgCAuYXgtZGF0ZS1kaXNw7JeQCiAgICAg7J2066+4IHJlYWRvbmx5L3JlcXVpcmVkIO2BtOuemOyKpOulvCDqt7jrjIDroZwg67aZ7Jes7IScIC5heC1kYXRlLnJlYWRvbmx5Ly5heC1kYXRlLnJlcXVpcmVkKOuUlOyekOyduAogICAgIO2ZlOuptOqzvCDqsJnsnYAg6rec7LmZKeuhnCDsspjrpqzrkJjrr4DroZwg7Jes6riw7IScIOuUsOuhnCDsp4DsoJXtlaAg6rKMIOyXhuuLpC4gKi8KICAuYXgtZGF0ZS14IC5heC1kYXRlLWRpc3B7ZmxleDoxO21pbi13aWR0aDowO30KICAuYXgtZGF0ZXJhbmdlLXh7d2lkdGg6MTAwJTtoZWlnaHQ6MTAwJTtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo1cHg7fQogIC5kci1zZXB7Y29sb3I6dmFyKC0tYXgtZ3JheSk7Zm9udC1zaXplOjEycHg7ZmxleDpub25lO30KICAuYXgtY29tYm8uaW50ZXJhY3RpdmUsLnNjdGwuY29tYm8uaW50ZXJhY3RpdmV7Y3Vyc29yOnBvaW50ZXI7dHJhbnNpdGlvbjpib3JkZXItY29sb3IgLjEyczt9CiAgLmF4LWNvbWJvLmludGVyYWN0aXZlOmhvdmVyLC5zY3RsLmNvbWJvLmludGVyYWN0aXZlOmhvdmVye2JvcmRlci1jb2xvcjojOWZiOGNlO30KICAuYXgtY29tYm8uaW50ZXJhY3RpdmUub3Blbiwuc2N0bC5jb21iby5pbnRlcmFjdGl2ZS5vcGVue2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbik7fQogIC5heC1jb21ibzo6YWZ0ZXJ7dHJhbnNpdGlvbjp0cmFuc2Zvcm0gLjE1czt9CiAgLmF4LWNvbWJvLmludGVyYWN0aXZlLm9wZW46OmFmdGVye3RyYW5zZm9ybTpyb3RhdGUoMTgwZGVnKTt9CiAgLmF4LWNvbWJvLnJve2N1cnNvcjpkZWZhdWx0O2JhY2tncm91bmQ6dmFyKC0tYXgtcmVhZG9ubHktYmcpO2NvbG9yOiM1NTU7fQogIC5heC1jaGVjay5pbnRlcmFjdGl2ZSwuYXgtcmFkaW8uaW50ZXJhY3RpdmV7Y3Vyc29yOnBvaW50ZXI7fQogIC5heC1jaGVjay5pbnRlcmFjdGl2ZSAuYm94e3RyYW5zaXRpb246YmFja2dyb3VuZCAuMTJzLGJvcmRlci1jb2xvciAuMTJzO30KICAuYXgtY2hlY2suaW50ZXJhY3RpdmU6aG92ZXIgLmJveHtib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4pO30KICAuYXgtY2hlY2suaW50ZXJhY3RpdmUgLmJveC5vbntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuKTtib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4pO3Bvc2l0aW9uOnJlbGF0aXZlO30KICAuYXgtY2hlY2suaW50ZXJhY3RpdmUgLmJveC5vbjo6YWZ0ZXJ7Y29udGVudDoi4pyTIjtwb3NpdGlvbjphYnNvbHV0ZTtpbnNldDowO2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjtjb2xvcjojZmZmO2ZvbnQtc2l6ZToxMHB4O2xpbmUtaGVpZ2h0OjE7fQogIC5heC1yYWRpby5pbnRlcmFjdGl2ZSAuZG90e3RyYW5zaXRpb246Ym9yZGVyLWNvbG9yIC4xMnM7fQogIC5heC1yYWRpby5pbnRlcmFjdGl2ZTpob3ZlciAuZG90e2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTt9CiAgLmF4LXJhZGlvLmludGVyYWN0aXZlIC5kb3Q6OmFmdGVye2Rpc3BsYXk6bm9uZTt9CiAgLmF4LXJhZGlvLmludGVyYWN0aXZlLm9uIC5kb3Q6OmFmdGVye2Rpc3BsYXk6YmxvY2s7fQogIC5zcmFkaW8gLm9wdC5pbnRlcmFjdGl2ZXtjdXJzb3I6cG9pbnRlcjt9CiAgLnNyYWRpbyAub3B0LmludGVyYWN0aXZlOmhvdmVyIC5kb3R7Ym9yZGVyLWNvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO30KICAuYXgtYnRue2N1cnNvcjpwb2ludGVyO3RyYW5zaXRpb246YmFja2dyb3VuZCAuMTJzLHRyYW5zZm9ybSAuMDVzLGJveC1zaGFkb3cgLjEyczt9CiAgLmF4LWJ0bjpob3ZlcntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuLWRhcmspO30KICAuYXgtYnRuLm91dGxpbmU6aG92ZXJ7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1saWdodCk7fQogIC5heC1idG46YWN0aXZle3RyYW5zZm9ybTpzY2FsZSguOTcpO30KICAuZ2J0bntjdXJzb3I6cG9pbnRlcjt0cmFuc2l0aW9uOmJhY2tncm91bmQgLjEycyxib3JkZXItY29sb3IgLjEyczt9CiAgLmdidG46bm90KC5kaXNhYmxlZCk6aG92ZXJ7YmFja2dyb3VuZDojZDNlZmU3O2JvcmRlci1jb2xvcjojZDNlZmU3O30KICAuYXgtZ3JpZCAuZ3IuaG92ZXJhYmxle3RyYW5zaXRpb246YmFja2dyb3VuZCAuMXM7fQogIC5heC1ncmlkIC5nci5ob3ZlcmFibGU6aG92ZXJ7YmFja2dyb3VuZDojZjNmOWY2O30KICAvKiBsZXQgYSBjb21ibyBkcm9wZG93biBlc2NhcGUgdGhlIHBhbmVsIGluc3RlYWQgb2YgYmVpbmcgY2xpcHBlZCBieSBvdmVyZmxvdzpoaWRkZW4gKi8KICAuYXgtc2VhcmNoe292ZXJmbG93OnZpc2libGU7fQogIC5heC1zZWFyY2ggLnNmaWVsZHN7b3ZlcmZsb3c6dmlzaWJsZTt9CiAgLmF4LXNlYXJjaCAuc2N0bC5jb21iby5pbnRlcmFjdGl2ZXtwb3NpdGlvbjpyZWxhdGl2ZTt9CiAgLmF4LXNlYXJjaCAuc2N0bC5jb21iby5pbnRlcmFjdGl2ZS5vcGVue3otaW5kZXg6NjAwO30KICAuc2N0bC5kYXRlLXgsLnNjdGwudGV4dC14e3BhZGRpbmc6MDt9CiAgLnNjdGwtdGV4dC1lbHt3aWR0aDoxMDAlO2hlaWdodDoxMDAlO2JvcmRlcjpub25lO291dGxpbmU6bm9uZTtiYWNrZ3JvdW5kOnRyYW5zcGFyZW50O2ZvbnQtc2l6ZToxMnB4O2NvbG9yOiMxMTE7cGFkZGluZzowIDhweDtmb250LWZhbWlseTppbmhlcml0O30KICAvKiAuc2N0bC1kYXRlLWVs64+EIOychOyqvSguYXgtZGF0ZS1lbCwuc2N0bC1kYXRlLWVsKeyXkOyEnCDsnbTrr7gg7ZWt7IOBIOyIqOqyqOuRkOyXiOuLpCAtIOyLpOygnOuhnCDrs7TsnbTripQg6rG0CiAgICAg67CU66GcIOuLpOydjCDtmJXsoJzsnbggLnNjdGwtZGF0ZS1kaXNwKOuUlOyekOyduCDtmZTrqbTqs7wg6rCZ7J2AIC5zY3RsLmRhdGUg67CV7IqkK+uLrOugpSDslYTsnbTsvZgg66qo7JaRKeuLpC4KICAgICDsnbQgZGlzcOqwgCDrkZAg7Lm4KOyLnOyekeydvC/sooXro4zsnbwp7JeQ7IScIOuCqOuKlCDtj63snYQg7KCV7ZmV7Z6IIOuCmOuIoCDqsJbrj4TroZ0gZmxleDox7J2EIOykmOyVvCDtlZzri6QgLSDsmIjsoITsl5QKICAgICDsnbQg6rec7LmZ7J20IOuztOydtOuKlCDsmpTshozsmIDrjZggLnNjdGwtZGF0ZS1lbOyXkCDqsbjroKQg7J6I7JeI64qU642wLCDsiKjquYAg7LKY66as66GcIOuwlOq+uOuptOyEnCDsg4jroZwg7IOd6ri0CiAgICAgLnNjdGwtZGF0ZS1kaXNw7JeQIOyYruqyqCDri6TripQg6rG4IOq5nOu5oe2VtOyEnCDtj60g6rOE7IKw7J20IOyghO2YgCDslYgg65CY6rOgIOyeiOyXiOuLpCjqt7gg6rKw6rO8IOq4gOyekOqwgCDsooHsnYAKICAgICDsubgg7JWI7JeQ7IScIOykhOuwlOq/iOuQmOyWtCDrkZAg7KSE66GcIOq5qOyguCDrs7TsmIDri6QgLSDsobDtmozsobDqsbQg7Yyo64SQIOq4sOqwhCDtlYTrk5wg67KE6re4KS4KICAqLwogIC5heC1zZWFyY2ggLnNjdGwuZGF0ZXJhbmdlLXggLnNjdGwtZGF0ZS1kaXNwe2ZsZXg6MTttaW4td2lkdGg6MDt9CiAgLmF4LXNlYXJjaCAuc2N0bC5kYXRlcmFuZ2UteHtwYWRkaW5nOjAgOHB4O2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjVweDt9CiAgLmF4LXNlYXJjaCAuc2N0bC5zZWFyY2gteHtwYWRkaW5nOjAgOHB4O2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjhweDt9CiAgLmF4LXNlYXJjaCAuc2N0bC5zZWFyY2gteCAuc2N0bC10ZXh0LWVse2ZsZXg6MTttaW4td2lkdGg6MDtwYWRkaW5nOjA7fQogIC5heC1yYWRpby1ncm91cHtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDoxNHB4O2hlaWdodDoxMDAlO2ZsZXgtd3JhcDp3cmFwO30KICAuYXgtcmFkaW8tZ3JvdXAgLm9wdHtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo1cHg7Zm9udC1zaXplOjEycHg7Y29sb3I6IzM3NDE1MTt9CiAgLmF4LXJhZGlvLWdyb3VwIC5vcHQgLmRvdHt3aWR0aDoxNHB4O2hlaWdodDoxNHB4O2JvcmRlcjoxLjVweCBzb2xpZCB2YXIoLS1heC1ncmVlbik7Ym9yZGVyLXJhZGl1czo1MCU7cG9zaXRpb246cmVsYXRpdmU7ZmxleDpub25lO30KICAuYXgtcmFkaW8tZ3JvdXAgLm9wdCAuZG90OjphZnRlcntjb250ZW50OiIiO3Bvc2l0aW9uOmFic29sdXRlO2luc2V0OjNweDtiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuKTtib3JkZXItcmFkaXVzOjUwJTtkaXNwbGF5Om5vbmU7fQogIC5heC1yYWRpby1ncm91cCAub3B0Lm9uIC5kb3Q6OmFmdGVye2Rpc3BsYXk6YmxvY2s7fQogIC5heC1yYWRpby1ncm91cCAub3B0LmludGVyYWN0aXZle2N1cnNvcjpwb2ludGVyO30KICAuYXgtcmFkaW8tZ3JvdXAgLm9wdC5pbnRlcmFjdGl2ZTpob3ZlciAuZG90e2JvcmRlci1jb2xvcjp2YXIoLS1heC1ncmVlbi1kYXJrKTt9CiAgLmF4LWNvbWJvLmludGVyYWN0aXZlLC5zY3RsLmNvbWJvLmludGVyYWN0aXZle3Bvc2l0aW9uOnJlbGF0aXZlO30KICAuY29tYm8tZHJvcHtwb3NpdGlvbjphYnNvbHV0ZTtsZWZ0OjA7dG9wOmNhbGMoMTAwJSArIDNweCk7bWluLXdpZHRoOjEwMCU7bWF4LWhlaWdodDoxODBweDtvdmVyZmxvdy15OmF1dG87YmFja2dyb3VuZDojZmZmO2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjZweDtib3gtc2hhZG93OjAgNHB4IDE0cHggcmdiYSgwLDAsMCwuMTIpO3otaW5kZXg6NTAwO2Rpc3BsYXk6bm9uZTt9CiAgLmF4LWNvbWJvLmludGVyYWN0aXZlLm9wZW4gLmNvbWJvLWRyb3AsLnNjdGwuY29tYm8uaW50ZXJhY3RpdmUub3BlbiAuY29tYm8tZHJvcHtkaXNwbGF5OmJsb2NrO30KICAubW9ja3VwLWl0ZW06aGFzKC5heC1jb21iby5pbnRlcmFjdGl2ZS5vcGVuKSwubW9ja3VwLWl0ZW06aGFzKC5zY3RsLmNvbWJvLmludGVyYWN0aXZlLm9wZW4pe3otaW5kZXg6OTk5OTkhaW1wb3J0YW50O30KICAuY29tYm8tb3B0e3BhZGRpbmc6N3B4IDEwcHg7Zm9udC1zaXplOjEycHg7Y29sb3I6IzMzMztjdXJzb3I6cG9pbnRlcjt3aGl0ZS1zcGFjZTpub3dyYXA7fQogIC5jb21iby1vcHQ6aG92ZXJ7YmFja2dyb3VuZDp2YXIoLS1heC1ncmVlbi1saWdodCk7fQogIAogIC5icmFuZC1ib3h7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6Y2VudGVyO2dhcDo1cHg7YmFja2dyb3VuZDojZmZmO2JvcmRlcjoxcHggc29saWQgcmdiYSgyNTUsMjU1LDI1NSwuNjUpOwogICAgYm9yZGVyLXJhZGl1czo3cHg7cGFkZGluZzozcHggOXB4O2JveC1zaGFkb3c6MCAxcHggM3B4IHJnYmEoMCwwLDAsLjI1KTsKICAgIHdpZHRoOjE4MHB4O2JveC1zaXppbmc6Ym9yZGVyLWJveDt9CiAgLmJyYW5kLW17cG9zaXRpb246cmVsYXRpdmU7ZGlzcGxheTppbmxpbmUtYmxvY2s7aGVpZ2h0OjI4cHg7bGluZS1oZWlnaHQ6MDsKICAgIC13ZWJraXQtbWFzay1zaXplOmNvbnRhaW47bWFzay1zaXplOmNvbnRhaW47LXdlYmtpdC1tYXNrLXJlcGVhdDpuby1yZXBlYXQ7bWFzay1yZXBlYXQ6bm8tcmVwZWF0OwogICAgLXdlYmtpdC1tYXNrLXBvc2l0aW9uOmNlbnRlcjttYXNrLXBvc2l0aW9uOmNlbnRlcjt9CiAgLmJyYW5kLW0gaW1ne2hlaWdodDoyOHB4O3dpZHRoOmF1dG87ZGlzcGxheTpibG9jazt9CiAgLmJyYW5kLXdvcmR7aGVpZ2h0OjI4cHg7d2lkdGg6YXV0bztkaXNwbGF5OmJsb2NrO30KICAuYnJhbmQtc2hpbmV7cG9zaXRpb246YWJzb2x1dGU7dG9wOjA7bGVmdDotNDUlO3dpZHRoOjI4JTtoZWlnaHQ6MTAwJTtwb2ludGVyLWV2ZW50czpub25lOwogICAgYmFja2dyb3VuZDpsaW5lYXItZ3JhZGllbnQoMTAwZGVnLHJnYmEoMjU1LDI1NSwyNTUsMCkgMCUscmdiYSgyNTUsMjU1LDI1NSwuNTUpIDI1JSxyZ2JhKDI1NSwyNTUsMjU1LC45OCkgNTAlLHJnYmEoMjU1LDI1NSwyNTUsLjU1KSA3NSUscmdiYSgyNTUsMjU1LDI1NSwwKSAxMDAlKTsKICAgIG1peC1ibGVuZC1tb2RlOm92ZXJsYXk7ZmlsdGVyOmJsdXIoLjVweCk7CiAgICBhbmltYXRpb246YnJhbmRTaGluZSAyLjZzIGVhc2UtaW4tb3V0IGluZmluaXRlO30KICBAa2V5ZnJhbWVzIGJyYW5kU2hpbmV7MCV7bGVmdDotNDUlO302MCV7bGVmdDoxMjUlO30xMDAle2xlZnQ6MTI1JTt9fQogIEBtZWRpYSAocHJlZmVycy1yZWR1Y2VkLW1vdGlvbjpyZWR1Y2Upey5icmFuZC1zaGluZXthbmltYXRpb246bm9uZTtvcGFjaXR5OjA7fX0KCiAgLyogLS0tLSBGYXQgTW9kZSDsoITsmqkg65SU7YWM7J28OiDsg4nsg4HsnYAg7JyEIOuzgOyImCDsnqzsoJXsnZjroZwg7J2066+4IOuwmOyYgeuQmOqzoCwKICAgICDsl6zquLDshJzripQg67OA7IiY66eM7Jy866Gc64qUIO2RnO2YhCDslYgg65CY64qUIOuqqOyEnOumrCDqsIHsp5Dqs7wg66Gc6rOgIOyDieyhsCDsoITtmZjrp4wg7LKY66as7ZWc64ukLiAtLS0tICovCiAgaDEuYnJhbmR7Y3Vyc29yOnBvaW50ZXI7fQogIC5tYi1icmFuZHtjdXJzb3I6cG9pbnRlcjt9CiAgYm9keS5za2luLWNsYXNzaWMgI2NhbnZhcywKICBib2R5LnNraW4tY2xhc3NpYyAuYXgtaW5wdXQsCiAgYm9keS5za2luLWNsYXNzaWMgLmF4LWlucHV0LXgsCiAgYm9keS5za2luLWNsYXNzaWMgLmF4LWlucHV0LWVsLAogIGJvZHkuc2tpbi1jbGFzc2ljIC5heC1jb21ibywKICBib2R5LnNraW4tY2xhc3NpYyAuYXgtZGF0ZSwKICBib2R5LnNraW4tY2xhc3NpYyAuYXgtZGF0ZS14LAogIGJvZHkuc2tpbi1jbGFzc2ljIC5heC1kYXRlLWVsLAogIGJvZHkuc2tpbi1jbGFzc2ljIC5heC1kYXRlcmFuZ2UteCwKICBib2R5LnNraW4tY2xhc3NpYyAuYXgtZGF0ZXJhbmdlIC5heC1kYXRlLXBhcnQsCiAgYm9keS5za2luLWNsYXNzaWMgLmF4LWJ0biwKICBib2R5LnNraW4tY2xhc3NpYyAuYXgtZ3JpZCwKICBib2R5LnNraW4tY2xhc3NpYyAuYXgtdHJlZSwKICBib2R5LnNraW4tY2xhc3NpYyAuYXgtcGFuZWwtYywKICBib2R5LnNraW4tY2xhc3NpYyAuYXgtc3BsaXQtYywKICBib2R5LnNraW4tY2xhc3NpYyAuYXgtY2hhcnQsCiAgYm9keS5za2luLWNsYXNzaWMgLmF4LXNlYXJjaCwKICBib2R5LnNraW4tY2xhc3NpYyAuYXgtc2VhcmNoIC5zY3RsLAogIGJvZHkuc2tpbi1jbGFzc2ljIC5heC1zZWFyY2ggLnNzZWFyY2gsCiAgYm9keS5za2luLWNsYXNzaWMgLmNvbWJvLWRyb3AsCiAgYm9keS5za2luLWNsYXNzaWMgLmdidG4sCiAgYm9keS5za2luLWNsYXNzaWMgLnRvb2wsCiAgYm9keS5za2luLWNsYXNzaWMgLnRtcGwtY2FyZCwKICBib2R5LnNraW4tY2xhc3NpYyAudG9wYmFyIGJ1dHRvbiwKICBib2R5LnNraW4tY2xhc3NpYyAubW9kZS1zd2l0Y2ggLm1zYiwKICBib2R5LnNraW4tY2xhc3NpYyAubHAtYnRuLAogIGJvZHkuc2tpbi1jbGFzc2ljIC5zcGxpdC10YWcsCiAgYm9keS5za2luLWNsYXNzaWMgLnRhYnMtdGFnLAogIGJvZHkuc2tpbi1jbGFzc2ljIC5heC1jaGVjayAuYm94LAogIGJvZHkuc2tpbi1jbGFzc2ljIC5heC1ncmlkIC5nciAuZ2NlbGwtY2hlY2sgLmJveAogIHtib3JkZXItcmFkaXVzOjJweDt9CiAgLyog66Gc6rOgIE0g7J2066+47KeA64qUIOybkOuzuOydtCDqt7jrprAg7YakIFBOR+udvCwgY2xhc3NpYyDsiqTtgqjsl5DshJzripQg7ZWE7YSw66GcIOu4lOujqCDqs4Tsl7TroZwg7IOJ7KGw66eMIOyghO2ZmO2VnOuLpC4gKi8KICBib2R5LnNraW4tY2xhc3NpYyAuYnJhbmQtbSBpbWcsCiAgYm9keS5za2luLWNsYXNzaWMgI21iVG9wIC5tYi1icmFuZC1tYXJrIGltZ3sKICAgIGZpbHRlcjpncmF5c2NhbGUoMSkgc2VwaWEoMSkgaHVlLXJvdGF0ZSgxODBkZWcpIHNhdHVyYXRlKDQpIGJyaWdodG5lc3MoLjkyKTsKICB9CgovKiA9PT09PSDrqqjrsJTsnbwgQWRhcHRpdmUgVUkgTGF5ZXIgdjIgPT09PT0gKi8KOnJvb3R7CiAgLS1tYi1zdXJmYWNlOiNmZmZmZmY7CiAgLS1tYi1pbms6IzFmMmIzODsKICAtLW1iLWluay1zb2Z0OiM1YjZiN2E7CiAgLS1tYi1saW5lOiNlNGU5ZWU7CiAgLS1tYi1hY2NlbnQ6IzFlOWU2YTsKICAtLW1iLWFjY2VudC1pbms6IzBmN2E0ZjsKICAtLW1iLWFjY2VudC1zb2Z0OiNlN2Y1ZWU7CiAgLS1tYi1uYXZ5OiMyMjMwM2Y7CiAgLS1tYi1kYW5nZXI6I2Q2NDU0NTsKICAtLW1iLXNoYWRvdzowIDhweCAzMHB4IHJnYmEoMjAsMzMsNDgsLjE2KTsKICAtLW1iLXNoYWRvdy1zbTowIDJweCAxMHB4IHJnYmEoMjAsMzMsNDgsLjEwKTsKICAtLW1iLXJhZGl1czoxNnB4OwogIC0tbWItdGFwOjQ0cHg7Cn0KLyog6riw67O4OiDrqqjrk6Ag66qo67CU7J28IFVJIOyalOyGjCDsiKjquYAoUEMg66y06rCc7J6FKSAqLwoubWJ4e2Rpc3BsYXk6bm9uZTt9CgovKiA9PT09PT09PT09PT09PT09PT09PT0g6rO17Ya1KG1vYmlsZSt0YWJsZXQpID09PT09PT09PT09PT09PT09PT09PSAqLwpib2R5Lm1iLW1vYmlsZSwgYm9keS5tYi10YWJsZXR7b3ZlcmZsb3c6aGlkZGVuO292ZXJzY3JvbGwtYmVoYXZpb3I6bm9uZTt9CmJvZHkubWItbW9iaWxlIC5tYngsIGJvZHkubWItdGFibGV0IC5tYnh7ZGlzcGxheTpmbGV4O30KCi8qIFBDIOyDgeuLqOuwlC/soozsmrAg7Yyo64SQIOqwkOy2lOqzoCDsupTrsoTsiqTrpbwg7KCE7LK066GcICovCmJvZHkubWItbW9iaWxlIC50b3BiYXIsIGJvZHkubWItdGFibGV0IC50b3BiYXJ7ZGlzcGxheTpub25lO30KYm9keS5tYi1tb2JpbGUgLmFwcCwgYm9keS5tYi10YWJsZXQgLmFwcHsKICBkaXNwbGF5OmJsb2NrO2hlaWdodDoxMDB2aDtoZWlnaHQ6MTAwZHZoO3BhZGRpbmc6MDsKfQpib2R5Lm1iLW1vYmlsZSAudG9vbGJveCwgYm9keS5tYi10YWJsZXQgLnRvb2xib3h7cG9zaXRpb246Zml4ZWQ7bGVmdDotOTk5OXB4O3RvcDowO3dpZHRoOjE4MHB4O30KYm9keS5tYi1tb2JpbGUgLnByb3BzLCAgIGJvZHkubWItdGFibGV0IC5wcm9wc3twb3NpdGlvbjpmaXhlZDtsZWZ0Oi05OTk5cHg7dG9wOjA7d2lkdGg6MjgwcHg7fQpib2R5Lm1iLW1vYmlsZSAjcHJvcHNTcGxpdCwgYm9keS5tYi10YWJsZXQgI3Byb3BzU3BsaXR7ZGlzcGxheTpub25lO30KYm9keS5tYi1tb2JpbGUgLnByb3BzLm1iLWluLXNoZWV0LCBib2R5Lm1iLXRhYmxldCAucHJvcHMubWItaW4tc2hlZXR7CiAgcG9zaXRpb246c3RhdGljIWltcG9ydGFudDtsZWZ0OmF1dG8haW1wb3J0YW50O3RvcDphdXRvIWltcG9ydGFudDsKICB3aWR0aDoxMDAlIWltcG9ydGFudDtoZWlnaHQ6YXV0byFpbXBvcnRhbnQ7b3ZlcmZsb3c6dmlzaWJsZSFpbXBvcnRhbnQ7ZGlzcGxheTpibG9jayFpbXBvcnRhbnQ7Cn0KYm9keS5tYi1tb2JpbGUgLmNhbnZhcy13cmFwLCBib2R5Lm1iLXRhYmxldCAuY2FudmFzLXdyYXB7CiAgcG9zaXRpb246Zml4ZWQ7aW5zZXQ6MDtkaXNwbGF5OmJsb2NrO3BhZGRpbmc6MDtiYWNrZ3JvdW5kOiNlZWYxZjQ7Cn0KYm9keS5tYi1tb2JpbGUgLnRvb2xiYXIyLCBib2R5Lm1iLXRhYmxldCAudG9vbGJhcjJ7ZGlzcGxheTpub25lO30gICAvKiDrs7TquLDshKTsoJXsnYAg4pqZIOyLnO2KuOuhnCDsnbTrj5kgKi8KYm9keS5tYi1tb2JpbGUgLmNhbnZhcy1zY3JvbGwsIGJvZHkubWItdGFibGV0IC5jYW52YXMtc2Nyb2xsewogIHBvc2l0aW9uOmFic29sdXRlO2xlZnQ6MDtyaWdodDowO3RvcDo1MnB4O2JvdHRvbTowO3BhZGRpbmc6MjZweDstd2Via2l0LW92ZXJmbG93LXNjcm9sbGluZzp0b3VjaDsKfQovKiDrr7jrpqzrs7TquLAg66qo65Oc7JeQ7ISc64qUIOyDgeuLqOuwlOqwgCDsgqzrnbzsp4Drr4DroZwg7LqU67KE7Iqk6rCAIOychOq5jOyngCDsgqzsmqkgKi8KYm9keS5tYi1tb2JpbGUubWItcHJldmlldyAuY2FudmFzLXNjcm9sbCwgYm9keS5tYi10YWJsZXQubWItcHJldmlldyAuY2FudmFzLXNjcm9sbHt0b3A6MDt9CgovKiDsupTrsoTsiqQg7Y647KeRIOykkSDthY3siqTtirgg7ISg7YOdL+y9nOyVhOybgyDssKjri6ggKi8KYm9keS5tYi1tb2JpbGUgI2NhbnZhcywgYm9keS5tYi10YWJsZXQgI2NhbnZhcywKYm9keS5tYi1tb2JpbGUgI2NhbnZhcyAqLCBib2R5Lm1iLXRhYmxldCAjY2FudmFzICp7CiAgLXdlYmtpdC11c2VyLXNlbGVjdDpub25lO3VzZXItc2VsZWN0Om5vbmU7LXdlYmtpdC10b3VjaC1jYWxsb3V0Om5vbmU7Cn0KYm9keS5tYi1tb2JpbGUgLmNhbnZhcy1zY3JvbGwsIGJvZHkubWItdGFibGV0IC5jYW52YXMtc2Nyb2xse3RvdWNoLWFjdGlvbjpwYW4teCBwYW4teTt9CgovKiAtLS0tLS0tLS0tIOyDgeuLqCDrr7jri4gg7JWx67CUICjrsJjtiKzrqoUsIOy6lOuyhOyKpCDsnITsl5Ag65agIOyeiOydjCkgLS0tLS0tLS0tLSAqLwojbWJUb3B7CiAgcG9zaXRpb246Zml4ZWQ7dG9wOjA7bGVmdDowO3JpZ2h0OjA7aGVpZ2h0OjUycHg7ei1pbmRleDoxNDAwOwogIGFsaWduLWl0ZW1zOmNlbnRlcjtnYXA6OHB4O3BhZGRpbmc6MCAxMHB4OwogIGJhY2tncm91bmQ6bGluZWFyLWdyYWRpZW50KDE4MGRlZywgcmdiYSgzNCw0OCw2MywuOTYpLCByZ2JhKDM0LDQ4LDYzLC44NikpOwogIGJhY2tkcm9wLWZpbHRlcjpibHVyKDZweCk7Y29sb3I6I2ZmZjsKfQojbWJUb3AgLm1iLWJyYW5ke2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjlweDtmb250LXNpemU6MTVweDtmb250LXdlaWdodDo4MDA7bGV0dGVyLXNwYWNpbmc6LjJweDt3aGl0ZS1zcGFjZTpub3dyYXA7fQovKiDrsLDsp4A6IFBDIOuhnOqzoCBwaWxsIOqzvCDrj5nsnbztlZjqsowg7Z2wIOuwsOqyvSArIE0g7J2066+47KeAKOybkOuzuCDsg4kpICovCiNtYlRvcCAubWItYnJhbmQgLm1iLWJyYW5kLW1hcmt7CiAgZGlzcGxheTppbmxpbmUtZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmZsZXgtc3RhcnQ7CiAgd2lkdGg6MzJweDtoZWlnaHQ6MzJweDtib3JkZXItcmFkaXVzOjlweDtmbGV4Om5vbmU7CiAgYmFja2dyb3VuZDojZmZmO2JvcmRlcjoxcHggc29saWQgcmdiYSgyNTUsMjU1LDI1NSwuNjUpOwogIGJveC1zaGFkb3c6MCAycHggNnB4IHJnYmEoMCwwLDAsLjI4KTsKICBvdmVyZmxvdzpoaWRkZW47Ym94LXNpemluZzpib3JkZXItYm94Owp9Ci8qIOyGjOyKpCDsnbTrr7jsp4DripQgIk1vY2t1cCBCdWlsZGVyIiDsm4zrk5zrp4jtgawoMjYyeDQ4KSDihpIg67Cw7KeA6rCAIOyijOy4oSBNIOu2gOu2hOunjCDrs7Tsl6zso7zrj4TroZ0g7YG066a9ICovCiNtYlRvcCAubWItYnJhbmQgLm1iLWJyYW5kLW1hcmsgaW1newogIGhlaWdodDoyNHB4OyAgICAgICAgICAgICAgLyog7JuQ67O47J2YIDUwJSDstpXshowgKi8KICB3aWR0aDoxMzFweDsgICAgICAgICAgICAgLyogMjYyKjAuNSA9IOybjOuTnOuniO2BrCDsoITssrQg7Y+tICovCiAgbWF4LXdpZHRoOm5vbmU7ZGlzcGxheTpibG9jaztvYmplY3QtZml0OmZpbGw7CiAgbWFyZ2luLWxlZnQ6MDsgICAgICAgICAgIC8qIOyZvOyqvSDsoJXroKwg4oaSIE0g7J20IOuwsOyngOyXkCDqsbjrprwgKi8KfQojbWJUb3AgLm1iLWJyYW5kIC5tYi1icmFuZC1tYXJrLm1iLW1hcmstZmFsbGJhY2t7Y29sb3I6dmFyKC0tbWItYWNjZW50KTtmb250LXNpemU6MTZweDtmb250LXdlaWdodDo5MDA7anVzdGlmeS1jb250ZW50OmNlbnRlcjtwYWRkaW5nOjA7fQovKiDthY3siqTtirg6IFBDIO2GpCjtnbDsg4kp7JeQIOunnuy2pCAqLwojbWJUb3AgLm1iLWJyYW5kIC5tYi1icmFuZC10eHR7CiAgcG9zaXRpb246cmVsYXRpdmU7ZGlzcGxheTppbmxpbmUtYmxvY2s7b3ZlcmZsb3c6aGlkZGVuOwogIGZvbnQtc2l6ZToxN3B4O2ZvbnQtd2VpZ2h0OjgwMDtjb2xvcjojZmZmO2xpbmUtaGVpZ2h0OjE7Cn0KI21iVG9wIC5tYi1icmFuZCAubWItYnJhbmQtYWNjZW50e2NvbG9yOiMyZWNjOGY7Zm9udC13ZWlnaHQ6ODAwO30KLyog66qo65OcIOuwsOyngCAobW9iaWxlKS8odGFibGV0KTog7YOA7J207YuA67O064ukIOyCtOynnSDsnpHqsowsIO2dsOyDiSAqLwojbWJUb3AgLm1iLWJyYW5kIC5tYi1icmFuZC1tb2RlewogIGRpc3BsYXk6aW5saW5lLWZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7CiAgY29sb3I6I2NmZDZkZDttYXJnaW4tbGVmdDo3cHg7YWxpZ24tc2VsZjpjZW50ZXI7ZmxleDpub25lOwp9CiNtYlRvcCAubWItYnJhbmQgLm1iLWJyYW5kLW1vZGUgc3Zne3dpZHRoOjE4cHg7aGVpZ2h0OjE4cHg7ZGlzcGxheTpibG9jazt9CiNtYlRvcCAubWItYnJhbmQgLm1iLWJyYW5kLW1vZGU6ZW1wdHl7ZGlzcGxheTpub25lO30KI21iVG9wIC5tYi1icmFuZCAubWItYnJhbmQtc2hpbmV7CiAgcG9zaXRpb246YWJzb2x1dGU7dG9wOjA7bGVmdDotNjAlO3dpZHRoOjQwJTtoZWlnaHQ6MTAwJTtwb2ludGVyLWV2ZW50czpub25lOwogIGJhY2tncm91bmQ6bGluZWFyLWdyYWRpZW50KDEwMGRlZywgdHJhbnNwYXJlbnQsIHJnYmEoMjU1LDI1NSwyNTUsLjcpLCB0cmFuc3BhcmVudCk7CiAgdHJhbnNmb3JtOnNrZXdYKC0xOGRlZyk7CiAgYW5pbWF0aW9uOm1iQnJhbmRTaGluZSA1cyBlYXNlLWluLW91dCBpbmZpbml0ZTsKfQpAa2V5ZnJhbWVzIG1iQnJhbmRTaGluZXswJXtsZWZ0Oi02MCU7fTQ1JXtsZWZ0OjE1MCU7fTEwMCV7bGVmdDoxNTAlO319CkBtZWRpYSAocHJlZmVycy1yZWR1Y2VkLW1vdGlvbjpyZWR1Y2UpeyNtYlRvcCAubWItYnJhbmQgLm1iLWJyYW5kLXNoaW5le2FuaW1hdGlvbjpub25lO29wYWNpdHk6MDt9fQojbWJUb3AgLm1iLXNwe2ZsZXg6MTt9Ci5tYi1pY29uYnRuewogIGZsZXg6bm9uZTt3aWR0aDozOHB4O2hlaWdodDozOHB4O2JvcmRlcjpub25lO2JvcmRlci1yYWRpdXM6MTFweDtjdXJzb3I6cG9pbnRlcjsKICBkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7Zm9udC1zaXplOjE4cHg7CiAgYmFja2dyb3VuZDpyZ2JhKDI1NSwyNTUsMjU1LC4xNCk7Y29sb3I6I2ZmZjt0cmFuc2l0aW9uOmJhY2tncm91bmQgLjEyczsKfQoubWItaWNvbmJ0bjphY3RpdmV7YmFja2dyb3VuZDpyZ2JhKDI1NSwyNTUsMjU1LC4yOCk7fQoubWItaWNvbmJ0bi5vbntiYWNrZ3JvdW5kOnZhcigtLW1iLWFjY2VudCk7fQoubWItaWNvbmJ0bltkaXNhYmxlZF17b3BhY2l0eTouMzU7cG9pbnRlci1ldmVudHM6bm9uZTt9CiNtYlRvcCAubWItaWNvbmJ0bnt3aWR0aDozNnB4O2hlaWdodDozNnB4O2ZvbnQtc2l6ZToxN3B4O30KCi8qIC0tLS0tLS0tLS0g7KKM7LihIOyEuOuhnCDrj4Tqtawg66CI7J28ICjqsIDroZwg66qo65OcIOyghOyaqSkgLS0tLS0tLS0tLSAqLwojbWJSYWlsewogIHBvc2l0aW9uOmZpeGVkO2xlZnQ6MTBweDt0b3A6NjRweDtib3R0b206NjRweDt3aWR0aDo2MHB4O3otaW5kZXg6MTM4MDsKICBmbGV4LWRpcmVjdGlvbjpjb2x1bW47YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo2cHg7cGFkZGluZzo4cHggNnB4OwogIGJhY2tncm91bmQ6dmFyKC0tbWItc3VyZmFjZSk7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1tYi1saW5lKTsKICBib3JkZXItcmFkaXVzOjE4cHg7Ym94LXNoYWRvdzp2YXIoLS1tYi1zaGFkb3cpO292ZXJmbG93LXk6YXV0bztvdmVyZmxvdy14OmhpZGRlbjsKfQojbWJSYWlsOjotd2Via2l0LXNjcm9sbGJhcntkaXNwbGF5Om5vbmU7fQoubWItcmFpbC1idG57CiAgZmxleDpub25lO3dpZHRoOjQ4cHg7aGVpZ2h0OjQ4cHg7Ym9yZGVyOm5vbmU7Ym9yZGVyLXJhZGl1czoxMnB4O2N1cnNvcjpwb2ludGVyOwogIGRpc3BsYXk6ZmxleDtmbGV4LWRpcmVjdGlvbjpjb2x1bW47YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7Z2FwOjJweDsKICBiYWNrZ3JvdW5kOiNmM2Y2Zjg7Y29sb3I6dmFyKC0tbWItaW5rKTtmb250LXNpemU6OXB4O2ZvbnQtd2VpZ2h0OjYwMDsKfQoubWItcmFpbC1idG4gLmlje2ZvbnQtc2l6ZToxOXB4O2xpbmUtaGVpZ2h0OjE7fQoubWItcmFpbC1idG46YWN0aXZle2JhY2tncm91bmQ6dmFyKC0tbWItYWNjZW50LXNvZnQpO30KLm1iLXJhaWwtYnRuLm1vcmV7YmFja2dyb3VuZDp2YXIoLS1tYi1uYXZ5KTtjb2xvcjojZmZmO30KLyog7IS466GcIOuqqOuTnOyXkOyEoCDroIjsnbwg7Iio6rmAICovCmJvZHkubWItcG9ydHJhaXQgI21iUmFpbHtkaXNwbGF5Om5vbmU7fQoKLyogLS0tLS0tLS0tLSDtlZjri6gg7Lu07Y+s64SM7Yq4IOugiOydvCAo7IS466GcIOuqqOuTnCDsoITsmqksIENhbnZhIOyKpO2DgOydvCkgLS0tLS0tLS0tLSAqLwojbWJEb2NrewogIHBvc2l0aW9uOmZpeGVkO2xlZnQ6MDtyaWdodDowO2JvdHRvbTowO3otaW5kZXg6MTM4MDsKICBmbGV4LWRpcmVjdGlvbjpjb2x1bW47cGFkZGluZzo4cHggMCBtYXgoMTBweCwgZW52KHNhZmUtYXJlYS1pbnNldC1ib3R0b20pKTsKICBiYWNrZ3JvdW5kOmxpbmVhci1ncmFkaWVudCgxODBkZWcsIHJnYmEoMjU1LDI1NSwyNTUsLjcyKSwgdmFyKC0tbWItc3VyZmFjZSkgMzQlKTsKICBib3JkZXItdG9wOjFweCBzb2xpZCB2YXIoLS1tYi1saW5lKTtib3gtc2hhZG93OjAgLTZweCAyNHB4IHJnYmEoMjAsMzMsNDgsLjEwKTsKfQojbWJEb2NrU2Nyb2xsewogIGRpc3BsYXk6ZmxleDtnYXA6OHB4O292ZXJmbG93LXg6YXV0bztvdmVyZmxvdy15OmhpZGRlbjsKICBwYWRkaW5nOjJweCAxMnB4IDRweDtzY3JvbGwtc25hcC10eXBlOnggcHJveGltaXR5Owp9CiNtYkRvY2tTY3JvbGw6Oi13ZWJraXQtc2Nyb2xsYmFye2Rpc3BsYXk6bm9uZTt9Ci5tYi1jaGlwewogIGZsZXg6bm9uZTtzY3JvbGwtc25hcC1hbGlnbjpzdGFydDsKICBtaW4td2lkdGg6NjZweDtoZWlnaHQ6NjJweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLW1iLWxpbmUpO2JvcmRlci1yYWRpdXM6MTRweDsKICBiYWNrZ3JvdW5kOnZhcigtLW1iLXN1cmZhY2UpO2N1cnNvcjpwb2ludGVyOwogIGRpc3BsYXk6ZmxleDtmbGV4LWRpcmVjdGlvbjpjb2x1bW47YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7Z2FwOjRweDsKICBmb250LXNpemU6MTFweDtmb250LXdlaWdodDo2MDA7Y29sb3I6dmFyKC0tbWItaW5rKTsKfQoubWItY2hpcCAuaWN7Zm9udC1zaXplOjIxcHg7bGluZS1oZWlnaHQ6MTtjb2xvcjp2YXIoLS1tYi1hY2NlbnQtaW5rKTt9Ci5tYi1jaGlwOmFjdGl2ZXtib3JkZXItY29sb3I6dmFyKC0tbWItYWNjZW50KTtiYWNrZ3JvdW5kOnZhcigtLW1iLWFjY2VudC1zb2Z0KTt0cmFuc2Zvcm06c2NhbGUoLjk2KTt9Ci5tYi1jaGlwLmFsbHtiYWNrZ3JvdW5kOnZhcigtLW1iLW5hdnkpO2JvcmRlci1jb2xvcjp2YXIoLS1tYi1uYXZ5KTtjb2xvcjojZmZmO30KLm1iLWNoaXAuYWxsIC5pY3tjb2xvcjojZmZmO30KLyog6rCA66GcIOuqqOuTnOyXkOyEoCDtlZjri6gg64+E7YGsIOyIqOq5gCAqLwpib2R5Lm1iLWxhbmRzY2FwZSAjbWJEb2Nre2Rpc3BsYXk6bm9uZTt9CgovKiAtLS0tLS0tLS0tIOyEoO2DnSDsi5wg65yo64qUIO2UjOuhnO2MhSDslaHshZjrsJQgKEZpZ21hIOy7qO2FjeyKpO2KuCDtiLTrsJQpIC0tLS0tLS0tLS0gKi8KI21iQ3R4ewogIHBvc2l0aW9uOmZpeGVkO3otaW5kZXg6MTM5MDtsZWZ0OjUwJTt0cmFuc2Zvcm06dHJhbnNsYXRlWCgtNTAlKTsKICBhbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjJweDtwYWRkaW5nOjVweDsKICBiYWNrZ3JvdW5kOnZhcigtLW1iLW5hdnkpO2JvcmRlci1yYWRpdXM6MTVweDtib3gtc2hhZG93OnZhcigtLW1iLXNoYWRvdyk7Cn0KYm9keS5tYi1wb3J0cmFpdCAjbWJDdHh7Ym90dG9tOjk2cHg7fQovKiDqsIDroZw6IO2VmOuLqCDspJHslZnsl5Ag652E7JuMIOyGjeyEsSDtjKjrhJAo7Jqw7LihKeqzvCDqsrnsuZjsp4Ag7JWK6rKMICovCmJvZHkubWItbGFuZHNjYXBlICNtYkN0eHt0b3A6YXV0bztib3R0b206MTRweDtsZWZ0OjUwJTtyaWdodDphdXRvO3RyYW5zZm9ybTp0cmFuc2xhdGVYKC01MCUpO30KLyog7IKs7J2065OcIO2MqOuEkOydtCDsl7TrpqzrqbQg7LqU67KE7IqkIOyYgeyXrSjsoozsuKEp7J2YIOykkeyVmeycvOuhnCDsnbTrj5kgKi8KYm9keS5tYi1sYW5kc2NhcGUubWItc2lkZS1vcGVuICNtYkN0eHtsZWZ0OmNhbGMoKDEwMCUgLSAzMDBweCkvMik7fQojbWJDdHguaGlkZGVue2Rpc3BsYXk6bm9uZTt9Ci5tYi1jdHgtYnRuewogIGJvcmRlcjpub25lO2JhY2tncm91bmQ6dHJhbnNwYXJlbnQ7Y29sb3I6I2ZmZjtjdXJzb3I6cG9pbnRlcjsKICBtaW4td2lkdGg6NDRweDtoZWlnaHQ6NDRweDtib3JkZXItcmFkaXVzOjExcHg7CiAgZGlzcGxheTpmbGV4O2ZsZXgtZGlyZWN0aW9uOmNvbHVtbjthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjtnYXA6MXB4OwogIGZvbnQtc2l6ZToxMHB4O2ZvbnQtd2VpZ2h0OjYwMDsKfQoubWItY3R4LWJ0biAuaWN7Zm9udC1zaXplOjE3cHg7bGluZS1oZWlnaHQ6MTt9Ci5tYi1jdHgtYnRuOmFjdGl2ZXtiYWNrZ3JvdW5kOnJnYmEoMjU1LDI1NSwyNTUsLjE2KTt9Ci5tYi1jdHgtYnRuLmRhbmdlciAuaWN7Y29sb3I6I2ZmOWE5YTt9Ci5tYi1jdHgtc2Vwe3dpZHRoOjFweDtoZWlnaHQ6MjZweDtiYWNrZ3JvdW5kOnJnYmEoMjU1LDI1NSwyNTUsLjE2KTttYXJnaW46MCAycHg7fQoKLyogLS0tLS0tLS0tLSDsmrDsuKEg7Luo7Yq466GkIOyKpO2DnSAo7LaU6rCAwrfrr7jrpqzrs7TquLDCt+ykjMK366ee7LakKSAtLS0tLS0tLS0tCiAgIO2VmOuCmOydmCDshLjroZwg7Iqk7YOd7Jy866GcIOustuyWtCDqsrnsuZjsp4Ag7JWK6rKMIOuwsOy5mC4g7IS466GcL+qwgOuhnCDqs7XthrUuICovCiNtYlRvb2xzewogIHBvc2l0aW9uOmZpeGVkO3otaW5kZXg6MTM4NTtmbGV4LWRpcmVjdGlvbjpjb2x1bW47Z2FwOjEwcHg7YWxpZ24taXRlbXM6Y2VudGVyOwogIHRyYW5zaXRpb246cmlnaHQgLjIycyBlYXNlOwp9CmJvZHkubWItcG9ydHJhaXQgI21iVG9vbHN7cmlnaHQ6MTJweDtib3R0b206MTUwcHg7fSAgIC8qIOuPhO2BrCDsnIQgKi8KYm9keS5tYi1sYW5kc2NhcGUgI21iVG9vbHN7cmlnaHQ6MTJweDtib3R0b206MTRweDt9Ci8qIOqwgOuhnOyXkOyEnCDsho3shLEg7Yyo64SQ7J20IOyXtOumrOuptCDsmrDsuKEg7Luo7Yq466Gk7J2EIO2MqOuEkCDtj60oMzAwcHgp66eM7YG8IOyZvOyqveycvOuhnCDrsIDslrQg6rK57LmoIOuwqeyngCAqLwpib2R5Lm1iLWxhbmRzY2FwZS5tYi1zaWRlLW9wZW4gI21iVG9vbHN7cmlnaHQ6MzEycHg7fQoubWItZmFiewogIHdpZHRoOjUycHg7aGVpZ2h0OjUycHg7Ym9yZGVyOm5vbmU7Ym9yZGVyLXJhZGl1czoxNnB4O2N1cnNvcjpwb2ludGVyOwogIGRpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjtmb250LXNpemU6MjRweDsKICBiYWNrZ3JvdW5kOnZhcigtLW1iLWFjY2VudCk7Y29sb3I6I2ZmZjtib3gtc2hhZG93OjAgNnB4IDE2cHggcmdiYSgzMCwxNTgsMTA2LC40Mik7Cn0KLm1iLWZhYjphY3RpdmV7dHJhbnNmb3JtOnNjYWxlKC45NCk7fQoubWItZmFiLm1pbml7d2lkdGg6NDRweDtoZWlnaHQ6NDRweDtmb250LXNpemU6MThweDtiYWNrZ3JvdW5kOnZhcigtLW1iLXN1cmZhY2UpO2NvbG9yOnZhcigtLW1iLWluayk7Ym94LXNoYWRvdzp2YXIoLS1tYi1zaGFkb3ctc20pO2JvcmRlcjoxcHggc29saWQgdmFyKC0tbWItbGluZSk7fQoubWItZmFiLm1pbmk6YWN0aXZle2JhY2tncm91bmQ6I2YxZjRmNjt9Ci8qIOyGkCDrj4TqtawoUGFuKSDtmZzshLEg7IOB7YOcICovCiNtYlBhbkJ0bi5tYi1vbntiYWNrZ3JvdW5kOnZhcigtLW1iLWFjY2VudCk7Y29sb3I6I2ZmZjtib3JkZXItY29sb3I6dmFyKC0tbWItYWNjZW50KTtib3gtc2hhZG93OjAgNHB4IDEycHggcmdiYSgzMCwxNTgsMTA2LC40NSk7fQpib2R5Lm1iLXBhbiAuY2FudmFzLXNjcm9sbHtjdXJzb3I6Z3JhYjt9CmJvZHkubWItcGFuLm1iLXBhbm5pbmcgLmNhbnZhcy1zY3JvbGx7Y3Vyc29yOmdyYWJiaW5nO30KLyog7J2064+ZIOuqqOuTnDog64+E6rWs7IOB7J6QKOyijOy4oSDroIjsnbwgwrcg7ZWY64uoIOuPhSkg7Iio6rmAIOKGkiDsupTrsoTsiqTsl5Ag7KeR7KSRLgogICAo7LqU67KE7IqkIOychOy5mC/spIzsnYAg6re464yA66GcIOycoOyngO2VmOq4sCDsnITtlbQgbGVmdCDsmKTtlITshYvsnYAg6rG065Oc66as7KeAIOyViuydjCkgKi8KYm9keS5tYi1wYW4gI21iUmFpbCwKYm9keS5tYi1wYW4gI21iRG9ja3tkaXNwbGF5Om5vbmUhaW1wb3J0YW50O30KLyog7IaQIOuPhOq1rCDsvJzsp5Ag7JWI64K0IOuwsOuEiCAqLwojbWJQYW5IaW50ewogIHBvc2l0aW9uOmZpeGVkO2xlZnQ6NTAlO3RyYW5zZm9ybTp0cmFuc2xhdGVYKC01MCUpO3otaW5kZXg6MTM5NjsKICBkaXNwbGF5Om5vbmU7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo3cHg7CiAgYmFja2dyb3VuZDpyZ2JhKDM0LDQ4LDYzLC45NCk7Y29sb3I6I2ZmZjtwYWRkaW5nOjhweCAxNHB4O2JvcmRlci1yYWRpdXM6MjBweDsKICBmb250LXNpemU6MTIuNXB4O2ZvbnQtd2VpZ2h0OjYwMDtib3gtc2hhZG93OjAgNnB4IDE4cHggcmdiYSgwLDAsMCwuMjgpO3doaXRlLXNwYWNlOm5vd3JhcDsKICBwb2ludGVyLWV2ZW50czpub25lOwp9Ci8qIOydtOuPmSDrqqjrk5wg7JWI64K0OiDtlZjri6jsl5Ag7ZGc7IucLiDsnbTrj5kg66qo65Oc7JeQ7ISc64qUIOy7qO2FjeyKpO2KuCDrsJTqsIAg7Iio6rKo7KeA66+A66GcIOqyuey5mOyngCDslYrsnYwgKi8KYm9keS5tYi1wb3J0cmFpdCAjbWJQYW5IaW50e2JvdHRvbToxNTBweDt0b3A6YXV0bzt9CmJvZHkubWItbGFuZHNjYXBlICNtYlBhbkhpbnR7Ym90dG9tOjE0cHg7dG9wOmF1dG87fQpib2R5Lm1iLXBhbiAjbWJQYW5IaW50e2Rpc3BsYXk6ZmxleDt9CmJvZHkubWItcHJldmlldyAjbWJQYW5IaW50e2Rpc3BsYXk6bm9uZSFpbXBvcnRhbnQ7fQoubWItem9vbS1iYWRnZXsKICBtaW4td2lkdGg6NDZweDtoZWlnaHQ6MzJweDtib3JkZXItcmFkaXVzOjEwcHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1tYi1saW5lKTsKICBiYWNrZ3JvdW5kOnZhcigtLW1iLXN1cmZhY2UpO2NvbG9yOnZhcigtLW1iLWluayk7Zm9udC1zaXplOjEycHg7Zm9udC13ZWlnaHQ6NzAwOwogIGRpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjtjdXJzb3I6cG9pbnRlcjtib3gtc2hhZG93OnZhcigtLW1iLXNoYWRvdy1zbSk7Cn0KLyog7YGwICsg7LaU6rCAIOuyhO2KvOydgCDsiqTtg50oI21iVG9vbHMpIOunqCDsnITsl5Ag7JyE7LmYICovCiNtYkFkZEZhYntmbGV4Om5vbmU7fQoKLyogLS0tLS0tLS0tLSDrsLDsuZgg64yA6riwIOyViOuCtCjtg63tlbTshJwg64aT6riwKSAtLS0tLS0tLS0tICovCiNtYkFybXsKICBwb3NpdGlvbjpmaXhlZDtsZWZ0OjEycHg7cmlnaHQ6MTJweDt6LWluZGV4OjEzOTU7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDoxMHB4OwogIGJhY2tncm91bmQ6dmFyKC0tbWItYWNjZW50KTtjb2xvcjojZmZmO3BhZGRpbmc6MTFweCAxNHB4O2JvcmRlci1yYWRpdXM6MTRweDsKICBib3gtc2hhZG93OjAgOHB4IDIycHggcmdiYSgzMCwxNTgsMTA2LC40KTtmb250LXNpemU6MTMuNXB4O2ZvbnQtd2VpZ2h0OjcwMDsKfQpib2R5Lm1iLXBvcnRyYWl0ICNtYkFybXt0b3A6NjBweDt9CmJvZHkubWItbGFuZHNjYXBlICNtYkFybXt0b3A6NjBweDtsZWZ0OjgwcHg7cmlnaHQ6MTJweDt9CiNtYkFybSAjbWJBcm1UeHR7ZmxleDoxO2xpbmUtaGVpZ2h0OjEuMzU7fQojbWJBcm0gYnV0dG9ue2ZsZXg6bm9uZTtiYWNrZ3JvdW5kOnJnYmEoMjU1LDI1NSwyNTUsLjIyKTtjb2xvcjojZmZmO2JvcmRlcjpub25lO2JvcmRlci1yYWRpdXM6OXB4O3BhZGRpbmc6OHB4IDEycHg7Zm9udC1zaXplOjEyLjVweDtmb250LXdlaWdodDo3MDA7Y3Vyc29yOnBvaW50ZXI7fQpib2R5Lm1iLWFybWluZyAjY2FudmFze2N1cnNvcjpjcm9zc2hhaXI7fQoKLyogUEMg66qo64usKOuzteq1rC/thZztlIzrpr8v64K067O064K06riwL+qwgOydtOuTnCDrk7Ep7J20IOuqqOuwlOydvCDtgazroawg7JyE7JeQIOyYpOuPhOuhnSAqLwpib2R5Lm1iLW1vYmlsZSAubW9kYWwtYmcsIGJvZHkubWItdGFibGV0IC5tb2RhbC1iZ3sgei1pbmRleDoyMjAwIWltcG9ydGFudDsgfQoKLyog7J247JWxIGNvbmZpcm0g64uk7J207Ja866Gc6re4ICh3aW5kb3cuY29uZmlybSDrrLTsi5ztlZjripQg7J247JWxIOu4jOudvOyasOyggCDrjIDsnZEpICovCiNtYkNvbmZpcm1CZ3tkaXNwbGF5Om5vbmU7cG9zaXRpb246Zml4ZWQ7aW5zZXQ6MDt6LWluZGV4OjIzMDA7YmFja2dyb3VuZDpyZ2JhKDE2LDI0LDMzLC41KTthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjtwYWRkaW5nOjI4cHg7fQojbWJDb25maXJtQmcuc2hvd3tkaXNwbGF5OmZsZXg7fQojbWJDb25maXJtQ2FyZHtiYWNrZ3JvdW5kOnZhcigtLW1iLXN1cmZhY2UpO2JvcmRlci1yYWRpdXM6MThweDtwYWRkaW5nOjIycHggMjBweDttYXgtd2lkdGg6MzQwcHg7d2lkdGg6MTAwJTtib3gtc2hhZG93OnZhcigtLW1iLXNoYWRvdyk7fQojbWJDb25maXJtQ2FyZCBoM3tmb250LXNpemU6MTdweDtmb250LXdlaWdodDo4MDA7Y29sb3I6dmFyKC0tbWItaW5rKTttYXJnaW4tYm90dG9tOjhweDt9CiNtYkNvbmZpcm1DYXJkIHB7Zm9udC1zaXplOjE0cHg7Y29sb3I6dmFyKC0tbWItaW5rLXNvZnQpO2xpbmUtaGVpZ2h0OjEuNjttYXJnaW4tYm90dG9tOjE4cHg7d2hpdGUtc3BhY2U6cHJlLWxpbmU7fQojbWJDb25maXJtQ2FyZCAubWJjLWJ0bnN7ZGlzcGxheTpmbGV4O2dhcDoxMHB4O30KI21iQ29uZmlybUNhcmQgLm1iYy1idG5zIGJ1dHRvbntmbGV4OjE7cGFkZGluZzoxM3B4O2JvcmRlci1yYWRpdXM6MTJweDtmb250LXNpemU6MTVweDtmb250LXdlaWdodDo3MDA7Y3Vyc29yOnBvaW50ZXI7Ym9yZGVyOm5vbmU7fQojbWJDb25maXJtQ2FyZCAubWJjLWNhbmNlbHtiYWNrZ3JvdW5kOiNmMWY0ZjY7Y29sb3I6dmFyKC0tbWItaW5rKTt9CiNtYkNvbmZpcm1DYXJkIC5tYmMtb2t7YmFja2dyb3VuZDp2YXIoLS1tYi1kYW5nZXIpO2NvbG9yOiNmZmY7fQovKiDrqqjri6zsnbQg7Je066CkIOyeiOycvOuptCg9ZGlzcGxheTpmbGV4KSDrsJTthYDsi5ztirgv64+E7YGs6rCAIOuwqe2VtO2VmOyngCDslYrrj4TroZ0g7IK07KedIOuCruy2pOydgCDrtojtlYTsmpQ6CiAgIG1vZGFsIHotaW5kZXggMjIwMCA+IHNoZWV0IDE1MDAg7J2066+A66GcIOyekOuPmeycvOuhnCDsnITsl5Ag7ZGc7Iuc65CoICovCiNtYlNoZWV0Qmd7ZGlzcGxheTpub25lO3Bvc2l0aW9uOmZpeGVkO2luc2V0OjA7ei1pbmRleDoxNTAwO2JhY2tncm91bmQ6cmdiYSgxNiwyNCwzMywuNDQpO2FsaWduLWl0ZW1zOmZsZXgtZW5kO30KI21iU2hlZXRCZy5zaG93e2Rpc3BsYXk6ZmxleDt9CiNtYlNoZWV0ewogIHdpZHRoOjEwMCU7bWF4LWhlaWdodDo4MnZoO2JhY2tncm91bmQ6dmFyKC0tbWItc3VyZmFjZSk7Ym9yZGVyLXJhZGl1czoyMnB4IDIycHggMCAwOwogIGRpc3BsYXk6ZmxleDtmbGV4LWRpcmVjdGlvbjpjb2x1bW47Ym94LXNoYWRvdzowIC0xMHB4IDM0cHggcmdiYSgwLDAsMCwuMjYpOwogIHRyYW5zZm9ybTp0cmFuc2xhdGVZKDEwMCUpO3RyYW5zaXRpb246dHJhbnNmb3JtIC4yNHMgY3ViaWMtYmV6aWVyKC4yMiwxLC4zNiwxKTsKfQojbWJTaGVldEJnLnNob3cgI21iU2hlZXR7dHJhbnNmb3JtOnRyYW5zbGF0ZVkoMCk7fQoubWItZ3JhYnt3aWR0aDo0MnB4O2hlaWdodDo1cHg7Ym9yZGVyLXJhZGl1czozcHg7YmFja2dyb3VuZDojZDNkYWUwO21hcmdpbjo5cHggYXV0byAycHg7ZmxleDpub25lO30KLm1iLXNoZWV0LWhlYWR7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtqdXN0aWZ5LWNvbnRlbnQ6c3BhY2UtYmV0d2VlbjtwYWRkaW5nOjZweCAxOHB4IDEwcHg7Ym9yZGVyLWJvdHRvbToxcHggc29saWQgdmFyKC0tbWItbGluZSk7ZmxleDpub25lO30KLm1iLXNoZWV0LWhlYWQgaDN7Zm9udC1zaXplOjE2cHg7Zm9udC13ZWlnaHQ6ODAwO2NvbG9yOnZhcigtLW1iLWluayk7fQoubWItc2hlZXQteHtib3JkZXI6bm9uZTtiYWNrZ3JvdW5kOiNmMWY0ZjY7Ym9yZGVyLXJhZGl1czo1MCU7d2lkdGg6MzJweDtoZWlnaHQ6MzJweDtmb250LXNpemU6MTZweDtjb2xvcjojNWE2NTcwO2N1cnNvcjpwb2ludGVyO30KLm1iLXNoZWV0LWJvZHl7cGFkZGluZzoxNHB4IDE2cHggMjZweDtvdmVyZmxvdy15OmF1dG87LXdlYmtpdC1vdmVyZmxvdy1zY3JvbGxpbmc6dG91Y2g7fQoKLyog7KCE7LK0IOy7tO2PrOuEjO2KuCDqt7jrpqzrk5wgKi8KLm1iLWNhdHttYXJnaW4tYm90dG9tOjE2cHg7fQoubWItY2F0IGg0e2ZvbnQtc2l6ZToxMnB4O2NvbG9yOnZhcigtLW1iLWluay1zb2Z0KTt0ZXh0LXRyYW5zZm9ybTp1cHBlcmNhc2U7bGV0dGVyLXNwYWNpbmc6LjZweDttYXJnaW46MCAwIDEwcHggMnB4O2ZvbnQtd2VpZ2h0OjcwMDt9Ci5tYi1jb21wLWdyaWR7ZGlzcGxheTpncmlkO2dyaWQtdGVtcGxhdGUtY29sdW1uczpyZXBlYXQoYXV0by1maWxsLG1pbm1heCg4NHB4LDFmcikpO2dhcDoxMHB4O30KLm1iLWNvbXB7CiAgYm9yZGVyOjFweCBzb2xpZCB2YXIoLS1tYi1saW5lKTtib3JkZXItcmFkaXVzOjE0cHg7YmFja2dyb3VuZDojZmFmYmZjOwogIHBhZGRpbmc6MTRweCA2cHg7dGV4dC1hbGlnbjpjZW50ZXI7Y3Vyc29yOnBvaW50ZXI7Zm9udC1zaXplOjEycHg7Zm9udC13ZWlnaHQ6NjAwO2NvbG9yOnZhcigtLW1iLWluayk7CiAgZGlzcGxheTpmbGV4O2ZsZXgtZGlyZWN0aW9uOmNvbHVtbjthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjdweDsKfQoubWItY29tcDphY3RpdmV7Ym9yZGVyLWNvbG9yOnZhcigtLW1iLWFjY2VudCk7YmFja2dyb3VuZDp2YXIoLS1tYi1hY2NlbnQtc29mdCk7fQoubWItY29tcCAuaWN7Zm9udC1zaXplOjIzcHg7Y29sb3I6dmFyKC0tbWItYWNjZW50LWluayk7bGluZS1oZWlnaHQ6MTt9CgovKiDsho3shLEg7Zi47Iqk7Yq4ICovCiNtYlByb3BIb3N0e21pbi1oZWlnaHQ6NDBweDt9CiNtYlByb3BIb3N0IC5lbXB0eS1wcm9wc3tjb2xvcjojOTRhMmFlO3RleHQtYWxpZ246Y2VudGVyO3BhZGRpbmc6MjZweCAwO2xpbmUtaGVpZ2h0OjEuNzt9CiNtYlByb3BIb3N0IC5wcm93LCNtYlByb3BIb3N0IC5wcm9we21hcmdpbi1ib3R0b206MTJweDt9CiNtYlByb3BIb3N0IGlucHV0LCNtYlByb3BIb3N0IHNlbGVjdCwjbWJQcm9wSG9zdCB0ZXh0YXJlYXtmb250LXNpemU6MTVweDt9CgovKiDtgbAg7JWh7IWYIOuyhO2KvCjrqZTribQv7Iuk7ZaJIOyLnO2KuCkgKi8KLm1iLWJpZy1idG57CiAgZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6MTNweDt3aWR0aDoxMDAlOwogIHBhZGRpbmc6MTVweCAxNnB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tbWItbGluZSk7Ym9yZGVyLXJhZGl1czoxM3B4O2JhY2tncm91bmQ6dmFyKC0tbWItc3VyZmFjZSk7CiAgZm9udC1zaXplOjE1cHg7Zm9udC13ZWlnaHQ6NzAwO2NvbG9yOnZhcigtLW1iLWluayk7Y3Vyc29yOnBvaW50ZXI7bWFyZ2luLWJvdHRvbToxMHB4O3RleHQtYWxpZ246bGVmdDsKfQoubWItYmlnLWJ0bjphY3RpdmV7YmFja2dyb3VuZDojZjNmNmY4O30KLm1iLWJpZy1idG4gLmlje2ZvbnQtc2l6ZToyMXB4O2ZsZXg6bm9uZTt9Ci5tYi1iaWctYnRuLnByaW1hcnl7YmFja2dyb3VuZDp2YXIoLS1tYi1hY2NlbnQpO2JvcmRlci1jb2xvcjp2YXIoLS1tYi1hY2NlbnQpO2NvbG9yOiNmZmY7fQovKiDtmZTrqbQg66qo65OcIOyghO2ZmCAo66mU64m0IOyLnO2KuCDslYgpOiAz6rCcIOyEuOq3uOuovO2KuCDtlZwg7ZaJICovCi5tYi1tb2RlLXNlZ3tkaXNwbGF5OmZsZXg7Z2FwOjhweDttYXJnaW4tYm90dG9tOjEwcHg7fQoubWItbW9kZS1zZWcgLnNlZ3tmbGV4OjE7ZGlzcGxheTpmbGV4O2ZsZXgtZGlyZWN0aW9uOmNvbHVtbjthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjtnYXA6NXB4OwogIHBhZGRpbmc6MTJweCA0cHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1tYi1saW5lKTtib3JkZXItcmFkaXVzOjEzcHg7YmFja2dyb3VuZDp2YXIoLS1tYi1zdXJmYWNlKTsKICBmb250LXNpemU6MTJweDtmb250LXdlaWdodDo3MDA7Y29sb3I6dmFyKC0tbWItaW5rKTtjdXJzb3I6cG9pbnRlcjt9Ci5tYi1tb2RlLXNlZyAuc2VnIHN2Z3t3aWR0aDoyNHB4O2hlaWdodDoyNHB4O2Rpc3BsYXk6YmxvY2s7fQoubWItbW9kZS1zZWcgLnNlZzphY3RpdmV7YmFja2dyb3VuZDojZjNmNmY4O30KLm1iLW1vZGUtc2VnIC5zZWcub257YmFja2dyb3VuZDp2YXIoLS1tYi1hY2NlbnQpO2JvcmRlci1jb2xvcjp2YXIoLS1tYi1hY2NlbnQpO2NvbG9yOiNmZmY7fQoubWItc2hlZXQtbGFiZWx7Zm9udC1zaXplOjEycHg7Zm9udC13ZWlnaHQ6NzAwO2NvbG9yOnZhcigtLW1iLWluay1zb2Z0LCM4YTk0OWMpO21hcmdpbjoycHggMnB4IDhweDt9Ci5tYi1tZW51LXZlcnttYXJnaW4tdG9wOjE0cHg7cGFkZGluZy10b3A6MTJweDtib3JkZXItdG9wOjFweCBzb2xpZCB2YXIoLS1tYi1saW5lKTt0ZXh0LWFsaWduOmNlbnRlcjtmb250LXNpemU6MTJweDtjb2xvcjojYWFiMmJhO3VzZXItc2VsZWN0Om5vbmU7fQoKLyog66CI7J207Ja0IO2KuOumrCAqLwoubWItbGF5ZXJ7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6OXB4O3BhZGRpbmc6MTFweCAxMHB4O2JvcmRlci1yYWRpdXM6MTBweDtib3JkZXI6MXB4IHNvbGlkIHRyYW5zcGFyZW50O2N1cnNvcjpwb2ludGVyO2ZvbnQtc2l6ZToxMy41cHg7Y29sb3I6dmFyKC0tbWItaW5rKTt9Ci5tYi1sYXllcjphY3RpdmV7YmFja2dyb3VuZDojZjNmNmY4O30KLm1iLWxheWVyLm9ue2JhY2tncm91bmQ6dmFyKC0tbWItYWNjZW50LXNvZnQpO2JvcmRlci1jb2xvcjp2YXIoLS1tYi1hY2NlbnQpO2NvbG9yOnZhcigtLW1iLWFjY2VudC1pbmspO2ZvbnQtd2VpZ2h0OjcwMDt9Ci5tYi1sYXllciAubHR7Zm9udC1zaXplOjE2cHg7ZmxleDpub25lO2NvbG9yOnZhcigtLW1iLWFjY2VudC1pbmspO30KLm1iLWxheWVyIC5seHttYXJnaW4tbGVmdDphdXRvO2NvbG9yOnZhcigtLW1iLWRhbmdlcik7Zm9udC1zaXplOjE1cHg7cGFkZGluZzoycHggOHB4O30KLm1iLWxheWVyLWVtcHR5e2NvbG9yOiM5NGEyYWU7dGV4dC1hbGlnbjpjZW50ZXI7cGFkZGluZzoyNnB4IDA7fQoKLyog67O06riw7ISk7KCVKOKamSkg7Iuc7Yq4IO2VreuqqSAqLwoubWItb3B0LXJvd3tkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpzcGFjZS1iZXR3ZWVuO3BhZGRpbmc6MTJweCAycHg7Ym9yZGVyLWJvdHRvbToxcHggc29saWQgdmFyKC0tbWItbGluZSk7fQoubWItb3B0LXJvdzpsYXN0LWNoaWxke2JvcmRlci1ib3R0b206bm9uZTt9Ci5tYi1vcHQtcm93IC5sYmx7Zm9udC1zaXplOjE0cHg7Zm9udC13ZWlnaHQ6NjAwO2NvbG9yOnZhcigtLW1iLWluayk7fQoubWItb3B0LXJvdyAuY3Rse2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjhweDt9Ci5tYi1zdGVwcGVye2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjZweDt9Ci5tYi1zdGVwcGVyIGJ1dHRvbnt3aWR0aDozNnB4O2hlaWdodDozNnB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tbWItbGluZSk7Ym9yZGVyLXJhZGl1czo5cHg7YmFja2dyb3VuZDojZjRmNmY4O2ZvbnQtc2l6ZToxOHB4O2ZvbnQtd2VpZ2h0OjcwMDtjb2xvcjp2YXIoLS1tYi1pbmspO2N1cnNvcjpwb2ludGVyO30KLm1iLXN0ZXBwZXIgYnV0dG9uOmFjdGl2ZXtiYWNrZ3JvdW5kOnZhcigtLW1iLWFjY2VudC1zb2Z0KTt9Ci5tYi1zdGVwcGVyIGlucHV0e3dpZHRoOjY2cHg7aGVpZ2h0OjM2cHg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1tYi1saW5lKTtib3JkZXItcmFkaXVzOjlweDt0ZXh0LWFsaWduOmNlbnRlcjtmb250LXNpemU6MTVweDtmb250LXdlaWdodDo2MDA7fQovKiDthqDquIAg7Iqk7JyE7LmYICovCi5tYi1zd2l0Y2h7cG9zaXRpb246cmVsYXRpdmU7d2lkdGg6NDhweDtoZWlnaHQ6MjhweDtmbGV4Om5vbmU7fQoubWItc3dpdGNoIGlucHV0e29wYWNpdHk6MDt3aWR0aDowO2hlaWdodDowO3Bvc2l0aW9uOmFic29sdXRlO30KLm1iLXN3aXRjaCAudHJhY2t7cG9zaXRpb246YWJzb2x1dGU7aW5zZXQ6MDtiYWNrZ3JvdW5kOiNjZmQ2ZGM7Ym9yZGVyLXJhZGl1czoyMHB4O3RyYW5zaXRpb246LjE2czt9Ci5tYi1zd2l0Y2ggLnRyYWNrOjphZnRlcntjb250ZW50OiIiO3Bvc2l0aW9uOmFic29sdXRlO2xlZnQ6M3B4O3RvcDozcHg7d2lkdGg6MjJweDtoZWlnaHQ6MjJweDtiYWNrZ3JvdW5kOiNmZmY7Ym9yZGVyLXJhZGl1czo1MCU7dHJhbnNpdGlvbjouMTZzO2JveC1zaGFkb3c6MCAxcHggM3B4IHJnYmEoMCwwLDAsLjI1KTt9Ci5tYi1zd2l0Y2ggaW5wdXQ6Y2hlY2tlZCArIC50cmFja3tiYWNrZ3JvdW5kOnZhcigtLW1iLWFjY2VudCk7fQoubWItc3dpdGNoIGlucHV0OmNoZWNrZWQgKyAudHJhY2s6OmFmdGVye3RyYW5zZm9ybTp0cmFuc2xhdGVYKDIwcHgpO30KCi8qIC0tLS0tLS0tLS0g7Jqw7LihIOyGjeyEsSDtjKjrhJAgKOqwgOuhnCDrqqjrk5wg7KCE7JqpKSAtLS0tLS0tLS0tICovCiNtYlNpZGVQYW5lbHsKICBwb3NpdGlvbjpmaXhlZDtyaWdodDowO3RvcDo1MnB4O2JvdHRvbTowO3dpZHRoOjMwMHB4O3otaW5kZXg6MTM3MDsKICBmbGV4LWRpcmVjdGlvbjpjb2x1bW47YmFja2dyb3VuZDp2YXIoLS1tYi1zdXJmYWNlKTtib3JkZXItbGVmdDoxcHggc29saWQgdmFyKC0tbWItbGluZSk7CiAgYm94LXNoYWRvdzotNnB4IDAgMjBweCByZ2JhKDIwLDMzLDQ4LC4wOCk7dHJhbnNmb3JtOnRyYW5zbGF0ZVgoMTAwJSk7dHJhbnNpdGlvbjp0cmFuc2Zvcm0gLjIycyBlYXNlOwp9CiNtYlNpZGVQYW5lbC5vcGVue3RyYW5zZm9ybTp0cmFuc2xhdGVYKDApO30KLm1iLXNpZGUtaGVhZHtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpzcGFjZS1iZXR3ZWVuO3BhZGRpbmc6MTJweCAxNnB4O2JvcmRlci1ib3R0b206MXB4IHNvbGlkIHZhcigtLW1iLWxpbmUpO2ZsZXg6bm9uZTt9Ci5tYi1zaWRlLWhlYWQgaDN7Zm9udC1zaXplOjE1cHg7Zm9udC13ZWlnaHQ6ODAwO2NvbG9yOnZhcigtLW1iLWluayk7fQoubWItc2lkZS1ib2R5e3BhZGRpbmc6MTRweCAxNnB4IDI0cHg7b3ZlcmZsb3cteTphdXRvO2ZsZXg6MTstd2Via2l0LW92ZXJmbG93LXNjcm9sbGluZzp0b3VjaDt9CmJvZHkubWItcG9ydHJhaXQgI21iU2lkZVBhbmVse2Rpc3BsYXk6bm9uZTt9Ci8qIOqwgOuhnOyXkOyEnCDtjKjrhJAg7Je066as66m0IOy6lOuyhOyKpCDsmrDsuKEg7Jes67CxIO2ZleuztCAqLwpib2R5Lm1iLWxhbmRzY2FwZS5tYi1zaWRlLW9wZW4gLmNhbnZhcy1zY3JvbGx7cmlnaHQ6MzAwcHg7fQovKiDqsIDroZw6IOyijOy4oSDroIjsnbzsnbQg7LqU67KE7Iqk66W8IOuwgOyWtOuCtOuPhOuhnSjqsrnsuagg67Cp7KeAKSDsupTrsoTsiqQg7Iuc7J6R7KCQ7J2EIOugiOydvCDtj63rp4ztgbwg7ZmV67O0LgogICBQQyDrj4Qg7Y+t7J20IOuEk+ycvOuptCBtYi1sYW5kc2NhcGUg6rCAIOu2meycvOuvgOuhnCDrsJjrk5zsi5wgbWItbW9iaWxlL21iLXRhYmxldCDroZwg7ZWc7KCV7ZWc64ukLiAqLwpib2R5Lm1iLW1vYmlsZS5tYi1sYW5kc2NhcGUgLmNhbnZhcy1zY3JvbGwsCmJvZHkubWItdGFibGV0Lm1iLWxhbmRzY2FwZSAuY2FudmFzLXNjcm9sbHtsZWZ0OjgycHg7fQpib2R5Lm1iLW1vYmlsZS5tYi1sYW5kc2NhcGUubWItcHJldmlldyAuY2FudmFzLXNjcm9sbCwKYm9keS5tYi10YWJsZXQubWItbGFuZHNjYXBlLm1iLXByZXZpZXcgLmNhbnZhcy1zY3JvbGx7bGVmdDowO30KCi8qIC0tLS0tLS0tLS0g66+464uI66e1IC0tLS0tLS0tLS0gKi8KI21iTWluaU1hcHsKICBwb3NpdGlvbjpmaXhlZDt6LWluZGV4OjEzODQ7YmFja2dyb3VuZDpyZ2JhKDI1NSwyNTUsMjU1LC45Nyk7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1tYi1saW5lKTsKICBib3JkZXItcmFkaXVzOjEwcHg7Ym94LXNoYWRvdzp2YXIoLS1tYi1zaGFkb3cpO292ZXJmbG93OmhpZGRlbjtwYWRkaW5nOjA7CiAgLXdlYmtpdC11c2VyLXNlbGVjdDpub25lO3VzZXItc2VsZWN0Om5vbmU7dG91Y2gtYWN0aW9uOm5vbmU7Cn0KYm9keS5tYi1wb3J0cmFpdCAjbWJNaW5pTWFwe2xlZnQ6MTJweDtib3R0b206MTcwcHg7dG9wOmF1dG87cmlnaHQ6YXV0bzt9ICAgLyog7IS466GcOiDsooztlZjri6go64+E7YGsIOychCkgKi8KYm9keS5tYi1sYW5kc2NhcGUgI21iTWluaU1hcHtyaWdodDo3NnB4O3RvcDo2MnB4O2xlZnQ6YXV0bztib3R0b206YXV0bzt9ICAgLyog6rCA66GcOiDsmrDsg4Hri6go7Jqw7LihIOy7qO2KuOuhpCDsmbzsqr0pICovCi8qIOqwgOuhnOyXkOyEnCDsho3shLEg7Yyo64SQ7J20IOyXtOumrOuptCDrr7jri4jrp7Xrj4Qg7Yyo64SQIO2PreunjO2BvCDsmbzsqr3snLzroZwgKOyCrOyaqeyekOqwgCDsp4HsoJEg7Jiu6ri0IOqyveyasOuKlCDsoJzsmbgpICovCmJvZHkubWItbGFuZHNjYXBlLm1iLXNpZGUtb3BlbiAjbWJNaW5pTWFwOm5vdCgubWItbW92ZWQpe3JpZ2h0OjMxMnB4O30KLyogUEMg66qo65OcKOuqqOuwlOydvC/tg5zruJTrpr8g7YG0656Y7Iqk6rCAIOyXhuydhCDrlYwpOiDsupTrsoTsiqQg7Jqw7IOB64uoKOyGjeyEsSDtjKjrhJAg7Jm87Kq9KeyXkCDtkZzsi5wuCiAgIOq4sOuzuOydgCDsiKjquYDsnbTqs6AgYm9keS5tYi1wYy1taW5pIOqwgCDsnojsnYQg65WM66eMIOuztOyduOuLpC4gKi8KYm9keTpub3QoLm1iLW1vYmlsZSk6bm90KC5tYi10YWJsZXQpICNtYk1pbmlNYXB7ZGlzcGxheTpub25lO3JpZ2h0OjI1MnB4O3RvcDoxMTJweDtsZWZ0OmF1dG87Ym90dG9tOmF1dG87fQpib2R5Om5vdCgubWItbW9iaWxlKTpub3QoLm1iLXRhYmxldCkubWItcGMtbWluaSAjbWJNaW5pTWFwe2Rpc3BsYXk6YmxvY2s7fQpib2R5Om5vdCgubWItbW9iaWxlKTpub3QoLm1iLXRhYmxldCkubWItcGMtbWluaSAjbWJNaW5pTWFwLm1iLW1vdmVke2Rpc3BsYXk6YmxvY2s7fQovKiDsgqzsmqnsnpDqsIAg65Oc656Y6re466GcIOyYruq4sOuptCDsnbjrnbzsnbgg7Iqk7YOA7J287J20IOyasOyEoCAqLwojbWJNaW5pTWFwLm1iLW1vdmVke2xlZnQ6YXV0bztyaWdodDphdXRvO3RvcDphdXRvO2JvdHRvbTphdXRvO30KI21iTWluaUNhbnZhc3tkaXNwbGF5OmJsb2NrO30KI21iTWluaVZpZXd7cG9zaXRpb246YWJzb2x1dGU7Ym9yZGVyOjJweCBzb2xpZCB2YXIoLS1tYi1kYW5nZXIpO2JhY2tncm91bmQ6cmdiYSgyMTQsNjksNjksLjEyKTtib3JkZXItcmFkaXVzOjJweDtwb2ludGVyLWV2ZW50czpub25lO30KI21iTWluaVRvZ2dsZXtwb3NpdGlvbjphYnNvbHV0ZTtyaWdodDoycHg7dG9wOjJweDt3aWR0aDoyMHB4O2hlaWdodDoyMHB4O2JvcmRlcjpub25lO2JhY2tncm91bmQ6cmdiYSgzNCw0OCw2MywuNzIpO2NvbG9yOiNmZmY7Ym9yZGVyLXJhZGl1czo1cHg7Zm9udC1zaXplOjExcHg7Y3Vyc29yOnBvaW50ZXI7bGluZS1oZWlnaHQ6MTtwYWRkaW5nOjA7ei1pbmRleDoyO30KI21iTWluaU1vdmV7cG9zaXRpb246YWJzb2x1dGU7bGVmdDoycHg7dG9wOjJweDt3aWR0aDoyMnB4O2hlaWdodDoyMHB4O2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjtiYWNrZ3JvdW5kOnJnYmEoMzQsNDgsNjMsLjcyKTtjb2xvcjojZmZmO2JvcmRlci1yYWRpdXM6NXB4O2ZvbnQtc2l6ZToxM3B4O2N1cnNvcjptb3ZlO2xpbmUtaGVpZ2h0OjE7ei1pbmRleDoyO2xldHRlci1zcGFjaW5nOi0xcHg7fQojbWJNaW5pTWFwLm1pbmktY29sbGFwc2VkICNtYk1pbmlNb3Zle2Rpc3BsYXk6bm9uZTt9CiNtYk1pbmlNYXAubWluaS1jb2xsYXBzZWR7d2lkdGg6MzZweCFpbXBvcnRhbnQ7aGVpZ2h0OjM2cHghaW1wb3J0YW50O2JhY2tncm91bmQ6cmdiYSgzNCw0OCw2MywuODUpO30KI21iTWluaU1hcC5taW5pLWNvbGxhcHNlZCAjbWJNaW5pQ2FudmFzLCNtYk1pbmlNYXAubWluaS1jb2xsYXBzZWQgI21iTWluaVZpZXd7ZGlzcGxheTpub25lO30KI21iTWluaU1hcC5taW5pLWNvbGxhcHNlZCAjbWJNaW5pVG9nZ2xle3JpZ2h0OjdweDt0b3A6N3B4O2JhY2tncm91bmQ6dHJhbnNwYXJlbnQ7Zm9udC1zaXplOjE0cHg7fQoKLyogLS0tLS0tLS0tLSBQcmV2aWV3IC0tLS0tLS0tLS0gKi8KYm9keS5tYi1wcmV2aWV3ICNtYlRvcCxib2R5Lm1iLXByZXZpZXcgI21iRG9jayxib2R5Lm1iLXByZXZpZXcgI21iUmFpbCxib2R5Lm1iLXByZXZpZXcgI21iQ3R4LApib2R5Lm1iLXByZXZpZXcgI21iVG9vbHMsYm9keS5tYi1wcmV2aWV3ICNtYkFkZEZhYixib2R5Lm1iLXByZXZpZXcgI21iTWluaU1hcCxib2R5Lm1iLXByZXZpZXcgI21iU2lkZVBhbmVse2Rpc3BsYXk6bm9uZSFpbXBvcnRhbnQ7fQpib2R5Lm1iLXByZXZpZXcgLmNhbnZhcy1zY3JvbGx7cGFkZGluZzowO3JpZ2h0OjA7fQpib2R5Lm1iLXByZXZpZXcgI2NhbnZhc3tib3JkZXI6bm9uZTtib3gtc2hhZG93Om5vbmU7YmFja2dyb3VuZC1pbWFnZTpub25lO30KYm9keS5tYi1wcmV2aWV3IC5jbXAuc2VsZWN0ZWR7b3V0bGluZTpub25lIWltcG9ydGFudDtib3gtc2hhZG93Om5vbmUhaW1wb3J0YW50O30KYm9keS5tYi1wcmV2aWV3IC5jbXAgLmhhbmRsZSxib2R5Lm1iLXByZXZpZXcgLmNtcCAudGFidGFnLGJvZHkubWItcHJldmlldyAuZ3VpZGVsaW5lLGJvZHkubWItcHJldmlldyAuZ2wtZGlzdHtkaXNwbGF5Om5vbmUhaW1wb3J0YW50O30KI21iUHJldmlld0V4aXR7CiAgcG9zaXRpb246Zml4ZWQ7cmlnaHQ6MTZweDtib3R0b206MTZweDt6LWluZGV4OjIwMDA7ZGlzcGxheTpub25lOwogIGJhY2tncm91bmQ6dmFyKC0tbWItbmF2eSk7Y29sb3I6I2ZmZjtib3JkZXI6bm9uZTtib3JkZXItcmFkaXVzOjI0cHg7cGFkZGluZzoxM3B4IDIwcHg7CiAgZm9udC1zaXplOjE0cHg7Zm9udC13ZWlnaHQ6NzAwO2N1cnNvcjpwb2ludGVyO2JveC1zaGFkb3c6dmFyKC0tbWItc2hhZG93KTthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjdweDsKfQpib2R5Lm1iLXByZXZpZXcgI21iUHJldmlld0V4aXR7ZGlzcGxheTppbmxpbmUtZmxleDt9Ci8qIEludGVyYWN0aXZlIHByZXZpZXcgaWZyYW1lOiBvbiBtb2JpbGUvdGFibGV0LCDrr7jrpqzrs7TquLAgbG9hZHMgdGhlIHJlYWwgZXhwb3J0IEhUTUwKICAgKHdpdGggd29ya2luZyBjb21wb25lbnQgZXZlbnRzKSBpbnRvIHRoaXMgZnJhbWUgaW5zdGVhZCBvZiBzaG93aW5nIHRoZSBzdGF0aWMKICAgZGVzaWduIGNhbnZhcy4gSXQgZmlsbHMgdGhlIHZpZXdwb3J0OyB0aGUgZGVzaWduIGNhbnZhcyBpcyBoaWRkZW4gYmVoaW5kIGl0LiAqLwojbWJQcmV2aWV3RnJhbWV7cG9zaXRpb246Zml4ZWQ7aW5zZXQ6MDt3aWR0aDoxMDAlO2hlaWdodDoxMDAlO2JvcmRlcjpub25lO2JhY2tncm91bmQ6I2Y0ZjZmODt6LWluZGV4OjE5MDA7ZGlzcGxheTpub25lO30KYm9keS5tYi1wcmV2aWV3Lm1iLXByZXZpZXctbGl2ZSAjbWJQcmV2aWV3RnJhbWV7ZGlzcGxheTpibG9jazt9CmJvZHkubWItcHJldmlldy5tYi1wcmV2aWV3LWxpdmUgLmNhbnZhcy1zY3JvbGx7ZGlzcGxheTpub25lIWltcG9ydGFudDt9CgovKiAtLS0tLS0tLS0tIFRvYXN0IC0tLS0tLS0tLS0gKi8KI21iVG9hc3R7CiAgcG9zaXRpb246Zml4ZWQ7bGVmdDo1MCU7dHJhbnNmb3JtOnRyYW5zbGF0ZVgoLTUwJSk7ei1pbmRleDoyMTAwO2Rpc3BsYXk6bm9uZTsKICBiYWNrZ3JvdW5kOnZhcigtLW1iLW5hdnkpO2NvbG9yOiNmZmY7cGFkZGluZzoxMXB4IDE4cHg7Ym9yZGVyLXJhZGl1czoyMnB4O2ZvbnQtc2l6ZToxMy41cHg7Zm9udC13ZWlnaHQ6NjAwOwogIGJveC1zaGFkb3c6dmFyKC0tbWItc2hhZG93KTttYXgtd2lkdGg6ODJ2dzt0ZXh0LWFsaWduOmNlbnRlcjsKfQpib2R5Lm1iLXBvcnRyYWl0ICNtYlRvYXN0e2JvdHRvbToxNzJweDt9CmJvZHkubWItbGFuZHNjYXBlICNtYlRvYXN0e2JvdHRvbToyMHB4O30KCi8qIO2BsCDshpDqsIDrnb3smqk6IOyEoO2DnSDsu7Ttj6zrhIztirgg7ZW465OkIO2ZleuMgCAtIOuNsOyKpO2BrO2GseqzvCDqsJnsnYAgOOuwqe2WpSDrqqjrkZAg7KCB7JqpICovCmJvZHkubWItbW9iaWxlIC5jbXAuc2VsZWN0ZWQgLmhhbmRsZSxib2R5Lm1iLXRhYmxldCAuY21wLnNlbGVjdGVkIC5oYW5kbGV7d2lkdGg6MjBweDtoZWlnaHQ6MjBweDtib3JkZXItd2lkdGg6MnB4O2JvcmRlci1yYWRpdXM6NHB4O30KYm9keS5tYi1tb2JpbGUgLmNtcC5zZWxlY3RlZCAuaGFuZGxlLnNlLGJvZHkubWItdGFibGV0IC5jbXAuc2VsZWN0ZWQgLmhhbmRsZS5zZXtyaWdodDotMTBweDtib3R0b206LTEwcHg7fQpib2R5Lm1iLW1vYmlsZSAuY21wLnNlbGVjdGVkIC5oYW5kbGUuc3csYm9keS5tYi10YWJsZXQgLmNtcC5zZWxlY3RlZCAuaGFuZGxlLnN3e2xlZnQ6LTEwcHg7Ym90dG9tOi0xMHB4O30KYm9keS5tYi1tb2JpbGUgLmNtcC5zZWxlY3RlZCAuaGFuZGxlLm5lLGJvZHkubWItdGFibGV0IC5jbXAuc2VsZWN0ZWQgLmhhbmRsZS5uZXtyaWdodDotMTBweDt0b3A6LTEwcHg7fQpib2R5Lm1iLW1vYmlsZSAuY21wLnNlbGVjdGVkIC5oYW5kbGUubncsYm9keS5tYi10YWJsZXQgLmNtcC5zZWxlY3RlZCAuaGFuZGxlLm53e2xlZnQ6LTEwcHg7dG9wOi0xMHB4O30KYm9keS5tYi1tb2JpbGUgLmNtcC5zZWxlY3RlZCAuaGFuZGxlLmUsYm9keS5tYi10YWJsZXQgLmNtcC5zZWxlY3RlZCAuaGFuZGxlLmV7cmlnaHQ6LTEwcHg7fQpib2R5Lm1iLW1vYmlsZSAuY21wLnNlbGVjdGVkIC5oYW5kbGUudyxib2R5Lm1iLXRhYmxldCAuY21wLnNlbGVjdGVkIC5oYW5kbGUud3tsZWZ0Oi0xMHB4O30KYm9keS5tYi1tb2JpbGUgLmNtcC5zZWxlY3RlZCAuaGFuZGxlLnMsYm9keS5tYi10YWJsZXQgLmNtcC5zZWxlY3RlZCAuaGFuZGxlLnN7Ym90dG9tOi0xMHB4O30KYm9keS5tYi1tb2JpbGUgLmNtcC5zZWxlY3RlZCAuaGFuZGxlLm4sYm9keS5tYi10YWJsZXQgLmNtcC5zZWxlY3RlZCAuaGFuZGxlLm57dG9wOi0xMHB4O30KCi8qIOyyqyDsp4TsnoUg7L2U7LmY66eI7YGsICovCiNtYkNvYWNoewogIHBvc2l0aW9uOmZpeGVkO2luc2V0OjA7ei1pbmRleDoxNjAwO2Rpc3BsYXk6bm9uZTthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjsKICBiYWNrZ3JvdW5kOnJnYmEoMTYsMjQsMzMsLjYyKTtwYWRkaW5nOjI4cHg7Cn0KI21iQ29hY2guc2hvd3tkaXNwbGF5OmZsZXg7fQoubWItY29hY2gtY2FyZHtiYWNrZ3JvdW5kOnZhcigtLW1iLXN1cmZhY2UpO2JvcmRlci1yYWRpdXM6MThweDtwYWRkaW5nOjIycHggMjBweDttYXgtd2lkdGg6MzQwcHg7Ym94LXNoYWRvdzp2YXIoLS1tYi1zaGFkb3cpO30KLm1iLWNvYWNoLWNhcmQgaDN7Zm9udC1zaXplOjE4cHg7Zm9udC13ZWlnaHQ6ODAwO2NvbG9yOnZhcigtLW1iLWluayk7bWFyZ2luLWJvdHRvbTo2cHg7fQoubWItY29hY2gtY2FyZCBwe2ZvbnQtc2l6ZToxNHB4O2NvbG9yOnZhcigtLW1iLWluay1zb2Z0KTtsaW5lLWhlaWdodDoxLjY7bWFyZ2luLWJvdHRvbToxNHB4O30KLm1iLWNvYWNoLWNhcmQgLnN0ZXB7ZGlzcGxheTpmbGV4O2dhcDoxMHB4O2FsaWduLWl0ZW1zOmZsZXgtc3RhcnQ7bWFyZ2luLWJvdHRvbToxMHB4O2ZvbnQtc2l6ZToxMy41cHg7Y29sb3I6dmFyKC0tbWItaW5rKTt9Ci5tYi1jb2FjaC1jYXJkIC5zdGVwIC5ue2ZsZXg6bm9uZTt3aWR0aDoyNHB4O2hlaWdodDoyNHB4O2JvcmRlci1yYWRpdXM6NTAlO2JhY2tncm91bmQ6dmFyKC0tbWItYWNjZW50LXNvZnQpO2NvbG9yOnZhcigtLW1iLWFjY2VudC1pbmspO2ZvbnQtd2VpZ2h0OjgwMDtmb250LXNpemU6MTJweDtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXI7fQoubWItY29hY2gtY2FyZCBidXR0b257d2lkdGg6MTAwJTttYXJnaW4tdG9wOjhweDtwYWRkaW5nOjEzcHg7Ym9yZGVyOm5vbmU7Ym9yZGVyLXJhZGl1czoxMnB4O2JhY2tncm91bmQ6dmFyKC0tbWItYWNjZW50KTtjb2xvcjojZmZmO2ZvbnQtc2l6ZToxNXB4O2ZvbnQtd2VpZ2h0OjcwMDtjdXJzb3I6cG9pbnRlcjt9CgovKiA9PT09PSDrqqnsl4XqtIDrpqwo6rSA66as7J6QKSA9PT09PSAqLwouYWRtLXRhYmxlLXdyYXB7ZmxleDoxO292ZXJmbG93OmF1dG87cGFkZGluZzowIDE4cHggMThweDt9Ci5hZG0tdGFibGV7d2lkdGg6MTAwJTtib3JkZXItY29sbGFwc2U6Y29sbGFwc2U7Zm9udC1zaXplOjEyLjVweDt9Ci5hZG0tdGFibGUgdGh7dGV4dC1hbGlnbjpsZWZ0O3BhZGRpbmc6OXB4IDEwcHg7Ym9yZGVyLWJvdHRvbToxLjVweCBzb2xpZCAjZTVlOWVkO2NvbG9yOiM1ZjZjNzg7Zm9udC13ZWlnaHQ6NjAwO3Bvc2l0aW9uOnN0aWNreTt0b3A6MDtiYWNrZ3JvdW5kOiNmZmY7d2hpdGUtc3BhY2U6bm93cmFwO30KLmFkbS10YWJsZSB0ZHtwYWRkaW5nOjlweCAxMHB4O2JvcmRlci1ib3R0b206MXB4IHNvbGlkICNmMGYyZjQ7Y29sb3I6IzJjM2U1MDt2ZXJ0aWNhbC1hbGlnbjp0b3A7fQouYWRtLXRhYmxlIHRyOmhvdmVyIHRke2JhY2tncm91bmQ6I2ZhZmJmYzt9Ci5hZG0tbW9ub3tmb250LWZhbWlseTp1aS1tb25vc3BhY2UsU0ZNb25vLVJlZ3VsYXIsTWVubG8sQ29uc29sYXMsbW9ub3NwYWNlO2ZvbnQtc2l6ZToxMS41cHg7Y29sb3I6IzVmNmM3ODt9Ci5hZG0tZWxsaXB7bWF4LXdpZHRoOjI2MHB4O292ZXJmbG93OmhpZGRlbjt0ZXh0LW92ZXJmbG93OmVsbGlwc2lzO3doaXRlLXNwYWNlOm5vd3JhcDt9Ci5hZG0tYmFkZ2V7ZGlzcGxheTppbmxpbmUtYmxvY2s7cGFkZGluZzoycHggOXB4O2JvcmRlci1yYWRpdXM6MjBweDtmb250LXNpemU6MTFweDtmb250LXdlaWdodDo3MDA7d2hpdGUtc3BhY2U6bm93cmFwO30KLmFkbS1kcmFmdGxpbS1pbnB1dHt3aWR0aDo2MHB4O3BhZGRpbmc6NHB4IDZweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo0cHg7Zm9udC1zaXplOjEycHg7Zm9udC1mYW1pbHk6aW5oZXJpdDt9Ci5hZG0tcHdyZXNldC1idG57cGFkZGluZzo0cHggMTBweDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWF4LWJvcmRlcik7Ym9yZGVyLXJhZGl1czo0cHg7YmFja2dyb3VuZDojZmZmO2ZvbnQtc2l6ZToxMS41cHg7Y29sb3I6IzZiNzI4MDtjdXJzb3I6cG9pbnRlcjt9Ci5hZG0tcHdyZXNldC1idG46aG92ZXJ7YmFja2dyb3VuZDojZmRlY2VjO2JvcmRlci1jb2xvcjojZjBjOWM5O2NvbG9yOiNjMDM5MmI7fQouYWRtLXB3Y2VsbHtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo4cHg7fQouYWRtLXB3dGV4dHtmbGV4OjE7bWluLXdpZHRoOjA7b3ZlcmZsb3c6aGlkZGVuO3RleHQtb3ZlcmZsb3c6ZWxsaXBzaXM7d2hpdGUtc3BhY2U6bm93cmFwO30KLmFkbS1leWUtYnRue2N1cnNvcjpwb2ludGVyO2ZsZXgtc2hyaW5rOjA7Zm9udC1zaXplOjEzcHg7dXNlci1zZWxlY3Q6bm9uZTtvcGFjaXR5Oi43NTt9Ci5hZG0tZXllLWJ0bjpob3ZlcntvcGFjaXR5OjE7fQouYWRtLW5vdGV7bWFyZ2luOjEwcHggMnB4IDA7Zm9udC1zaXplOjExLjVweDtjb2xvcjojOGE5N2EzO30KLmFkbS1mYi1saXN0e2Rpc3BsYXk6ZmxleDtmbGV4LWRpcmVjdGlvbjpjb2x1bW47Z2FwOjEwcHg7fQouYWRtLWZiLWNhcmR7Ym9yZGVyOjFweCBzb2xpZCAjZTVlOWVkO2JvcmRlci1yYWRpdXM6MTBweDtwYWRkaW5nOjEycHggMTRweDtiYWNrZ3JvdW5kOiNmZmY7fQouYWRtLWZiLWhlYWR7ZGlzcGxheTpmbGV4O2p1c3RpZnktY29udGVudDpzcGFjZS1iZXR3ZWVuO2FsaWduLWl0ZW1zOmNlbnRlcjttYXJnaW4tYm90dG9tOjZweDt9Ci5hZG0tZmItYXV0aG9ye2ZvbnQtd2VpZ2h0OjcwMDtmb250LXNpemU6MTIuNXB4O2NvbG9yOiMyYzNlNTA7fQouYWRtLWZiLWRhdGV7Zm9udC1zaXplOjExcHg7Y29sb3I6IzljYTNhZjt9Ci5hZG0tZmItYm9keXtmb250LXNpemU6MTNweDtjb2xvcjojM2E0NTUyO2xpbmUtaGVpZ2h0OjEuNjttYXgtaGVpZ2h0OjMuMmVtO292ZXJmbG93OmhpZGRlbjtjdXJzb3I6cG9pbnRlcjt9Ci5hZG0tZmItYm9keS5leHBhbmRlZHttYXgtaGVpZ2h0Om5vbmU7fQoKLyog7Zek65Oc65287J24wrfrp4nrjIDripQg6rOg7KCVIOuGkuydtChhZG0tdXNhZ2UtdG9wKeuhnCDsnITsl5Ag65GQ6rOgLCDqt7gg7JWE656YIOyijCjthYzsnbTruJTrs4QpwrfsmrAo7IKs7Jqp7J6Q67OEKQogICDrkZAg7Lm4KGFkbS11c2FnZS1zcGxpdCnrp4wg64Ko7J2AIOyEuOuhnCDqs7XqsITsnYQg64KY64igIOqwgOynhOuLpC4g6rCBIOy5uOydgCDsnpDquLAg7JWI7JeQ7ISc66eMIOyKpO2BrOuhpOuQmOuPhOuhnQogICBtaW4taGVpZ2h0OjAgKyBvdmVyZmxvdzphdXRv66W8IOyViOyqvSDrsJXsiqQoYWRtLXVzYWdlLXRhYmxlLXdyYXAp7JeQIOykgOuLpCAtIO2VnOyqveydtCDquLjslrTsoLjrj4QKICAg64uk66W4IOyqvSDsiqTtgazroaQg7JyE7LmY64KYIO2XpOuTnOudvOyduOydgCDqt7jrjIDroZwg7J6I64ukLiAqLwouYWRtLXVzYWdlLXdyYXB7cGFkZGluZzoyMHB4IDI0cHg7ZmxleDoxO21pbi1oZWlnaHQ6MDtkaXNwbGF5OmZsZXg7ZmxleC1kaXJlY3Rpb246Y29sdW1uO30KLmFkbS11c2FnZS10b3B7ZmxleDpub25lO30KLmFkbS11c2FnZS1oZWFkbGluZXtmb250LXNpemU6MjhweDtmb250LXdlaWdodDo3MDA7Y29sb3I6IzFhMWExYTttYXJnaW4tYm90dG9tOjE0cHg7fQouYWRtLXVzYWdlLW9me2ZvbnQtc2l6ZToxNXB4O2ZvbnQtd2VpZ2h0OjQwMDtjb2xvcjojOGE5N2EzO21hcmdpbi1sZWZ0OjRweDt9Ci5hZG0tdXNhZ2UtYmFye2Rpc3BsYXk6ZmxleDt3aWR0aDoxMDAlO2hlaWdodDo4cHg7Ym9yZGVyLXJhZGl1czo1cHg7YmFja2dyb3VuZDojZWVmMWY0O292ZXJmbG93OmhpZGRlbjttYXJnaW4tYm90dG9tOjIycHg7fQouYWRtLXVzYWdlLXNwbGl0e2Rpc3BsYXk6ZmxleDtnYXA6MjhweDtmbGV4OjE7bWluLWhlaWdodDowO30KLmFkbS11c2FnZS1jb2x7ZmxleDoxO21pbi13aWR0aDowO2Rpc3BsYXk6ZmxleDtmbGV4LWRpcmVjdGlvbjpjb2x1bW47bWluLWhlaWdodDowO30KLmFkbS11c2FnZS1jb2wtdGl0bGV7Zm9udC1zaXplOjEyLjVweDtmb250LXdlaWdodDo3MDA7Y29sb3I6IzVmNmM3ODttYXJnaW46MCAwIDhweDtmbGV4Om5vbmU7fQovKiDsoowo7YWM7J2067iU67OEKcK37JqwKOyCrOyaqeyekOuzhCkg65GQIOy5uCDrqqjrkZAg6rCZ7J2AIOuwleyKpCjthYzrkZDrpqwr6rOg7KCVIO2XpOuNlCvsiqTtgazroaQpIOuqqOyWkeydhCDsk7Tri6QgLQogICDrkZgg64ukIOydtCDslYjsl5AgPHRhYmxlIGNsYXNzPSJhZG0tdGFibGUiPuulvCDrhKPslrQg7Zek642UIO2WieqzvCDthYzrkZDrpqzqsIAg64+Z7J287ZWY6rKMIOuztOydtOqyjCDtlZzri6QuICovCi5hZG0tdXNhZ2UtdGFibGUtd3JhcHtmbGV4OjE7bWluLWhlaWdodDowO292ZXJmbG93OmF1dG87Ym9yZGVyOjFweCBzb2xpZCAjZTVlOWVkO2JvcmRlci1yYWRpdXM6OHB4O30KLmFkbS11c2FnZS10YWJsZS13cmFwIC5hZG0tdGFibGV7Zm9udC1zaXplOjEyLjVweDt9Ci8qIOydtOumhCvshKTrqoXsnYQg7ZWcIOykhOuhnCAtIO2RnOulvCB0YWJsZS1sYXlvdXQ6Zml4ZWTroZwg6rOg7KCV7ZW0IOuCmOuouOyngCjsmqnrn4kgJSkg7Lus65+87J2AIHRo7J2YIOyngOyglQogICDtj63rp4ztgbzrp4wg7LCo7KeA7ZWY6rKMIO2VmOqzoCwg7J2066aEIOy5uOydgCDrgqjripQg7Y+t7J2EIOuLpCDqsIDsoLjqsIDrkJgg64SY7LmY66m0IOunkOykhOyehO2RnOuhnCDsnpDrpbjri6QuICovCi5hZG0tdXNhZ2UtdGFibGUtd3JhcCAuYWRtLXRhYmxle3RhYmxlLWxheW91dDpmaXhlZDt9Ci5hZG0tdXNhZ2UtdGFibGUtd3JhcCB0ZC5hZG0tdXNhZ2UtbmFtZWNlbGx7d2hpdGUtc3BhY2U6bm93cmFwO292ZXJmbG93OmhpZGRlbjt0ZXh0LW92ZXJmbG93OmVsbGlwc2lzO30KLmFkbS11c2FnZS1kb3R7ZGlzcGxheTppbmxpbmUtYmxvY2s7dmVydGljYWwtYWxpZ246bWlkZGxlO3dpZHRoOjlweDtoZWlnaHQ6OXB4O2JvcmRlci1yYWRpdXM6NTAlO2ZsZXgtc2hyaW5rOjA7bWFyZ2luLXJpZ2h0OjhweDt9Ci5hZG0tdXNhZ2UtbmFtZXtkaXNwbGF5OmlubGluZTt2ZXJ0aWNhbC1hbGlnbjptaWRkbGU7Zm9udC1zaXplOjEzcHg7Y29sb3I6IzNhNDU1Mjt9Ci5hZG0tdXNhZ2UtZGVzY3tkaXNwbGF5OmlubGluZTttYXJnaW4tbGVmdDo4cHg7Zm9udC1zaXplOjExLjVweDtjb2xvcjojOWNhM2FmO30KCi5jbC1idG4tcHJpbWFyeS1zbXtwYWRkaW5nOjZweCAxNnB4O2JvcmRlcjpub25lO2JvcmRlci1yYWRpdXM6OHB4O2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4pO2NvbG9yOiNmZmY7Zm9udC1zaXplOjEyLjVweDtmb250LXdlaWdodDo3MDA7Y3Vyc29yOnBvaW50ZXI7ZmxleC1zaHJpbms6MDt9Ci5jbC1idG4tcHJpbWFyeS1zbTpob3ZlcntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuLWRhcmspO30KLmNsLWJ0bi1wcmltYXJ5LXNtOmRpc2FibGVke29wYWNpdHk6LjU7Y3Vyc29yOmRlZmF1bHQ7fQouYWRtLXByb21wdC13cmFwe2ZsZXg6MTtwYWRkaW5nOjAgMThweCAxOHB4O2Rpc3BsYXk6ZmxleDttaW4taGVpZ2h0OjA7fQouYWRtLXByb21wdC10ZXh0YXJlYXtmbGV4OjE7d2lkdGg6MTAwJTtyZXNpemU6bm9uZTtwYWRkaW5nOjE0cHggMTZweDtib3JkZXI6MXB4IHNvbGlkICNkOWRlZTM7Ym9yZGVyLXJhZGl1czo4cHg7Zm9udC1mYW1pbHk6dWktbW9ub3NwYWNlLFNGTW9uby1SZWd1bGFyLE1lbmxvLENvbnNvbGFzLG1vbm9zcGFjZTtmb250LXNpemU6MTIuNXB4O2xpbmUtaGVpZ2h0OjEuNjtjb2xvcjojMmMzZTUwO3doaXRlLXNwYWNlOnByZTt9Ci5hZG0tcHJvbXB0LXRleHRhcmVhOmZvY3Vze291dGxpbmU6bm9uZTtib3JkZXItY29sb3I6dmFyKC0tYXgtZ3JlZW4pO30KLmFkbS1wcm9tcHQtc3RhdHVze2ZvbnQtc2l6ZToxMnB4O2NvbG9yOiM5Y2EzYWY7bWFyZ2luLXJpZ2h0OjRweDt9Ci5hZG0tcHJvbXB0LXN0YXR1cy5kaXJ0eXtjb2xvcjojYTU2NTBhO30KLmFkbS1wcm9tcHQtc3RhdHVzLm9re2NvbG9yOiMxYTdhNGM7fQouYWRtLXByb21wdC1zdGF0dXMuZXJye2NvbG9yOiNjMDM5MmI7fQouYWRtLW1vZGUtc2VnIHNwYW4ub24tdGhpbntiYWNrZ3JvdW5kOnZhcigtLWF4LWdyZWVuKSFpbXBvcnRhbnQ7Y29sb3I6I2ZmZiFpbXBvcnRhbnQ7Ym94LXNoYWRvdzpub25lIWltcG9ydGFudDt9Ci5hZG0tbW9kZS1zZWcgc3Bhbi5vbi1mYXR7YmFja2dyb3VuZDojMjU2M2ViIWltcG9ydGFudDtjb2xvcjojZmZmIWltcG9ydGFudDtib3gtc2hhZG93Om5vbmUhaW1wb3J0YW50O30KCi5hZG0tdXNhZ2Utc2l6ZXtmb250LXNpemU6MTNweDtjb2xvcjojMmMzZTUwO2ZvbnQtd2VpZ2h0OjYwMDt3aGl0ZS1zcGFjZTpub3dyYXA7fQouYWRtLXVzYWdlLXBjdHtjb2xvcjojOWNhM2FmO2ZvbnQtd2VpZ2h0OjQwMDt9CgovKiA9PT09PSDrs4Dqsr3sg4Htg5wg7ZGc7IucKOq4sOuzuC/stpTqsIAv67OA6rK9L+yCreygnC/snbTrj5kpID09PT09CiAgIOyEuCDroIjrsqjsl5DshJwg7J6s7IKs7Jqp7ZWc64ukOgogICAxKSDsu7Ttj6zrhIztirgg7KCE7LK0KOq3uOumrOuTnC/sobDtmozsobDqsbTtjKjrhJAg7Y+s7ZWoKSAtIOyGjeyEse2MqOuEkCDstZzsg4Hri6gg7IS46re466i87Yq4IOuyhO2KvCguc3RhdHVzLXNlZykgKwogICAgICDsupTrsoTsiqQv64K067O064K06riwIOuwleyKpCDsoITssrTsl5Ag7KCQ7ISgIO2FjOuRkOumrCvsvZTrhIgg652867KoKC5tYi1kaWZmc3QpCiAgIDIpIOq3uOumrOuTnCDqsJzrs4Qg7Lus65+8IC0g7IaN7ISx7Yyo64SQIOy9pOuztCguc2Ytc3RhdHVzKSArIO2XpOuNlCDshYAg7L2U64SIIOudvOuyqCguZ2NvbC1kaWZmc3QpCiAgIDMpIOyhsO2ajOyhsOqxtCDqsJzrs4Qg7ZWE65OcIC0g7IaN7ISx7Yyo64SQIOy9pOuztCguc2Ytc3RhdHVzKSArIO2VhOuTnCDrsJXsiqQg7KCQ7ISgIO2FjOuRkOumrCvsvZTrhIgg652867KoKC5zZmllbGQubWItZGlmZnN0KSAqLwoKLyogLS0tLSDsho3shLHtjKjrhJA6IOy7tO2PrOuEjO2KuCDsoITssrQg7IOB7YOcIOyEuOq3uOuovO2KuCDrsoTtirwgLS0tLSAqLwouc3RhdHVzLXNlZ3tkaXNwbGF5OmZsZXg7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JvcmRlci1yYWRpdXM6NnB4O292ZXJmbG93OmhpZGRlbjttYXJnaW4tYm90dG9tOjE0cHg7fQouc3RhdHVzLXNlZy1idG57ZmxleDoxO3BhZGRpbmc6NnB4IDA7Ym9yZGVyOm5vbmU7Ym9yZGVyLXJpZ2h0OjFweCBzb2xpZCB2YXIoLS1heC1ib3JkZXIpO2JhY2tncm91bmQ6I2ZmZjtmb250LXNpemU6MTFweDtmb250LXdlaWdodDo2MDA7Y29sb3I6Izg4ODtjdXJzb3I6cG9pbnRlcjt9Ci5zdGF0dXMtc2VnLWJ0bjpsYXN0LWNoaWxke2JvcmRlci1yaWdodDpub25lO30KLnN0YXR1cy1zZWctYnRuOmhvdmVye2JhY2tncm91bmQ6I2Y2ZjhmYTt9Ci5zdGF0dXMtc2VnLWJ0bi5zdC1iYXNlLm9ue2JhY2tncm91bmQ6dmFyKC0tYXgtZ3JlZW4tbGlnaHQpO2NvbG9yOnZhcigtLWF4LWdyZWVuLWRhcmspO30KLnN0YXR1cy1zZWctYnRuLnN0LWFkZC5vbntiYWNrZ3JvdW5kOnZhcigtLWRpZmYtYWRkLWJnKTtjb2xvcjp2YXIoLS1kaWZmLWFkZCk7fQouc3RhdHVzLXNlZy1idG4uc3QtY2hnLm9ue2JhY2tncm91bmQ6dmFyKC0tZGlmZi1jaGctYmcpO2NvbG9yOnZhcigtLWRpZmYtY2hnKTt9Ci5zdGF0dXMtc2VnLWJ0bi5zdC1kZWwub257YmFja2dyb3VuZDp2YXIoLS1kaWZmLWRlbC1iZyk7Y29sb3I6dmFyKC0tZGlmZi1kZWwpO30KLnN0YXR1cy1zZWctYnRuLnN0LW1vdi5vbntiYWNrZ3JvdW5kOnZhcigtLWRpZmYtbW92LWJnKTtjb2xvcjp2YXIoLS1kaWZmLW1vdik7fQoKLyogLS0tLSDsho3shLHtjKjrhJA6IOq3uOumrOuTnCDsu6zrn7wgLyDsobDtmozsobDqsbQg7ZWE65OcIOy9pOuztCjquIDsnpAr7IOJ7IOBKSAtLS0tICovCi5zZi1zdGF0dXN7cGFkZGluZzo0cHggMnB4O2JvcmRlcjoxcHggc29saWQgdmFyKC0tYXgtYm9yZGVyKTtib3JkZXItcmFkaXVzOjRweDtmb250LXNpemU6MTFweDtiYWNrZ3JvdW5kOiNmZmY7ZmxleDpub25lO3dpZHRoOjUycHg7Zm9udC13ZWlnaHQ6NzAwO2NvbG9yOiM4ODg7fQouc2Ytc3RhdHVzW2RhdGEtdj0iYWRkIl17Y29sb3I6dmFyKC0tZGlmZi1hZGQpO2JvcmRlci1jb2xvcjp2YXIoLS1kaWZmLWFkZCk7YmFja2dyb3VuZDp2YXIoLS1kaWZmLWFkZC1iZyk7fQouc2Ytc3RhdHVzW2RhdGEtdj0iY2hnIl17Y29sb3I6dmFyKC0tZGlmZi1jaGcpO2JvcmRlci1jb2xvcjp2YXIoLS1kaWZmLWNoZyk7YmFja2dyb3VuZDp2YXIoLS1kaWZmLWNoZy1iZyk7fQouc2Ytc3RhdHVzW2RhdGEtdj0iZGVsIl17Y29sb3I6dmFyKC0tZGlmZi1kZWwpO2JvcmRlci1jb2xvcjp2YXIoLS1kaWZmLWRlbCk7YmFja2dyb3VuZDp2YXIoLS1kaWZmLWRlbC1iZyk7fQouc2Ytc3RhdHVzW2RhdGEtdj0ibW92Il17Y29sb3I6dmFyKC0tZGlmZi1tb3YpO2JvcmRlci1jb2xvcjp2YXIoLS1kaWZmLW1vdik7YmFja2dyb3VuZDp2YXIoLS1kaWZmLW1vdi1iZyk7fQoKLyogLS0tLSDsupTrsoTsiqQv64K067O064K06riwOiDsu7Ttj6zrhIztirgg7KCE7LK0IOuwleyKpCDsoJDshKAg7YWM65GQ66asICsg7L2U64SIIOudvOuyqCAtLS0tCiAgIC5jbXAvLm1vY2t1cC1pdGVt7J2AIOydtOuvuCBwb3NpdGlvbjphYnNvbHV0ZeydtOuvgOuhnCDsl6zquLDshJwgcG9zaXRpb27snYQg64uk7IucIOyngOygle2VmOyngCDslYrripTri6QKICAgKOyngOygle2VmOuptCDsoIjrjIDsooztkZwg67Cw7LmYIOyekOyytOqwgCDquajsp4Tri6QpLiDthYzrkZDrpqzripQgb3V0bGluZeydtCDslYTri4jrnbwgOjphZnRlciDqsIDsg4HsmpTshozroZwg6re466Ck7IScCiAgIOyEoO2DnSDsi5wg7ZGc7Iuc65CY64qUIC5jbXAuc2VsZWN0ZWTsnZggb3V0bGluZeqzvCDshJzroZwg6rK57LmY6rGw64KYIOuwgOyWtOuCtOyngCDslYrqsowg7ZWc64ukLiAqLwoubWItZGlmZnN0OjphZnRlcntjb250ZW50OiIiO3Bvc2l0aW9uOmFic29sdXRlO2luc2V0Oi00cHg7Ym9yZGVyOjEuNXB4IGRhc2hlZCB0cmFuc3BhcmVudDtib3JkZXItcmFkaXVzOjZweDtwb2ludGVyLWV2ZW50czpub25lO3otaW5kZXg6MTt9Ci5tYi1kaWZmc3Q6OmJlZm9yZXtjb250ZW50OmF0dHIoZGF0YS1kaWZmbGFiZWwpO3Bvc2l0aW9uOmFic29sdXRlO3RvcDoycHg7cmlnaHQ6MnB4O2xlZnQ6YXV0bztmb250LXNpemU6MTBweDtmb250LXdlaWdodDo3MDA7bGluZS1oZWlnaHQ6MTRweDtwYWRkaW5nOjAgNXB4O2JhY2tncm91bmQ6cmdiYSgyNTUsMjU1LDI1NSwuOSk7Ym9yZGVyLXJhZGl1czozcHg7cG9pbnRlci1ldmVudHM6bm9uZTt6LWluZGV4OjI7d2hpdGUtc3BhY2U6bm93cmFwO30KLm1iLWRpZmZzdC1hZGQ6OmFmdGVye2JvcmRlci1jb2xvcjp2YXIoLS1kaWZmLWFkZCk7fQoubWItZGlmZnN0LWFkZDo6YmVmb3Jle2NvbG9yOnZhcigtLWRpZmYtYWRkKTt9Ci5tYi1kaWZmc3QtY2hnOjphZnRlcntib3JkZXItY29sb3I6dmFyKC0tZGlmZi1jaGcpO30KLm1iLWRpZmZzdC1jaGc6OmJlZm9yZXtjb2xvcjp2YXIoLS1kaWZmLWNoZyk7fQoubWItZGlmZnN0LWRlbDo6YWZ0ZXJ7Ym9yZGVyLWNvbG9yOnZhcigtLWRpZmYtZGVsKTtiYWNrZ3JvdW5kOnJlcGVhdGluZy1saW5lYXItZ3JhZGllbnQoMTM1ZGVnLCByZ2JhKDIyOSw3Miw3NywuMDYpIDAgOHB4LCByZ2JhKDIyOSw3Miw3NywwKSA4cHggMTZweCk7fQoubWItZGlmZnN0LWRlbDo6YmVmb3Jle2NvbG9yOnZhcigtLWRpZmYtZGVsKTt9Ci5tYi1kaWZmc3QtbW92OjphZnRlcntib3JkZXItY29sb3I6dmFyKC0tZGlmZi1tb3YpO30KLm1iLWRpZmZzdC1tb3Y6OmJlZm9yZXtjb2xvcjp2YXIoLS1kaWZmLW1vdik7fQoKLyogLS0tLSDsupTrsoTsiqQv64K067O064K06riwOiDqt7jrpqzrk5wg6rCc67OEIOy7rOufvCDtl6TrjZQgLSDsoJDshKAg67CV7IqkICsg7Jqw7LihIOyDgeuLqCDsvZTrhIgg7YOc6re4IC0tLS0KICAg7KGw7ZqM7KGw6rG0IO2VhOuTnCguc2ZpZWxkLm1iLWRpZmZzdCnsmYAg6rCZ7J2AIOyLnOqwgSDslrjslrQo7KCQ7ISgIOuwleyKpCArIOy9lOuEiCDrnbzrsqgp66W8IOyTsOuQmCwg6re466as65OcIO2XpOuNlAogICDshYAg7J6Q7LK06rCAIG92ZXJmbG93OmhpZGRlbijquLQg7Lus65+866qFIOunkOykhOyehO2RnCDsspjrpqzsmqkp7J206528IOy9lOuEiCDrnbzrsqjsnbQg7IWAIOuwluycvOuhnCDtioDslrTrgpjsmKTrqbQKICAg6re464yA66GcIOyemOumsOuLpC4g6re4656Y7IScIHNmaWVsZOyymOufvCDrsJXsiqQg67CW7Jy866GcIOyCtOynnSDqsrnsuZjqsowg7ZWY64qUIOuMgOyLoCwg7IWAICLslYjsqr0iIOyasOy4oSDsg4Hri6jsl5AKICAg65SxIOu2meyXrCjslpHsiJgg7KKM7ZGcKSDrhKPripTri6QgLSBvdmVyZmxvdzpoaWRkZW7sl5Ag6rG466as7KeAIOyViuycvOuptOyEnOuPhCDsmrDsuKEg7IOB64uo7JeQIO2RnOyLnOuQnOuLpC4KICAg7IOB7JyE7Zek642UKOq3uOujuSkg7Jyg66y07JmAIOyDgeq0gOyXhuydtCDsnbQgc3BhbiDtlZjrgpjroZwg7ZWt7IOBIDTrqbQg67CV7IqkICsg7L2U64SIIO2DnOq3uOqwgCDtlajqu5gg64KY7Jio64ukLgogICDso7zsnZg6IOyVhOuemCDsg4nsg4HCt+2FjOuRkOumrCDqt5zsuZnsnYAg67CY65Oc7IucICIuYXgtZ3JpZCAuZ2ggc3Bhbi4uLiIg7ZiV7YOc66GcIOq3uOumrOuTnCDtl6TrjZQg7IWAIOq4sOuzuCDqt5zsuZkKICAgKC5heC1ncmlkIC5naCBzcGFue2NvbG9yOi4uLjtib3JkZXItcmlnaHQ6MXB4IHNvbGlkIC4uLn0p67O064ukIENTUyDsmrDshKDsiJzsnIQoc3BlY2lmaWNpdHkp6rCACiAgIOuGkuqyjCDsoIHslrTslbwg7ZWc64ukIC0g6re464OlIC5nY29sLWRpZmZzdC1hZGQg7ZWcIO2BtOuemOyKpOuhnOunjCDsoIHsnLzrqbQg6re4IOq4sOuzuCDqt5zsuZnsl5Ag67CA66CkIOyDieydtCDqt7jrjIDroZwKICAg7ZqM7IOJ7Jy866GcIOuCmOyYqOuLpCjsi6TsoJzroZwg7ZWcIOuyiCDsnbTroIfqsowg67CA66Ck7IScIOustOyDieycvOuhnCDrs7TsmIDrjZgg67KE6re46rCAIOyeiOyXiOydjCkuICovCi5heC1ncmlkIC5naCBzcGFuLmdjb2wtZGlmZnN0e2JveC1zaXppbmc6Ym9yZGVyLWJveDtib3JkZXI6MS41cHggZGFzaGVkIHRyYW5zcGFyZW50O30KLmF4LWdyaWQgLmdoIHNwYW4uZ2NvbC1kaWZmc3Q6OmJlZm9yZXtjb250ZW50OmF0dHIoZGF0YS1kaWZmbGFiZWwpO3Bvc2l0aW9uOmFic29sdXRlO3RvcDoxcHg7cmlnaHQ6MXB4O2ZvbnQtc2l6ZTo4cHg7Zm9udC13ZWlnaHQ6NzAwO2xpbmUtaGVpZ2h0OjEwcHg7cGFkZGluZzowIDNweDtib3JkZXItcmFkaXVzOjJweDtiYWNrZ3JvdW5kOnJnYmEoMjU1LDI1NSwyNTUsLjkpO3BvaW50ZXItZXZlbnRzOm5vbmU7ei1pbmRleDo2O3doaXRlLXNwYWNlOm5vd3JhcDt9Ci5heC1ncmlkIC5naCBzcGFuLmdjb2wtZGlmZnN0LWFkZHtib3JkZXItY29sb3I6dmFyKC0tZGlmZi1hZGQpO30KLmF4LWdyaWQgLmdoIHNwYW4uZ2NvbC1kaWZmc3QtYWRkOjpiZWZvcmV7Y29sb3I6dmFyKC0tZGlmZi1hZGQpO30KLmF4LWdyaWQgLmdoIHNwYW4uZ2NvbC1kaWZmc3QtY2hne2JvcmRlci1jb2xvcjp2YXIoLS1kaWZmLWNoZyk7fQouYXgtZ3JpZCAuZ2ggc3Bhbi5nY29sLWRpZmZzdC1jaGc6OmJlZm9yZXtjb2xvcjp2YXIoLS1kaWZmLWNoZyk7fQouYXgtZ3JpZCAuZ2ggc3Bhbi5nY29sLWRpZmZzdC1kZWx7Ym9yZGVyLWNvbG9yOnZhcigtLWRpZmYtZGVsKTt9Ci5heC1ncmlkIC5naCBzcGFuLmdjb2wtZGlmZnN0LWRlbDo6YmVmb3Jle2NvbG9yOnZhcigtLWRpZmYtZGVsKTt9Ci5heC1ncmlkIC5naCBzcGFuLmdjb2wtZGlmZnN0LW1vdntib3JkZXItY29sb3I6dmFyKC0tZGlmZi1tb3YpO30KLmF4LWdyaWQgLmdoIHNwYW4uZ2NvbC1kaWZmc3QtbW92OjpiZWZvcmV7Y29sb3I6dmFyKC0tZGlmZi1tb3YpO30KLyog7IKt7KCcIOy7rOufvOydgCDtl6TrjZQg7J2066aEIOyekOyytOuPhCDsmIXqsowgKyDst6jshozshKDsnLzroZwgIuyCreygnCDsmIjsoJUi7J6E7J2EIOqwleyhsCAqLwouZ2NvbC1kaWZmc3QtZGVse29wYWNpdHk6LjU1O3RleHQtZGVjb3JhdGlvbjpsaW5lLXRocm91Z2g7fQouZ2NvbC1kaWZmc3QtZGVsLWNlbGx7b3BhY2l0eTouNTU7dGV4dC1kZWNvcmF0aW9uOmxpbmUtdGhyb3VnaDt9CgovKiAtLS0tIOy6lOuyhOyKpC/rgrTrs7TrgrTquLA6IOyhsO2ajOyhsOqxtCDqsJzrs4Qg7ZWE65OcIOuwleyKpCDsoJDshKAg7YWM65GQ66asICsg7L2U64SIIOudvOuyqCAtLS0tICovCi5zZmllbGQubWItZGlmZnN0e3Bvc2l0aW9uOnJlbGF0aXZlO30KLnNmaWVsZC5tYi1kaWZmc3Q6OmFmdGVye2NvbnRlbnQ6IiI7cG9zaXRpb246YWJzb2x1dGU7aW5zZXQ6LTZweDtib3JkZXI6MS41cHggZGFzaGVkIHRyYW5zcGFyZW50O2JvcmRlci1yYWRpdXM6NnB4O3BvaW50ZXItZXZlbnRzOm5vbmU7ei1pbmRleDoxO30KLnNmaWVsZC5tYi1kaWZmc3Q6OmJlZm9yZXtjb250ZW50OmF0dHIoZGF0YS1kaWZmbGFiZWwpO3Bvc2l0aW9uOmFic29sdXRlO3RvcDoycHg7cmlnaHQ6MnB4O2xlZnQ6YXV0bztmb250LXNpemU6OXB4O2ZvbnQtd2VpZ2h0OjcwMDtsaW5lLWhlaWdodDoxMnB4O3BhZGRpbmc6MCA0cHg7YmFja2dyb3VuZDpyZ2JhKDI1NSwyNTUsMjU1LC45KTtib3JkZXItcmFkaXVzOjJweDtwb2ludGVyLWV2ZW50czpub25lO3otaW5kZXg6Mjt3aGl0ZS1zcGFjZTpub3dyYXA7fQouc2ZpZWxkLm1iLWRpZmZzdC1hZGQ6OmFmdGVye2JvcmRlci1jb2xvcjp2YXIoLS1kaWZmLWFkZCk7fQouc2ZpZWxkLm1iLWRpZmZzdC1hZGQ6OmJlZm9yZXtjb2xvcjp2YXIoLS1kaWZmLWFkZCk7fQouc2ZpZWxkLm1iLWRpZmZzdC1jaGc6OmFmdGVye2JvcmRlci1jb2xvcjp2YXIoLS1kaWZmLWNoZyk7fQouc2ZpZWxkLm1iLWRpZmZzdC1jaGc6OmJlZm9yZXtjb2xvcjp2YXIoLS1kaWZmLWNoZyk7fQouc2ZpZWxkLm1iLWRpZmZzdC1kZWw6OmFmdGVye2JvcmRlci1jb2xvcjp2YXIoLS1kaWZmLWRlbCk7YmFja2dyb3VuZDpyZXBlYXRpbmctbGluZWFyLWdyYWRpZW50KDEzNWRlZywgcmdiYSgyMjksNzIsNzcsLjA2KSAwIDhweCwgcmdiYSgyMjksNzIsNzcsMCkgOHB4IDE2cHgpO30KLnNmaWVsZC5tYi1kaWZmc3QtZGVsOjpiZWZvcmV7Y29sb3I6dmFyKC0tZGlmZi1kZWwpO30KLnNmaWVsZC5tYi1kaWZmc3QtbW92OjphZnRlcntib3JkZXItY29sb3I6dmFyKC0tZGlmZi1tb3YpO30KLnNmaWVsZC5tYi1kaWZmc3QtbW92OjpiZWZvcmV7Y29sb3I6dmFyKC0tZGlmZi1tb3YpO30KCi8qIC0tLS0g64K067O064K4KOyggOyepeuQnCkgSFRNTDogQWx0K0/roZwg7JyEIO2RnOyLnCDsoITrtoAg7Yag6riALiDquLDrs7jsnYAg7ZGc7IucKE9OKS4gLS0tLSAqLwpib2R5Lm1iLWRpZmZoaWRlIC5tYi1kaWZmc3Q6OmFmdGVyLGJvZHkubWItZGlmZmhpZGUgLm1iLWRpZmZzdDo6YmVmb3JlLApib2R5Lm1iLWRpZmZoaWRlIC5zZmllbGQubWItZGlmZnN0OjphZnRlcixib2R5Lm1iLWRpZmZoaWRlIC5zZmllbGQubWItZGlmZnN0OjpiZWZvcmV7dmlzaWJpbGl0eTpoaWRkZW4haW1wb3J0YW50O30KLyog6re466as65OcIOy7rOufvCDtg5zqt7g6IO2FjeyKpO2KuOunjCDsiKjquLDrqbQg7YWM65GQ66aswrfrsLDqsr3Ct+ychOyqvSDruYgg7KSE7J20IOq3uOuMgOuhnCDrgqjslYQg642UIOyWtOyDie2VtOyngOuvgOuhnCwKICAg7YOc6re4IOyFgCDsnpDssrTrpbwgZGlzcGxheTpub25l7Jy866GcIOyZhOyghO2eiCDsl4bslaDqs6Ao64uk66W4IOy7rOufvOyXkCDsg4HsnITtl6TrjZTqsIAg7JeG64uk66m0IDHtlokg7J6Q7LK06rCACiAgIDDrhpLsnbTroZwg7KSE7Ja065Ok7Ja0IOybkOuemCDri6jsnbztlokg7Zek642U66GcIOuPjOyVhOqwhOuLpCkg7Lus65+866qFIOyFgOydmCDsoJDshKAg7YWM65GQ66as64+EIO2IrOuqhSDsspjrpqztlZzri6QuICovCmJvZHkubWItZGlmZmhpZGUgLmF4LWdyaWQgLmdoIHNwYW4uZ2NvbC1kaWZmc3R7Ym9yZGVyLWNvbG9yOnRyYW5zcGFyZW50IWltcG9ydGFudDt9CmJvZHkubWItZGlmZmhpZGUgLmF4LWdyaWQgLmdoIHNwYW4uZ2NvbC1kaWZmc3Q6OmJlZm9yZXt2aXNpYmlsaXR5OmhpZGRlbiFpbXBvcnRhbnQ7fQpib2R5Lm1iLWRpZmZoaWRlIC5nY29sLWRpZmZzdC1kZWwsYm9keS5tYi1kaWZmaGlkZSAuZ2NvbC1kaWZmc3QtZGVsLWNlbGx7b3BhY2l0eToxIWltcG9ydGFudDt0ZXh0LWRlY29yYXRpb246bm9uZSFpbXBvcnRhbnQ7fQo=';
+function mbGetAppCSS(){
+  try{ return decodeURIComponent(escape(atob(MB_APP_CSS_B64))); }
+  catch(e){
+    // 혹시 모를 폴백: 인라인 <style> 태그가 있는 환경(예전 단일 파일 버전)이라면 그걸 그대로 쓴다.
+    const styleEl=document.querySelector('style');
+    return styleEl?styleEl.innerHTML:'';
+  }
+}
+// Builds the full standalone interactive HTML document (shared by 저장 and 미리보기).
+function buildExportHTML(){
+  const cw=document.getElementById('cw').value;
+  const ch=document.getElementById('ch').value;
+  let body='';
+  comps.filter(c=>!c.parent).forEach(c=>{ body+=exportComp(c)+'\n'; });
+  const css=mbGetAppCSS();
+  const interactionScript=`
+<script>
+function setActiveTab(id, idx){
+  document.querySelectorAll('[data-tabpage-group="'+id+'"]').forEach(function(el){
+    el.style.display = (String(el.getAttribute('data-tabidx'))===String(idx)) ? 'block' : 'none';
+  });
+  document.querySelectorAll('[data-tabbtn-group="'+id+'"]').forEach(function(el){
+    el.classList.toggle('on', String(el.getAttribute('data-tabidx'))===String(idx));
+  });
+}
+function toggleCheckExport(el){
+  var box=el.querySelector('.box');
+  if(box) box.classList.toggle('on');
+}
+// Tree: collapse/expand a node by hiding all following rows deeper than it.
+function toggleTreeExport(el){
+  if(event&&event.stopPropagation)event.stopPropagation();
+  var row=el.closest('.tw-row');
+  if(!row)return;
+  var depth=parseInt(row.getAttribute('data-depth')||'0',10);
+  var collapsed=row.classList.toggle('collapsed');
+  el.textContent=collapsed?'+':'−';
+  var n=row.nextElementSibling;
+  while(n&&parseInt(n.getAttribute('data-depth')||'0',10)>depth){
+    if(collapsed){ n.style.display='none'; }
+    else {
+      // only reveal rows that are not hidden by another collapsed ancestor
+      var d=parseInt(n.getAttribute('data-depth')||'0',10);
+      var hidden=false, p=n.previousElementSibling;
+      while(p){
+        var pd=parseInt(p.getAttribute('data-depth')||'0',10);
+        if(pd<d){ if(p.classList.contains('collapsed')){hidden=true;break;} d=pd; }
+        p=p.previousElementSibling;
+      }
+      if(!hidden) n.style.display='';
+    }
+    n=n.nextElementSibling;
+  }
+}
+function selectTreeExport(el){
+  var tree=el.closest('.ax-tree');
+  if(tree) tree.querySelectorAll('.tw-row.on').forEach(function(r){r.classList.remove('on');});
+  el.classList.add('on');
+}
+function toggleRadioExport(el){
+  el.classList.toggle('on');
+}
+// Combo dropdowns are portalled to <body> with position:fixed so they're never clipped by an
+// ancestor's overflow:hidden (e.g. a grid's row container) - only reparented once, then just
+// repositioned/shown or hidden on each toggle.
+function positionComboDrop(el,drop){
+  var rect=el.getBoundingClientRect();
+  drop.style.position='fixed';
+  drop.style.left=rect.left+'px';
+  drop.style.top=(rect.bottom+3)+'px';
+  drop.style.width=rect.width+'px';
+  drop.style.minWidth=rect.width+'px';
+  drop.style.zIndex=999999;
+}
+function closeComboExport(el){
+  el.classList.remove('open');
+  var drop=el._dropEl;
+  if(drop) drop.style.display='none';
+}
+function toggleComboExport(el){
+  var wasOpen=el.classList.contains('open');
+  document.querySelectorAll('.ax-combo.open, .sctl.combo.open').forEach(function(o){ if(o!==el) closeComboExport(o); });
+  if(wasOpen){ closeComboExport(el); return; }
+  var drop=el.querySelector(':scope > .combo-drop');
+  if(drop && !el._dropEl){
+    document.body.appendChild(drop);
+    el._dropEl=drop;
+    drop._ownerCombo=el;
+  }
+  el.classList.add('open');
+  if(el._dropEl){
+    positionComboDrop(el,el._dropEl);
+    el._dropEl.style.display='block';
+  }
+}
+function selectComboExport(optEl){
+  var drop=optEl.closest('.combo-drop');
+  var wrap=drop&&drop._ownerCombo ? drop._ownerCombo : optEl.closest('.ax-combo, .sctl.combo');
+  if(!wrap)return;
+  var val=wrap.querySelector('.combo-val');
+  if(val) val.textContent=optEl.getAttribute('data-val');
+  closeComboExport(wrap);
+}
+document.addEventListener('click',function(e){
+  if(!e.target.closest('.ax-combo.interactive, .sctl.combo.interactive, .combo-drop')){
+    document.querySelectorAll('.ax-combo.open, .sctl.combo.open').forEach(function(o){ closeComboExport(o); });
+  }
+});
+window.addEventListener('scroll',function(){
+  document.querySelectorAll('.ax-combo.open, .sctl.combo.open').forEach(function(o){ if(o._dropEl) positionComboDrop(o,o._dropEl); });
+},true);
+window.addEventListener('resize',function(){
+  document.querySelectorAll('.ax-combo.open, .sctl.combo.open').forEach(function(o){ if(o._dropEl) positionComboDrop(o,o._dropEl); });
+});
+function selectRadioGroupExport(el){
+  var group=el.getAttribute('data-group');
+  document.querySelectorAll('.ax-radio-group .opt[data-group="'+group+'"], .sradio .opt[data-group="'+group+'"]').forEach(function(o){ o.classList.remove('on'); });
+  el.classList.add('on');
+}
+// Split container: dragging the divider live-resizes both panes and stretches whatever's
+// inside them (e.g. a grid) to exactly fill the new pane size. A fill child can itself be a
+// nested split container - in that case its own pane0/divider/pane1 (baked in at export time
+// with fixed px values) must be recomputed too, all the way down, or nested Fill grids would
+// stop tracking the divider as soon as there's more than one level of split-in-split.
+function layoutSplitExport(wrap){
+  var divider=wrap.querySelector(':scope > .split-divider');
+  if(!divider) return; // wrap isn't itself a split container - nothing more to lay out here
+  var id=divider.getAttribute('data-split-id');
+  var dir=divider.getAttribute('data-split-dir');
+  var pos=parseFloat(divider.getAttribute('data-split-pos'));
+  if(isNaN(pos)) pos=0.5;
+  pos=Math.max(0.15,Math.min(0.85,pos));
+  var pane0=wrap.querySelector(':scope > [data-split-pane="'+id+'-0"]');
+  var pane1=wrap.querySelector(':scope > [data-split-pane="'+id+'-1"]');
+  var DIV=8;
+  var total=dir==='h'?wrap.offsetWidth:wrap.offsetHeight;
+  var w1=Math.max(10,Math.round(total*pos-DIV/2)), w2=Math.max(10,total-w1-DIV);
+  if(dir==='h'){
+    pane0.style.width=w1+'px';
+    divider.style.left=w1+'px';
+    pane1.style.left=(w1+DIV)+'px'; pane1.style.width=w2+'px';
+  } else {
+    pane0.style.height=w1+'px';
+    divider.style.top=w1+'px';
+    pane1.style.top=(w1+DIV)+'px'; pane1.style.height=w2+'px';
+  }
+  resizeChildrenExport(pane0); resizeChildrenExport(pane1);
+}
+function resizeChildrenExport(pane){
+  Array.prototype.forEach.call(pane.children,function(ch){
+    if(ch.getAttribute('data-dock')==='none') return; // freely placed - leave it alone
+    ch.style.width=pane.offsetWidth+'px';
+    ch.style.height=pane.offsetHeight+'px';
+    layoutSplitExport(ch); // if ch is itself a nested split container, relay out its insides too
+  });
+}
+function startSplitDragExport(e){
+  e.preventDefault();
+  var divider=e.currentTarget;
+  var wrap=divider.parentElement;
+  function move(ev){
+    var dir=divider.getAttribute('data-split-dir');
+    var rect=wrap.getBoundingClientRect();
+    var total=dir==='h'?wrap.offsetWidth:wrap.offsetHeight;
+    var raw = dir==='h' ? (ev.clientX-rect.left) : (ev.clientY-rect.top);
+    var pos=Math.max(0.15,Math.min(0.85, raw/total));
+    divider.setAttribute('data-split-pos',pos);
+    layoutSplitExport(wrap);
+  }
+  function up(){ document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); }
+  document.addEventListener('mousemove',move);
+  document.addEventListener('mouseup',up);
+}
+(function(){
+  // 이 목업 html을 여는 "그 순간"의 실제 오늘 날짜를 기준으로 날짜 입력칸을 채운다.
+  // - data-relspec이 있는 칸(빠른 날짜 팝업에서 오늘/어제/이번달1일/올해1월1일이나 "직접 조합하기"
+  //   축으로 고른 값)은 저장 당시에 계산해 둔 고정 값을 무시하고, 지금 이 순간을 기준으로 다시
+  //   계산한다 - 그래야 오늘 "어제"를 고르고 저장한 파일을 내일 열면 그 날짜 기준 "어제"로 보인다.
+  // - data-blank가 있는 칸(빈값으로 명시적으로 비워둔 값)은 절대 건드리지 않는다.
+  // - 둘 다 없는, 값이 비어 있는 칸(옛 버전 목업 등)만 예전처럼 오늘 날짜로 채운다.
+  function pad(n){return String(n).padStart(2,'0');}
+  function fmt(dt){return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());}
+  function today(){ var t=new Date(); t.setHours(0,0,0,0); return t; }
+  function resolveSpec(spec){
+    if(!spec) return null;
+    if(spec.indexOf('chip:')===0){
+      var mode=spec.slice(5), t=today();
+      if(mode==='yesterday'){ var y=new Date(t); y.setDate(y.getDate()-1); return fmt(y); }
+      if(mode==='thisMonth1') return fmt(new Date(t.getFullYear(), t.getMonth(), 1));
+      if(mode==='thisYear0101') return fmt(new Date(t.getFullYear(), 0, 1));
+      if(mode==='today') return fmt(t);
+      return null;
+    }
+    if(spec.indexOf('axis:')===0){
+      var nums=spec.slice(5).split(',').map(Number);
+      if(nums.length!==3||nums.some(isNaN)) return null;
+      var dt=today();
+      dt.setFullYear(dt.getFullYear()+nums[0]);
+      dt.setMonth(dt.getMonth()+nums[1]);
+      dt.setDate(dt.getDate()+nums[2]);
+      return fmt(dt);
+    }
+    return null;
+  }
+  // 날짜 "표시 방법"(예: "년-월-일", "일/월/년") - 디자인 화면의 qdFormatDate()와 완전히 같은
+  // 규칙: 패턴 문자열 안의 년/월/일 글자만 실제 값으로 바꿔치기한다. 이 런타임 스크립트는 app.js와
+  // 별도로 내보내기 파일 안에 통째로 복사되므로, 같은 로직을 여기 다시 둔다.
+  function fmtDate(dateStr,pattern){
+    var m=/^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(dateStr||'');
+    if(!m) return '';
+    var p=pattern||'년-월-일';
+    return p.replace(/년/g,m[1]).replace(/월/g,m[2]).replace(/일/g,m[3]);
+  }
+  // hidden <input type="date">(el) 바로 다음 형제가 눈에 보이는 표시 칸(.ax-date-disp/
+  // .sctl-date-disp)이다 - 그 값을 el.value와 el의 data-fmt 표시 방법에 맞춰 다시 그린다.
+  function syncDateDisplay(el){
+    var disp=el.nextElementSibling;
+    if(!disp||(!disp.classList.contains('ax-date-disp')&&!disp.classList.contains('sctl-date-disp')))return;
+    var span=disp.querySelector('span');
+    var text=el.value?fmtDate(el.value,el.getAttribute('data-fmt')):'';
+    if(span) span.textContent=text; else disp.textContent=text;
+  }
+  var todayStr=fmt(today());
+  document.querySelectorAll('.sctl-date-el, .ax-date-el').forEach(function(el){
+    var spec=el.getAttribute('data-relspec');
+    if(spec){ var v=resolveSpec(spec); if(v) el.value=v; }
+    else if(!el.hasAttribute('data-blank') && !el.value){ el.value=todayStr; }
+    syncDateDisplay(el);
+    el.addEventListener('change', function(){ syncDateDisplay(el); });
+  });
+  // 표시 칸(.ax-date-disp/.sctl-date-disp)을 누르면 바로 앞 형제인 hidden 날짜 입력의 네이티브
+  // 달력을 띄운다 - showPicker()를 지원하지 않는(오래된) 브라우저에서는 focus+click으로 대신한다.
+  window.mbOpenDatePicker=function(dispEl){
+    var input=dispEl.previousElementSibling;
+    if(!input||input.disabled) return;
+    if(typeof input.showPicker==='function'){
+      try{ input.showPicker(); return; }catch(e){}
+    }
+    input.focus();
+    input.click();
+  };
+})();
+// Canvas resize handle: dragging the corner grip resizes the .mockup canvas and scales every
+// top-level (and nested) component's position/size proportionally with it, so the whole layout
+// - grids included - grows/shrinks together instead of just clipping or leaving blank space.
+// Split containers get an explicit relayout pass afterward since their panes/divider are fixed
+// px values computed at export time and don't follow a simple left/top/width/height scale.
+(function(){
+  var canvas=document.querySelector('.mockup');
+  var handle=document.querySelector('.mb-resize-handle');
+  if(!canvas||!handle)return;
+  var badge=document.getElementById('mbResizeBadge');
+  var origW=parseFloat(canvas.getAttribute('data-orig-w'))||canvas.offsetWidth;
+  var origH=parseFloat(canvas.getAttribute('data-orig-h'))||canvas.offsetHeight;
+  // Cache every component's ORIGINAL (design-time) geometry once, up front. Every resize below
+  // computes from this fixed baseline (current canvas size / original canvas size) rather than
+  // compounding ratios on top of the last frame's already-scaled values, so there's no drift no
+  // matter how many times the handle gets dragged back and forth.
+  var items=Array.prototype.slice.call(canvas.querySelectorAll('.mockup-item'));
+  items.forEach(function(it){
+    it._mbOx=parseFloat(it.style.left)||0;
+    it._mbOy=parseFloat(it.style.top)||0;
+    it._mbOw=parseFloat(it.style.width)||0;
+    it._mbOh=parseFloat(it.style.height)||0;
+  });
+  var splitWraps=Array.prototype.slice.call(canvas.querySelectorAll('[data-split-dir]'))
+    .map(function(d){return d.parentElement;});
+  function applyCanvasScale(w,h){
+    var sx=w/origW, sy=h/origH;
+    items.forEach(function(it){
+      it.style.left=(it._mbOx*sx)+'px';
+      it.style.top=(it._mbOy*sy)+'px';
+      it.style.width=(it._mbOw*sx)+'px';
+      it.style.height=(it._mbOh*sy)+'px';
+    });
+    // Re-run each split container's own layout now that its wrapper has a new size - this
+    // recomputes pane0/pane1/divider from the (unchanged) split ratio and, via
+    // resizeChildrenExport, stretches any fill-docked child (e.g. a grid) to match exactly.
+    splitWraps.forEach(function(wrap){ layoutSplitExport(wrap); });
+  }
+  // Exposed in case other code needs to trigger the same proportional rescale the drag handle
+  // does (the capture popup no longer needs this for its "캔버스 확장" mode - that one leaves
+  // the canvas untouched and just un-clips the overflowing grid instead).
+  window.mbApplyCanvasScale=applyCanvasScale;
+  window.mbStartCanvasResize=function(e){
+    e.preventDefault(); e.stopPropagation();
+    var startX=e.clientX, startY=e.clientY;
+    var startW=canvas.offsetWidth, startH=canvas.offsetHeight;
+    var MIN_W=320, MIN_H=180;
+    document.body.classList.add('mb-resizing');
+    if(badge){ badge.style.display='block'; badge.textContent=startW+' x '+startH; }
+    function move(ev){
+      var w=Math.max(MIN_W, startW+(ev.clientX-startX));
+      var h=Math.max(MIN_H, startH+(ev.clientY-startY));
+      canvas.style.width=w+'px';
+      canvas.style.height=h+'px';
+      applyCanvasScale(w,h);
+      if(badge) badge.textContent=Math.round(w)+' x '+Math.round(h);
+    }
+    function up(){
+      document.removeEventListener('mousemove',move);
+      document.removeEventListener('mouseup',up);
+      document.body.classList.remove('mb-resizing');
+      if(badge) badge.style.display='none';
+    }
+    document.addEventListener('mousemove',move);
+    document.addEventListener('mouseup',up);
+  };
+})();
+// Alt+O/Alt+P/Alt+S 상단 바(변경상태 표시 · 화면 캡처 · 사양서 내보내기)는 더 이상 이 안에
+// 내장돼 있지 않다 - 외부 런타임 파일(mb-topbar-runtime.js, script src로 아래에서 불러옴) 하나로
+// 옮겨서, 그 파일만 서버에서 고치면 이미 내보내진(구버전) 결과물에도 버그 수정이 그대로
+// 적용되게 했다. 반대로 그 파일을 못 불러오면(오프라인 등) 상단 바 세 개는 그냥 조용히 안 보일
+// 뿐 - 이 목업 자체의 탭/체크박스/콤보박스 등 상호작용에는 전혀 영향이 없다.
+<\/script>`;
+  const t=screenTitle();
+  const docTitle = t ? `${t} 목업` : '목업';
+  // 공유파일에서 파생된 화면이면(mbCloud.originId), 저장 파일에도 같은 자리에 흔적을 남긴다 -
+  // Author/Version처럼 view-source로만 보이는 주석 한 줄. 파생본이 아니면 이 줄 자체가 없다.
+  const originLine = mbCloud.originId ? `\n  Origin: ${mbCloud.originId}` : '';
+  const out=`<!DOCTYPE html>
+<!--
+  Generated by Mockup Builder
+  Author: Kim Joon-Goo (June)
+  Version: ${getLocalVer()||''}${originLine}
+-->
+<html lang="ko"><head><meta charset="UTF-8"><title>${escAttr(docTitle)}</title>
+<meta name="author" content="Kim Joon-Goo">
+<meta name="generator" content="Mockup Builder ${getLocalVer()||''}">
+<style>
+body{font-family:"Malgun Gothic","맑은 고딕",sans-serif;background:#f4f6f8;margin:0;padding:20px;}
+.mockup{position:relative;width:${cw}px;height:${ch}px;background:var(--ax-canvas-bg,#fff);border:1px solid #d9dee3;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin:0 auto;}
+${css}
+/* Force normal page scrolling in the exported mockup: the block above copies the builder app's
+   own stylesheet verbatim (for component styling), which includes an app-shell rule that pins
+   body to the viewport height with overflow hidden. That rule must not leak into this standalone
+   page, so it is explicitly overridden here, last in the cascade, with !important. */
+html,body{height:auto !important;min-height:100%;overflow:visible !important;}
+/* ---- Canvas resize handle (added at export time - lets the opened mockup file itself be
+   resized, scaling every component's position/size proportionally with it) ---- */
+.mb-resize-handle{position:absolute;right:-9px;bottom:-9px;width:20px;height:20px;border-radius:50%;
+  background:#fff;border:1px solid #c7ced6;box-shadow:0 1px 3px rgba(0,0,0,.18);
+  display:flex;align-items:center;justify-content:center;color:#6b7280;cursor:nwse-resize;
+  z-index:2000000;transition:background .15s,color .15s,border-color .15s;}
+.mb-resize-handle:hover{background:var(--ax-green,#1e9e6a);border-color:var(--ax-green,#1e9e6a);color:#fff;}
+.mb-resize-handle svg{width:12px;height:12px;pointer-events:none;}
+.mb-resize-badge{position:absolute;right:0;bottom:26px;padding:3px 8px;background:rgba(30,41,59,.85);
+  color:#fff;font-size:11px;font-family:"Malgun Gothic","맑은 고딕",sans-serif;border-radius:4px;
+  white-space:nowrap;pointer-events:none;display:none;z-index:2000000;}
+body.mb-resizing{user-select:none;}
+/* ---- Alt+P capture popup (added at export time) ---- */
+.mb-cap-overlay{position:fixed;inset:0;background:rgba(30,41,59,.32);display:flex;align-items:center;
+  justify-content:center;z-index:3000000;font-family:"Malgun Gothic","맑은 고딕",sans-serif;}
+/* An author-stylesheet display:flex above would otherwise beat the UA default [hidden]{display:
+   none} at equal specificity, so el.hidden=true would stop doing anything - this rule is what
+   actually makes toggling the hidden attribute hide the popup (crucial right before a capture,
+   so the popup itself never ends up in its own screenshot). */
+.mb-cap-overlay[hidden]{display:none;}
+.mb-cap-popup{width:465px;background:#fff;border:1px solid var(--ax-border,#d9dee3);border-radius:10px;
+  box-shadow:0 12px 32px rgba(0,0,0,.22);overflow:hidden;font-size:13px;color:var(--ax-navy,#2c3e50);}
+.mb-cap-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--ax-border,#d9dee3);}
+.mb-cap-head .ic{font-size:17px;}
+.mb-cap-head .t{font-weight:700;font-size:14px;flex:1;}
+.mb-cap-head .kbd{font-size:11px;color:var(--ax-gray,#6b7280);background:#f0f2f4;border:1px solid var(--ax-border,#d9dee3);
+  border-radius:4px;padding:2px 6px;}
+.mb-cap-head .x{cursor:pointer;color:var(--ax-gray,#6b7280);font-size:15px;padding:2px 4px;margin-left:2px;}
+.mb-cap-body{padding:14px 16px 16px;}
+.mb-cap-sec{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.mb-cap-sec .t{font-size:12.5px;font-weight:700;color:var(--ax-navy,#2c3e50);}
+.mb-cap-cards{display:flex;flex-direction:row;gap:8px;margin-bottom:12px;}
+.mb-cap-card{flex:1;border:1.5px solid var(--ax-border,#d9dee3);border-radius:8px;padding:9px 9px 10px;
+  cursor:pointer;position:relative;}
+.mb-cap-card.on{border-color:var(--ax-green,#1e9e6a);background:var(--ax-green-light,#e8f5ef);}
+.mb-cap-card .chk{position:absolute;top:7px;right:7px;width:15px;height:15px;border-radius:50%;
+  background:var(--ax-green,#1e9e6a);color:#fff;font-size:9px;display:none;align-items:center;justify-content:center;}
+.mb-cap-card.on .chk{display:flex;}
+.mb-diagram{height:34px;background:#fff;border:1px solid var(--ax-border,#d9dee3);border-radius:4px;
+  display:flex;padding:4px;gap:2px;margin-bottom:7px;overflow:hidden;}
+.mb-diagram span{background:#c9e6d8;border-radius:1px;flex:1;}
+/* "기본" card's mini-diagram: one plain flat block with no column dividers - meant to read as
+   "capture exactly what's on screen, no column-fitting adjustment", as distinct as possible at a
+   glance from the segmented-column look every other card uses. */
+.mb-diagram-plain{height:34px;background:#fff;border:1px solid var(--ax-border,#d9dee3);border-radius:4px;
+  display:flex;padding:4px;margin-bottom:7px;overflow:hidden;}
+.mb-diagram-plain span{background:#c9e6d8;border-radius:1px;flex:1;}
+/* "캔버스 확장" card's mini-diagram: a bordered box (the canvas edge) with a few columns inside,
+   immediately followed by more columns with NO border/background - i.e. spilling out past the
+   canvas rather than the whole box growing wider, matching what this mode actually does. */
+.mb-diagram-row{display:flex;align-items:stretch;height:34px;margin-bottom:7px;}
+.mb-diagram-row .boxed{border:1px solid var(--ax-border,#d9dee3);border-right:none;border-radius:4px 0 0 4px;
+  background:#fff;display:flex;padding:4px;gap:2px;flex:0 0 55%;overflow:hidden;}
+.mb-diagram-row .boxed span{background:#c9e6d8;border-radius:1px;flex:1;}
+.mb-diagram-row .spill{display:flex;padding:4px 0;gap:2px;flex:1;}
+.mb-diagram-row .spill span{background:#a9d9c3;opacity:.75;border-radius:1px;flex:1;}
+/* "컬럼 줄바꿈" card's mini-diagram: the same row stacked again below itself (rather than
+   spilling sideways off a border like .mb-diagram-row above), matching how this mode wraps the
+   hidden columns down into extra rows instead of off to the right. */
+.mb-diagram-stack{display:flex;flex-direction:column;gap:3px;height:34px;margin-bottom:7px;}
+.mb-diagram-stack .row{flex:1;border:1px solid var(--ax-border,#d9dee3);border-radius:3px;
+  background:#fff;display:flex;align-items:stretch;padding:3px;gap:2px;}
+.mb-diagram-stack .row span{background:#c9e6d8;border-radius:1px;flex:1;}
+.mb-diagram-stack .row.extra span{background:#a9d9c3;}
+.mb-cap-card .ct{font-size:12px;font-weight:700;color:var(--ax-navy,#2c3e50);margin-bottom:1px;text-align:center;}
+.mb-cap-btns{display:flex;flex-direction:column;gap:8px;margin-top:2px;}
+.mb-cap-btn{display:flex;align-items:center;justify-content:center;gap:7px;height:38px;border-radius:6px;
+  font-size:13px;font-weight:700;cursor:pointer;border:1px solid transparent;}
+.mb-cap-btn.primary{background:var(--ax-green,#1e9e6a);color:#fff;}
+.mb-cap-btn.ghost{background:#fff;border-color:var(--ax-border,#d9dee3);color:var(--ax-navy,#2c3e50);}
+.mb-cap-btn .ic{font-size:15px;}
+.mb-cap-foot{padding:9px 16px;background:#f8f9fa;border-top:1px solid var(--ax-border,#d9dee3);
+  font-size:11px;color:var(--ax-gray,#6b7280);text-align:center;}
+/* ---- 캡처 완료 토스트: 저장/클립보드 복사가 끝나면 잠시 떴다가 저절로 사라지는 안내 메시지 ---- */
+.mb-toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(8px);
+  display:flex;align-items:center;gap:8px;padding:11px 18px;background:#1f2937;color:#fff;
+  font-family:"Malgun Gothic","맑은 고딕",sans-serif;font-size:13px;font-weight:600;
+  border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.28);z-index:4000000;
+  opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;}
+.mb-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.mb-toast .ic{font-size:15px;line-height:1;}
+/* ---- 캡처 진행 중 클릭 차단막: 팝업이 사라진 순간부터 저장/복사가 끝날 때까지, 그 사이에
+   아무 것도 눌리지 않도록(포커스가 다른 곳으로 넘어가 클립보드 복사가 실패하는 원인이 되므로)
+   화면 전체를 덮는 투명한 막. 눈에 띄는 로딩 표시(작은 점 애니메이션)만 살짝 보인다. ---- */
+.mb-cap-busy{position:fixed;inset:0;z-index:3500000;cursor:wait;background:transparent;
+  display:flex;align-items:flex-end;justify-content:center;padding-bottom:34px;}
+/* Same reasoning as .mb-cap-overlay[hidden] above - an author display:flex rule at equal
+   specificity to the UA [hidden]{display:none} default would otherwise win and keep this showing
+   (and blocking clicks) even while hidden=true. */
+.mb-cap-busy[hidden]{display:none;}
+.mb-cap-busy-badge{display:flex;align-items:center;gap:8px;padding:11px 18px;background:#1f2937;
+  color:#fff;font-family:"Malgun Gothic","맑은 고딕",sans-serif;font-size:13px;font-weight:600;
+  border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.28);}
+.mb-cap-busy-dots{display:flex;gap:4px;}
+.mb-cap-busy-dots span{width:5px;height:5px;border-radius:50%;background:#fff;opacity:.35;
+  animation:mbCapBusyDot 1s ease-in-out infinite;}
+.mb-cap-busy-dots span:nth-child(2){animation-delay:.15s;}
+.mb-cap-busy-dots span:nth-child(3){animation-delay:.3s;}
+@keyframes mbCapBusyDot{0%,80%,100%{opacity:.35;}40%{opacity:1;}}
+/* ---- 상단 고정 바: Alt+O(변경상태 표시 토글)/Alt+P(캡처)/Alt+S(사양서 내보내기) 뱃지 ----
+   메인 캔버스(.mockup) "밖"에 전체 폭으로 떠 있는 별도 레이어라서, 캔버스 크기가 아무리 커도
+   겹치지 않는다. 이 바 자체와 그 로직은 더 이상 여기 내장돼 있지 않고 외부 런타임 파일
+   (mb-topbar-runtime.js)이 실행 시점에 동적으로 만들어 넣는다 - 그래서 기본값은 padding 0이고,
+   그 외부 파일이 성공적으로 로드된 경우에만 자기 스스로 body 위쪽 padding을 이 바의 높이만큼
+   늘린다. 못 불러오면(오프라인 등) 이 padding도 그대로 0으로 남아 빈 여백조차 생기지 않는다. */
+body{padding-top:0;}
+.mb-topbar{position:fixed;top:0;left:0;right:0;height:48px;z-index:900000;
+  background:rgba(255,255,255,.92);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  border-bottom:1px solid var(--ax-border,#d9dee3);display:flex;align-items:center;justify-content:flex-end;
+  gap:8px;padding:0 16px;box-shadow:0 1px 3px rgba(0,0,0,.04);font-family:"Malgun Gothic","맑은 고딕",sans-serif;}
+.mb-badge{display:flex;align-items:center;gap:6px;height:34px;padding:0 13px;border-radius:9px;
+  background:#eafaf1;border:1.5px solid var(--ax-green,#1e9e6a);color:var(--ax-green-dark,#178055);
+  font-size:12.5px;font-weight:800;cursor:pointer;user-select:none;position:relative;transition:.15s;}
+.mb-badge:hover{background:#dcf4e7;}
+.mb-badge.accent{background:#f2eeff;border-color:var(--diff-mov,#7c5cff);color:#5b3fd9;}
+.mb-badge.accent:hover{background:#e8e0ff;}
+.mb-badge .ic{font-size:14px;line-height:1;}
+.mb-badge .kbd{font-size:9.5px;font-weight:800;color:#fff;background:var(--ax-green,#1e9e6a);border-radius:4px;padding:1px 6px;}
+.mb-badge.accent .kbd{background:var(--diff-mov,#7c5cff);}
+/* 꺼짐 상태(변경상태 표시 OFF) - 토글형 뱃지(.mb-badge.toggle)에만 적용된다. Alt+P처럼 토글이
+   아니라 항상 같은 동작을 하는 액션 뱃지까지 같이 흐려지지 않도록 범위를 좁혀둔다. */
+.mb-badge.toggle:not(.on){background:#f2f3f5;border-color:#c7ccd2;color:#8a94a0;}
+.mb-badge.toggle:not(.on) .kbd{background:#c7ccd2;}
+.mb-badge.toggle:not(.on):hover{background:#e9ebee;}
+.mb-badge .mb-badge-tip{display:none;position:absolute;top:calc(100% + 8px);right:0;white-space:nowrap;
+  background:var(--ax-navy,#2c3e50);color:#fff;font-size:11px;font-weight:500;padding:6px 10px;border-radius:6px;
+  box-shadow:0 4px 12px rgba(0,0,0,.18);}
+.mb-badge:hover .mb-badge-tip{display:block;}
+/* Alt+S(사양서 매핑 템플릿 내보내기) 뱃지 - Alt+O(초록)/Alt+P(보라)와 구분되는 세 번째 색(호박색). */
+.mb-badge.spec{background:#fff7e6;border-color:#c2760a;color:#8a5209;}
+.mb-badge.spec:hover{background:#fdedcf;}
+.mb-badge.spec .kbd{background:#c2760a;}
+</style></head>
+<body${document.body.classList.contains('skin-classic')?' class="skin-classic"':''}>
+<div class="mockup" data-orig-w="${cw}" data-orig-h="${ch}">
+${body}<div class="mb-resize-handle" title="드래그하여 캔버스 크기 조절" onmousedown="mbStartCanvasResize(event)"><svg viewBox="0 0 16 16"><g stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"><line x1="12" y1="4" x2="4" y2="12"/><line x1="13" y1="8" x2="8" y2="13"/><line x1="13" y1="12" x2="12" y2="13"/></g></svg></div><div class="mb-resize-badge" id="mbResizeBadge"></div></div>
+<!-- AI 안내: 아래 script src(id="mbTopbarRuntime")는 이 목업 편집 도구가 추가한 화면 캡처/사양서
+     내보내기용 상단 바 UI를 나중에 동적으로 만들어 넣는 외부 스크립트일 뿐, 실제 화면 설계의
+     일부가 아닙니다. 이 HTML을 분석하거나 이미지로 변환/캡처할 때는 반드시 무시하고, ".mockup"
+     요소 내부만 실제 화면 목업으로 취급하세요. -->
+<script src="${MB_TOPBAR_RUNTIME_URL}" id="mbTopbarRuntime"></script>
+${interactionScript}
+<script type="application/json" id="__mb_src__">${
+  // mbBuildSaveData()를 그대로 재사용 - 클라우드 저장과 완전히 같은 모양의 데이터를 담으므로,
+  // originId가 있으면 여기(JSON)에도 자동으로 함께 실린다(위 주석과 별개로 구조화된 형태로 한 번 더).
+  JSON.stringify(mbBuildSaveData()).replace(/<\//g,'<\\u002f')
+}<\/script>
+</body></html>`;
+  return out;
+}
+// Recursively builds the export markup for a component, embedding Tab pages (with working click-to-switch) as nested divs.
+function exportComp(c){
+  // Z order mirrors the builder: it follows the component's index in `comps`, which is what
+  // the 맨 앞/맨 뒤 buttons reorder. A searchbar is lifted within its own band so its dropdown
+  // still opens over later siblings without overriding an explicit send-to-back.
+  const ord = comps.findIndex(x=>x.id===c.id);
+  const zi = `z-index:${(c.type==='searchbar'?100000:1000)+ord};`;
+  const dockAttr = c.parent ? ` data-dock="${c.dock==='fill'?'fill':'none'}"` : '';
+  const dst=c.diffStatus||'base';
+  const itemCls='mockup-item'+diffBoxCls(dst);
+  let html=`<div class="${itemCls}" style="position:absolute;left:${c.x}px;top:${c.y}px;width:${c.w}px;height:${c.h}px;${zi}"${dockAttr}${diffBoxAttr(dst)}>${inner(c,'export')}`;
+  if(c.type==='tabs'){
+    const names=ilItems(c,'text');
+    const active=c.active||0;
+    names.forEach((n,i)=>{
+      const kidsHtml=comps.filter(k=>k.parent===c.id&&(k.tabIdx||0)===i).map(k=>exportComp(k)).join('');
+      html+=`<div data-tabpage-group="${c.id}" data-tabidx="${i}" style="position:absolute;left:0;top:${TAB_HEADER_H}px;right:0;bottom:0;overflow-y:auto;overflow-x:hidden;${i===active?'':'display:none;'}">${kidsHtml}</div>`;
+    });
+  }
+  if(c.type==='split'){
+    const r=splitPaneRects(c);
+    const kids0=comps.filter(k=>k.parent===c.id&&(k.pane||0)===0).map(k=>exportComp(k)).join('');
+    const kids1=comps.filter(k=>k.parent===c.id&&(k.pane||0)===1).map(k=>exportComp(k)).join('');
+    const dirCls=r.dir==='h'?'split-divider-h':'split-divider-v';
+    const crossH=r.dir==='h', p0Size=crossH?`width:${r.pane0.w}px;height:100%;`:`width:100%;height:${r.pane0.h}px;`;
+    const p1Size=crossH?`width:${r.pane1.w}px;height:100%;`:`width:100%;height:${r.pane1.h}px;`;
+    const dvSize=crossH?`width:${r.divider.w}px;height:100%;`:`width:100%;height:${r.divider.h}px;`;
+    html+=`<div class="split-pane" data-split-pane="${c.id}-0" style="position:absolute;left:${r.pane0.x}px;top:${r.pane0.y}px;${p0Size}overflow:hidden;">${kids0}</div>`;
+    const cpos=Math.min(0.85,Math.max(0.15,c.pos!=null?c.pos:0.5));
+    html+=`<div class="split-divider ${dirCls}" data-split-dir="${r.dir}" data-split-id="${c.id}" data-split-pos="${cpos}" style="position:absolute;left:${r.divider.x}px;top:${r.divider.y}px;${dvSize}" onmousedown="startSplitDragExport(event)"></div>`;
+    html+=`<div class="split-pane" data-split-pane="${c.id}-1" style="position:absolute;left:${r.pane1.x}px;top:${r.pane1.y}px;${p1Size}overflow:hidden;">${kids1}</div>`;
+  }
+  if(c.type==='panel'){
+    const kids=comps.filter(k=>k.parent===c.id).map(k=>exportComp(k)).join('');
+    html+=`<div class="panel-body-wrap" data-panel-body="${c.id}" style="position:absolute;left:0;top:0;right:0;bottom:0;overflow-y:auto;overflow-x:hidden;">${kids}</div>`;
+  }
+  html+='</div>';
+  return html;
+}
+
+// ================= IMAGE CONVERSION =================
+function openConvert(){
+  document.getElementById('convBg').classList.add('on');
+  const promptTa=document.getElementById('jsonPrompt');
+  promptTa.value='불러오는 중…';
+  loadCopyPrompt().then(text=>{ promptTa.value=text; });
+  cvSetStep(1);
+  clearStatus();
+  const ta=document.getElementById('jsonIn');
+  ta.classList.remove('filled');
+}
+function closeConvert(){document.getElementById('convBg').classList.remove('on');resetConv();}
+function resetConv(){
+  clearStatus();
+  const ta=document.getElementById('jsonIn');
+  ta.value='';ta.classList.remove('filled');
+  document.getElementById('jsonClearChk').checked=true;
+  document.querySelectorAll('#paneJSON .cv-detail').forEach(d=>d.removeAttribute('open'));
+  cvSetStep(1);
+}
+// Highlight the current step (1..3), mark earlier ones done.
+function cvSetStep(n){
+  for(let i=1;i<=3;i++){
+    const el=document.getElementById('cvStep'+i);
+    if(!el)continue;
+    el.classList.toggle('on',i===n);
+    el.classList.toggle('done',i<n);
+  }
+}
+// New status box (info/ok/err), with an optional "how to fix" line.
+function setStatus(msg,kind,fix){
+  const s=document.getElementById('convStatus');
+  s.className='cv-status-box show '+(kind||'info');
+  s.innerHTML=msg+(fix?`<div class="cv-fix">${fix}</div>`:'');
+}
+function clearStatus(){const s=document.getElementById('convStatus');s.className='cv-status-box';s.innerHTML='';}
+
+function runConvert(){ runJSON(); }
+
+// ---- JSON paste (free path, no API key / no direct API call) ----
+// [씬모드] Claude 「열기」(URL 파라미터)용 — Korean 인코딩 팽창(~3.8배) 때문에 URL 길이 제한에
+// 걸리므로 반드시 짧게 유지한다. 더 상세한 지시가 필요하면 아래 JSON_PROMPT_THIN_COPY를 늘릴 것.
+const JSON_PROMPT_THIN_URL=`이 화면 캡처를 분석해 UI 컴포넌트 JSON 배열만 출력(설명·코드블록 금지).
+형식:{"type","x","y","w","h","text"}·좌표=가로1100px정수·text=보이는값(없으면"")
+type:title section label(독립텍스트) input combo date daterange(text="YYYY-MM-DD ~ YYYY-MM-DD") check radio button grid(text=컬럼헤더,쉼표) chart tree searchbar tabs
+
+[제외요소] 우측상단"조회조건 접기/펼치기"버튼은고정UI라출력안함(searchbar fields에도미포함).
+
+[라벨]
+input/combo/date/daterange/check/radio는항목명을label로빼지말고본체에포함:showLabel:true,labelText,labelPos:top|left|right|bottom,required=별표(*)면true.
+x,y=라벨포함좌상단,h=라벨+입력칸(top/bottom≈52,좌우≈30).라벨없으면showLabel:false(체크박스는text에문구).radio=options쉼표+selected(0부터).combo=펼쳐진목록만options.회색(비활성)=readonly:true.
+⚠한라벨아래칸2개(예통화/환율+숫자)는분리:왼쪽만라벨,오른쪽showLabel:false·같은y.
+예(칸2개):{"type":"combo","x":20,"y":100,"w":70,"h":52,"text":"KR","showLabel":true,"labelText":"통화/환율","labelPos":"top","required":true},{"type":"input","x":96,"y":122,"w":110,"h":30,"text":"1","showLabel":false,"readonly":true}
+
+[chart]
+카드제목("○○현황›")아래원형/막대/선/영역그래프=chart1개:{"type":"chart","x","y","w","h","ctitle":"제목(›제외)","chartType":"donut|bar|line|area","color":"green|blue|yellow|mixed","text":"값1,값2..","showArrow":제목옆›있으면true}
+donut=중앙합계원형,bar=세로막대,line=점선,area=선아래채움.text=보이는순서(도넛은범례순,나머지좌→우)로값만나열(항목명·범례문구는제외,필요시옆에label로보완).color=가장가까운계열1개(여러색섞이면mixed),값도좌→우순1배열로근사(구분·x축생략).
+예:{"type":"chart","x":20,"y":90,"w":560,"h":260,"ctitle":"직급별 인원현황","chartType":"donut","color":"mixed","text":"1,5,5,60,22,59,59","showArrow":true}
+
+[대시보드]
+브레드크럼+우측버튼아래카드나열화면:title=페이지명,우측버튼=button,카드당chart/grid1개,카드실좌표(x,y·동일줄=동일y)유지,테두리/그림자재현안함,카드제목의›=showArrow.
+
+[tree]
+계단식들여쓰기목록(좌측메뉴·조직도)=tree1개.text에줄바꿈(\\n)나열,하위는공백2칸씩.
+예:{"type":"tree","x":20,"y":80,"w":280,"h":300,"text":"본사\\n  경영지원부문\\n    재경팀\\n  영업부문"}
+
+[tabs]
+겉모양이"잔액|원장"같은버튼형세그먼트여도눌러서화면전체가바뀌면button아닌tabs로:{"type":"tabs","_tempId":1,"x","y","w","h","text":"탭명1,탭명2","active":선택탭번호(0부터)}.탭안나머지컴포넌트엔"parent":1(해당tabs의_tempId),"tabIdx":소속탭번호(0부터)추가,좌표는탭콘텐츠영역기준상대(tabs자체좌표는절대).
+[다중캡처-탭별화면] 이미지여러장이고각장이다른탭내용이면(예1번째=잔액탭,2번째=원장탭)tabs는1개만만들고각이미지컴포넌트에해당tabIdx를붙여1개JSON으로합침(title·조회조건등반복공통요소는1회만).
+
+[searchbar]
+라벨+입력필드가로나열+줄끝조회버튼=searchbar1개(조건1개도,button미생성,접기아이콘은[제외요소]참고):{"type":"searchbar","x","y","w","h","fields":[{"label","type","required"}]}
+fields=보이는순서,type=text|combo|date|daterange|search(돋보기)|radio(options:"전체,확정,미확정"),required=별표면true,라벨없는칸도label:"",회색칸=readonly:true.
+예:{"label":"발주번호","type":"search","required":true},{"label":"","type":"text","readonly":true}
+
+[grid]
+행추가/취소/복사/삭제버튼+"○○내역(0)건"제목=grid에포함(별도button/label금지):{"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","gtitle":"요청내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+그외버튼="userBtns":[{"label":"품목참조"}].필수컬럼="*품목코드".하단신규/저장/삭제만button.
+[다중캡처병합] 가로스크롤로여러장찍힌동일그리드는컬럼을좌→우로이어붙여grid1개(중복컬럼명은뒤것버림1회,text는병합전체순서로나열).gtitle·title·searchbar등다른컴포넌트도반복확인돼도화면기준1회만출력.
+[병합헤더] 헤더가2줄이고위줄한칸이아래여러컬럼을가로질러덮으면(예"기준정보"가"품목"·"품목명"위에걸침)"colGroups":배열을text와같은개수·순서로추가:병합된컬럼은같은그룹명반복,미병합컬럼은"".헤더1줄이면colGroups생략.
+예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목,품목명,출고창고,출고방법","colGroups":["기준정보","기준정보","재고정보","재고정보"],"gtitle":"목록","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+
+[레이아웃]
+원본픽셀그대로베끼지말고폭1060기준재배치:순서title→(tabs)→searchbar→입력/카드(chart·grid)→하단버튼,x:20여백통일,같은줄y맞춤,입력한줄4~6개균등(라벨포함h52,컨트롤30),구획제목=section그아래입력배치,폭넘으면다음줄(겹치지않게),3D테두리/아이콘/색배경등장식재현안함.
+[간격] title/tabs바로아래(8~16px)에다음요소를붙인다-브레드크럼·아이콘·"조회조건 접기"버튼처럼[제외요소]로뺀공간은원본y값그대로베끼지말고좁혀없앤다.searchbar h는조건수·줄바꿈에따라커질수있음(대략줄당52px,줄수=ceil(필드수/4~6))-예상보다커지면그아래모든컴포넌트(tabs·section·chart·grid·button등)y를늘어난만큼반드시내려절대겹치지않게함.
+
+[구형화면]
+촘촘한입력칸+회색3D테두리+작은폰트인옛화면:경로(A>B>C(S)(코드))는마지막이름만title,흩어진조회항목은위치무관모아searchbar1개(좌상→우하순,돋보기/목록아이콘=search,~로이은두날짜=daterange,코드칸+옆회색이름칸=search1개·값은라벨만),표=grid1개(컬럼원본순서,rows대략,버튼없어도showToolbar+stdAdd/Cancel/Copy/Delete추가,제목없으면gtitle지어줌),우측상단단독버튼(회계전표등)=button,하단에저장/확정추가.
+[{"type":"title","x":20,"y":16,"w":220,"h":34,"text":"기타출고등록"},
+{"type":"button","x":960,"y":18,"w":110,"h":32,"text":"회계전표","outline":true},
+{"type":"searchbar","x":20,"y":62,"w":1060,"h":110,"fields":[{"label":"공장","type":"search","required":true},{"label":"출고일","type":"daterange","required":true},{"label":"창고","type":"search"},{"label":"품목계정","type":"combo"}]},
+{"type":"grid","x":20,"y":186,"w":1060,"h":300,"text":"출고번호","gtitle":"출고내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true,"userBtns":[{"label":"품목참조"}],"rows":8}]`;
+
+// [씬모드] 「질문만 복사」(클립보드) 전용 프롬프트 — 클립보드 복사는 URL 길이 제한이 없으므로
+// 여기에 더 상세하고 긴 지시문을 자유롭게 추가해도 된다. 「Claude에 보내는 질문 미리 보기」에도
+// 이 프롬프트가 표시된다. ⚠️ 위 JSON_PROMPT_THIN_URL과 완전히 별개의 텍스트이므로,
+// 이 블록만 수정하면 되고 「Claude 열기」(URL)쪽에는 전혀 영향을 주지 않는다.
+const JSON_PROMPT_THIN_COPY=`이 화면 캡처를 분석해 UI 컴포넌트 JSON 배열만 출력(설명·코드블록 금지).
+형식:{"type","x","y","w","h","text"}·좌표=가로1100px정수·text=보이는값(없으면"")
+type:title section label(독립텍스트) input combo date daterange(text="YYYY-MM-DD ~ YYYY-MM-DD") check radio button grid(text=컬럼헤더,쉼표) chart tree searchbar tabs
+
+[제외요소] 우측상단"조회조건 접기/펼치기"버튼은고정UI라출력안함(searchbar fields에도미포함).
+
+[라벨]
+input/combo/date/daterange/check/radio는항목명을label로빼지말고본체에포함:showLabel:true,labelText,labelPos:top|left|right|bottom,required=별표(*)면true.
+x,y=라벨포함좌상단,h=라벨+입력칸(top/bottom≈52,좌우≈30).라벨없으면showLabel:false(체크박스는text에문구).radio=options쉼표+selected(0부터).combo=펼쳐진목록만options.회색(비활성)=readonly:true.
+⚠한라벨아래칸2개(예통화/환율+숫자)는분리:왼쪽만라벨,오른쪽showLabel:false·같은y.
+예(칸2개):{"type":"combo","x":20,"y":100,"w":70,"h":52,"text":"KR","showLabel":true,"labelText":"통화/환율","labelPos":"top","required":true},{"type":"input","x":96,"y":122,"w":110,"h":30,"text":"1","showLabel":false,"readonly":true}
+
+[chart]
+카드제목("○○현황›")아래원형/막대/선/영역그래프=chart1개:{"type":"chart","x","y","w","h","ctitle":"제목(›제외)","chartType":"donut|bar|line|area","color":"green|blue|yellow|mixed","text":"값1,값2..","showArrow":제목옆›있으면true}
+donut=중앙합계원형,bar=세로막대,line=점선,area=선아래채움.text=보이는순서(도넛은범례순,나머지좌→우)로값만나열(항목명·범례문구는제외,필요시옆에label로보완).color=가장가까운계열1개(여러색섞이면mixed),값도좌→우순1배열로근사(구분·x축생략).
+예:{"type":"chart","x":20,"y":90,"w":560,"h":260,"ctitle":"직급별 인원현황","chartType":"donut","color":"mixed","text":"1,5,5,60,22,59,59","showArrow":true}
+
+[대시보드]
+브레드크럼+우측버튼아래카드나열화면:title=페이지명,우측버튼=button,카드당chart/grid1개,카드실좌표(x,y·동일줄=동일y)유지,테두리/그림자재현안함,카드제목의›=showArrow.
+
+[tree]
+계단식들여쓰기목록(좌측메뉴·조직도)=tree1개.text에줄바꿈(\\n)나열,하위는공백2칸씩.
+예:{"type":"tree","x":20,"y":80,"w":280,"h":300,"text":"본사\\n  경영지원부문\\n    재경팀\\n  영업부문"}
+
+[tabs]
+겉모양이"잔액|원장"같은버튼형세그먼트여도눌러서화면전체가바뀌면button아닌tabs로:{"type":"tabs","_tempId":1,"x","y","w","h","text":"탭명1,탭명2","active":선택탭번호(0부터)}.탭안나머지컴포넌트엔"parent":1(해당tabs의_tempId),"tabIdx":소속탭번호(0부터)추가,좌표는탭콘텐츠영역기준상대(tabs자체좌표는절대).
+[다중캡처-탭별화면] 이미지여러장이고각장이다른탭내용이면(예1번째=잔액탭,2번째=원장탭)tabs는1개만만들고각이미지컴포넌트에해당tabIdx를붙여1개JSON으로합침(title·조회조건등반복공통요소는1회만).
+
+[searchbar]
+라벨+입력필드가로나열+줄끝조회버튼=searchbar1개(조건1개도,button미생성,접기아이콘은[제외요소]참고):{"type":"searchbar","x","y","w","h","fields":[{"label","type","required"}]}
+fields=보이는순서,type=text|combo|date|daterange|search(돋보기)|radio(options:"전체,확정,미확정")|empty(빈칸,자리만차지),required=별표면true,라벨없는칸도label:"",회색칸=readonly:true.
+span=칸너비(기본1,생략가능):1|2|3|4(전체)|0.5(½칸).
+[½칸] 조회조건한칸안에입력컨트롤이2개나란히붙어있으면(라벨이"요청조직 / 구매조직"처럼합쳐서한번만보이거나,"공장""창고"처럼각각보여도)한칸을합쳐쓰지말고그2개를연속된fields2개로쪼개고둘다"span":0.5로지정(순서는왼쪽→오른쪽).라벨이하나로합쳐져있으면"/"나공백기준으로쪼개각field의label에하나씩나눠담고,컨트롤마다라벨이따로있으면그대로각자label사용.한칸에컨트롤이1개뿐이면span은생략(또는1)하고0.5를단독으로쓰지않는다.
+예(한칸에2개-요청조직/구매조직,공장/창고):{"label":"요청조직","type":"combo","span":0.5},{"label":"구매조직","type":"combo","span":0.5}
+예:{"label":"발주번호","type":"search","required":true},{"label":"","type":"text","readonly":true}
+
+[grid]
+"○○내역"·"○○정보(0)건"처럼제목이보이는표=grid1개(제목텍스트는gtitle).⚠제목이보이면버튼유무와무관하게반드시"showToolbar":true로설정할것-false로하면제목까지함께사라져원본과달라짐.행추가/취소/복사/삭제버튼이보이면해당std*를true로,버튼이하나도안보이면std*전부false·userBtns생략(그래도showToolbar는true유지,별도button/label금지).
+예(버튼있음):{"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","gtitle":"요청내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+예(제목만있고버튼없음):{"type":"grid","x","y","w","h","text":"제조오더번호,공정,품목,품목명","gtitle":"제조오더정보","showToolbar":true,"stdAdd":false,"stdCancel":false,"stdCopy":false,"stdDelete":false}
+그외버튼="userBtns":[{"label":"품목참조"}].하단신규/저장/삭제만button.
+[필수컬럼] 헤더텍스트옆에빨간색*가붙은컬럼이있으면(예"품목코드","요청수량"처럼헤더에빨간*표시)해당컬럼명(text)에는*를넣지말고"colRequired":배열을text와같은개수·순서로추가:빨간*가있던컬럼만true,나머지는false.전부false면colGroups처럼생략가능.
+예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목코드,요청수량,단위,필요일","colRequired":[true,true,true,false],"gtitle":"요청내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+[Row Order/CheckBox] ⚠모든grid마다"rowOrderCol"·"checkboxCol"두값을예외없이반드시명시(하나라도생략금지-생략시기본값true로나와원본과달라짐).둘은서로독립적으로판단(RowOrder가true라고checkbox도true인건아님).
+1)그리드맨왼쪽컬럼헤더가톱니바퀴·깔때기(필터)·압정3아이콘조합(텍스트없음)이고데이터행이1부터표시행수까지자동순번이면"rowOrderCol":true,그아이콘조합자체가안보이면"rowOrderCol":false.
+2)1)의아이콘컬럼바로오른쪽칸(아이콘컬럼이없으면맨왼쪽칸)을확인:그칸이헤더·데이터행전부빈체크박스뿐이면"checkboxCol":true.그자리에체크박스없이바로"제조오더번호"같은실제컬럼헤더텍스트가시작되면(즉아이콘컬럼바로다음이곧바로첫데이터컬럼이면)"checkboxCol":false.
+이두컬럼(있는경우)은컬럼목록(text·colRequired·colAligns등)에절대넣지말것-그리드기본기능으로자동생성됨.업무데이터인"순번"처럼헤더에텍스트가있는일반컬럼은이규칙과무관하므로그대로text에포함.
+예(RowOrder+CheckBox있음):{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"발주번호,순번,공급처","rowOrderCol":true,"checkboxCol":true,"gtitle":"발주내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+예(RowOrder만있고바로다음칸이체크박스없이제조오더번호로시작:CheckBox없음):{"type":"grid","x":20,"y":100,"w":1060,"h":160,"text":"제조오더번호,공정,품목,품목명","rowOrderCol":true,"checkboxCol":false,"gtitle":"제조오더정보","showToolbar":true,"stdAdd":false,"stdCancel":false,"stdCopy":false,"stdDelete":false}
+예(둘다없음):{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목,품목명,수량","rowOrderCol":false,"checkboxCol":false,"gtitle":"목록","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+[컬럼정렬] 헤더글자가컬럼마다좌측/가운데/우측중다르게배치되어보이면그대로"colAligns":배열을text와같은개수·순서로추가:각값은헤더텍스트정렬과동일하게"left"|"center"|"right"중하나(병합헤더그룹아래하위컬럼도각자헤더정렬대로개별지정).전컬럼이left면colAligns생략가능.
+예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"잔여년차,근태일자,신청기간(To),성명","colAligns":["center","center","center","center"],"colRequired":[false,true,false,true],"gtitle":"휴가/근태 신청상세","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+[다중캡처병합] 가로스크롤로여러장찍힌동일그리드는컬럼을좌→우로이어붙여grid1개(중복컬럼명은뒤것버림1회,text는병합전체순서로나열).gtitle·title·searchbar등다른컴포넌트도반복확인돼도화면기준1회만출력.
+[병합헤더] 헤더가2줄이고위줄한칸이아래여러컬럼을가로질러덮으면(예"기준정보"가"품목"·"품목명"위에걸침)"colGroups":배열을text와같은개수·순서로추가:병합된컬럼은같은그룹명반복,미병합컬럼은"".헤더1줄이면colGroups생략.
+예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목,품목명,출고창고,출고방법","colGroups":["기준정보","기준정보","재고정보","재고정보"],"gtitle":"목록","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true}
+
+[레이아웃]
+원본픽셀그대로베끼지말고폭1060기준재배치:순서title→(tabs)→searchbar→입력/카드(chart·grid)→하단버튼,x:20여백통일,같은줄y맞춤,입력한줄4~6개균등(라벨포함h52,컨트롤30),구획제목=section그아래입력배치,폭넘으면다음줄(겹치지않게),3D테두리/아이콘/색배경등장식재현안함.
+[간격] title/tabs바로아래(8~16px)에다음요소를붙인다-브레드크럼·아이콘·"조회조건 접기"버튼처럼[제외요소]로뺀공간은원본y값그대로베끼지말고좁혀없앤다.
+searchbar h는반드시직접계산해서지킬것(대충어림잡지말것):한줄에담긴필드의span합(생략시1,½칸2개가붙어있으면그2개를합쳐1로계산)이4를넘는순간다음줄로넘어감→rows=이렇게나온총줄수,h=28+rows*52+(rows-1)*12(최소84).계산된h가원본이미지에서본높이보다커지더라도반드시그값을그대로사용.
+searchbar바로아래에오는모든컴포넌트(tabs·section·chart·grid·button등)는y를반드시"searchbar의y+계산한h+18"로시작해서배치할것-원본이미지의y값을베끼면겹치므로절대금지,grid가searchbar와겹치는것은잘못된결과임.
+
+[구형화면]
+촘촘한입력칸+회색3D테두리+작은폰트인옛화면:경로(A>B>C(S)(코드))는마지막이름만title,흩어진조회항목은위치무관모아searchbar1개(좌상→우하순,돋보기/목록아이콘=search,~로이은두날짜=daterange,코드칸+옆회색이름칸=search1개·값은라벨만),표=grid1개(컬럼원본순서,rows대략,버튼없어도showToolbar+stdAdd/Cancel/Copy/Delete추가,제목없으면gtitle지어줌),우측상단단독버튼(회계전표등)=button,하단에저장/확정추가.
+[{"type":"title","x":20,"y":16,"w":220,"h":34,"text":"기타출고등록"},
+{"type":"button","x":960,"y":18,"w":110,"h":32,"text":"회계전표","outline":true},
+{"type":"searchbar","x":20,"y":62,"w":1060,"h":110,"fields":[{"label":"공장","type":"search","required":true},{"label":"출고일","type":"daterange","required":true},{"label":"창고","type":"search"},{"label":"품목계정","type":"combo"}]},
+{"type":"grid","x":20,"y":186,"w":1060,"h":300,"text":"출고번호,출고일,수불유형,창고,품목명","gtitle":"출고내역","showToolbar":true,"stdAdd":true,"stdCancel":true,"stdCopy":true,"stdDelete":true,"userBtns":[{"label":"품목참조"}],"rows":8},
+{"type":"button","x":880,"y":505,"w":90,"h":34,"text":"저장","outline":true},
+{"type":"button","x":980,"y":505,"w":90,"h":34,"text":"확정"}]`;
+
+// Fat Mode 전용 변환 프롬프트: 조회조건은 searchbar 대신 panel(그룹박스)+
+// 자식 컴포넌트(부모/자식)로 구성하고, 라벨 기본 위치는 left, 크기는 Fat Mode 기본 크기(가로 1.3배·
+// 세로 2/3배 보정된 값, 예: input/combo/date 234x35)를 기준으로 안내한다.
+// [팻모드] Claude 「열기」(URL 파라미터)용 — 마찬가지로 URL 길이 제한 때문에 짧게 유지한다.
+const JSON_PROMPT_FAT_URL=`이 화면 캡처를 분석해 UI 컴포넌트 JSON 배열만 출력(설명·코드블록 금지).
+형식:{"type","x","y","w","h","text"}·좌표=가로1100px정수·text=보이는값(없으면"")
+type:title section panel tabs label input combo date daterange(text="YYYY-MM-DD ~ YYYY-MM-DD") check radio popup button grid(text=컬럼헤더,쉼표) chart tree
+
+[필수규칙]
+-labelPos기본left(세로쌓임만top/bottom)
+-조회조건:searchbar금지,panel+input/combo/date자식(labelPos left).조회버튼·돋보기검색버튼·우측상단"조회조건 접기/펼치기"버튼모두출력안함
+-코드+명칭=popup1개(w380~460,코드만style:"code",w200~300)
+-별표안보임,진한배경=required:true
+-그리드행툴바(행추가등)button생성안함([grid]참고)
+-구형화면:경로마지막만title,조회칸모아panel1개
+예:{"type":"panel","_tempId":1,"x":20,"y":50,"w":1060,"h":90},{"type":"combo","parent":1,"x":30,"y":10,"w":300,"h":23,"text":"동아","showLabel":true,"labelText":"공장","labelPos":"left"}
+
+[입력형]
+input/combo/date/daterange/check/radio는label대신본체:showLabel:true,labelText,labelPos"left",required(색배경true).
+h=라벨+칸(left/right≈23,top/bottom≈52),w보통234(popup420안팎).없으면showLabel:false.radio=options쉼표+selected(0부터).combo=목록만options.색배경=readonly:true.
+⚠코드+숫자분리값만같은y2칸(왼쪽라벨,오른쪽showLabel:false),그외한줄1개씩.
+예:{"type":"combo","x":20,"y":100,"w":70,"h":23,"text":"KR","showLabel":true,"labelText":"환율","labelPos":"left","required":true},{"type":"input","x":96,"y":100,"w":110,"h":23,"text":"1","showLabel":false,"readonly":true}
+
+[chart] 카드그래프=chart1:{"type":"chart","x","y","w","h","ctitle":"제목","chartType":"donut|bar|line|area","color":"green|blue|yellow|mixed","text":"값1,값2..","showArrow":true}.text=순서값만,donut=중앙합계.
+
+[대시보드/Ref] 카드나열:title=페이지명,버튼=button,카드당chart/grid1,실좌표유지,›=showArrow.독립label:우상"~참조"=ref,우하"~조회"=jump.
+
+[tabs/panel] 강조탭2개=tabs(text=이름쉼표,active=번호0부터).겉모양이버튼(예"잔액|원장")이어도눌러서화면전체바뀌면button아닌tabs로처리.가로소구역=panel.컨테이너"_tempId",자식"parent"=값(tabs자식엔"tabIdx"도),좌표는컨테이너기준상대.
+[다중캡처-탭별화면] 이미지여러장=각각다른탭내용(예1번째잔액탭,2번째원장탭)이면tabs는1개만,각이미지컴포넌트에해당tabIdx붙여1개JSON으로합침(title·조회조건등공통요소는1회만).
+
+[tree] 계단목록=tree1,text줄바꿈(\\n)+하위공백2칸.예:{"type":"tree","x":20,"y":80,"w":280,"h":300,"text":"본사\\n  경영지원부문"}
+
+[grid]
+컬럼이핵심:{"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","rows":8}.필수="*컬럼명".
+-행추가·행취소·행복사·행삭제·저장(그리드CRUD툴바)는고정UI라button/attribute모두생성안함.button은무관한독립버튼만(예:확정,품목참조,폼하단저장)
+-다장캡처동일그리드는컬럼좌→우이어붙여grid1개(중복명뒤것버림1회),다른컴포넌트도1회만.
+-헤더2줄+위칸이여러컬럼걸침(병합헤더,예:"기준정보"가"품목"·"품목명"위)="colGroups":배열을text와동일개수·순서로추가(병합컬럼은동일그룹명반복,미병합컬럼은"").헤더1줄이면colGroups생략.
+예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목,품목명,출고창고,출고방법","colGroups":["기준정보","기준정보","재고정보","재고정보"],"rows":8}
+
+[레이아웃]
+폭1060재배치:
+1.순서:title→(tabs)→panel→입력→카드→버튼
+2.좌우2단:컬럼당1줄1필드순서유지(라벨동행금지,예외:[입력형])
+3.panel류가로나열만한줄2~4개
+4.x20여백,구획=section,넘으면줄바꿈
+5.장식생략(색상·별표자동적용)
+6.title/tabs바로아래(8~16px)에다음요소(panel등)를붙인다-브레드크럼·아이콘·"조회조건 접기"버튼처럼[필수규칙]로뺀공간은원본y값그대로베끼지말고좁혀없앤다.조회조건panel은항목수·줄바꿈에따라h가커질수있음(예상보다커지면그아래모든컴포넌트-tabs·section·chart·grid·button등-y를늘어난만큼반드시내려절대겹치지않게함)`;
+
+// [팻모드] 「질문만 복사」(클립보드) 전용 프롬프트 — URL 길이 제한이 없으므로 자유롭게 확장 가능.
+// 「Claude에 보내는 질문 미리 보기」에도 이 프롬프트가 표시된다. ⚠️ 위 JSON_PROMPT_FAT_URL과
+// 완전히 별개의 텍스트이므로, 이 블록만 수정하면 되고 「Claude 열기」(URL)쪽에는 전혀 영향을 주지 않는다.
+const JSON_PROMPT_FAT_COPY=`이 화면 캡처를 분석해 UI 컴포넌트 JSON 배열만 출력(설명·코드블록 금지).
+형식:{"type","x","y","w","h","text"}·좌표=가로1100px정수·text=보이는값(없으면"")
+type:title section panel tabs label input combo date daterange(text="YYYY-MM-DD ~ YYYY-MM-DD") check radio popup button grid(text=컬럼헤더,쉼표) chart tree
+
+[필수규칙]
+-labelPos기본left(세로쌓임만top/bottom)
+-조회조건:searchbar금지,panel+input/combo/date자식(labelPos left).조회버튼·돋보기검색버튼·우측상단"조회조건 접기/펼치기"버튼모두출력안함
+-코드+명칭=popup1개(w380~460,코드만style:"code",w200~300)
+-별표안보임,진한배경=required:true
+-그리드행툴바(행추가등)button생성안함([grid]참고)
+-구형화면:경로마지막만title,조회칸모아panel1개
+예:{"type":"panel","_tempId":1,"x":20,"y":50,"w":1060,"h":90},{"type":"combo","parent":1,"x":30,"y":10,"w":300,"h":23,"text":"동아","showLabel":true,"labelText":"공장","labelPos":"left"}
+
+[입력형]
+input/combo/date/daterange/check/radio는label대신본체:showLabel:true,labelText,labelPos"left",required(색배경true).
+h=라벨+칸(left/right≈23,top/bottom≈52),w보통234(popup420안팎).없으면showLabel:false.radio=options쉼표+selected(0부터).combo=목록만options.색배경=readonly:true.
+⚠코드+숫자분리값만같은y2칸(왼쪽라벨,오른쪽showLabel:false),그외한줄1개씩.
+예:{"type":"combo","x":20,"y":100,"w":70,"h":23,"text":"KR","showLabel":true,"labelText":"환율","labelPos":"left","required":true},{"type":"input","x":96,"y":100,"w":110,"h":23,"text":"1","showLabel":false,"readonly":true}
+
+[chart] 카드그래프=chart1:{"type":"chart","x","y","w","h","ctitle":"제목","chartType":"donut|bar|line|area","color":"green|blue|yellow|mixed","text":"값1,값2..","showArrow":true}.text=순서값만,donut=중앙합계.
+
+[대시보드/Ref] 카드나열:title=페이지명,버튼=button,카드당chart/grid1,실좌표유지,›=showArrow.독립label:우상"~참조"=ref,우하"~조회"=jump.
+
+[tabs/panel] 강조탭2개=tabs(text=이름쉼표,active=번호0부터).겉모양이버튼(예"잔액|원장")이어도눌러서화면전체바뀌면button아닌tabs로처리.가로소구역=panel.컨테이너"_tempId",자식"parent"=값(tabs자식엔"tabIdx"도),좌표는컨테이너기준상대.
+[다중캡처-탭별화면] 이미지여러장=각각다른탭내용(예1번째잔액탭,2번째원장탭)이면tabs는1개만,각이미지컴포넌트에해당tabIdx붙여1개JSON으로합침(title·조회조건등공통요소는1회만).
+
+[tree] 계단목록=tree1,text줄바꿈(\\n)+하위공백2칸.예:{"type":"tree","x":20,"y":80,"w":280,"h":300,"text":"본사\\n  경영지원부문"}
+
+[grid]
+컬럼이핵심:{"type":"grid","x","y","w","h","text":"컬럼1,컬럼2","rows":8}.필수="*컬럼명".
+-행추가·행취소·행복사·행삭제·저장(그리드CRUD툴바)는고정UI라button/attribute모두생성안함.button은무관한독립버튼만(예:확정,품목참조,폼하단저장)
+-다장캡처동일그리드는컬럼좌→우이어붙여grid1개(중복명뒤것버림1회),다른컴포넌트도1회만.
+-헤더2줄+위칸이여러컬럼걸침(병합헤더,예:"기준정보"가"품목"·"품목명"위)="colGroups":배열을text와동일개수·순서로추가(병합컬럼은동일그룹명반복,미병합컬럼은"").헤더1줄이면colGroups생략.
+예:{"type":"grid","x":20,"y":100,"w":1060,"h":220,"text":"품목,품목명,출고창고,출고방법","colGroups":["기준정보","기준정보","재고정보","재고정보"],"rows":8}
+
+[레이아웃]
+폭1060재배치:
+1.순서:title→(tabs)→panel→입력→카드→버튼
+2.좌우2단:컬럼당1줄1필드순서유지(라벨동행금지,예외:[입력형])
+3.panel류가로나열만한줄2~4개
+4.x20여백,구획=section,넘으면줄바꿈
+5.장식생략(색상·별표자동적용)
+6.title/tabs바로아래(8~16px)에다음요소(panel등)를붙인다-브레드크럼·아이콘·"조회조건 접기"버튼처럼[필수규칙]로뺀공간은원본y값그대로베끼지말고좁혀없앤다.조회조건panel은항목수·줄바꿈에따라h가커질수있음(예상보다커지면그아래모든컴포넌트-tabs·section·chart·grid·button등-y를늘어난만큼반드시내려절대겹치지않게함)`;
+
+// 지금 켜져 있는 스킨(Thin/Fat)에 맞는 변환 프롬프트를 돌려준다.
+// kind='url' → Claude 열기(새 창 URL 파라미터, 인코딩 팽창 때문에 짧아야 함) - 항상 이 JS
+//              파일 안의 JSON_PROMPT_*_URL을 그대로 쓴다. 아래 외부 파일 분리 대상이 아니다.
+// kind='copy' → 질문만 복사 / 미리 보기(클립보드, 길이 제한 없음 — 더 상세하게 작성 가능)
+function currentJsonPrompt(kind){
+  const fat=document.body.classList.contains('skin-classic');
+  if(kind==='copy') return fat?JSON_PROMPT_FAT_COPY:JSON_PROMPT_THIN_COPY;
+  return fat?JSON_PROMPT_FAT_URL:JSON_PROMPT_THIN_URL;
+}
+// ---- 「질문만 복사」 프롬프트를 외부 텍스트 파일에서 읽어오기 ----
+// 씬모드/팻모드 프롬프트를 각각 이 두 파일에 그대로 옮겨 두었다. 프롬프트 문구를 고칠 땐
+// 이 JS를 건드릴 필요 없이 아래 두 파일만 메모장 등으로 열어 텍스트를 고치고 저장하면,
+// 다음에 「이미지 변환」창을 열거나 「질문만 복사」를 누르는 순간 바로 반영된다(캐시 방지를
+// 위해 매번 새로 읽어온다). 「Claude 열기」(URL) 프롬프트는 이 대상이 아니며 계속
+// JSON_PROMPT_*_URL(이 파일 안)로만 관리한다 - 그쪽은 URL 인코딩 길이 제한 때문에 원래도
+// 손댈 일이 적어, 파일 분리보다 한곳에 고정해 두는 편이 더 안전하다.
+// 파일을 못 찾거나(예: index.html을 더블클릭해 file://로 직접 열었을 때는 브라우저가
+// 로컬 파일 fetch를 막는다) 읽기에 실패하면, 아래 내장 JSON_PROMPT_*_COPY 문구로
+// 조용히 대체한다 - 기능이 끊기지 않도록 하는 안전장치일 뿐, 정상적으로 웹서버(GitHub
+// Pages 등)로 열었을 때는 쓰이지 않는다.
+const PROMPT_FILE_THIN_COPY='image-convert-thin.txt';
+const PROMPT_FILE_FAT_COPY='image-convert-fat.txt';
+async function loadCopyPrompt(){
+  const fat=document.body.classList.contains('skin-classic');
+  const mode=fat?'Fat':'Thin';
+  // 1) DB - 관리자가 「목업관리 → AI프롬프트」에서 고친 최신 내용이 기준(source of truth)이다.
+  try{
+    const text=await mbRestFetch('/rpc/mb_get_prompt',{method:'POST',body:JSON.stringify({p_mode:mode})});
+    if(typeof text==='string' && text.trim()) return text;
+  }catch(e){ /* DB 조회 실패 시 조용히 아래 파일/내장 문구로 이어간다 */ }
+  // 2) 로컬 파일(DB 적용 전부터 있던 방식 - 안전망으로 계속 둔다)
+  const file=fat?PROMPT_FILE_FAT_COPY:PROMPT_FILE_THIN_COPY;
+  try{
+    // no-store + 캐시버스터: 파일을 방금 고쳤어도 브라우저/디스크 캐시된 옛 내용이
+    // 아니라 항상 지금 저장된 내용을 읽도록 한다.
+    const res=await fetch(file+'?v='+Date.now(),{cache:'no-store'});
+    if(!res.ok) throw new Error('http '+res.status);
+    const text=await res.text();
+    if(!text||!text.trim()) throw new Error('empty file');
+    return text;
+  }catch(e){
+    // 3) 내장 기본값(최종 안전망)
+    return fat?JSON_PROMPT_FAT_COPY:JSON_PROMPT_THIN_COPY;
+  }
+}
+// When the user pastes/types the answer, advance to step 3 and give a filled cue.
+(function(){
+  const ta=document.getElementById('jsonIn');
+  if(!ta)return;
+  const onFill=()=>{
+    const has=ta.value.trim().length>0;
+    ta.classList.toggle('filled',has);
+    if(has)cvSetStep(3);
+    if(has)clearStatus();
+  };
+  ta.addEventListener('input',onFill);
+  ta.addEventListener('paste',()=>setTimeout(onFill,0));
+})();
+function copyPrompt(){
+  loadCopyPrompt().then(text=>{
+    navigator.clipboard&&navigator.clipboard.writeText(text).then(
+      ()=>{cvSetStep(2);setStatus('📋 질문 복사 완료 → Claude 채팅창에 붙여넣기 + <b>화면 캡처 이미지 첨부</b> 후 전송','ok');},
+      ()=>setStatus('복사 실패','err','미리 보기 칸의 텍스트를 직접 드래그해서 복사하세요.')
+    );
+  });
+}
+// Opens claude.ai in a new tab with the prompt already filled in.
+// ⚠️ 「Claude 열기」는 요청대로 건드리지 않음: 항상 JS에 내장된 JSON_PROMPT_*_URL을 그대로 쓴다.
+function openInClaude(){
+  const prompt=currentJsonPrompt('url');
+  const url='https://claude.ai/new?q='+encodeURIComponent(prompt);
+  window.open(url,'_blank','noopener');
+  cvSetStep(2);
+  setStatus('🤖 Claude 새 창 실행 완료 → <b>화면 캡처 이미지 첨부</b> 후 전송','ok','새 창 미실행 시: 팝업 차단 해제 또는 왼쪽 「질문만 복사」로 직접 붙여넣기.');
+}
+// 이미지 변환으로 만든 컴포넌트 기준으로 캔버스 폭/높이를 정확히 맞춘다(필요하면 늘리고,
+// 여유가 많이 남으면 줄인다). 배치 직후 comps 전체(기존+새로 추가된 것)의 최대 범위로 계산하므로
+// "기존 화면에 이어서 추가"로 쓸 때도 내용이 잘리지 않는다.
+function fitCanvasToComponents(padRight,padBottom){
+  padRight = padRight!=null ? padRight : 20;
+  padBottom = padBottom!=null ? padBottom : 20;
+  if(!comps.length) return;
+  let maxX=0, maxY=0;
+  comps.forEach(c=>{
+    const abs=absPos(c);
+    maxX=Math.max(maxX, abs.x+(c.w||0));
+    maxY=Math.max(maxY, abs.y+(c.h||0));
+  });
+  const cwEl=document.getElementById('cw'), chEl=document.getElementById('ch');
+  const needW=Math.ceil(maxX+padRight), needH=Math.ceil(maxY+padBottom);
+  cwEl.value=needW; setCW();
+  chEl.value=needH; setCH();
+}
+function runJSON(){
+  const raw=document.getElementById('jsonIn').value.trim();
+  if(!raw){
+    setStatus('붙여넣은 내용 없음','err','3번 칸에 Claude 답변 붙여넣기 후 다시 시도하세요.');
+    return;
+  }
+  try{
+    let txt=raw.replace(/```json/gi,'').replace(/```/g,'').trim();
+    const m=txt.match(/\[[\s\S]*\]/);
+    if(m)txt=m[0];
+    else throw new Error('NO_BRACKET');
+    let items;
+    try{ items=JSON.parse(txt); }
+    catch(e){ throw new Error('PARSE'); }
+    if(!Array.isArray(items))throw new Error('NOT_ARRAY');
+    if(!items.length)throw new Error('EMPTY');
+    const clearFirst=document.getElementById('jsonClearChk').checked;
+    placeItems(items,1,clearFirst);
+    fitCanvasToComponents();
+    fitZoomToViewport();
+    cvSetStep(3);
+    setStatus(`✅ 완성! <b>${items.length}개</b> 컴포넌트 생성.${clearFirst?' (기존 내용 삭제 후 생성)':' (기존 화면에 이어서 추가)'}`,'ok');
+    setTimeout(closeConvert,900);
+  }catch(err){
+    let fix;
+    switch(err.message){
+      case 'NO_BRACKET':
+        fix='Claude 답변에서 <b>[</b> ~ <b>]</b> 구간을 찾지 못했습니다. 해당 구간 전체를 다시 복사해서 붙여넣으세요.';break;
+      case 'PARSE':
+        fix='붙여넣은 내용 일부 누락 또는 잘림 추정. Claude 답변의 <b>[</b> ~ <b>]</b> 구간 전체 복사 여부를 확인하세요.';break;
+      case 'NOT_ARRAY':
+        fix='형식 불일치. Claude에게 "[ ] 형태의 목록으로만 답해줘"라고 요청 후 그 답변을 붙여넣으세요.';break;
+      case 'EMPTY':
+        fix='내용 비어있음. 캡처 이미지를 다시 첨부해서 재요청하세요.';break;
+      default:
+        fix='Claude 답변 전체를 다시 복사해서 붙여넣으세요.';
+    }
+    setStatus('변환 실패','err',fix);
+  }
+}
+
+// ---- Seed sample ----
+function defaultScreen(){
+  const items=[
+    {id:uid++,type:'title',x:20,y:16,w:200,h:34,text:'프로그램 제목',required:false,readonly:false}
+  ];
+  const fat=document.body.classList.contains('skin-classic');
+  if(fat){
+    // Fat Mode 기본화면: 조회조건 컴포넌트 대신, 패널(그룹박스) 안에
+    // 텍스트박스 2개(조회1/조회2)를 부모/자식 관계로 넣어 구성한다.
+    const panelId=uid++;
+    items.push({id:panelId,type:'panel',x:20,y:50,w:1060,h:40,text:'',required:false,readonly:false});
+    items.push({id:uid++,type:'input',parent:panelId,x:30,y:10,w:300,h:23,text:'',required:false,readonly:false,
+      showLabel:true,labelText:'조회1',labelPos:'left'});
+    items.push({id:uid++,type:'input',parent:panelId,x:560,y:10,w:300,h:23,text:'',required:false,readonly:false,
+      showLabel:true,labelText:'조회2',labelPos:'left'});
+  } else {
+    // Thin Mode(기존)는 조회조건 패널 컴포넌트에 조건1/조건2 필드 그대로.
+    items.push({id:uid++,type:'searchbar',x:20,y:64,w:1060,h:84,text:'',required:false,readonly:false,
+      fields:[
+        {label:'조건1',type:'text',required:false},
+        {label:'조건2',type:'text',required:false}
+      ]});
+  }
+  return items;
+}
+function seed(){
+  comps=defaultScreen();
+  render();
+}
+
+// Places an array of imported/template JSON items onto the canvas.
+// scale: multiply all coordinates (1 = as-is). clearFirst: wipe canvas first.
+function placeItems(items,scale,clearFirst){
+  pushHistory();
+  if(clearFirst){ comps=[]; clearOriginTracking(); } // 기존 내용을 지우는 선택이므로 파생 추적 값도 함께 지운다
+  const known=['title','section','panel','tabs','label','input','combo','date','daterange','check','radio','button','grid','chart','tree','searchbar','popup','attach'];
+  const fieldTypes=['text','combo','date','daterange','search','radio','empty'];
+  // Properties (beyond type/x/y/w/h/text/required) that a JSON item may set directly; copied through as-is.
+  const passthroughKeys=['gtitle','userBtns','stdAdd','stdCancel','stdCopy','stdDelete','rows','showToolbar',
+    'options','readonly','outline','active','perRow','ctitle','chartType','color','showArrow','selected','selectedLine','showLines','colGroups',
+    'colAligns','colRequired','colReadonly','rowOrderCol','checkboxCol','showTotal','totalCols','excelDownload',
+    'showLabel','labelText','labelPos','required','checked','style'];
+  const idMap={}; // _tempId (author-assigned, only needed for Tab parent/child references) -> real comp id
+  const built=[];
+  items.forEach(it=>{
+    let type=(it.type||'input').toLowerCase();
+    if(!known.includes(type))type='input';
+    let text=(it.text||'');
+    let required=false;
+    if(type!=='grid'&&type!=='tabs'&&text.includes('|req')){required=true;text=text.replace('|req','').trim();}
+    const base=JSON.parse(JSON.stringify(defaults[type]));
+    // Templates and imported JSON supply their own separate label components,
+    // so the built-in label set stays off unless the item explicitly asks for it.
+    if(LABELED_TYPES.includes(type)) base.showLabel=false;
+    const extra={};
+    passthroughKeys.forEach(k=>{ if(it[k]!==undefined) extra[k]=it[k]; });
+    if(it.required===true) required=true;
+    if(type==='searchbar'){
+      if(Array.isArray(it.fields)&&it.fields.length){
+        extra.fields=it.fields.map(f=>{
+          const ft=fieldTypes.includes((f.type||'').toLowerCase())?f.type.toLowerCase():'text';
+          const field={label:f.label||'',type:ft,required:!!f.required};
+          if(f.readonly) field.readonly=true;
+          if(f.options) field.options=String(f.options);
+          if((ft==='date'||ft==='daterange')&&f.text) field.text=String(f.text);
+          if(f.span) field.span=(parseFloat(f.span)===0.5)?0.5:Math.min(4,Math.max(1,parseInt(f.span)||1));
+          return field;
+        });
+      }
+    }
+    const newId=uid++;
+    if(it._tempId!==undefined) idMap[it._tempId]=newId;
+    const comp={...base,id:newId,type,
+      x:Math.round((it.x||0)*scale),y:Math.round((it.y||0)*scale),
+      w:Math.max(30,Math.round((it.w||base.w)*scale)),h:Math.max(20,Math.round((it.h||base.h)*scale)),
+      text:text||base.text,required,...extra};
+    // size a searchbar to its field count instead of trusting the supplied height
+    if(type==='searchbar') comp.h=searchbarHeight(comp);
+    built.push({it,comp});
+  });
+  built.forEach(({it,comp})=>{
+    if(it.parent!==undefined&&idMap[it.parent]!==undefined){
+      comp.parent=idMap[it.parent];
+      if(it.tabIdx!==undefined) comp.tabIdx=it.tabIdx;
+    }
+    comps.push(comp);
+  });
+  autoFitContainers(built.map(b=>b.comp));
+  selectSingle(null);render();
+}
+// 패널·탭 안에 자식이 많아 내부 스크롤이 생기지 않도록, 이번에 새로 들어온 컨테이너(panel/tabs)의
+// 크기를 자식들이 전부 들어가는 크기로 자동으로 키운다(줄이지는 않음 - 원본 지정값이 이미 더 크면 유지).
+// 안쪽 컨테이너(패널 속 패널 등)부터 먼저 맞춰야 바깥 컨테이너 계산이 정확하므로, 중첩 깊이가 깊은
+// 것부터 처리한다.
+function containerNestDepth(c){
+  let d=0, cur=c;
+  while(cur.parent){
+    const p=comps.find(x=>x.id===cur.parent);
+    if(!p) break;
+    d++; cur=p;
+  }
+  return d;
+}
+function autoFitContainers(newComps){
+  const PAD=16;
+  const containers=newComps.filter(c=>c.type==='panel'||c.type==='tabs');
+  containers.sort((a,b)=>containerNestDepth(b)-containerNestDepth(a));
+  containers.forEach(cont=>{
+    const kids=comps.filter(k=>k.parent===cont.id);
+    if(!kids.length) return;
+    let maxX=0, maxY=0;
+    kids.forEach(k=>{ maxX=Math.max(maxX,k.x+k.w); maxY=Math.max(maxY,k.y+k.h); });
+    const neededW=maxX+PAD;
+    const neededH=(cont.type==='tabs'?maxY+TAB_HEADER_H:maxY)+PAD;
+    const oldW=cont.w, oldH=cont.h;
+    const parentKey=cont.parent||null;
+    // 컨테이너가 커진 만큼, 같은 레벨(형제)이면서 아래쪽/오른쪽에 있던 컴포넌트를 그만큼 밀어내서
+    // 겹치지 않게 한다(형제가 아니거나 컨테이너 위·왼쪽에 있던 것은 그대로 둔다).
+    if(neededH>oldH){
+      const deltaH=neededH-oldH, bottomBefore=cont.y+oldH;
+      cont.h=neededH;
+      comps.forEach(s=>{
+        if(s.id===cont.id) return;
+        if((s.parent||null)!==parentKey) return;
+        if(s.y>=bottomBefore-1) s.y+=deltaH;
+      });
+    }
+    if(neededW>oldW){
+      const deltaW=neededW-oldW, rightBefore=cont.x+oldW;
+      cont.w=neededW;
+      comps.forEach(s=>{
+        if(s.id===cont.id) return;
+        if((s.parent||null)!==parentKey) return;
+        if(s.x>=rightBefore-1) s.x+=deltaW;
+      });
+    }
+  });
+}
+// =====================================================================
+// Template system: compact per-screen specs + a generic layout engine
+// that expands them into placeItems()-style JSON, so we reuse all of
+// placeItems' existing default-merging / searchbar-fields / grid-toolbar
+// / Tab-parent-child logic instead of duplicating it here.
+// =====================================================================
+function layoutForm(spec){
+  const items=[];
+  const CW=spec.canvasW||1450;
+  const usableW=CW-40;
+  let y=16;
+  items.push({type:'title',x:20,y,w:420,h:34,text:spec.title});
+  y+=52;
+
+  if(spec.search&&spec.search.length){
+    // height grows with the number of condition rows, and everything below shifts down
+    const sbH=searchbarHeight({fields:spec.search});
+    items.push({type:'searchbar',x:20,y,w:usableW,h:sbH,fields:spec.search});
+    y+=sbH+18;
+  }
+
+  const COLS=spec.cols||6;
+  const COLGAP=20;
+  const COLW=Math.floor((usableW-(COLS-1)*COLGAP)/COLS);
+  const LABEL_H=18,CTRL_H=30,FIELD_VGAP=4,ROW_GAP=16;
+  const FIELD_H=LABEL_H+FIELD_VGAP+CTRL_H; // label + control as one component
+  (spec.sections||[]).forEach(sec=>{
+    items.push({type:'section',x:20,y,w:usableW,h:22,text:sec.title});
+    y+=30;
+    let col=0,rowY=y,rowH=0;
+    sec.fields.forEach(f=>{
+      const span=f.span||1;
+      if(col+span>COLS){ y=rowY+rowH+ROW_GAP; col=0; rowY=y; rowH=0; }
+      const x=20+col*(COLW+COLGAP);
+      const w=COLW*span+(span-1)*COLGAP;
+      const hasLabel=!!(f.label&&String(f.label).trim());
+      if(f.type==='check'){
+        // checkbox keeps its caption inline (no stacked label needed)
+        items.push({type:'check',x,y:rowY+LABEL_H+FIELD_VGAP,w,h:CTRL_H,text:f.label+(f.required?'|req':''),showLabel:false});
+      } else if(f.sub||f.suffix){
+        // One label shared by a main control plus an optional second control
+        // (e.g. 통화/환율 = combo + rate box) and/or a static suffix such as "%" or "Day".
+        const GAP=8, SUFW=f.suffix?26:0;
+        const inner=w-(f.suffix?GAP+SUFW:0);
+        const mainW=f.sub?Math.round((inner-GAP)*(f.mainRatio||0.45)):inner;
+        const subW=f.sub?(inner-GAP-mainW):0;
+        const main={type:f.type,x,y:rowY,w:mainW,h:hasLabel?FIELD_H:CTRL_H,
+          text:(f.type==='radio')?'':(f.value||''),
+          showLabel:hasLabel,labelText:hasLabel?f.label:'',labelPos:'top',
+          required:!!f.required};
+        if(!hasLabel) main.y=rowY+LABEL_H+FIELD_VGAP;
+        if(f.type==='radio') main.options=f.options||'';
+        if(f.options&&f.type==='combo') main.options=f.options;
+        if(f.readonly) main.readonly=true;
+        items.push(main);
+        if(f.sub){
+          const sub={type:f.sub.type||'input',x:x+mainW+GAP,y:rowY+LABEL_H+FIELD_VGAP,w:subW,h:CTRL_H,
+            text:f.sub.value||'',showLabel:false,labelText:''};
+          if(f.sub.options) sub.options=f.sub.options;
+          if(f.sub.readonly) sub.readonly=true;
+          items.push(sub);
+        }
+        if(f.suffix)
+          items.push({type:'label',x:x+mainW+(f.sub?GAP+subW:0)+GAP,y:rowY+LABEL_H+FIELD_VGAP+6,w:SUFW,h:18,text:f.suffix,showLabel:false});
+      } else {
+        const ctrl={type:f.type,x,y:rowY,w,
+          h:hasLabel?FIELD_H:CTRL_H,
+          text:(f.type==='radio')?'':(f.value||''),
+          showLabel:hasLabel,labelText:hasLabel?f.label:'',labelPos:'top',
+          required:!!f.required};
+        if(!hasLabel) ctrl.y=rowY+LABEL_H+FIELD_VGAP;
+        if(f.type==='radio') ctrl.options=f.options||'';
+        if(f.options&&f.type==='combo') ctrl.options=f.options;
+        if(f.readonly) ctrl.readonly=true;
+        items.push(ctrl);
+      }
+      rowH=Math.max(rowH,FIELD_H);
+      col+=span;
+    });
+    y=rowY+rowH+26;
+  });
+
+  if(spec.tabs){
+    const tabH=spec.tabs.h||300;
+    const tabId='__tabs1';
+    items.push({_tempId:tabId,type:'tabs',x:20,y,w:usableW,h:tabH,text:spec.tabs.names.join(','),active:0});
+    (spec.tabs.pages||[]).forEach((page,pi)=>{
+      (page.grids||[]).forEach((g,gi)=>{
+        const gh=g.h||220;
+        items.push({parent:tabId,tabIdx:pi,type:'grid',x:16,y:16+gi*(gh+16),w:usableW-32,h:gh,
+          text:g.cols.join(','),gtitle:g.title||'',rows:g.rows||3,
+          stdAdd:!!g.stdAdd,stdCancel:!!g.stdCancel,stdCopy:!!g.stdCopy,stdDelete:!!g.stdDelete,
+          userBtns:g.userBtns||[]});
+      });
+    });
+    y+=tabH+18;
+  }
+
+  (spec.grids||[]).forEach(g=>{
+    if(g.label){ items.push({type:'label',x:20,y,w:400,h:20,text:g.label}); y+=26; }
+    const gh=g.h||200;
+    items.push({type:'grid',x:20,y,w:usableW,h:gh,text:g.cols.join(','),gtitle:g.title||'',rows:g.rows||3,
+      stdAdd:!!g.stdAdd,stdCancel:!!g.stdCancel,stdCopy:!!g.stdCopy,stdDelete:!!g.stdDelete,
+      userBtns:g.userBtns||[]});
+    y+=gh+18;
+  });
+
+  if(spec.buttons&&spec.buttons.length){
+    const bw=112,bh=36,bgap=10;
+    const totalW=spec.buttons.length*bw+(spec.buttons.length-1)*bgap;
+    let bx=20+usableW-totalW;
+    spec.buttons.forEach(b=>{ items.push({type:'button',x:bx,y,w:bw,h:bh,text:b}); bx+=bw+bgap; });
+    y+=bh+20;
+  }
+
+  return {items,canvasH:Math.max(400,y+20),canvasW:CW};
+}
+
+const TEMPLATES={
+  reg:{
+    '수주등록':{
+      title:'수주등록',
+      search:[{label:'수주번호',type:'search',required:true}],
+      sections:[
+        {title:'일반정보',fields:[
+          {label:'수주형태',type:'combo',required:true},{label:'주문처',type:'combo',required:true},
+          {label:'납품처',type:'input',required:true},{label:'수주일',type:'date',required:true},
+          {label:'영업그룹',type:'combo',required:true},{label:'고객주문번호',type:'input'},
+          {label:'비고',type:'input',span:3},{label:'수주번호',type:'input',readonly:true},{label:'메일전송여부',type:'combo'}
+        ]},
+        {title:'금액정보',fields:[
+          {label:'통화/환율',type:'combo',required:true,options:'KRW,USD,EUR,JPY',value:'KRW',
+            mainRatio:0.38,sub:{type:'input',value:'1',readonly:true}},
+          {label:'부가세유형',type:'combo',required:true,
+            mainRatio:0.62,suffix:'%',sub:{type:'input',readonly:true}},
+          {label:'부가세포함여부',type:'radio',options:'별도,포함'},{label:'공급가액',type:'input',readonly:true},
+          {label:'부가세액',type:'input',readonly:true},{label:'수주금액',type:'input',readonly:true}
+        ]},
+        {title:'결제정보',fields:[
+          {label:'판매유형',type:'combo',required:true},{label:'결제방법',type:'combo',required:true},
+          {label:'결제기간',type:'input',suffix:'Day'},{label:'입금유형',type:'combo'},
+          {label:'운송방법',type:'combo'},{label:'가격조건',type:'combo'}
+        ]}
+      ],
+      grids:[{title:'수주내역',cols:['*품목','품목명','*Tracking 번호','프로젝트','*수주량','*단위','단가','공급가액','부가세액','수주금액'],
+        stdAdd:true,stdCancel:true,stdCopy:true,stdDelete:true,userBtns:['품목참조','재고현황','반품시 출고참조']}],
+      buttons:['신규','수주복사','저장']
+    },
+    '발주등록':{
+      title:'발주등록',
+      search:[{label:'발주번호',type:'search',required:true}],
+      sections:[
+        {title:'일반정보',fields:[
+          {label:'발주형태',type:'combo',required:true},{label:'공급처',type:'combo',required:true},
+          {label:'발주일',type:'date',required:true},{label:'구매그룹',type:'combo',required:true},
+          {label:'공급처 영업담당',type:'input'},{label:'메일전송여부',type:'combo'},
+          {label:'비고',type:'input',span:2},{label:'발주번호',type:'input',readonly:true}
+        ]},
+        {title:'금액정보',fields:[
+          {label:'통화/환율',type:'combo',required:true,options:'KRW,USD,EUR,JPY',value:'KRW',
+            mainRatio:0.38,sub:{type:'input',value:'1',readonly:true}},
+          {label:'부가세유형',type:'combo',
+            mainRatio:0.68,sub:{type:'input',value:'0',readonly:true}},
+          {label:'부가세포함여부',type:'radio',options:'별도,포함'},{label:'공급가액',type:'input',readonly:true},
+          {label:'부가세액',type:'input',readonly:true},{label:'발주금액',type:'input',readonly:true}
+        ]},
+        {title:'결제정보',fields:[
+          {label:'결제방법',type:'combo',required:true},{label:'지급유형',type:'combo'},
+          {label:'결제기간',type:'input',suffix:'일'},{label:'가격조건',type:'combo'},{label:'대금결제참조',type:'input'}
+        ]}
+      ],
+      grids:[{title:'발주내역',cols:['*품목코드','품목명','*발주수량','*단위','단가','공급가액','부가세액','발주금액','단가구분','납기일','Tracking No.','프로젝트'],
+        stdAdd:true,stdCancel:true,stdCopy:true,stdDelete:true,userBtns:['품목참조']}],
+      buttons:['신규','발주복사','구매요청참조','저장']
+    },
+    '출고등록':{
+      title:'출고등록',
+      search:[{label:'납품처',type:'combo',required:true},{label:'출고일',type:'date',required:true},
+        {label:'영업그룹',type:'combo',required:true},{label:'출고형태',type:'combo',required:true},
+        {label:'비고',type:'text'},{label:'출고번호',type:'text'}],
+      grids:[{title:'출고내역정보',cols:['수주번호','순번','품목','품목명','규격','수주량','잔량','*예정출고량','단위','*창고','출고예정일','납기'],
+        stdAdd:false,stdCancel:true,stdCopy:false,stdDelete:true,userBtns:['재고현황']}],
+      buttons:['신규','출고예정검색']
+    },
+    '매출세금계산서등록':{
+      title:'매출세금계산서등록',
+      search:[{label:'매출번호',type:'search',required:true}],
+      sections:[
+        {title:'일반정보',fields:[
+          {label:'주문처',type:'combo',required:true},{label:'발행처',type:'combo',required:true},
+          {label:'수금처',type:'combo',required:true},{label:'영업그룹',type:'combo',required:true},
+          {label:'매출등록일',type:'date',required:true},{label:'수금그룹',type:'combo',required:true},
+          {label:'비고',type:'input',span:2},{label:'세금신고사업장',type:'combo',required:true},
+          {label:'매출형태',type:'combo',required:true},{label:'매출번호',type:'input',readonly:true},
+          {label:'세금계산서',type:'check'}
+        ]},
+        {title:'금액정보',fields:[
+          {label:'통화/환율',type:'combo'},{label:'공급가액',type:'input',readonly:true},
+          {label:'부가세액',type:'input',readonly:true},{label:'매출 총금액',type:'input',readonly:true},
+          {label:'선수금액',type:'input',readonly:true},{label:'부가세유형',type:'combo',required:true},
+          {label:'부가세율(%)',type:'input',readonly:true},{label:'부가세포함여부',type:'radio',options:'별도,포함'},
+          {label:'부가세적용방법',type:'radio',options:'개별,통합'}
+        ]},
+        {title:'결제정보',fields:[
+          {label:'결제방법',type:'combo',required:true},{label:'결제조건',type:'combo'},
+          {label:'결제기간(일)',type:'input'},{label:'수금만기일',type:'date'},
+          {label:'입금유형',type:'combo'},{label:'대금결제참조',type:'input'}
+        ]}
+      ],
+      tabs:{names:['매출내역','선수금내역'],h:340,pages:[
+        {grids:[{title:'매출내역',cols:['*품목코드','품목명','규격','*수량','단위','*단가','매출금액','부가세액','금액','*부가세유형','*포함여부'],
+          h:280,stdAdd:true,stdCancel:true,stdCopy:false,stdDelete:true,userBtns:[]}]},
+        {grids:[{title:'선수금내역',cols:['*수금유형','*수금금액','수금금액(자국)','환율','계좌번호','은행','어음번호','선수금번호','비고'],
+          h:280,stdAdd:true,stdCancel:true,stdCopy:true,stdDelete:true,userBtns:[]}]}
+      ]},
+      buttons:['신규','매출예정검색','저장']
+    },
+    '생산실적등록':{
+      title:'생산실적등록',
+      search:[{label:'공장',type:'combo',required:true},{label:'착수예정일',type:'daterange',required:true},
+        {label:'작업장',type:'combo'},{label:'작업',type:'radio',options:'실적등록,실적삭제'}],
+      grids:[
+        {title:'제조오더정보',cols:['제조오더번호','공정','착수예정일','완료예정일','품목','품목명','Tracking 번호','프로젝트 코드','오더량','단위','생산량','잔량'],
+          stdAdd:false,stdCancel:false,stdCopy:false,stdDelete:false,userBtns:[]},
+        {title:'생산실적',cols:['*실적일','*실적구분','*생산량','단위','불량원인','*Lot번호','*Lot 순번','입고수불번호','출고수불번호'],
+          stdAdd:true,stdCancel:true,stdCopy:false,stdDelete:false,userBtns:['입고전표보기','출고전표보기','저장','부품Simulation']}
+      ]
+    },
+    '검사결과등록':{
+      title:'검사결과등록',
+      search:[{label:'공장',type:'combo',required:true},{label:'검사의뢰일',type:'daterange'},
+        {label:'검사분류',type:'combo'},{label:'검사항태',type:'combo'}],
+      grids:[
+        {title:'검사의뢰 목록',cols:['의뢰번호','분류','재고구분','품목','품목명','규격','단위','LOT번호','거래처','로트수량','검사수량','잔여수량','의뢰일'],
+          stdAdd:false,stdCancel:false,stdCopy:false,stdDelete:false,userBtns:['검사등록','확정','확정취소']},
+        {title:'검사결과 입력',cols:['의뢰번호','분류','재고구분','품목','결과번호','확정','*검사원','*검사일','*검사수량','불량수','불량률','양품수','판정','부적합코드','불량유형'],
+          stdAdd:false,stdCancel:true,stdCopy:true,stdDelete:true,userBtns:['저장']}
+      ]
+    },
+    '제조오더등록':{
+      title:'제조오더등록',
+      search:[{label:'공장',type:'combo',required:true},{label:'착수예정일',type:'daterange',required:true},
+        {label:'품목',type:'combo'},{label:'확정여부',type:'radio',options:'확정예정,확정'},
+        {label:'제조오더번호',type:'search'},{label:'작업지시구분',type:'combo'},{label:'MRP실행번호',type:'search'}],
+      grids:[
+        {title:'품목오더정보',cols:['제조오더번호','*품목','품목명','Tracking 번호','프로젝트','*착수예정일','*완료예정일','*오더량','*단위','*BOM 번호','*라우팅','*재작업','시작공정','*창고','비고'],
+          stdAdd:true,stdCancel:true,stdCopy:true,stdDelete:true,userBtns:['품목참조','저장']},
+        {title:'공정오더정보',cols:['공정','작업장명','공정작업','MileStone','착수예정일','완료예정일'],
+          stdAdd:false,stdCancel:false,stdCopy:false,stdDelete:false,userBtns:[]},
+        {title:'부품소요량정보',cols:['*공정','*자품목','품목명','Tracking No.','*필요량','단위','*필요일','*창고','출고창고'],
+          stdAdd:true,stdCancel:true,stdCopy:true,stdDelete:true,userBtns:['품목참조','저장']}
+      ],
+      buttons:['확정']
+    }
+  },
+  inq:{
+    '수주현황조회':{
+      title:'수주현황조회',
+      search:[{label:'수주일',type:'daterange'},{label:'납기일',type:'date'},{label:'주문처',type:'combo'},{label:'품목',type:'combo'}],
+      grids:[{title:'수주정보',cols:['수주번호','순번','수주일','납기일','주문처','품목','품목명','Tracking No','프로젝트','수주량','단위','출고'],
+        stdAdd:false,stdCancel:false,stdCopy:false,stdDelete:false,userBtns:[]}]
+    },
+    '발주현황조회':{
+      title:'발주현황조회',
+      search:[{label:'발주일',type:'daterange'},{label:'공급처',type:'combo'},{label:'품목',type:'combo'},{label:'공장',type:'combo'}],
+      grids:[{title:'발주현황',cols:['발주번호','순번','공급처','품목코드','품목명','발주수량','단위','입출고수량','매입수량','B/L수량','통관수량','공급가액','부가세액','발주총금액'],
+        stdAdd:false,stdCancel:false,stdCopy:false,stdDelete:false,userBtns:[]}]
+    },
+    '출고현황':{
+      title:'출고현황',
+      search:[{label:'출고일',type:'daterange'},{label:'납품처',type:'combo'},{label:'창고',type:'combo'},{label:'품목',type:'combo'},
+        {label:'출고형태',type:'combo'},{label:'영업그룹',type:'combo'},{label:'출고번호',type:'search'},{label:'공장',type:'combo'}],
+      grids:[{title:'출고현황',cols:['출고번호','품목','품목명','Tracking 번호','프로젝트','출고요청량','출고량','단위','재고단위수량','통관량','매출량'],
+        stdAdd:false,stdCancel:false,stdCopy:false,stdDelete:false,userBtns:[]}]
+    },
+    '매출내역현황조회':{
+      title:'매출내역현황조회',
+      search:[{label:'매출채권일',type:'daterange'},{label:'주문처',type:'combo'},{label:'품목',type:'combo'},{label:'매출채권형태',type:'combo'},
+        {label:'사업장',type:'combo'},{label:'영업그룹',type:'combo'},{label:'매출채권번호',type:'search'},
+        {label:'확정여부',type:'radio',options:'전체,확정,미확정'},{label:'수주번호',type:'search'},{label:'매출채권요약',type:'text'}],
+      grids:[{title:'매출현황',cols:['매출번호','순번','주문처','품목','품목명','매출일','수금만기일','매출수량','단위','매출총금액','부가세액','공급가액'],
+        stdAdd:false,stdCancel:false,stdCopy:false,stdDelete:false,userBtns:[]}]
+    },
+    '생산실적현황':{
+      title:'생산실적현황',
+      search:[{label:'실적일',type:'daterange'},{label:'공장',type:'combo'},{label:'품목',type:'combo'},
+        {label:'제조오더번호',type:'search'},{label:'작업장',type:'combo'}],
+      grids:[{title:'생산실적정보',cols:['품목','품목명','Tracking No','프로젝트 코드','LOT No','실적일','작업장','생산량','양품','불량','입고수불번호'],
+        stdAdd:false,stdCancel:false,stdCopy:false,stdDelete:false,userBtns:[]}]
+    },
+    '검사결과조회':{
+      title:'검사결과조회',
+      search:[{label:'공장',type:'combo',required:true},{label:'검사의뢰일',type:'daterange'},{label:'검사분류',type:'combo'},
+        {label:'검사항태',type:'combo'},{label:'품목',type:'combo'},{label:'의뢰번호',type:'search'}],
+      grids:[
+        {title:'검사의뢰 목록',cols:['의뢰번호','분류','재고구분','품목','품목명','규격','단위','LOT번호','거래처','로트수량','검사수량','잔여수량','의뢰일'],
+          stdAdd:false,stdCancel:false,stdCopy:false,stdDelete:false,userBtns:[]},
+        {title:'검사결과 입력',cols:['의뢰번호','분류','재고구분','품목','결과번호','확정','검사원','검사일','검사수량','불량수','불량률','양품수','판정','부적합코드','불량유형'],
+          stdAdd:false,stdCancel:true,stdCopy:true,stdDelete:true,userBtns:[]}
+      ]
+    },
+    '제조오더현황':{
+      title:'제조오더현황',
+      search:[{label:'공장',type:'combo',required:true},{label:'착수예정일',type:'daterange',required:true},
+        {label:'오더상태',type:'combo'},{label:'제조오더번호',type:'search'},
+        {label:'품목',type:'combo'},{label:'잔량',type:'radio',required:true,options:'전체,있음,없음'}],
+      grids:[{title:'제조오더정보',cols:['제조오더번호','품목','품목명','Tracking 번호','프로젝트 코드','착수예정일','완료예정일','오더량','생산량','양품','불량'],
+        stdAdd:false,stdCancel:false,stdCopy:false,stdDelete:false,userBtns:[]}]
+    }
+  }
+};
+
+let tmplTab='reg';
+// ---- Patch notes (shown once per version unless dismissed) ----
+// ---- Patch notes ----
+// Newest first. Add a new entry at the top on each release and bump PATCH_VER;
+// older ones stay available as history tabs.
+const PATCH_NOTES=[
+  {ver:'20260923.002', date:'2026년 9월 23일', items:[
+    {t:'📥 그리드 「Excel Download 사용」 옵션·건수 표시 추가 (씬모드)', d:'① 그리드 제목 우측에 <b>(0)건</b> 문구가 표시됩니다. 숫자는 녹색으로 강조되며, 속성의 <b>표시 행 수</b>를 그대로 따라 바꾸면 바로 반영됩니다(0행이면 (0)건, 본문 행도 0행).<br>② 그리드 속성 「CheckBox 사용」 바로 아래에 <b>Excel Download 사용</b> 옵션이 추가되었습니다(기본값 체크). 체크를 해제하면 건수 문구가 숨겨집니다.<br>③ 미리보기·저장 결과물에도 동일하게 적용되며, 씬모드 전용 기능이라 팻모드에서는 표시되지 않습니다.'}
+  ]},
+  {ver:'20260923.001', date:'2026년 9월 23일', items:[
+    {t:'🧷 씬모드 전용 「첨부파일」 컴포넌트 추가', d:'① 도구상자 입력 컴포넌트에 <b>첨부파일</b> 항목 추가(씬모드 전용, 팻모드에는 노출되지 않습니다).<br>② 모양은 조회조건 패널의 「검색」 필드와 같은 구조(텍스트박스+우측 아이콘)이되, 아이콘은 그리드 컬럼의 첨부파일 유형(구름 모양)과는 다른 전용 아이콘을 씁니다 - 이름만 같을 뿐 서로 완전히 별개인 컴포넌트입니다.<br>③ 기본 속성이 <b>읽기전용</b>으로 켜진 채 배치됩니다.'},
+    {t:'≡ 「팝업」 컴포넌트, 씬모드에도 추가', d:'① 지금까지 팻모드 전용이던 <b>팝업</b> 컴포넌트를 씬모드 도구상자에도 노출합니다.<br>② 씬모드의 팝업은 팻모드(코드+아이콘+명칭 3단 구성)와 완전히 다른 컴포넌트로, 첨부파일 컴포넌트와 같은 구조(텍스트박스+우측 아이콘, 180×52 크기)에 아이콘만 조회조건 패널의 「검색」과 동일한 돋보기를 씁니다.<br>③ 팻모드에서 배치하면 지금까지와 동일하게 코드/명 스타일 그대로 나옵니다 - 모드별로 서로 다른 컴포넌트라는 뜻입니다.'}
+  ]},
+  {ver:'20260919.001', date:'2026년 9월 19일', items:[
+    {t:'📊 사양서 매핑 템플릿 내보내기 (Alt+S)', d:'① 결과물 상단 바에 <b>Alt+S</b> 뱃지 추가 - 클릭하면 사양서 표준 서식과 같은 <b>엑셀 파일(.xlsx, 7개 시트)</b>을 바로 내려받습니다.<br>② 2.화면LO 시트에 화면 캡처 이미지·구성 요약과 함께, 조회조건·입력항목·그리드 컬럼별로 <b>표시타입·필수·읽기전용</b>을 자동으로 채워 넣고, 화면만으로 알 수 없는 테이블·SQL·업무 로직 항목은 공란으로 남깁니다.<br>③ 사양서 작성 시 화면 구성을 다시 옮겨 적을 필요 없이 그대로 참고할 수 있습니다.<br>④ 이 기능만 인터넷 연결이 필요합니다(엑셀 생성 라이브러리를 그때그때 불러옴) - 오프라인이어도 나머지 기능은 그대로 작동합니다.'}
+  ]},
+  {ver:'20260917.001', date:'2026년 9월 17일', items:[
+    {t:'☁️ 저장 시 클라우드 자동 백업 (로그인 시)', d:'로그인한 상태에서는 <b>저장</b>을 누를 때마다 같은 내용이 <b>클라우드에도 자동으로 함께 백업</b>됩니다.<br>로컬 저장 외에 따로 눌러야 할 버튼은 없고, 로그인하지 않은 상태에서는 지금까지처럼 로컬 저장만 이루어집니다.'},
+    {t:'📝 작업 중 자동 백업 목록 (로그인 시)', d:'로그인 상태에서는 <b>저장하기 전</b> 작업하는 동안에도 자동저장 시점마다 <b>클라우드 백업 목록</b>이 쌓입니다.<br>계정 메뉴 「📝 임시 작업 목록」에서 쌓인 백업을 확인해 <b>이어서 열기·삭제</b>할 수 있어, 저장을 깜빡했거나 창이 갑자기 닫혀도 이전 작업으로 돌아갈 수 있습니다.'}
+  ]},
+  {ver:'20260916.001', date:'2026년 9월 16일', items:[
+    {t:'그리드/조회조건 필드 선택 시 속성 강조 표시', d:'① 캔버스에서 그리드 컬럼 헤더 또는 조회조건 필드 클릭 - 파란 테두리로 강조.<br>② 속성 패널의 해당 컬럼·필드 행도 동시에 파란 테두리로 강조, 목록 밖에 있으면 자동 스크롤.<br>③ 드래그로 순서 변경 중에도 강조 대상 유지(다른 컬럼·필드로 옮겨가지 않음).'},
+    {t:'서식 기능 (볼드·기울임·밑줄·글자색·배경색)', d:'① 대상: 화면 제목·버튼 등 일반 텍스트, 입력 라벨, 그리드 컬럼 헤더, 조회조건 필드 라벨.<br>② 각 항목 옆 「가」 버튼 - 미니 팝업에서 즉시 적용, 팝업은 열어둔 채 연속 지정 가능.<br>③ 그리드 컬럼 헤더는 좌·가운데·우 정렬도 같은 팝업에서 함께 지정.<br>④ 캔버스·내보내기 결과물 동일 표시.'},
+    {t:'날짜 표시 방법 커스텀 포맷', d:'① 대상: 날짜·기간 단독 컴포넌트, 조회조건 날짜·기간 필드, 그리드 날짜 컬럼.<br>② 빠른 날짜 팝업에 표시 방법 프리셋(년-월-일·년월일·년-월·년월·년·월·일) 추가.<br>③ 구분자·순서를 자유롭게 쓰는 직접 입력 칸도 추가(예: 년.월.일).<br>④ 저장값은 항상 YYYY-MM-DD, 화면 표시만 지정한 방법을 따름.'},
+    {t:'그리드 합계 표시', d:'① 그리드 속성 「그리드 합계」 그룹에서 합계 표시 on/off.<br>② 합계를 낼 컬럼만 개별 선택(합계컬럼 체크박스).<br>③ 합계 행은 데이터 행 수와 무관하게 항상 맨 아래 고정, 좌우 스크롤 시에도 "합계" 라벨은 순번 컬럼처럼 왼쪽 고정.<br>④ 컬럼 순서 변경·삭제 시 합계 설정도 함께 이동.'},
+    {t:'임시 작업 목록 (로그인 필요)', d:'① 로그인 상태에서 자동저장 시점마다 작업 내용을 클라우드에도 함께 백업.<br>② 계정 메뉴 「📝 임시 작업 목록」에서 저장하지 않은 이전 작업 확인·이어서 열기·삭제.<br>③ 최종 「저장」 성공 시 그 시점 임시 작업은 목록에서 자동 정리.<br>④ 사용자별 보관 한도 적용(초과 시 오래된 항목부터 자동 삭제).'},
+    {t:'컬럼·필드 강조 표시·서식 팝업 안정성 개선', d:'① 그리드 컬럼·조회조건 필드를 드래그로 순서 변경하거나 삭제할 때, 다른 컬럼·필드에 걸려 있던 강조 표시(선택)나 서식 팝업이 엉뚱한 컬럼·필드로 옮겨가던 문제 수정.<br>② 이동·삭제된 개수만큼 인덱스를 함께 보정해, 항상 원래 지정했던 대상을 그대로 유지.'}
+  ]},
+  {ver:'20260911.001', date:'2026년 9월 11일', items:[
+    {t:'컴포넌트 변경상태 표시 (기본·추가·변경·삭제·이동)', d:'① 전체 컴포넌트: 속성패널 최상단 5단 선택(그리드·조회조건패널 자체 포함).<br>② 그리드 컬럼: 상위헤더-정렬 사이 개별 선택.<br>③ 조회조건 필드: 칸수-필수 사이 개별 선택.<br>④ 캔버스·내보내기 결과물 동일 표시 - 점선 테두리 + 색상 라벨(추가 파랑 · 변경 주황 · 삭제 빨강+취소선 · 이동 보라).<br>⑤ 씬모드·팻모드 공통 지원.'},
+    {t:'내보내기 결과물 상단 바 - 상태표시 on/off · 화면 캡처', d:'① 결과물 우측 상단 고정 바 신규 - 메인 캔버스와 겹치지 않는 별도 영역.<br>② <b>Alt+O</b> 또는 뱃지 클릭 - 변경상태 표시 켜기·끄기(기본값 켜짐).<br>③ <b>Alt+P</b> 또는 뱃지 클릭 - 화면 캡처 팝업(이미지 파일 저장 · 클립보드 복사).<br>④ 캡처 대상은 메인 캔버스만 - 상단 바는 제외.'}
+  ]},
+  {ver:'20260910.001', date:'2026년 9월 10일', items:[
+    {t:'로그인 · 회원가입', d:'이메일 계정으로 <b>로그인·회원가입</b>이 가능해졌습니다.<br><br>로그인하면 목업을 <b>클라우드에 저장</b>할 수 있고, 같은 브라우저에서는 다음에 열 때도 <b>자동으로 로그인</b>됩니다.'},
+    {t:'클라우드 관리 (폴더 · 즐겨찾기 · 검색)', d:'저장한 목업을 <b>폴더</b>로 나눠 정리하고, 자주 쓰는 파일은 <b>즐겨찾기</b>로 따로 모아볼 수 있습니다.<br><br>제목·태그로 <b>검색·정렬</b>할 수 있고, <b>목록형·그리드형</b> 두 가지 보기 방식을 지원합니다.'},
+    {t:'공유하기', d:'저장한 목업을 <b>공개로 전환</b>하면 「공유파일」 탭에서 다른 사람도 볼 수 있습니다.<br><br>제목·태그·작성자로 찾아볼 수 있고, 공유 목록이 많아져도 <b>스크롤하면 100개씩 자동으로 이어서</b> 불러옵니다.'},
+    {t:'Feedback', d:'우측 상단 계정 메뉴의 <b>💬 Feedback</b>에서 건의사항·버그를 바로 남길 수 있습니다.<br><br>메일이나 메신저 없이 <b>앱 안에서 바로 전달</b>됩니다.'}
+  ]},
+  {ver:'20260909.001', date:'2026년 9월 9일', items:[
+    {t:'그리드 컬럼 폭 방식: 자동 · 수동 · 고정', d:'① <b>자동</b>: 글자 안 잘리는 최소 크기로 실시간 조절.<br>② <b>수동</b>: 슬라이더 값 전체 컬럼 동일 적용.<br>③ <b>고정</b>: 그리드 너비 균등 분할.<br>④ 기본값 자동.'},
+    {t:'컬럼 폭 개별 드래그 조절', d:'① 방식 무관, 헤더 경계선 드래그로 해당 컬럼만 폭 조절.'},
+    {t:'컬럼 드래그앤드롭 순서 변경', d:'① 헤더 컬럼명 드래그로 순서 변경.<br>② Row Order·CheckBox 이동 불가(항상 맨 왼쪽).<br>③ 가로 스크롤 그리드는 화면 끝 이동 시 자동 스크롤.'}
+  ]},
+  {ver:'20260908.006', date:'2026년 9월 8일', items:[
+    {t:'그리드 컬럼 드래그 관련 마무리 수정', d:'컬럼을 드래그해 자동 스크롤로 화면 밖까지 옮긴 뒤 실제로 <b>놓는(drop) 순간</b>에도 스크롤이 맨 왼쪽으로 튕기던 문제를 마저 고쳤습니다(직전 버전은 드래그 도중에만 고쳐져 있었습니다).<br><br>또한 컬럼 폭을 드래그로 직접 조절해둔 뒤 <b>컬럼 폭 방식(자동/수동/고정)</b>을 바꾸면, 그 컬럼만 예전 폭이 남아있던 문제를 고쳤습니다. 이제 방식을 바꾸면 모든 컬럼이 - 직접 조절했던 컬럼도 포함해서 - 새 방식 기준으로 다시 균일하게 맞춰집니다.'}
+  ]},
+  {ver:'20260908.005', date:'2026년 9월 8일', items:[
+    {t:'그리드 컬럼 드래그 중 가로 스크롤이 튕기던 문제 수정', d:'컬럼을 드래그해 좌우 스크롤이 있는 그리드의 화면 밖으로 가져가면 자동으로 스크롤되는데, 그 상태에서 마우스를 다시 반대쪽(놓으려는 위치)으로 옮기면 스크롤이 갑자기 맨 처음 위치로 되돌아가던 문제를 고쳤습니다. 이제 자동 스크롤된 위치가 그대로 유지된 채로 원하는 곳에 놓을 수 있습니다.'}
+  ]},
+  {ver:'20260908.004', date:'2026년 9월 8일', items:[
+    {t:'그리드 컬럼, 헤더를 드래그해서 순서 변경', d:'그리드 헤더의 컬럼 이름 부분을 마우스로 눌러 좌우로 끌면, 속성 패널을 거치지 않고 그 자리에서 바로 컬럼 순서를 바꿀 수 있습니다. 놓일 위치는 초록색 세로선으로 표시됩니다.<br><br>맨 왼쪽의 <b>Row Order·CheckBox</b> 유틸리티 컬럼은 항상 고정이라 드래그 대상이 아니며, 다른 컬럼도 그 앞으로는 옮길 수 없습니다.<br><br><b>수동</b>·<b>자동</b> 모드처럼 가로 스크롤이 있는 그리드에서는, 컬럼을 화면 왼쪽/오른쪽 끝 가장자리로 가져가 잠시 멈추면 그리드가 자동으로 스크롤되어 화면 밖의 위치에도 놓을 수 있습니다.'}
+  ]},
+  {ver:'20260908.003', date:'2026년 9월 8일', items:[
+    {t:'그리드 컬럼 폭 방식: 기본 · 스크롤 · 자동', d:'그리드 속성의 <b>「좌우 스크롤 사용」</b> 체크박스가 라디오 버튼 3가지로 바뀌었습니다.<br><br>① <b>기본</b>(기존 체크 해제와 동일) - 그리드 너비에 맞춰 컬럼 폭이 균등 분할됩니다.<br>② <b>스크롤</b>(기존 체크와 동일) - 「컬럼 폭」 슬라이더로 모든 컬럼을 같은 폭으로 고정하고, 넘치면 가로 스크롤이 나타납니다.<br>③ <b>자동</b>(신규) - 각 컬럼 폭이 글자가 잘리지 않는 가장 작은 크기로 자동 조절되고, 컬럼명을 바꾸면 실시간으로 다시 맞춰집니다. 전체 폭이 넘칠 때만 가로 스크롤이 나타나고, 다시 짧아지면 스크롤이 사라집니다. 이 모드에서는 「컬럼 폭」 슬라이더가 숨겨집니다.<br><br>세 방식 모두 그리드 헤더에서 컬럼 경계선을 직접 드래그해 폭을 자유롭게 바꿀 수 있는 것은 공통입니다. 다만 <b>자동</b> 모드에서 드래그로 조절한 컬럼은 이름을 바꾸는 순간 다시 자동 계산되고, <b>스크롤</b> 모드에서 슬라이더를 움직이면 개별 드래그 조절값이 모두 초기화되고 새 값으로 통일됩니다. 기본값은 <b>기본</b>입니다.'}
+  ]},
+  {ver:'20260908.002', date:'2026년 9월 8일', items:[
+    {t:'그리드 컬럼 폭, 헤더에서 직접 드래그로 조절', d:'그리드 헤더의 각 컬럼 <b>우측 경계선에 마우스를 올리면 초록색 조절선</b>이 나타납니다. 이 선을 좌우로 드래그하면 속성 패널을 거치지 않고 그 컬럼만 원하는 폭으로 즉시 바꿀 수 있습니다.<br><br>병합 헤더(상위헤더로 묶인 컬럼)에서도 각 컬럼을 개별적으로 조절할 수 있고, <b>좌우 스크롤 사용</b>이 꺼진 그리드는 조절한 컬럼만 고정폭이 되고 나머지 컬럼이 남은 공간을 나눠 채웁니다. 켜진 그리드는 컬럼 폭 슬라이더가 정한 값을 컬럼별로 각각 덮어씁니다.'}
+  ]},
+  {ver:'20260908.001', date:'2026년 9월 8일', items:[
+    {t:'다른 브라우저(창·탭)로도 컴포넌트 복사/붙여넣기 가능', d:'① <b>Ctrl+C</b>로 복사하면 브라우저 내부 복사본과 함께 <b>OS 클립보드</b>에도 함께 기록됩니다.<br>② 그 덕분에 같은 브라우저의 다른 탭·창은 물론, <b>다른 브라우저</b>에서 열어둔 목업빌더에도 <b>Ctrl+V</b>로 그대로 붙여넣을 수 있습니다.<br>③ 복사에 성공하면 화면 하단에 <b>"복사됨"</b> 알림이 뜨고, 붙여넣기는 지금까지처럼 알림 없이 조용히 처리됩니다.<br>④ 클립보드 접근이 막혀 있거나 목업빌더가 아닌 다른 텍스트가 복사되어 있는 경우엔, 자동으로 기존 방식(브라우저 내부 복사본)으로 대체되어 항상 붙여넣기가 됩니다.'}
+  ]},
+  {ver:'20260901.007', date:'2026년 9월 1일', items:[
+    {t:'빠른 날짜 팝업에 "빈값" 토글 추가', d:'적용 버튼 왼쪽에 <b>빈값</b> 토글을 추가했습니다. 켜고 적용하면 날짜를 아예 선택하지 않고 비워둔 상태로 저장되며(즐겨찾기 칩·연월일 조합은 비활성화됨), 조회조건 필드·단독 날짜/기간 컴포넌트·그리드 날짜 컬럼 모두 동일하게 동작합니다. 팝업을 다시 열면 빈값이었는지도 토글이 켜진 채로 그대로 복원됩니다. 기간(날짜1)만 비우고 나머지(날짜2)는 값을 유지하는 것도 각각 독립적으로 가능합니다.'}
+  ]},
+  {ver:'20260901.006', date:'2026년 9월 1일', items:[
+    {t:'입력 컴포넌트(날짜·기간)에도 빠른 날짜 팝업 적용', d:'캔버스에 단독으로 놓는 <b>날짜·기간</b> 입력 컴포넌트도 조회조건 필드와 동일한 달력 아이콘·빠른 날짜 팝업을 쓰도록 바꿨습니다. 속성 패널의 텍스트 입력칸은 <b>선택된 값을 보여주는 읽기전용 표시</b>로 바뀌었고, 그 아래에 배치된 📅 버튼(기간은 시작일·종료일 버튼 2개)을 눌러야 값을 바꿀 수 있습니다.'},
+    {t:'그리드 컬럼(날짜 타입)에도 기본값 날짜 팝업 추가', d:'그리드 컬럼을 <b>날짜</b> 타입으로 지정하면 삭제(×) 버튼 왼쪽에 📅 아이콘이 나타나며, 클릭하면 같은 빠른 날짜 팝업으로 그 컬럼의 디자인 화면·내보내기 기본값을 정할 수 있습니다. 값을 정하지 않은 날짜 컬럼은 이전처럼 오늘 날짜가 기본으로 채워집니다.'}
+  ]},
+  {ver:'20260901.005', date:'2026년 9월 1일', items:[
+    {t:'빠른 날짜 팝업 "현재 값" 문구 제거, 대신 토글 자체를 이전 선택 상태로 복원', d:'팝업 상단에 텍스트로 표시하던 <b>현재 값</b> 줄을 없앴습니다. 대신 즐겨찾기 칩과 일치하지 않는 값(예: 연도·월·일 조합으로 만든 날짜)도 저장된 값을 역산해서, 다시 열면 <b>연도·월·일 토글이 그때 고른 상태 그대로</b> 펼쳐져서 초록색으로 표시됩니다.'}
+  ]},
+  {ver:'20260901.004', date:'2026년 9월 1일', items:[
+    {t:'빠른 날짜 팝업, 다시 열면 이전에 고른 값을 보여주도록 수정', d:'날짜·기간 아이콘을 눌렀을 때 항상 "오늘"부터 다시 시작하던 문제를 고쳤습니다. 이제 팝업을 다시 열면 상단에 <b>현재 값</b>이 그대로 표시되고, 그 값이 즐겨찾기 칩(오늘/어제/이번달1일/올해1월1일)과 같으면 해당 칩이 초록색으로 선택 표시됩니다. 아이콘에 마우스를 올렸을 때도 툴팁으로 현재 값을 바로 확인할 수 있습니다.'}
+  ]},
+  {ver:'20260901.003', date:'2026년 9월 1일', items:[
+    {t:'조회조건 조건명 입력칸, 날짜·기간 타입도 폭 꽉 차게 수정', d:'날짜·기간 타입일 때 조건명(라벨) 입력칸이 예전 텍스트 입력칸 자리에 맞춰 46px로 좁게 고정되어 있던 걸 없앴습니다. 이제 다른 타입과 똑같이 남는 공간을 모두 채우고, 날짜 아이콘·삭제(×) 버튼은 오른쪽에 고정폭으로 붙어 줄 전체가 꽉 차게 보입니다.'}
+  ]},
+  {ver:'20260901.002', date:'2026년 9월 1일', items:[
+    {t:'조회조건 필수·읽기전용 버튼 위치 원복', d:'날짜 아이콘 도입 과정에서 1번째 줄로 옮겼던 <b>필수(*)·읽기전용(🔒)</b> 버튼을 기존과 동일하게 <b>2번째 줄 우측</b>(타입·칸수 선택 옆)으로 되돌렸습니다. 1번째 줄에는 순서·라벨·날짜 아이콘·삭제(×)만 남습니다.'}
+  ]},
+  {ver:'20260901.001', date:'2026년 9월 1일', items:[
+    {t:'조회조건 날짜·기간 필드, 빠른 날짜 선택 팝업으로 개편', d:'속성 패널에서 <b>YYYY-MM-DD 텍스트 직접입력</b>을 없애고, 📅 아이콘을 눌러 뜨는 <b>빠른 날짜 선택 팝업</b>으로 바꿨습니다. 팝업 상단엔 자주 쓰는 <b>오늘·어제·이번달1일·올해1월1일</b>을 원클릭 칩으로 두고, <b>「직접 조합하기」</b>를 펼치면 연도(작년/올해/내년)·월(전달/이번달/다음달)·일(-7일/어제/오늘/내일) 축을 조합해 원하는 상대 날짜를 만들 수 있습니다. 팝업은 클릭한 아이콘 바로 아래에 붙고, 화면 가장자리에 가까우면 자동으로 위·왼쪽으로 뒤집혀 잘리지 않습니다. <b>기간</b> 타입은 시작일·종료일 아이콘이 각각 있어 따로 선택합니다. 필수(*)·읽기전용(🔒)·삭제(×) 아이콘도 이 줄로 모아 첫 줄만 봐도 한눈에 파악되게 했습니다.'},
+    {t:'조회조건 날짜·기간 기본값, 오늘 날짜로 통일', d:'조회조건 필드 타입을 <b>날짜·기간</b>으로 바꾸거나 값을 비워두면, 예전의 예시 텍스트(YYYY-MM-DD, 2026-07-01~2026-07-15) 대신 <b>오늘 날짜</b>가 기본으로 표시됩니다. 목업빌더 캔버스와 내보내기(저장) 결과물 HTML 양쪽 모두 동일하게 적용되며, 팝업에서 고른 날짜도 캔버스·내보내기 결과물에 바로 반영됩니다.'}
+  ]},
+  {ver:'20260831.010', date:'2026년 8월 31일', items:[
+    {t:'컬럼 순서 키보드 단축키 제거, 순서 번호칸 화살표 숨김', d:'조회조건 필드·그리드 컬럼의 <b>Ctrl+↑/↓ 키보드 이동 기능</b>을 제거했습니다(드래그와 순서 번호 입력은 그대로 사용 가능). 순서 번호 입력칸의 브라우저 기본 <b>위/아래 스핀 화살표</b>도 숨겨, 자리를 덜 차지하고 칸이 좁아 보이지 않도록 했습니다.'}
+  ]},
+  {ver:'20260831.009', date:'2026년 8월 31일', items:[
+    {t:'컬럼 순서 키보드 단축키 수정, 헤더 정렬 컨트롤 위치 변경', d:'드래그 손잡이(⠿)를 클릭해도 <b>Ctrl+↑/↓</b> 단축키가 반응하지 않던 문제를 고쳤습니다 - 행이 드래그 가능한 상태라 클릭이 드래그 시작으로 인식돼 선택 자체가 되지 않던 게 원인으로, 이제 누르는 즉시(mousedown) 확실하게 선택되고 드래그도 그대로 됩니다. 그리드 컬럼의 <b>헤더 정렬</b> 버튼은 첫 줄에서 <b>「상위헤더(그룹명)」 입력칸 오른쪽</b>(둘째 줄, 필수·읽기전용 버튼 앞)으로 옮겨 첫 줄이 더 간결해졌습니다.'}
+  ]},
+  {ver:'20260831.008', date:'2026년 8월 31일', items:[
+    {t:'조회조건·그리드 컬럼 순서 변경 - 번호 입력·자동 스크롤·단축키 추가', d:'조회조건 필드와 그리드 컬럼 목록에 <b>순서 번호 입력칸</b>이 새로 생겨, 숫자를 바꾸면 그 위치로 바로 이동하고 나머지는 한 칸씩 자동으로 밀립니다. 드래그로 옮길 때도 목록 <b>위/아래 가장자리에 가까이 가면 자동으로 스크롤</b>되어, 컬럼이 많아 스크롤이 생겨도 원하는 위치까지 쉽게 끌 수 있습니다. 또한 드래그 손잡이(⠿)를 클릭해 행을 선택한 뒤 <b>Ctrl+↑/↓</b>로 한 칸씩 이동하는 단축키도 추가했습니다.'}
+  ]},
+  {ver:'20260831.007', date:'2026년 8월 31일', items:[
+    {t:'Claude 답 붙여넣기, Row Order·CheckBox 값 누락 수정', d:'프롬프트는 「rowOrderCol」·「checkboxCol」을 올바르게 채워 줬는데도, <b>「Claude의 답 붙여넣기」로 화면을 그릴 때 이 두 값이 무시되던 문제</b>를 고쳤습니다. 붙여넣기 처리 시 허용 속성 목록에 두 값이 빠져 있던 게 원인으로, 이제 붙여넣은 JSON의 「rowOrderCol:false」·「checkboxCol:false」가 그대로 반영됩니다.'}
+  ]},
+  {ver:'20260831.006', date:'2026년 8월 31일', items:[
+    {t:'이미지 변환 「질문만 복사」 프롬프트, CheckBox 인식 규칙 강화 (씬모드)', d:'Row Order 아이콘은 있지만 CheckBox가 없는 그리드에서 「checkboxCol」이 여전히 누락되던 문제를 고쳤습니다. <b>「모든 grid마다 rowOrderCol·checkboxCol을 예외 없이 명시」</b>하도록 강제하고, <b>「아이콘 컬럼 바로 오른쪽 칸을 확인해 체크박스가 없으면 곧바로 다음 데이터 컬럼 헤더가 시작된다」</b>는 판단 기준을 단계별로 구체화했습니다. <b>「Claude 열기」(URL)</b> 프롬프트는 이번에도 그대로 유지했습니다.'}
+  ]},
+  {ver:'20260831.005', date:'2026년 8월 31일', items:[
+    {t:'이미지 변환 「질문만 복사」 프롬프트, 버튼 없는 그리드 툴바·CheckBox 인식 보강 (씬모드)', d:'그리드에 <b>제목만 있고 행추가 등 버튼이 하나도 없는 경우</b> 「showToolbar」를 false로 잘못 채워 제목까지 사라지던 문제를 고쳤습니다-이제 버튼이 없어도 제목이 보이면 <b>showToolbar는 true로 유지</b>하고 버튼만 false로 채웁니다. 또한 <b>Row Order는 있지만 CheckBox는 없는</b> 그리드 예시를 추가해 두 옵션을 혼합으로 인식하는 경우도 정확히 채워지도록 보강했습니다. <b>「Claude 열기」(URL)</b> 프롬프트는 이번에도 그대로 유지했습니다.'}
+  ]},
+  {ver:'20260831.004', date:'2026년 8월 31일', items:[
+    {t:'이미지 변환 「질문만 복사」 프롬프트, Row Order·CheckBox 인식 추가 (씬모드)', d:'씬모드 이미지→JSON 변환의 <b>「질문만 복사」</b> 프롬프트에 그리드 왼쪽의 <b>Row Order(설정·필터·고정 아이콘) 컬럼</b>과 <b>CheckBox 컬럼</b>을 인식하는 규칙을 추가했습니다. 캡처 화면에 두 컬럼이 있으면 <b>「rowOrderCol」·「checkboxCol」</b>을 true로, 없으면 false로 채워 원본과 동일한 모습으로 변환됩니다. <b>「Claude 열기」(URL)</b> 프롬프트는 이번에도 그대로 유지했습니다.'}
+  ]},
+  {ver:'20260831.003', date:'2026년 8월 31일', items:[
+    {t:'그리드 Row Order 번호 색상 조정', d:'Row Order 컬럼의 순번 색상이 참조 화면보다 지나치게 밝은 파란색이었던 것을, 화면 제목 등에 쓰이는 <b>진한 네이비 색상</b>으로 바꿔 실제 화면과 동일한 톤이 되도록 했습니다.'}
+  ]},
+  {ver:'20260831.002', date:'2026년 8월 31일', items:[
+    {t:'그리드 Row Order 아이콘·CheckBox 헤더 표시 수정', d:'Row Order 헤더의 설정·필터·고정 아이콘이 일부 환경에서 깨져 보이던 문제를 아이콘 폰트 대신 <b>SVG 아이콘</b>으로 바꿔 고쳤습니다. CheckBox 컬럼의 <b>헤더에 체크박스가 보이지 않던</b> 문제도 함께 고쳤고, Row Order 사용 시 헤더 높이가 두꺼워지던 문제도 해결해 다른 컬럼과 동일한 높이를 유지합니다.'}
+  ]},
+  {ver:'20260831.001', date:'2026년 8월 31일', items:[
+    {t:'그리드 Row Order·CheckBox 컬럼 지원', d:'그리드 속성창의 <b>「Pagination 사용」</b> 아래에 <b>「Row Order 사용」·「CheckBox 사용」</b> 옵션이 새로 생겼습니다(기본값 <b>켜짐</b>). 켜면 그리드 맨 왼쪽에 순번 컬럼(헤더는 설정·필터·고정 아이콘, 데이터 행에는 <b>표시 행 수</b> 만큼 1부터 번호)과 선택용 체크박스 컬럼이 추가됩니다. <b>씬모드 전용</b> 기능으로, 팻모드에서는 이 옵션과 두 컬럼이 표시되지 않습니다.'}
+  ]},
+  {ver:'20260830.007', date:'2026년 8월 30일', items:[
+    {t:'조회조건 필드 삭제버튼, 첫 줄 우측 끝으로 위치 통일', d:'날짜·기간 필드만 삭제(×) 버튼이 2번째 줄에 있어 다른 필드와 위치가 달랐던 것을 다시 첫 줄 맨 오른쪽으로 옮겨 모든 타입이 같은 위치를 쓰도록 통일했습니다.'}
+  ]},
+  {ver:'20260830.006', date:'2026년 8월 30일', items:[
+    {t:'조회조건 날짜·기간 값 입력칸, 다시 2줄 레이아웃으로', d:'날짜·기간 필드가 콤보/라디오처럼 3줄이 되는게 어색해서, 값 입력칸을 다시 라벨 옆 1번째 줄로 되돌렸습니다. 대신 그 줄의 삭제(×) 버튼을 2번째 줄로 옮기고 라벨 칸을 좁혀 값 입력칸이 넓어지도록 해서, 2줄을 유지하면서도 값이 잘리지 않게 했습니다.'}
+  ]},
+  {ver:'20260830.005', date:'2026년 8월 30일', items:[
+    {t:'조회조건 기간 값 입력칸 잘림 재수정', d:'라벨 옆 칸을 좁히는 방식으로는 여전히 잘려서, 콤보/라디오의 옵션 입력칸처럼 <b>라벨 아래 별도 줄</b>에 전체 폭으로 표시되도록 구조를 바꿨습니다. 이제 "YYYY-MM-DD ~ YYYY-MM-DD"가 잘리지 않고 다 보입니다.'}
+  ]},
+  {ver:'20260830.004', date:'2026년 8월 30일', items:[
+    {t:'조회조건 기간 값 입력칸 잘림 수정', d:'조회조건 필드가 <b>기간</b>일 때 속성 패널의 날짜 값 입력칸(YYYY-MM-DD ~ YYYY-MM-DD)이 라벨 입력칸에 밀려 잘려 보이던 문제를 고쳤습니다. 라벨 입력칸 폭을 줄이고 값 입력칸 폭을 넓혀 전체 텍스트가 보이도록 했습니다.'}
+  ]},
+  {ver:'20260830.003', date:'2026년 8월 30일', items:[
+    {t:'조회조건 날짜·기간 필드, 화면에 표시할 값을 직접 입력 (씬모드)', d:'조회조건 필드 타입이 <b>날짜</b>·<b>기간</b>일 때 라벨 옆에 값 입력칸이 나타나 화면에 보여줄 날짜(기간은 <b>YYYY-MM-DD ~ YYYY-MM-DD</b> 형식)를 직접 지정할 수 있습니다. 비워두면 기존처럼 기본값이 표시됩니다.'}
+  ]},
+  {ver:'20260830.002', date:'2026년 8월 30일', items:[
+    {t:'이미지 변환 「질문만 복사」 프롬프트, ½칸 인식 추가 (씬모드)', d:'씬모드 이미지→JSON 변환의 <b>「질문만 복사」</b> 프롬프트에 조회조건 한 칸 안에 컨트롤 2개가 나란히 붙은 경우(요청조직/구매조직, 공장/창고 등)를 인식해 <b>½칸(span:0.5)</b> 필드 2개로 쪼개 출력하는 규칙을 추가했습니다. 라벨이 하나로 합쳐져 보이면 "/"·공백 기준으로 나눠 각 필드에 담습니다. <b>「Claude 열기」(URL)</b> 프롬프트는 URL 길이 제한 때문에 그대로 유지했습니다.'}
+  ]},
+  {ver:'20260830.001', date:'2026년 8월 30일', items:[
+    {t:'조회조건 필드 가로 폭에 「½칸」 추가 (씬모드)', d:'조회조건(searchbar) 필드의 가로 폭 목록에 <b>½칸</b>이 추가되었습니다. ½칸 필드가 <b>바로 옆에 다른 ½칸 필드와 붙어 있으면</b> 한 칸을 반반씩 나눠 써서 요청조직/구매조직, 공장/창고처럼 한 줄에 나란히 표시되고, <b>붙어 있는 ½칸이 없으면</b> 그 필드 혼자 한 칸의 절반만 채우고 나머지 절반은 빈 채로 남아 뒤 필드가 그 자리로 밀려오지 않습니다.'}
+  ]},
+  {ver:'20260828.002', date:'2026년 8월 28일', items:[
+    {t:'그리드 컬럼 유형에 「검색」 추가', d:'그리드를 선택하면 속성창의 <b>「컬럼」</b> 목록에서 각 컬럼 유형을 <b>첨부파일</b> 아래 <b>검색</b>으로도 지정할 수 있습니다. 지정한 컬럼은 <b>조회조건 패널의 검색 필드</b>와 동일한 돋보기 아이콘이 입력칸 우측에 표시되며, 읽기전용으로 설정하면 아이콘도 함께 흐리게 표시됩니다. 씬모드·팻모드 공통 기능입니다.'}
+  ]},
+  {ver:'20260826.001', date:'2026년 8월 26일', items:[
+    {t:'그리드 컬럼 헤더 텍스트 정렬 기능 추가', d:'그리드를 선택하면 속성창의 <b>「컬럼」</b> 목록 각 행에 정렬 아이콘(왼쪽·가운데·오른쪽)이 새로 생겨, 컬럼별로 헤더 텍스트 정렬을 지정할 수 있습니다.'},
+    {t:'그리드 컬럼 필수 기능 추가', d:'각 컬럼의 <b>*</b> 버튼을 켜면 헤더 라벨 앞에 빨간 <b>*</b>가 표시되고, 해당 컬럼의 데이터 행 전체가 옅은 크림색 배경으로 표시됩니다. 조회조건 패널의 필수 표시와 같은 방식입니다.'},
+    {t:'그리드 컬럼 읽기전용 기능 추가', d:'각 컬럼의 <b>🔒</b> 버튼을 켜면 해당 컬럼의 데이터 행 전체가 회색 배경으로 바뀌고 입력이 잠깁니다. 색상은 <b>조회조건 패널의 읽기전용</b>과 동일하게 통일했습니다. 필수·읽기전용을 동시에 켜면 읽기전용이 우선 적용됩니다.'},
+    {t:'속성 패널 기본 폭 확대', d:'컬럼별 정렬·필수·읽기전용 컨트롤이 늘어난 만큼 속성 패널 기본 폭을 <b>324px</b>로 넓혀 더 여유 있게 표시되도록 했습니다 (드래그로 조절 가능한 범위는 기존과 동일).'}
+  ]},
+  {ver:'20260825.003', date:'2026년 8월 25일', items:[
+    {t:'「질문만 복사」 프롬프트, 「Claude 열기」와 완전히 독립된 텍스트로 분리', d:'씬모드·팻모드 각각의 <b>「질문만 복사」</b> 프롬프트를 <b>「Claude 열기」(URL)</b> 프롬프트와 별개의 문장으로 만들었습니다. 이제 「질문만 복사」쪽 내용을 아무리 길게 늘려도 「Claude 열기」의 URL 길이에는 <b>전혀 영향을 주지 않습니다.</b>'}
+  ]},
+  {ver:'20260825.002', date:'2026년 8월 25일', items:[
+    {t:'이미지 변환 프롬프트, 「Claude 열기」·「질문만 복사」 분리 (씬모드)', d:'지금까지 하나로 쓰던 변환 프롬프트를 <b>「Claude 열기」(URL 전달)</b>용과 <b>「질문만 복사」</b>(클립보드)용으로 분리했습니다. URL 전달은 한글 인코딩 팽창으로 길이 제한에 걸리기 쉬워 계속 짧게 유지하고, <b>「질문만 복사」</b>는 길이 제한이 없어 앞으로 더 상세한 지시문으로 확장할 수 있습니다. <b>「Claude에 보내는 질문 미리 보기」</b>에는 항상 「질문만 복사」쪽 프롬프트가 표시됩니다.'},
+    {t:'「질문만 복사」 버튼 강조 및 안내 문구 추가', d:'「질문만 복사」 버튼을 <b>초록색 강조 스타일</b>과 <b>「권장」</b> 배지로 눈에 더 잘 띄게 바꿨습니다. 버튼과 질문 미리 보기 사이에는 <b>직접 붙여넣으면 더 상세한 요청이 가능해 결과 품질이 좋아진다</b>는 짧은 안내 문구를 추가했습니다.'}
+  ]},
+  {ver:'20260825.001', date:'2026년 8월 25일', items:[
+    {t:'조회조건 필드 타입에 「빈값」 추가 (씬모드)', d:'조회조건(searchbar) 컴포넌트의 필드 타입 목록에 <b>기간·검색·라디오</b> 다음으로 <b>「빈값」</b>이 추가되었습니다. 필드 타입을 빈값으로 지정하면 라벨과 입력칸 없이 <b>해당 칸이 비워진 채로</b> 자리만 차지해, 여러 칸짜리 레이아웃에서 <b>특정 칸만 건너뛰고</b> 싶을 때 사용할 수 있습니다. 씬모드 전용 기능입니다.'}
+  ]},
+  {ver:'20260819.001', date:'2026년 8월 19일', items:[
+    {t:'이미지 변환(씬모드) 프롬프트 길이 추가 축소', d:'변환 품질은 그대로 유지하면서 <b>씬모드</b> 프롬프트에서 다른 예시와 뜻이 겹치던 라벨 예시 1개를 정리하고, 구형화면 예시의 부가 설명을 간결하게 다듬어 글자 수를 더 줄였습니다. Claude에 붙여넣는 텍스트가 짧아져 전송·응답이 더 가벼워집니다.'}
+  ]},
+  {ver:'20260818.002', date:'2026년 8월 18일', items:[
+    {t:'그리드 Pagination 위치 조정 및 씬모드 전용화', d:'Pagination의 <b>«  ‹  1  ›  »</b> 페이지 버튼이 그리드 하단 <b>정가운데</b>에 오도록 위치를 조정했습니다(Show rows·Go to·전체 건수는 그대로 오른쪽에 표시). 또한 Pagination 기능은 <b>씬모드 전용</b>으로 바뀌어, <b>팻모드</b>에서는 속성창의 「Pagination 사용」 옵션 자체와 하단 UI가 모두 표시되지 않습니다.'}
+  ]},
+  {ver:'20260818.001', date:'2026년 8월 18일', items:[
+    {t:'그리드 Pagination(페이지네이션) 지원', d:'그리드를 선택하면 속성창의 <b>「좌우 스크롤 사용」</b> 체크박스 아래에 <b>「Pagination 사용」</b> 옵션이 새로 생겼습니다. 켜면 그리드 하단에 <b>페이지 번호·Show rows·Go to·전체 건수</b>로 구성된 페이지 이동 UI가 표시됩니다. 목업이므로 실제 페이지 이동은 되지 않고 항상 1페이지만 보이며, 건수는 <b>표시 행 수</b> 값을 그대로 보여줍니다. 기본값은 <b>꺼짐</b>이라 기존에 저장해둔 목업에는 영향이 없습니다.'}
+  ]},
+  {ver:'20260814.001', date:'2026년 8월 14일', items:[
+    {t:'이미지 변환 팝업 높이 축소 (스크롤 제거)', d:'이미지 변환 팝업이 길어서 생기던 세로 스크롤을 줄였습니다. <b>2번 단계</b>의 그리드 여러 장 캡처 안내는 <b>「그리드 컬럼이 많을 때」 접기</b>로 넣어 필요할 때만 펼쳐 보도록 했고, 하단의 라벨 관련 안내 박스는 삭제했습니다. 이제 대부분의 화면에서 <b>하단 버튼까지 스크롤 없이</b> 한눈에 보입니다.'},
+    {t:'사용 동의 안내 문구 추가', d:'우측 <b>속성 안내 패널</b>(컴포넌트를 선택하지 않았을 때 보이는 영역) 하단에 <b>「사용 안내」</b> 문구를 추가했습니다. 본 프로그램은 <b>인가된 업무 목적</b>으로만 사용할 수 있으며, <b>목적 외 사용·데이터의 외부 유출 및 무단 배포</b>를 금지합니다. 원활한 운영과 보안을 위해 <b>접속 정보(IP, 사용자명 등)가 기록</b>될 수 있고, 사용에 따른 <b>모든 책임은 사용자 본인</b>에게 있음을 안내합니다.'}
+  ]},
+  {ver:'20260811.001', date:'2026년 8월 11일', items:[
+    {t:'이미지 변환, 탭(세그먼트 버튼) 화면 지원', d:'화면 캡처에 <b>"잔액|원장"처럼 나란히 붙은 탭</b>이 있으면(겉모양이 버튼이어도) 이제 이를 인식해 <b>tabs 컴포넌트</b>로 변환합니다. 캡처 이미지를 <b>탭 개수만큼 여러 장</b> 첨부하면(예: 잔액탭 캡처 1장 + 원장탭 캡처 1장) 하나의 tabs 안에 각 탭 내용이 알맞게 나뉘어 배치됩니다. <b>씬모드·팻모드 둘 다</b> 지원합니다.'},
+    {t:'이미지 변환, 조회조건 겹침 방지', d:'조회조건(검색 필드) 개수가 많아 실제 높이가 커지는 화면을 변환할 때, 이제 그 아래에 있는 탭·차트·그리드·버튼 등 <b>모든 컴포넌트를 늘어난 높이만큼 함께 내려 배치</b>해 겹치지 않도록 했습니다.'},
+    {t:'이미지 변환, 상단 여백 자동 보정', d:'타이틀·탭 바로 아래에 조회조건이 <b>붙어서</b> 나오도록 배치 규칙을 보강했습니다. 원본 화면에서 브레드크럼·아이콘·"조회조건 접기" 버튼 등이 차지하던 자리를 더 이상 빈 공간으로 남기지 않아, 탭과 조회조건 사이에 불필요하게 넓은 간격이 생기던 문제를 없앴습니다.'},
+    {t:'이미지 변환, 우측상단 접기 버튼 제외', d:'화면 우측상단의 <b>"조회조건 접기/펼치기"</b> 버튼은 고정 UI이므로 변환 결과에 더 이상 포함되지 않습니다.'},
+    {t:'탭 이름 전체 삭제 시 탭이 사라지던 문제 수정', d:'탭 컴포넌트에서 이름을 전부 지우고 새로 입력하려 하면 그 탭 자체가 사라지던 문제를 고쳤습니다. 이름 칸이 비어 있어도 <b>탭 자리는 그대로 유지</b>되어, 안에 배치해둔 컴포넌트도 잃지 않습니다.'},
+    {t:'이미지 변환 프롬프트 길이 재최적화', d:'변환 품질은 그대로 유지하면서 씬모드·팻모드 프롬프트 문장을 더 간결하게 다듬어 글자 수를 추가로 줄였습니다.'}
+  ]},
+  {ver:'20260810.002', date:'2026년 8월 10일', items:[
+    {t:'속성 패널 좌우 폭 조절', d:'컴포넌트를 선택하면 나오는 <b>오른쪽 속성 편집 패널</b>과 캔버스 사이에 <b>드래그 스플리터</b>가 생겼습니다. 경계선을 좌우로 끌면 속성 패널 폭을 <b>180~560px</b> 사이에서 원하는 대로 넓히거나 좁힐 수 있고, 조절한 폭은 <b>자동 저장</b>되어 다음에 열 때도 유지됩니다. 스플리터를 <b>더블클릭</b>하면 기본 폭(240px)으로 돌아갑니다. (PC 모드 전용, 태블릿·모바일 모드에서는 표시되지 않습니다.)'},
+    {t:'필수+읽기전용 동시 지정 처리', d:'한 컴포넌트에 <b>필수 항목</b>과 <b>읽기전용</b>을 함께 켤 수 있게 되었습니다. <b>씬모드</b>에서는 둘을 같이 켜면 <b>필수(*) 표시와 읽기전용(회색·수정 불가)</b>이 함께 적용되고, <b>팻모드</b>에서는 <b>읽기전용만</b> 적용됩니다. 텍스트박스·콤보박스·날짜·팝업·기간 컴포넌트에 동일하게 반영되며, 저장(내보내기) 결과물에도 그대로 적용됩니다.'}
+  ]},
+  {ver:'20260807.001', date:'2026년 8월 7일', items:[
+    {t:'그리드 헤더 병합(그룹 헤더) 지원', d:'그리드를 선택하면 속성창의 <b>「컬럼」</b> 목록에서 각 컬럼마다 <b>상위헤더(그룹명)</b> 칸이 새로 생겼습니다. 연속된 컬럼에 같은 그룹명을 입력하면 헤더 위쪽에 그 이름이 하나로 병합되어 표시되고, 아래 줄에는 각 컬럼명이 그대로 남습니다. 그룹을 지정하지 않은 컬럼은 예전처럼 헤더 전체 높이를 그대로 차지해, 그룹·비그룹 컬럼이 섞여도 높이가 항상 맞습니다. <b>좌우 스크롤 그리드</b>와 <b>저장(내보내기) 결과물</b>에도 동일하게 반영됩니다.'},
+    {t:'이미지 변환도 병합 헤더 인식', d:'화면 캡처에 기준정보·재고정보처럼 <b>2줄로 병합된 헤더</b>가 있는 그리드가 있으면, 이를 인식해 컬럼별 그룹 정보까지 함께 뽑아내도록 변환 프롬프트를 보강했습니다. Claude의 답을 붙여넣으면 캡처된 병합 헤더 구조가 그대로 재현됩니다. <b>씬모드·팻모드 둘 다</b> 적용했습니다.'}
+  ]},
+  {ver:'20260806.002', date:'2026년 8월 6일', items:[
+    {t:'이미지 변환에 차트 지원 추가', d:'화면 캡처를 JSON으로 변환할 때(Claude 열기/프롬프트 복사) <b>도넛·막대·꺾은선·영역 차트</b>가 있는 화면도 <b>chart 컴포넌트</b>로 인식해 변환하도록 프롬프트를 보강했습니다. 카드형 대시보드(브레드크럼+카드 여러 개가 나란한 화면)도 카드 위치를 유지한 채 chart/grid로 매핑합니다. <b>씬모드·팻모드 둘 다</b> 반영했습니다.'},
+    {t:'이미지 변환 프롬프트 길이 축소', d:'같은 변환 품질을 유지하면서 씬모드·팻모드 프롬프트의 문장을 더 간결하게 다듬어 전체 글자 수를 줄였습니다. Claude에 붙여넣는 텍스트가 짧아져 전송·응답이 더 가벼워집니다.'}
+  ]},
+  {ver:'20260806.001', date:'2026년 8월 6일', items:[
+    {t:'그리드 컬럼 유형에 첨부파일 추가', d:'그리드를 선택하면 속성창의 <b>「컬럼」</b> 목록에서 각 컬럼 유형을 텍스트박스·콤보박스·날짜·체크박스 외에 <b>첨부파일</b>로도 지정할 수 있습니다. 지정한 컬럼의 각 행에는 <b>회색 구름 모양의 업로드 아이콘</b>이 표시되며, 클릭 동작 없는 <b>읽기전용</b> 표시로 동작합니다.'}
+  ]},
+  {ver:'20260805.001', date:'2026년 8월 5일', items:[
+    {t:'그리드 여러 장 캡처 자동 병합', d:'이미지 변환 시 <b>컬럼이 많아 가로 스크롤이 생기는 그리드</b>를 <b>여러 장으로 나눠 캡처</b>해 첨부하면, 이제 <b>하나의 그리드로 자동으로 이어 붙여</b> 줍니다. 캡처할 때 <b>컬럼을 최소 1개씩 겹쳐서</b> 찍으면, 겹친 컬럼은 알아서 한 번만 남기고 순서대로 병합합니다. <b>Thin·Fat 두 모드</b> 모두 지원합니다.'},
+    {t:'이미지 변환 창 안내 보강', d:'변환 2단계 안내에 <b>컬럼이 많은 그리드를 겹쳐가며 나눠 찍는 방법</b>을 설명하는 안내를 추가했습니다.'},
+    {t:'이미지 변환 창 스크롤 제거', d:'「Claude의 답 붙여넣기」 칸의 기본 높이를 줄여, <b>Claude 열기·질문 복사</b>를 눌러도 이미지 변환 창에 <b>불필요한 스크롤이 생기지 않도록</b> 했습니다. 붙여넣기 칸은 필요할 때 아래 모서리를 끌어 늘릴 수 있습니다.'}
+  ]},
+  {ver:'20260731.001', date:'2026년 7월 31일', items:[
+    {t:'멀티 선택 정렬 영역 제한', d:'여러 컴포넌트를 선택해 <b>수평·수직 정렬</b>을 실행하면, 이제 정렬 범위가 캔버스 전체가 아니라 <b>선택한 컴포넌트들이 차지하던 영역까지만</b> 적용됩니다. 선택하지 않은 다른 컴포넌트가 같은 줄·같은 칸에 있으면 그 앞에서 멈춰서 침범하지 않습니다.'},
+    {t:'정렬·간격 조절 격자 정합성 수정', d:'행·열에 크기가 다른 컴포넌트가 섞여 있을 때, <b>수평/수직 정렬</b>과 <b>가로·세로 간격 슬라이더</b>를 쓰면 특정 칸만 밀려서 표(격자)가 흐트러지던 문제를 고쳤습니다. 이제 실제 좌표가 가까운 컴포넌트끼리 같은 열·행으로 인식해, 칸 크기가 제각각이어도 열은 열끼리·행은 행끼리 항상 나란히 맞춰집니다.'},
+    {t:'정렬 기능, 입력 컴포넌트만 지원', d:'멀티 선택 시 <b>수평·수직·스마트 정렬</b>과 <b>간격 슬라이더</b>는 선택한 컴포넌트가 모두 <b>입력 컴포넌트</b>(라벨·텍스트박스·콤보박스·날짜·기간·체크박스·라디오·팝업)일 때만 표시됩니다. 그리드·차트·트리·버튼·패널 등 다른 종류가 하나라도 섞여 선택되면 정렬 관련 UI는 숨겨지고 안내 문구가 대신 표시됩니다.'}
+  ]},
+  {ver:'20260729.001', date:'2026년 7월 29일', items:[
+    {t:'스플릿 컨테이너 중첩 시 Fill 버그 수정', d:'스플릿 컨테이너 안에 또 다른 스플릿 컨테이너를 넣어 화면을 4분할 이상으로 나눈 경우, <b>저장·미리보기 화면에서 바깥쪽 구분선을 옮기면</b> 안쪽 스플릿의 그리드가 따라오지 않던 문제를 고쳤습니다. 이제 몇 겹으로 중첩하든 구분선을 옮기면 <b>안쪽 Fill 컴포넌트까지 전부 크기가 같이 조절</b>됩니다.'},
+    {t:'모드 전환 아이콘 추가', d:'상단 타이틀과 사용자 가이드 사이에 <b>모드 전환 아이콘</b>이 새로 생겼습니다. 타이틀을 누르는 것과 동일하게, 누르면 Thin Mode ↔ Fat Mode 선택 팝업이 뜹니다.'},
+    {t:'상단 아이콘 톤앤매너 통일', d:'모드 전환·사용자 가이드·화면 둘러보기 아이콘 3개를 <b>같은 크기의 흰색 라운드 박스</b>로 통일해, 초록(Thin)·남색(Fat) 상단바 어디서든 잘 보이도록 했습니다.'},
+    {t:'사용자 가이드·둘러보기 아이콘 교체', d:'이모지 대신 <b>펼쳐진 책</b>(사용자 가이드), <b>지도 핀</b>(화면 둘러보기) 모양의 심플한 아이콘으로 바꿔, 작게 표시돼도 의미가 잘 읽히도록 했습니다.'}
+  ]},
+  {ver:'20260728.001', date:'2026년 7월 28일', items:[
+    {t:'Fat Mode 추가', d:'상단 왼쪽 <b>타이틀(로고)</b>을 누르면 <b>Thin Mode</b>와 <b>Fat Mode</b> 중 고르는 팝업이 뜹니다. 좌/우 미리보기 카드를 눌러 바로 전환할 수 있고, 전환하면 캔버스가 초기화되니 먼저 저장해두세요. 파일에 저장한 모드 정보를 <b>불러오기 때도 그대로 기억</b>합니다(옛날 파일은 Thin Mode로 열립니다).'},
+    {t:'Fat Mode 전용 스타일', d:'라벨이 입력칸 왼쪽에 붙고 아래 밑줄이 생기며, 캔버스·상단바 색감이 바뀝니다. 조회조건 패널 대신 <b>패널(그룹박스)+개별 입력</b> 조합을 쓰고, 그리드 상단 툴바와 필수(*) 표시는 화면에 나타나지 않습니다.'},
+    {t:'팝업 컴포넌트', d:'Fat Mode 도구상자에 새로 추가된 컴포넌트입니다. <b>라벨+텍스트박스(코드)+아이콘+텍스트박스(명칭)</b> 구조로, 코드값을 입력하면 옆에 명칭이 표시되는 조회 필드를 한 번에 만듭니다.'},
+    {t:'패널에 컴포넌트 넣기', d:'패널(그룹박스) 위에 다른 컴포넌트를 놓으면 <b>자식으로 연결</b>되어, 탭·스플릿처럼 패널을 옮기면 안의 컴포넌트도 함께 움직이고, 삭제·복사도 같이 됩니다.'},
+    {t:'이미지 변환도 모드별로', d:'이미지 변환 기능이 지금 켜져 있는 모드(Thin/Fat)에 맞는 프롬프트를 자동으로 씁니다. 변환 결과를 캔버스에 배치한 뒤에는 <b>컴포넌트 범위에 맞춰 캔버스 크기가 자동으로 늘어나거나 줄어듭니다</b>.'},
+    {t:'투어·가이드 개편', d:'화면 둘러보기 3번째 단계에 <b>모드 전환 안내</b>가 추가됐고, 사용자 가이드에도 Fat Mode 설명이 반영됐습니다. 둘러보기 카드는 <b>단어가 중간에 끊기지 않도록</b> 고치고, 내용 길이에 맞춰 <b>폭이 자동으로 조절</b>되며 진행률 바가 추가됐습니다.'},
+    {t:'모바일·태블릿도 동일하게', d:'팝업 컴포넌트·조회조건 숨김·템플릿 버튼 숨김 등 Fat Mode 관련 변경이 모바일·태블릿 화면에도 PC와 동일하게 반영됩니다.'}
+  ]},
+  {ver:'20260727.005', date:'2026년 7월 27일', items:[
+    {t:'패치 내역 날짜별 묶음', d:'업데이트 안내를 <b>날짜별로 묶어서</b> 보여줍니다. 같은 날 여러 번 배포된 빌드(예: 20260727 의 001~004)가 <b>하나의 날짜 아래</b> 모여 나오고, 그 안에서 <b>ver.001·002·003…</b> 영역은 각각 구분되어 표시됩니다.'}
+  ]},
+  {ver:'20260727.004', date:'2026년 7월 27일', items:[
+    {t:'편집 중 그리드 좌우 스크롤', d:'컬럼이 많아 가로 스크롤이 생긴 그리드를, <b>편집(캔버스) 상태에서도 직접 스크롤</b>할 수 있습니다. 그리드 위에서 <b>마우스 휠</b>을 굴리면 좌우로 스크롤되고, 그리드 하단의 <b>가로 스크롤바를 드래그</b>해도 컴포넌트가 움직이지 않고 스크롤만 됩니다. 가려져 있던 오른쪽 컬럼을 확인하며 편집하기 편해졌습니다.'}
+  ]},
+  {ver:'20260727.003', date:'2026년 7월 27일', items:[
+    {t:'모바일·태블릿 미리보기 이벤트 동작', d:'모바일·태블릿의 <b>▶ 미리보기</b>가 이제 데스크톱 미리보기·저장 파일과 <b>동일하게 컴포넌트 이벤트가 실제로 동작</b>합니다. 예전에는 편집 화면을 그대로 보여줘서 콤보박스·탭·체크박스 등이 눌리지 않았는데, 이제 저장본과 같은 인터랙티브 화면을 전체 화면으로 띄웁니다.'}
+  ]},
+  {ver:'20260727.002', date:'2026년 7월 27일', items:[
+    {t:'미리보기 버튼 추가', d:'상단 <b>저장</b> 버튼 오른쪽에 <b>👁 미리보기</b> 버튼이 생겼습니다. 누르면 저장 파일과 <b>똑같이 이벤트가 동작하는 화면</b>이 새 탭에서 열립니다. 콤보박스 펼치기, 탭 전환, 체크박스·라디오 선택, 트리 접기/펼치기, 스플릿 구분선 드래그가 모두 실제처럼 동작해, 저장하지 않고도 완성된 모습을 확인할 수 있습니다.'},
+    {t:'도구 드래그 미리보기', d:'도구상자에서 컴포넌트를 끌어올 때, 캔버스 위에 <b>실제 크기의 미리보기</b>가 커서를 따라다닙니다. 놓으면 미리보기가 있던 <b>커서 위치를 중심으로</b> 컴포넌트가 생성됩니다.'}
+  ]},
+  {ver:'20260727.001', date:'2026년 7월 27일', items:[
+    {t:'이미지 변환 화면 새 단장', d:'화면 캡처를 컴포넌트로 바꾸는 기능을 <b>처음 쓰는 사람도 따라 하기 쉽게</b> 다시 만들었습니다. <b>① Claude 열기 → ② 캡처 이미지 붙이고 전송 → ③ 답을 붙여넣기</b>의 <b>3단계 카드</b>로 흐름이 한눈에 보이고, 진행 중인 단계가 초록색으로 강조됩니다. 어려운 용어(JSON 등)는 <b>「코드」·「Claude의 답」</b>처럼 쉬운 말로 바꿨습니다.'},
+    {t:'친절한 실패 안내', d:'붙여넣기가 잘못되면 원인에 따라 <b>무엇을 어떻게 고치면 되는지</b> 안내합니다. 예를 들어 답이 잘려 붙었을 때 「[ 부터 ] 까지 빠짐없이 복사했는지 확인해 주세요」처럼 다음 행동을 알려줍니다. 성공하면 <b>배치된 컴포넌트 개수</b>를 함께 보여줍니다.'},
+    {t:'변환 오류 수정', d:'정상적인 코드를 붙여넣어도 <b>「화면으로 바꾸지 못했어요」</b> 오류가 나던 문제를 해결했습니다. 이제 붙여넣은 내용이 캔버스에 정상적으로 배치됩니다.'}
+  ]},
+  {ver:'20260726.006', date:'2026년 7월 26일', items:[
+    {t:'방향키로 이동', d:'컴포넌트를 선택한 뒤 <b>방향키(↑↓←→)</b>를 누르면 <b>격자 한 칸씩</b> 이동합니다. 이동 거리는 우측 상단 <b>스냅 크기</b> 값을 따릅니다. 여러 개를 선택하면 함께 움직이고, 탭 안의 컴포넌트도 같이 이동합니다.'},
+    {t:'항목 추가 단축키 (+ / −)', d:'<b>탭·조회조건·콤보박스·라디오·그리드</b>를 선택한 상태에서 <b>+</b> 키로 항목(탭·조건·옵션·컬럼)을 하나 추가하고, <b>−</b> 키로 맨 뒤 항목을 하나 삭제할 수 있습니다.'},
+    {t:'항목 추가 버튼 방식', d:'<b>탭·콤보박스·라디오</b>의 항목을 조회조건·그리드처럼 <b>「＋ 추가」 버튼</b>으로 하나씩 추가하고, 각 칸에서 이름을 편집하거나 ⠿ 핸들로 순서를 바꿀 수 있습니다.'},
+    {t:'모바일 속성 버튼 토글', d:'모바일·태블릿 하단의 <b>속성</b> 버튼을 다시 누르면 열린 속성창이 <b>닫기(✕)</b>를 누른 것처럼 닫힙니다.'},
+    {t:'PC 미니맵', d:'PC 화면에도 <b>미니맵</b>이 추가되었습니다. 상단 툴바 줌 오른쪽의 <b>「미니맵」 체크박스</b>로 켜고 끌 수 있으며(기본은 꺼짐), 켜면 캔버스 우상단에 표시됩니다. 미니맵 본문을 <b>클릭·드래그</b>하면 해당 위치로 화면이 이동하고, ⠿ 손잡이로 미니맵 위치를 옮기거나 ◱ 버튼으로 접을 수 있습니다.'}
+  ]},
+  {ver:'20260726.005', date:'2026년 7월 26일', items:[
+    {t:'화면 모드 강제 전환', d:'PC·태블릿·모바일 화면을 <b>직접 골라 전환</b>할 수 있습니다. <b>PC 모드</b>에서는 좌측 하단(버전 표기 위)에 아이콘 3개가, <b>모바일·태블릿 모드</b>에서는 상단 <b>☰ 메뉴</b> 맨 아래 「화면 모드」에서 전환합니다. 현재 모드는 아이콘이 <b>초록색으로 채워져</b> 표시되고, 마우스를 올리면 이름이 나타납니다. 자동 감지 결과와 다르게 강제로 특정 화면을 확인하고 싶을 때 사용합니다.'}
+  ]},
+  {ver:'20260726.004', date:'2026년 7월 26일', items:[
+    {t:'모바일·태블릿 지원', d:'모바일과 태블릿에서도 사용할 수 있도록 전용 화면과 조작 방식을 추가했습니다. 자세한 내용은 <b>Mobile</b> 탭을 참고하세요.'}
+  ]},
+  {ver:'20260726.003', date:'2026년 7월 26일', items:[
+    {t:'저장·불러오기 일원화', d:'「JSON 저장」과 「HTML 내보내기」로 나뉘어 있던 저장 방식을 <b>「저장」 하나로 합쳤습니다</b>. 저장한 HTML 안에 편집 데이터가 함께 담겨 있어서, <b>「불러오기」로 다시 열면 그대로 이어서 편집</b>할 수 있습니다.<br><br>보고용 파일과 편집용 파일을 따로 챙길 필요가 없어졌습니다. 완성한 화면을 그대로 공유하고, 나중에 같은 파일을 열어 수정하면 됩니다.'},
+    {t:'업데이트 저장 위치 선택', d:'업데이트 버튼을 누르면 곧바로 다운로드 폴더로 받아지던 것을, <b>「저장」처럼 폴더를 고를 수 있게</b> 바꿨습니다. 파일명은 <b>mockup_builder.html</b>로 유지되어 쓰던 파일에 그대로 덮어쓸 수 있습니다.<br><br>배포처를 GitHub으로 옮기면서 가능해졌습니다. (자동 다운로드가 막힌 환경에서는 예전처럼 다운로드 페이지가 열립니다)'},
+    {t:'빌드 번호 도입', d:'버전 표기가 <b>ver.20260726.001</b>처럼 <b>날짜 + 빌드번호</b> 형태로 바뀌었습니다. 같은 날 여러 번 배포해도 어느 것이 최신인지 구분됩니다. 좌측 하단 표기와 이 패치 내역에 동일하게 적용됩니다.'},
+    {t:'Esc로 창 닫기', d:'<b>패치 내역·사용자 가이드·템플릿·이미지 변환·둘러보기</b> 창을 <b>Esc</b> 키로 닫을 수 있습니다. 창이 겹쳐 있으면 위에 뜬 것부터 하나씩 닫힙니다.<br><br>단, 이미지 변환 창의 입력칸에 <b>타이핑 중일 때는 닫히지 않습니다</b>. 붙여넣은 JSON이 지워지는 것을 막기 위해서입니다.'},
+    {t:'상단바 버튼 그룹화', d:'상단바 버튼을 성격별로 묶었습니다. <b>템플릿·이미지 변환</b>이 한 세트, <b>전체 지우기·불러오기·저장</b>이 한 세트로 사이를 띄워 배치했습니다. 자주 쓰는 버튼을 눈으로 찾기 쉬워집니다.'},
+    {t:'상단바 정리', d:'<b>「↶ 취소」·「↷ 재실행」 버튼을 없앴습니다</b>. 기능은 그대로라 <b>Ctrl+Z</b>(취소), <b>Ctrl+Y</b> 또는 <b>Ctrl+Shift+Z</b>(재실행)로 계속 사용할 수 있습니다.'}
+  ]},
+  {ver:'20260725', date:'2026년 7월 25일', items:[
+    {t:'그리드 컬럼별 입력 유형', d:'그리드의 각 컬럼을 도구상자 컴포넌트처럼 <b>텍스트박스·콤보박스·날짜·체크박스</b> 중 하나로 지정할 수 있습니다. 내보내기 결과물에서 컬럼 유형대로 실제 동작합니다 (콤보는 클릭 시 목록 펼침, 체크박스는 클릭 시 체크). 콤보 옵션을 따로 안 정하면 <b>선택·옵션1·옵션2·옵션3</b>이 기본으로 들어가고, 날짜 컬럼은 <b>오늘 날짜</b>가 기본값으로 채워집니다.'},
+    {t:'그리드 컬럼 편집 UI', d:'그리드 컬럼 목록이 조회조건 필드처럼 바뀌었습니다. <b>⠿ 핸들로 드래그해서 순서 변경</b>, 컬럼명·유형·삭제(×)가 <b>한 줄</b>에 표시되고, "컬럼" 그룹 전체를 한 번에 <b>접고 펼칠</b> 수 있습니다.'},
+    {t:'인터랙티브 둘러보기', d:'상단바 <b>🧭</b> 버튼을 누르면 실제 화면 위에 스포트라이트를 비추며 도구상자·캔버스·속성 패널·템플릿·내보내기 등 <b>13단계</b>로 안내하는 둘러보기가 시작됩니다. 처음 여는 사용자에게 자동으로 뜨고, "다시 보지 않기"를 체크하지 않으면 다음에 열 때 또 안내합니다.'},
+    {t:'도구상자 그룹 접기/펼치기', d:'레이아웃·입력 컴포넌트·액션·데이터 그룹마다 이름 옆 <b>▾ 아이콘</b>을 눌러 접고 펼칠 수 있습니다. 기본은 펼친 상태입니다.'},
+    {t:'이미지 변환 안내 접기', d:'"JSON 붙여넣기(무료)" 탭 상단의 사용법 안내가 <b>접기/펼치기</b> 방식으로 바뀌어, 기본은 접힌 상태로 화면을 덜 차지합니다.'}
+  ]},
+  {ver:'20260724', date:'2026년 7월 24일', items:[
+    {t:'파일명 자동 생성', d:'저장 파일명이 <b>화면 제목_날짜_시각</b>으로 자동 지정됩니다. (예: <b>수주등록_20260723_2138.html</b>) 저장할 때마다 이름이 달라져 이전 파일을 덮어쓰지 않습니다. 파일명에 쓸 수 없는 문자는 자동으로 <b>_</b>로 바뀌고, 화면 제목이 없으면 기본 이름이 사용됩니다.'},
+    {t:'내보내기 문서 제목', d:'내보낸 HTML을 브라우저에서 열면 탭에 <b>「화면 제목 목업」</b>이 표시됩니다. 여러 목업을 동시에 띄워 두어도 탭만 보고 구분할 수 있습니다.'},
+    {t:'속성 도움말 툴팁', d:'속성창의 긴 설명문이 사라지고, 각 기능 이름 옆에 <b>? 아이콘</b>이 생겼습니다. 마우스를 올리면 설명이 툴팁으로 나타납니다. 설명이 자리를 차지하지 않아 속성창이 한결 깔끔해졌습니다.'},
+    {t:'그리드 좌우 스크롤', d:'그리드 속성창에 <b>좌우 스크롤 사용</b> 옵션이 생겼습니다. 켜면 컬럼마다 지정한 폭을 유지한 채 <b>가로 스크롤바</b>가 나타나, 컬럼이 많아도 글자가 짓눌리지 않습니다. 컬럼 폭은 60~300px로 조절할 수 있고, 끄면 기존처럼 그리드 폭에 맞춰 균등 분할됩니다. 내보낸 HTML에서도 그대로 동작합니다.'},
+    {t:'버전 체크 · 업데이트', d:'제목 옆 <b>📖</b> 오른쪽에 <b>⬇ 업데이트</b> 버튼이 생겼습니다. 새 버전이 배포되어 있을 때만 나타나며, 누르면 최신 파일을 바로 내려받을 수 있습니다. 최신 버전을 쓰고 있다면 버튼은 표시되지 않습니다.'}
+  ]},
+  {ver:'20260722', date:'2026년 7월 22일', items:[
+    {t:'스플릿 컨테이너', d:'도구상자에 <b>스플릿 컨테이너</b>가 추가되었습니다. 화면을 좌우 또는 상하로 나누고 경계선을 드래그해 크기를 조절할 수 있으며, 스플릿 안에 스플릿을 중첩해 3분할 이상의 레이아웃도 만들 수 있습니다.'},
+    {t:'Dock: Fill / None', d:'스플릿 영역에 넣은 컴포넌트는 기본적으로 <b>자유롭게 배치·크기조절(None)</b>되고, 속성창에서 <b>Fill</b>로 바꾸면 영역에 꽉 차서 경계선과 함께 자동 리사이즈됩니다.'},
+    {t:'조회조건 필드 순서 변경', d:'조회조건 속성창에서 각 필드를 <b>드래그하거나 ▲▼ 버튼</b>으로 순서를 바꿀 수 있습니다.'}
+  ]},
+  {ver:'20260721', date:'2026년 7월 21일', items:[
+    {t:'조회조건 높이 자동 조절', d:'조건을 추가하거나 지우면 <b>조회조건 박스 높이가 자동으로 맞춰집니다</b>. 조건이 4개를 넘어 줄이 늘어나도 가려지지 않고, 줄이 줄면 남는 여백 없이 정리됩니다. 템플릿에도 동일하게 적용됩니다.'},
+    {t:'브라우저 탭 아이콘', d:'브라우저 탭과 즐겨찾기에 <b>전용 아이콘</b>이 표시됩니다. 여러 탭을 띄워 두어도 한눈에 찾을 수 있습니다.'},
+    {t:'내보내기 결과물 드롭다운', d:'내보낸 화면에서 <b>조회조건의 콤보를 누르면 목록이 펼쳐집니다</b>. 항목을 고르면 값이 반영됩니다.'}
+  ]},
+  {ver:'20260720', date:'2026년 7월 20일', items:[
+    {t:'화면 캡처 변환 품질 향상', d:'이미지에서 화면을 옮길 때 <b>원본 위치를 그대로 베끼지 않고 정돈된 레이아웃으로 재배치</b>합니다. 왼쪽 여백과 줄 간격을 맞추고, 한 줄에 4~6개씩 고르게 놓으며, 구획 제목은 섹션으로 만듭니다.'},
+    {t:'옛 시스템 화면 변환', d:'입력칸이 촘촘한 <b>구형 화면도 인식</b>합니다. 맨 위 경로에서 화면 이름만 뽑고, 흩어진 조회 항목을 조회조건 하나로 모으며, 코드칸과 이름칸이 짝지어진 항목은 검색 필드 하나로 합칩니다. 표에는 행 조작 버튼을 자동으로 붙입니다.'},
+    {t:'패치 내역 히스토리', d:'업데이트 안내가 <b>New Release / Release History</b> 두 탭으로 나뉘었습니다. 지난 버전 내역도 언제든 다시 볼 수 있습니다.'}
+  ]},
+  {ver:'20260719', date:'2026년 7월 19일', items:[
+    {t:'자동 저장', d:'작업 중인 내용이 <b>수정 3초 뒤와 1분마다</b> 브라우저에 자동 저장됩니다. 실수로 창을 닫아도 다시 열면 <b>이어서 작업</b>할 수 있습니다. 저장을 하면 자동 저장 기록은 정리됩니다.'},
+    {t:'저장 위치 선택', d:'저장 시 <b>폴더와 파일 이름을 지정</b>할 수 있습니다. (Chrome·Edge에서 http/https로 열었을 때)'},
+    {t:'조회조건 읽기전용', d:'조회조건 필드마다 <b>🔒 버튼</b>이 생겼습니다. 켜면 회색으로 표시되고 내보내기 결과물에서 입력이 막힙니다.'},
+    {t:'Claude로 열기', d:'이미지 변환 화면에서 <b>🤖 Claude로 열기</b>를 누르면 프롬프트가 입력된 상태로 Claude가 새 창에 열립니다.'}
+  ]},
+  {ver:'20260718', date:'2026년 7월 18일', items:[
+    {t:'캔버스 확대·축소', d:'상단 「캔버스 높이」 오른쪽에 <b>확대/축소</b>가 생겼습니다. 50~200% 선택 또는 <b>Ctrl+마우스휠</b>로도 됩니다. 보기만 커질 뿐 실제 크기는 바뀌지 않습니다.'},
+    {t:'사용자 가이드', d:'제목 옆 <b>📖</b> 버튼을 누르면 사용법을 한눈에 볼 수 있습니다.'},
+    {t:'트리 컴포넌트', d:'도구상자 「데이터」에 <b>트리</b>가 추가됐습니다. 조직도처럼 계층 구조를 표현하고, 접기/펼치기도 됩니다.'},
+    {t:'라벨이 붙은 입력 컴포넌트', d:'텍스트박스·콤보박스·날짜·기간·체크박스·라디오를 놓으면 <b>라벨이 함께</b> 만들어집니다. 속성창에서 라벨 내용과 위치(위·왼쪽·오른쪽·아래)를 바꾸거나 숨길 수 있습니다.'}
+  ]},
+  {ver:'20260715', date:'2026년 7월 15일', items:[
+    {t:'탭(Tab) 컴포넌트', d:'탭 안에 다른 컴포넌트를 넣을 수 있고, 내보내기 결과물에서 탭을 클릭하면 실제로 화면이 전환됩니다.'},
+    {t:'템플릿 14종', d:'수주등록·수주현황조회 등 자주 쓰는 화면을 클릭 한 번으로 불러옵니다.'},
+    {t:'클릭으로 배치', d:'도구상자 위쪽 토글을 켜면 도구를 클릭한 뒤 캔버스를 클릭해 연속으로 배치할 수 있습니다.'},
+    {t:'복사 기능', d:'<b>Ctrl+드래그</b>로 복사 이동, <b>Ctrl+C / Ctrl+V</b>로 복사·붙여넣기가 됩니다. 여러 개 선택도 지원합니다.'},
+    {t:'내보내기 결과물 실동작', d:'내보낸 HTML에서 콤보·날짜·체크박스·라디오·조회조건이 실제로 동작합니다.'},
+    {t:'기간(daterange) 컴포넌트', d:'시작일과 종료일을 함께 입력하는 컴포넌트가 추가됐습니다.'}
+  ]}
+];
+// 모바일·태블릿 전용 신규 기능 내역 (개선·수정 제외, 신규 위주)
+const MOBILE_PATCH_NOTES=[
+  {ver:'20260726.004', date:'2026년 7월 26일', items:[
+    {t:'모바일·태블릿 전용 화면', d:'화면 크기와 방향(세로·가로)에 맞춰 편집 UI가 자동으로 바뀝니다. 상단 앱바, 컴포넌트 추가 버튼, 우측 컨트롤, 미니맵 등 터치에 맞는 레이아웃으로 재구성됩니다.'},
+    {t:'터치 직접 조작', d:'컴포넌트를 손가락으로 <b>탭해 선택</b>하고, <b>드래그로 이동</b>, 모서리를 잡아 <b>크기 조절</b>할 수 있습니다. 두 손가락 <b>핀치로 확대·축소</b>도 지원합니다.'},
+    {t:'컴포넌트 추가 시트', d:'우측 하단 <b>＋</b> 버튼(세로 모드는 하단 도구 독)으로 컴포넌트를 종류별로 골라 캔버스에 추가할 수 있습니다.'},
+    {t:'선택 컨텍스트 바', d:'컴포넌트를 선택하면 <b>속성·복제·앞으로·뒤로·삭제</b> 버튼이 하단에 나타나, 자주 쓰는 동작을 바로 실행할 수 있습니다.'},
+    {t:'속성 편집 (시트·패널)', d:'컨텍스트 바의 <b>속성</b>을 누르면 세로 모드는 하단 시트, 가로 모드는 우측 패널로 속성을 편집할 수 있습니다.'},
+    {t:'미니맵 네비게이터', d:'전체 화면 축소도를 보여주는 미니맵으로 현재 보는 영역을 확인하고, 드래그해서 원하는 위치로 이동할 수 있습니다. ⠿ 핸들로 미니맵 위치도 옮길 수 있습니다.'},
+    {t:'이동 도구(✥)', d:'우측 컨트롤의 <b>이동 도구</b>를 켜면 컴포넌트 위에서도 드래그가 <b>화면 이동</b>만 되어, 꽉 찬 화면도 편하게 둘러볼 수 있습니다. 켜는 동안 선택·도구상자·속성창이 숨겨져 캔버스에 집중됩니다.'},
+    {t:'미리보기·화면 맞춤·줌', d:'우측 컨트롤에서 <b>미리보기(▶)</b>, <b>화면 맞춤(⤢)</b>, <b>줌 배지</b>(탭하면 화면 맞춤)를 바로 사용할 수 있습니다.'}
+  ]}
+];
+const PATCH_VER=PATCH_NOTES[0].ver;
+let patchTab=0;
+function patchItemsHTML(items){
+  // 패치 항목은 신규 기능(NEW)만 싣는다. 배지 종류가 하나뿐이라 분기 없이 고정한다.
+  return items.map(it=>`<div class="pt-item">
+      <div class="pt-t"><span class="pt-badge new">NEW</span> ${it.t}</div>
+      <p>${it.d}</p>
+    </div>`).join('');
+}
+// The date portion of a version string ("20260727.004" -> "20260727"); groups builds by day.
+function patchDateKey(ver){ return String(ver||'').split('.')[0]; }
+// The build portion (".004" -> "004"); labels a sub-section inside a day group.
+function patchBuildNo(ver){ const p=String(ver||'').split('.'); return p.length>1?p[1]:''; }
+// Groups a newest-first list of notes into day buckets, preserving order.
+// Returns [{key, date, builds:[note,...]}, ...], newest day first, builds newest first.
+function groupPatchesByDate(notes){
+  const out=[]; const idx={};
+  notes.forEach(n=>{
+    const key=patchDateKey(n.ver);
+    if(idx[key]===undefined){ idx[key]=out.length; out.push({key,date:n.date,builds:[]}); }
+    out[idx[key]].builds.push(n);
+  });
+  return out;
+}
+// Renders one day group: a single date header, then each build as its own labeled block.
+function renderPatchDay(group,history){
+  const builds=group.builds.map(n=>
+    `<div class="pt-build"><div class="pt-build-hd">ver.${n.ver}</div>${patchItemsHTML(n.items)}</div>`
+  ).join('');
+  return `<div class="pt-day${history?' history':''}">
+    <div class="pt-day-hd">${group.date}</div>
+    ${builds}
+  </div>`;
+}
+function renderPatch(){
+  const tabs=document.getElementById('patchTabs');
+  const body=document.getElementById('patchBody');
+  if(!tabs||!body)return;
+  tabs.innerHTML=
+    `<div class="tab${patchTab===0?' on':''}" onclick="switchPatchTab(0)">New Release</div>`+
+    `<div class="tab${patchTab===1?' on':''}" onclick="switchPatchTab(1)">Release History</div>`+
+    `<div class="tab${patchTab===2?' on':''}" onclick="switchPatchTab(2)">Mobile</div>`;
+  if(patchTab===0){
+    // 최신 날짜의 모든 빌드(예: 20260727 의 001~004)를 한 그룹으로 묶어 보여준다.
+    const groups=groupPatchesByDate(PATCH_NOTES);
+    body.innerHTML = groups.length ? renderPatchDay(groups[0],false) : '';
+  } else if(patchTab===2){
+    // 모바일·태블릿 전용 신규 기능
+    const groups=groupPatchesByDate(MOBILE_PATCH_NOTES);
+    body.innerHTML = groups.length
+      ? groups.map(g=>renderPatchDay(g,true)).join('')
+      : '<p style="font-size:12.5px;color:#8a949c;margin:6px 0;">모바일 전용 내역이 없습니다.</p>';
+  } else {
+    // 지난 업데이트: 최신 날짜 그룹을 뺀 나머지를 날짜별로 묶어 최신순으로.
+    const groups=groupPatchesByDate(PATCH_NOTES).slice(1);
+    body.innerHTML = groups.length
+      ? groups.map(g=>renderPatchDay(g,true)).join('')
+      : '<p style="font-size:12.5px;color:#8a949c;margin:6px 0;">지난 업데이트 내역이 없습니다.</p>';
+  }
+  body.scrollTop=0;
+}
+function switchPatchTab(i){ patchTab=i; renderPatch(); }
+const PATCH_KEY='mb_patch_seen';
+function closePatch(){
+  const chk=document.getElementById('patchHideChk');
+  if(chk&&chk.checked){
+    // Remembered in this browser only; the file itself is unchanged.
+    try{ localStorage.setItem(PATCH_KEY,PATCH_VER); }catch(e){}
+  }
+  document.getElementById('patchBg').classList.remove('on');
+}
+function openPatch(){ patchTab=0; renderPatch(); document.getElementById('patchBg').classList.add('on'); }
+function maybeShowPatch(){
+  // Don't stack on top of the restore dialog; show it after that one closes.
+  const r=document.getElementById('restoreBg');
+  if(r&&r.classList.contains('on')){ maybeShowPatch._pending=true; return; }
+  let seen=null;
+  try{ seen=localStorage.getItem(PATCH_KEY); }catch(e){}
+  if(seen!==PATCH_VER) openPatch();
+}
+function openGuide(){ document.getElementById('guideBg').classList.add('on'); switchGuideTab('start'); }function closeGuide(){ document.getElementById('guideBg').classList.remove('on'); }
+function switchGuideTab(t){
+  ['start','know','fast','faq'].forEach(k=>{
+    document.getElementById('gdTab'+k[0].toUpperCase()+k.slice(1)).classList.toggle('on',k===t);
+    document.getElementById('gdPane'+k[0].toUpperCase()+k.slice(1)).style.display=(k===t)?'block':'none';
+  });
+}
+
+// ---- Interactive onboarding tour (spotlights real UI areas, one at a time) ----
+const TOUR_STEPS=[
+  {sel:null, title:'Mockup Builder에 오신 것을 환영합니다 👋',
+    desc:'업무 화면 목업을 빠르게 그리는 도구입니다.<br><br><b>왼쪽 도구상자</b>에서 끌어다 놓고 → <b>오른쪽 속성 패널</b>에서 내용을 고치고 → <b>내보내기</b>, 이 흐름만 알면 됩니다.<br><br>핵심 영역을 하나씩 짧게 안내해드릴게요.'},
+  {sel:'#guideBtn', title:'사용자 가이드',
+    desc:'📖 버튼을 누르면 <b>시작하기·알아두면 좋은 것·시간을 아끼는 방법·자주 묻는 것</b> 탭으로 정리된 사용법 안내가 열립니다. 이 둘러보기를 다시 보고 싶을 때도 그 안의 링크로 시작할 수 있어요.'},
+  {sel:'.brand', title:'화면 모드 전환 (Thin ↔ Fat Mode)',
+    desc:'상단 왼쪽 <b>타이틀(로고)</b>을 누르면 <b>Thin Mode</b>와 <b>Fat Mode</b> 중 고르는 팝업이 뜹니다.<br><br>Fat Mode는 라벨이 왼쪽에 붙고, 조회조건 대신 <b>패널+팝업</b> 조합을 쓰며, 그리드 툴바·필수(*) 표시가 화면에 나타나지 않는 등 옛날 화면 느낌으로 바뀝니다.<br><br>⚠ 모드를 바꾸면 캔버스가 초기화되니, 작업 중이라면 먼저 저장해두세요.'},
+  {sel:'.toolbox .tgrp:nth-of-type(1)', title:'레이아웃',
+    desc:'화면 제목·섹션 헤더·패널·탭·스플릿·조회조건 패널 등 <b>화면의 큰 뼈대</b>를 만드는 컴포넌트입니다. 캔버스로 끌어다 놓으세요.'},
+  {sel:'.toolbox .tgrp:nth-of-type(2)', title:'입력 컴포넌트',
+    desc:'라벨·텍스트박스·콤보박스·날짜·기간·체크박스·라디오처럼 <b>데이터를 입력받는 항목</b>입니다. Fat Mode에서는 <b>팝업</b> 컴포넌트도 여기 추가됩니다.'},
+  {sel:'.toolbox .tgrp:nth-of-type(3)', title:'액션',
+    desc:'버튼처럼 <b>클릭해서 동작을 실행</b>하는 컴포넌트입니다.'},
+  {sel:'.toolbox .tgrp:nth-of-type(4)', title:'데이터',
+    desc:'그리드·차트·트리처럼 <b>여러 건의 데이터를 표 형태로 보여주는</b> 컴포넌트입니다. 그리드는 컬럼마다 텍스트박스·콤보·날짜·체크박스 유형도 지정할 수 있어요.'},
+  {sel:'.canvas-wrap', title:'캔버스',
+    desc:'도구상자의 컴포넌트를 <b>끌어다 놓는 작업 공간</b>입니다. 클릭하면 선택되고, 드래그로 위치·크기를 조절할 수 있습니다. 패널·탭·스플릿 위에 놓으면 그 안의 <b>자식 컴포넌트</b>로 들어가 함께 움직입니다.'},
+  {sel:'#props', title:'속성 패널',
+    desc:'컴포넌트를 선택하면 여기서 <b>텍스트·크기·옵션 등 세부 속성</b>을 편집합니다. 그리드를 선택하면 컬럼 목록도 여기서 관리해요.'},
+  {sel:'#convertBtn', title:'이미지 변환',
+    desc:'기존 화면을 <b>캡처한 이미지</b>를 올리면 컴포넌트로 자동 변환해줍니다. API 키 없이 쓸 수 있는 <b>JSON 붙여넣기(무료)</b> 방식과, AI가 직접 분석하는 방식을 지원합니다. 지금 켜져 있는 모드(Thin/Fat)에 맞춰 변환 방식도 자동으로 달라집니다.'},
+  {sel:'#clearBtn', title:'전체 지우기',
+    desc:'캔버스의 <b>모든 컴포넌트를 한 번에 삭제</b>합니다. 새 화면을 처음부터 그릴 때 사용하세요.'},
+  {sel:'#jsonLoadBtn', title:'불러오기',
+    desc:'저장해둔 <b>HTML 파일을 불러와서</b> 이전 작업을 이어갑니다. 예전에 만든 JSON 파일도 그대로 열 수 있어요. 파일에 저장된 모드(Thin/Fat) 정보가 있으면 그 모드로 자동 전환되고, 없는 옛날 파일은 Thin Mode로 열립니다.'},
+  {sel:'#exportBtn', title:'저장',
+    desc:'완성한 화면을 <b>실제로 동작하는 HTML 파일</b>로 저장합니다. 콤보박스 클릭, 체크박스 토글, 탭 전환 등이 실제로 동작하는 미리보기가 만들어져요.<br><br>이 HTML에는 편집 데이터가 함께 담겨 있어서, <b>불러오기로 다시 열면 이어서 작업</b>할 수 있습니다.<br><br>이제 시작해볼까요? 🎉'}
+];
+let tourIdx=0;
+function startTour(){
+  tourIdx=0;
+  const chk=document.getElementById('tourHideChk');
+  if(chk) chk.checked=false;
+  document.getElementById('tourOverlay').style.display='block';
+  showTourStep(0);
+}
+function closeTour(){
+  const chk=document.getElementById('tourHideChk');
+  if(chk&&chk.checked){
+    // Remembered in this browser only; the file itself is unchanged (same convention as the patch-notes modal).
+    try{ localStorage.setItem('mb_tour_seen','1'); }catch(e){}
+  }
+  document.getElementById('tourOverlay').style.display='none';
+}
+function showTourStep(i){
+  tourIdx=i;
+  const step=TOUR_STEPS[i];
+  document.getElementById('tourTitle').textContent=step.title;
+  document.getElementById('tourDesc').innerHTML=step.desc;
+  document.getElementById('tourStepN').textContent=(i+1)+' / '+TOUR_STEPS.length;
+  document.getElementById('tourPrevBtn').disabled=(i===0);
+  document.getElementById('tourNextBtn').textContent=(i===TOUR_STEPS.length-1)?'완료':'다음';
+  const fill=document.getElementById('tourProgFill');
+  if(fill) fill.style.width=Math.round(((i+1)/TOUR_STEPS.length)*100)+'%';
+  positionTourStep(step);
+}
+function tourNext(){
+  if(tourIdx>=TOUR_STEPS.length-1){ closeTour(); return; }
+  showTourStep(tourIdx+1);
+}
+function tourPrev(){
+  if(tourIdx<=0)return;
+  showTourStep(tourIdx-1);
+}
+// 내용 길이에 맞춰 카드 폭을 3단계(300/360/420px)로 조정한다 - 짧은 설명은 아담하게,
+// 긴 설명은 넉넉하게 넓혀서 단어가 어중간하게 잘리는 걸 줄인다.
+function pickTourCardWidth(step){
+  const plain=(step.title||'').length + (step.desc||'').replace(/<[^>]+>/g,'').length;
+  if(plain<70) return 300;
+  if(plain<190) return 360;
+  return 420;
+}
+function positionTourStep(step){
+  const spot=document.getElementById('tourSpot');
+  const card=document.getElementById('tourCard');
+  const target = step.sel ? document.querySelector(step.sel) : null;
+  const cw=pickTourCardWidth(step);
+  card.style.width=cw+'px';
+  if(!target){
+    spot.classList.add('none');
+    const ch=card.offsetHeight||240;
+    card.style.left=Math.max(10,(window.innerWidth-cw)/2)+'px';
+    card.style.top=Math.max(10,(window.innerHeight-ch)/2)+'px';
+    return;
+  }
+  spot.classList.remove('none');
+  const r=target.getBoundingClientRect();
+  const pad=6;
+  spot.style.top=(r.top-pad)+'px';
+  spot.style.left=(r.left-pad)+'px';
+  spot.style.width=(r.width+pad*2)+'px';
+  spot.style.height=(r.height+pad*2)+'px';
+  const ch=card.offsetHeight||240;
+  const spaceRight=window.innerWidth-r.right, spaceBelow=window.innerHeight-r.bottom;
+  let top,left;
+  if(spaceRight>cw+30){ left=r.right+16; top=Math.min(window.innerHeight-ch-10,Math.max(10,r.top)); }
+  else if(spaceBelow>ch+30){ left=Math.min(window.innerWidth-cw-10,Math.max(10,r.left)); top=r.bottom+16; }
+  else { left=Math.max(10,r.left-cw-16); top=Math.min(window.innerHeight-ch-10,Math.max(10,r.top)); }
+  card.style.left=left+'px';
+  card.style.top=top+'px';
+}
+window.addEventListener('resize',()=>{ if(document.getElementById('tourOverlay').style.display==='block') positionTourStep(TOUR_STEPS[tourIdx]); });
+// Auto-start once for first-time users; the 🧭 topbar button (or guide modal link) replays it anytime after.
+(function(){
+  try{
+    if(!localStorage.getItem('mb_tour_seen')){
+      window.addEventListener('load',()=>{ setTimeout(startTour,600); });
+    }
+  }catch(e){}
+})();
+function openTemplates(){ document.getElementById('tmplBg').classList.add('on'); renderTmplGrid(); }
+function closeTemplates(){ document.getElementById('tmplBg').classList.remove('on'); }
+function switchTmplTab(t){
+  tmplTab=t;
+  document.getElementById('tmplTabReg').classList.toggle('on',t==='reg');
+  document.getElementById('tmplTabInq').classList.toggle('on',t==='inq');
+  renderTmplGrid();
+}
+function renderTmplGrid(){
+  const wrap=document.getElementById('tmplGrid');
+  const group=TEMPLATES[tmplTab];
+  wrap.innerHTML=Object.keys(group).map(name=>{
+    const def=group[name];
+    const warn=def._estimated?'<div class="tw">⚠ 참고 이미지 없이 추정 구성</div>':'';
+    const gridCount=(def.grids?def.grids.length:0)+(def.tabs?def.tabs.pages.reduce((a,p)=>a+(p.grids?p.grids.length:0),0):0);
+    return `<div class="tmpl-card" onclick="loadTemplate('${tmplTab}','${name}')">
+      <div class="ti">${esc(name)}</div>
+      <div class="td">그리드 ${gridCount}개${def.search?' · 조회조건 포함':''}${def.tabs?' · 탭 포함':''}</div>
+      ${warn}
+    </div>`;
+  }).join('');
+}
+function loadTemplate(cat,name){
+  const def=TEMPLATES[cat][name];
+  if(!def)return;
+  const built=layoutForm(def);
+  document.getElementById('cw').value=built.canvasW; setCW();
+  document.getElementById('ch').value=built.canvasH; setCH();
+  placeItems(built.items,1,true);
+  fitZoomToViewport();
+  closeTemplates();
+}
+
+// ================= 상단 로고 클릭: Thin Mode ↔ Fat Mode 전환 =================
+// 기존 모드 = Thin Mode, 새로 추가된 모드 = Fat Mode.
+// 지금은 색상/모서리 등 톤앤매너만 바뀐다. 어떤 기능을 더 바꿀지는 추후 별도로 정한다.
+// 확인창·전체초기화 없이 스킨(Thin/Fat) 상태만 바꾼다. 모드 선택 팝업(pickAppSkin)과
+// 파일 불러오기(doLoad, 저장된 모드를 그대로 반영)가 공통으로 쓴다.
+function setAppSkin(fat){
+  document.body.classList.toggle('skin-classic', !!fat);
+  try{ localStorage.setItem('mb_skin', fat?'classic':'modern'); }catch(e){}
+  // 모바일/태블릿에서 스킨을 바꾸면 도크·레일의 컴포넌트 목록(조회조건↔팝업)도 다시 그려야
+  // 데스크톱 도구상자와 일치한다. (없으면 조용히 무시)
+  try{ if(window.mbRefreshForSkin) window.mbRefreshForSkin(); }catch(e){}
+  // 모드가 바뀔 때마다(로고로 직접 전환하든, 파일 불러오기로 그 파일의 저장된 모드에 맞춰
+  // 자동 전환되든) 접속 로그를 한 번 더 남겨서, 언제 어떤 모드로 사용했는지 로그만으로 알 수
+  // 있게 한다. 페이지를 막 열었을 때의 최초 모드 복원(applySavedSkin)은 이 함수를 거치지
+  // 않으므로 최초 접속 로그와 중복되지 않는다.
+  try{ if(window.mbLogAccess) window.mbLogAccess(); }catch(e){}
+}
+// 로고를 누르면 alert 대신 이미지(스와치) 2개짜리 팝업을 띄워 Thin/Fat 중 고르게 한다.
+function openSkinPicker(){
+  const isFat=document.body.classList.contains('skin-classic');
+  document.getElementById('skinPickThin').classList.toggle('on', !isFat);
+  document.getElementById('skinPickFat').classList.toggle('on', isFat);
+  document.getElementById('skinBg').classList.add('on');
+}
+function closeSkinPicker(){ document.getElementById('skinBg').classList.remove('on'); }
+// 카드를 클릭해 모드를 고른다. 이미 그 모드면 그냥 닫고, 다르면 전환 후 전체지우기와 동일하게 초기화한다.
+function pickAppSkin(toFat){
+  const isFat=document.body.classList.contains('skin-classic');
+  closeSkinPicker();
+  if(toFat===isFat)return;
+  setAppSkin(toFat);
+  resetCanvasToDefault();
+}
+function applySavedSkin(){
+  var v=null; try{ v=localStorage.getItem('mb_skin'); }catch(e){}
+  if(v==='classic') document.body.classList.add('skin-classic');
+}
+
+setCW(); setCH();   // sync inline size with the toolbar inputs so zoom math has a base
+fitZoomToViewport();
+applySavedSkin();  // 이전에 로고로 전환해둔 톤앤매너가 있으면 복원 (seed()가 모드를 보고 기본 화면을 구성하므로 먼저 실행)
+seed();
+checkAutosave();  // offer to restore a previous session (also arms autosave)
+maybeShowPatch();
+
+/* ============================================================
+   버전 체크 / 업데이트 배포
+   새 버전 배포 시 (1) 버전 Gist 의 verchk.txt 를 새 버전(YYYYMMDD.NNN)으로 고치고,
+   (2) 파일 Gist 의 mockup_builder.html 을 새 파일로 갈아끼웁니다.
+   둘은 서로 다른 Gist 이며, 검색 노출을 막기 위해 secret 으로 두었습니다.
+   secret Gist 도 api.github.com 으로 인증 없이 읽히므로 아래 코드는 그대로 동작합니다.
+   ============================================================ */
+// 내려받을 파일도 Gist 에 둔다. Google Drive 는 Access-Control-Allow-Origin 헤더를 주지
+// 않아 fetch 로 읽을 수 없고(브라우저가 CORS 로 차단), 그래서 예전에는 window.open 으로
+// 브라우저에 넘길 수밖에 없었다 — 그 경우 저장 위치를 고르지 못하고 다운로드 폴더로 직행한다.
+// GitHub 은 raw 응답에 Access-Control-Allow-Origin: * 를 주므로 fetch 가 되고,
+// 받아온 내용을 「저장」과 똑같이 saveBlob 에 넘겨 위치를 고를 수 있다.
+// 버전 파일(verchk.txt)과 프로그램 파일은 서로 다른 Gist 에 있으므로 ID 를 따로 둔다.
+const FILE_GIST_ID     = 'cedf492408332adf2b1d103afb40aa49';   // mockup_builder.html 이 있는 Gist (secret)
+const UPDATE_FILE      = 'mockup_builder.html';   // Gist 안의 프로그램 파일 이름
+// 광고 차단기가 GitHub 요청을 막는 경우가 있어, fetch 가 실패하면
+// 아래 주소를 브라우저로 열어 사용자가 직접 받도록 폴백한다.
+const UPDATE_PAGE_URL  = 'https://gist.github.com/' + FILE_GIST_ID;
+// 버전 정보는 GitHub Gist 에서 읽는다. GitHub 는 Access-Control-Allow-Origin: *
+// 를 주기 때문에 file:// 로 연 페이지에서도 fetch 가 막히지 않는다.
+// 새 버전 배포 시 이 Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)만 고치면 된다.
+const GIST_ID          = '624b8724f8933d89f84622aa9d3fe3f1';   // verchk.txt 가 있는 Gist (secret)
+const VER_FILE         = 'verchk.txt';
+const REMOTE_VER       = '20260923.001';   // Gist 를 못 읽을 때 쓰는 예비 버전 (로컬과 같게 두면 조용히 넘어감)
+// 내보내기 결과물의 상단 바(Alt+O/Alt+P/Alt+S) 런타임을 어디서 불러올지 - 이 주소에 있는 파일만
+// 고치면 이미 내보내진(구버전) 결과물까지 전부 상단 바 버그 수정이 그대로 적용된다. 실제 배포
+// 도메인이 바뀌면 이 한 줄만 바꾸면 된다.
+const MB_TOPBAR_RUNTIME_URL = 'https://mockupbuilder.pages.dev/mb-topbar-runtime.js';
+let _remoteVer = REMOTE_VER;
+
+// 버전 문자열 비교. "20260726.001" 처럼 날짜.빌드번호 형태를 다룬다.
+// 문자열 부등호(>)로 비교하면 "20260726.9" > "20260726.10" 이 참이 되어버리므로,
+// 마디별로 끊어 숫자로 비교한다. 빌드번호가 없는 옛 형식("20260725")은 .0 으로 취급해
+// 같은 날짜의 .001 보다 낮게 판정된다. remote 가 더 새 버전이면 true.
+function verNewer(remote, local){
+  const p = v => String(v).split('.').map(n=>parseInt(n,10)||0);
+  const a = p(remote), b = p(local);
+  for(let i=0; i<Math.max(a.length,b.length); i++){
+    const x=a[i]||0, y=b[i]||0;
+    if(x!==y) return x>y;
+  }
+  return false;   // 완전히 같음
+}
+
+// 좌측 하단 "by June (ver.YYYYMMDD.NNN)" 에서 로컬 버전 추출.
+// 빌드번호는 선택적이라 옛 형식(ver.20260725)도 그대로 읽힌다.
+function getLocalVer(){
+  const el = document.getElementById('verMark');
+  const m = el && el.textContent.match(/ver\.\s*(\d{8}(?:\.\d+)?)/);
+  return m ? m[1] : null;
+}
+
+function showUpdBtn(remote, local){
+  const b = document.getElementById('updBtn');
+  if(!b) return;
+  _remoteVer = remote;
+  b.style.display = 'inline-block';
+  b.textContent = '\u2b07 \uc5c5\ub370\uc774\ud2b8';
+  b.title = '\uc0c8 \ubc84\uc804 ver.' + remote + ' \ub2e4\uc6b4\ub85c\ub4dc (\ud604\uc7ac ver.' + local + ')';
+  // 앞선 시도에서 버전 확인이 막혀 "확인만" 상태였을 수 있다. 이번엔 버전을 알아냈으므로
+  // 그 표시를 지워 정상 다운로드 경로를 타게 한다. (지우지 않으면 한 번 실패한 세션에서는
+  // 이후 성공해도 계속 페이지만 열린다.)
+  delete b.dataset.folderOnly;
+}
+
+// Gist 의 verchk.txt 내용(YYYYMMDD.NNN 한 줄)을 읽어온다.
+// raw URL(gist.githubusercontent.com)은 CDN 캐시가 오래 남아 수정 직후에도 옛 값을
+// 돌려주는 일이 잦다. API 는 캐시를 타지 않아 수정 즉시 반영되므로 이것만 쓴다.
+async function fetchRemoteVer(){
+  try{
+    const r = await fetch(`https://api.github.com/gists/${GIST_ID}?t=${Date.now()}`, {cache:'no-store'});
+    if(!r.ok) return null;
+    const j = await r.json();
+    const files = j.files || {};
+    // 지정한 파일명을 먼저 찾고, 이름이 바뀐 경우에 대비해 없으면 첫 파일에서 읽는다.
+    const f = files[VER_FILE] || Object.values(files)[0];
+    // 빌드번호(.NNN)는 선택적 — 옛 형식(YYYYMMDD)도 그대로 읽힌다.
+    const m = f && f.content && f.content.match(/\d{8}(?:\.\d+)?/);
+    return m ? m[0] : null;
+  }catch(e){ return null; }   // 네트워크 차단 시 예비 버전으로 폴백
+}
+
+async function checkVersion(){
+  // 로컬에서 HTML 파일을 직접 열었을 때(file://)만 업데이트 체크를 한다.
+  // http/https 등 웹서버로 접속한 경우(예: mockupbuilder.pages.dev)에는
+  // 항상 서버가 최신본을 제공하므로 업데이트 버튼을 띄우지 않는다.
+  if(location.protocol !== 'file:'){
+    const bb = document.getElementById('updBtn');
+    if(bb) bb.style.display = 'none';
+    return;
+  }
+  const local = getLocalVer();
+  if(!local) return;
+  const b = document.getElementById('updBtn');
+  // 1차: 코드에 박힌 예비 버전 (Gist 를 못 읽어도 최소한의 안내는 되도록)
+  if(verNewer(REMOTE_VER, local)) showUpdBtn(REMOTE_VER, local);
+  // 2차: Gist 의 verchk.txt (읽히면 이 값이 최종 판단 기준)
+  const v = await fetchRemoteVer();
+  if(v){
+    if(verNewer(v, local)) showUpdBtn(v, local);
+    else if(b) b.style.display = 'none';   // 예비값이 틀렸던 경우 되돌린다
+    return;
+  }
+  // 3차: 버전 확인이 막힌 경우. 조용히 숨기면 새 버전이 나왔는지 알 방법이 없으므로
+  // 폴더를 여는 확인 버튼을 대신 보여준다.
+  if(b && b.style.display !== 'inline-block'){
+    b.style.display = 'inline-block';
+    b.textContent = '\u2b07 \ubc84\uc804 \ud655\uc778';
+    b.title = '버전 자동 확인이 차단된 환경입니다. 누르면 다운로드 페이지가 열립니다 (현재 ver.' + local + ')';
+    b.dataset.folderOnly = '1';
+  }
+}
+
+// 업데이트 파일을 받아 「저장」과 같은 방식으로 위치를 골라 저장한다.
+// Gist API 로 파일 내용을 직접 읽는다. raw 주소는 CDN 캐시가 오래 남고 광고 차단기에
+// 걸리는 일도 있어, 버전 확인과 같은 경로(api.github.com)를 쓴다.
+async function downloadUpdate(){
+  const b = document.getElementById('updBtn');
+  const label = b ? b.textContent : '';
+  // 버전을 확인하지 못한 상태에서는 곧바로 받게 하지 않고 페이지를 열어 직접 고르게 한다.
+  if(b && b.dataset.folderOnly === '1'){ window.open(UPDATE_PAGE_URL, '_blank'); return; }
+  if(b){ b.disabled = true; b.textContent = '\u2b07 \ubc1b\ub294 \uc911...'; }
+  try{
+    const r = await fetch(`https://api.github.com/gists/${FILE_GIST_ID}?t=${Date.now()}`, {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    const files = j.files || {};
+    const f = files[UPDATE_FILE];
+    if(!f) throw new Error('파일을 찾을 수 없습니다');
+    // 1MB 가 넘으면 Gist API 가 content 를 잘라 보내고 truncated 를 세운다.
+    // 그때는 raw_url 로 전체를 받아온다(GitHub 은 CORS 를 허용하므로 fetch 가능).
+    let text = f.content;
+    if(f.truncated || !text){
+      const r2 = await fetch(f.raw_url, {cache:'no-store'});
+      if(!r2.ok) throw new Error('raw HTTP ' + r2.status);
+      text = await r2.text();
+    }
+    const blob = new Blob([text], {type:'text/html'});
+    // 파일명에는 버전을 붙이지 않는다. 기존 파일을 그대로 덮어써서 쓰는 사용 방식이라,
+    // 버전이 붙으면 mockup_builder(1).html 처럼 사본이 쌓이고 어느 것이 최신인지 헷갈린다.
+    // 현재 버전은 파일 안(좌측 하단 ver 표기)에 이미 들어 있다.
+    await saveBlob(blob, UPDATE_FILE, 'HTML 파일', 'text/html', '.html');
+  }catch(e){
+    // 네트워크 차단·광고 차단기 등으로 실패하면 Gist 페이지를 열어 직접 받게 한다.
+    mbAlert('자동 다운로드에 실패했습니다. 열리는 페이지에서 직접 받아주세요.\n(' + e.message + ')');
+    window.open(UPDATE_PAGE_URL, '_blank');
+  }finally{
+    if(b){ b.disabled = false; b.textContent = label; }
+  }
+}
+
+// ============================================================================
+// ☁ 계정(회원가입/로그인/로그아웃) + 클라우드 저장/열기 + 공유
+// ----------------------------------------------------------------------------
+// 처음엔 Supabase Auth(GoTrue)로 만들었으나, 이 프로그램은 사내에서 가볍게 쓰는 용도라 그정도
+// 보안 장치가 과했고(이메일 형식 검증에 계속 걸리기도 했다) 아이디/비밀번호만 다루는 아주 단순한
+// 방식으로 바꿨다. mb_users 테이블에 아이디·비밀번호(해시)를 직접 저장하고, 로그인 성공 여부만
+// 클라이언트가 판단해 세션(로그인한 사람의 id/username)을 localStorage에 둔다.
+// 주의: 이 방식은 실제 서버 인증(예: auth.uid())이 없으므로, "본인만 수정 가능" 같은 규칙은 DB가
+// 강제하는 게 아니라 앱 화면 수준의 약속일 뿐이다 - 가벼운 사내용으로 쓰기로 하고 선택한 트레이드오프.
+// 비밀번호는 최소한 평문으로 저장/전송하지 않도록 SHA-256으로 해시하고, mb_users 테이블 자체는
+// RLS로 직접 조회를 막아(해시값이 통째로 노출되지 않도록) 로그인/중복확인은 DB 함수(RPC)로만 하게 했다.
+// ============================================================================
+const MB_SUPABASE_URL = 'https://jflfqxrfdjdtsxzqwpkf.supabase.co';
+const MB_SUPABASE_KEY = 'sb_publishable_rwEALrEkpDBQa6pJy7ovlw_MJ9LXE6z'; // 접속로그와 같은 publishable 키
+const MB_AUTH_KEY = 'mb_auth_session';
+
+function mbGetSession(){ try{ return JSON.parse(localStorage.getItem(MB_AUTH_KEY)||'null'); }catch(e){ return null; } }
+function mbSetSession(s){ try{ if(s) localStorage.setItem(MB_AUTH_KEY, JSON.stringify(s)); else localStorage.removeItem(MB_AUTH_KEY); }catch(e){} }
+function mbCurrentUsername(){ const s=mbGetSession(); return s?s.username:null; }
+// mb_users.auth_yn(목업빌더에서는 관리 못 하는, DB에서 직접 관리하는 컬럼)이 'Y'인지를 매번
+// 서버에 다시 물어본다 - 로그인 직후, 그리고 「목업관리」를 누르는 순간에도 한 번 더 확인해서,
+// 클라이언트에 남아있는 값만 믿고 관리자 화면을 열어주는 일이 없게 한다.
+let mbIsAdmin=false;
+async function mbCheckAdmin(userId){
+  if(!userId) return false;
+  try{
+    const r=await mbRestFetch('/rpc/mb_check_admin',{method:'POST',body:JSON.stringify({p_user_id:userId})});
+    return r===true || (Array.isArray(r)&&r[0]===true);
+  }catch(e){ return false; }
+}
+
+// PostgREST(테이블/함수) 얇은 래퍼 - 실제 로그인 토큰이 없으므로 매 요청 항상 anon publishable
+// 키만 사용한다. 무엇을 허용할지는 전부 각 테이블의 RLS 정책(아래 SQL)이 결정한다.
+async function mbRestFetch(path,opts){
+  const res=await fetch(`${MB_SUPABASE_URL}/rest/v1${path}`, Object.assign({},opts,{
+    headers:Object.assign({'apikey':MB_SUPABASE_KEY,'Authorization':`Bearer ${MB_SUPABASE_KEY}`,'Content-Type':'application/json','Prefer':(opts&&opts.prefer)||'return=representation'}, (opts&&opts.headers)||{})
+  }));
+  if(res.status===204) return null;
+  const json=await res.json().catch(()=>null);
+  if(!res.ok){ throw new Error((json&&(json.message||json.error))||`요청 실패(${res.status})`); }
+  return json;
+}
+// 비밀번호를 평문으로 저장/전송하지 않기 위한 최소한의 조치(SHA-256, 솔트 없음 - 가벼운 용도 기준).
+// crypto.subtle은 https 또는 file:// 같은 "보안 컨텍스트"에서만 쓸 수 있다(대부분의 브라우저에서
+// 로컬 파일도 여기 해당한다).
+async function mbHashPassword(pw){
+  const bytes=new TextEncoder().encode(String(pw||''));
+  const digest=await crypto.subtle.digest('SHA-256',bytes);
+  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function mbCheckUsernameTaken(username){
+  try{
+    const rows=await mbRestFetch('/rpc/mb_username_exists',{method:'POST',body:JSON.stringify({p_username:username})});
+    return rows===true || (Array.isArray(rows)&&rows[0]===true);
+  }catch(e){ return false; } // 조회 자체가 실패해도 가입을 막지 않는다 - 최종적으로는 DB의 unique 제약이 막아준다
+}
+async function mbLogAuthEvent(eventType,userId,username){
+  try{ await mbRestFetch('/auth_logs',{method:'POST',body:JSON.stringify({event_type:eventType,user_id:userId||null,username:username||null}),prefer:'return=minimal'}); }
+  catch(e){ /* 로그 실패가 로그인/가입 자체를 막으면 안 된다 */ }
+}
+async function mbSignup(username,password,note){
+  const password_hash=await mbHashPassword(password);
+  // mb_users는 비밀번호 해시 보호를 위해 일부러 SELECT 정책을 만들지 않았다. INSERT 후 그 행을
+  // 되돌려 받으려면(RETURNING) Postgres가 SELECT 권한까지 확인하는데, 그 권한이 없어서 "new row
+  // violates row-level security policy"가 난다 - INSERT 자체가 아니라 이 RETURNING 때문. 아이디를
+  // DB가 생성해서 돌려주게 하는 대신 브라우저에서 미리 만들어 그대로 넣으면(Prefer: return=minimal
+  // 로 되돌려받지 않음) 이 문제를 완전히 피할 수 있다.
+  const id=crypto.randomUUID();
+  try{ await mbRestFetch('/mb_users',{method:'POST',body:JSON.stringify({id,username,password_hash,note:note||null}),prefer:'return=minimal'}); }
+  catch(e){ throw new Error(/duplicate|unique/i.test(e.message)?'이미 사용 중인 아이디입니다.':e.message); }
+  const session={id,username};
+  mbSetSession(session);
+  await mbLogAuthEvent('signup',session.id,username);
+  return session;
+}
+async function mbLogin(username,password){
+  const password_hash=await mbHashPassword(password);
+  let rows;
+  try{ rows=await mbRestFetch('/rpc/mb_login',{method:'POST',body:JSON.stringify({p_username:username,p_password_hash:password_hash})}); }
+  catch(e){ rows=null; }
+  const row=rows&&rows[0];
+  if(!row){ await mbLogAuthEvent('login_failed',null,username); throw new Error('아이디 또는 비밀번호가 올바르지 않습니다.'); }
+  const session={id:row.id,username:row.username};
+  mbSetSession(session);
+  await mbLogAuthEvent('login',session.id,session.username);
+  mbIsAdmin=await mbCheckAdmin(session.id);
+  return session;
+}
+async function mbLogout(){
+  const s=mbGetSession();
+  if(s) await mbLogAuthEvent('logout',s.id,s.username);
+  mbSetSession(null);
+  mbIsAdmin=false;
+  mbUpdateAccountUI();
+}
+
+// ============================================================================
+// ---- 임시 작업 목록 (DB 백업 자동저장, 로그인 상태에서만) ----
+// 목적: 최종 저장(mbCloudDoSave)을 하지 않은 채 창을 닫거나 PC가 꺼지는 등의 사고에 대비한
+// 안전장치. 기존 로컬(localStorage) autosave와는 별개로 동작하며, 로그인하지 않은 사람에게는
+// 전혀 관여하지 않는다(mbSyncDraft/openDraftList 등 모든 진입점에서 mbGetSession()이 없으면
+// 그대로 조용히 빠져나간다).
+//
+// "세션 키"(mb_draft_session_key, localStorage)로 "지금 하고 있는 이 작업"을 구분한다 - 같은
+// 세션 동안 자동저장이 여러 번 일어나도 DB에는 한 행만 계속 갱신되고(행이 쌓이지 않음), 다음
+// 두 시점에만 새 세션 키로 바뀌어 다음 자동저장부터 새 행이 생긴다:
+//   1) 최종 저장(mbCloudDoSave) 성공 직후 - 그 시점의 임시 작업 행은 지우고, 이어서 계속
+//      수정하면("저장 후 다시 수정하면") 그 다음 자동저장이 새 행을 만들어 목록에 다시 나타난다.
+//   2) 클라우드에서 다른 파일을 열 때(mbCloudDoOpen) - 완전히 다른 작업을 시작하는 것이므로.
+// 세션 키 자체는 새로고침/재시작에도 남아 있어서(localStorage), 작업 중 사고가 나 새로 열어도
+// 같은 행을 이어서 갱신한다(사고 한 번에 여러 행이 쌓이지 않는다).
+function mbGetDraftSessionKey(){
+  if(window.__mbDraftKey) return window.__mbDraftKey;
+  let k=null;
+  try{ k=localStorage.getItem('mb_draft_session_key'); }catch(e){}
+  if(!k){ k=crypto.randomUUID(); try{ localStorage.setItem('mb_draft_session_key',k); }catch(e){} }
+  window.__mbDraftKey=k;
+  return k;
+}
+function mbResetDraftSessionKey(){
+  window.__mbDraftKey=crypto.randomUUID();
+  try{ localStorage.setItem('mb_draft_session_key',window.__mbDraftKey); }catch(e){}
+}
+// 임시 작업 목록에서 기존 항목을 열 때 쓴다(mbResetDraftSessionKey처럼 새 키를 만드는 게 아니라,
+// 그 항목이 원래 쓰던 키를 그대로 이어받는다) - 그래야 이어서 수정할 때 엉뚱한 다른 작업의 행에
+// 덮어쓰는 게 아니라 방금 연 그 항목이 계속 갱신된다.
+function mbSetDraftSessionKey(key){
+  window.__mbDraftKey=key;
+  try{ localStorage.setItem('mb_draft_session_key',key); }catch(e){}
+}
+// 목록에 보여줄 짧은 제목 - 화면 안에서 글자가 있는 첫 컴포넌트를 그대로 쓰고, 없으면 안내 문구.
+function mbDraftTitle(){
+  const withText=comps.find(c=>c.text&&String(c.text).trim());
+  return withText ? String(withText.text).trim().slice(0,30) : '(제목 없는 화면)';
+}
+// 새 임시 작업 행을 추가하기 전에, 이 사용자의 한도(관리자는 무제한, 그 외에는
+// mockup_draft_limits.max_drafts - 행이 없으면 기본 30)를 넘지 않도록 가장 오래된 것부터 지운다.
+async function mbDraftEnforceQuota(ownerId){
+  if(mbIsAdmin) return;
+  let max=30;
+  try{
+    const lim=await mbRestFetch(`/mockup_draft_limits?owner_id=eq.${ownerId}&select=max_drafts`);
+    if(lim&&lim.length) max=lim[0].max_drafts;
+  }catch(e){ /* 한도 조회 실패 시 기본값(30)으로 계속 진행 */ }
+  try{
+    const rows=await mbRestFetch(`/mockup_drafts?owner_id=eq.${ownerId}&select=id&order=updated_at.asc`)||[];
+    // 지금 새로 하나 더 추가할 것이므로, 그걸 더했을 때 한도를 넘는 만큼 오래된 것부터 지운다.
+    const over=rows.length-max+1;
+    for(let i=0;i<over;i++){ await mbRestFetch(`/mockup_drafts?id=eq.${rows[i].id}`,{method:'DELETE',prefer:'return=minimal'}); }
+  }catch(e){ /* 정리 실패해도 새 임시저장 자체는 계속 진행 */ }
+}
+// 로컬 autosave(doAutosave)에서 매번 함께 호출된다 - 로그인 상태가 아니면 아무 일도 하지 않는다.
+// drawCanvas()의 즉시-저장 조건(마지막 자동저장 후 일정 시간 경과)이 render() 도중 스스로
+// 발동할 수 있어서, 같은 순간 다른 곳에서도 이 함수가 또 호출되면 "있는지 확인 후 없으면 새로
+// 만든다" 두 호출이 서로의 확인 결과를 보기 전에 동시에 진행되어 행이 중복 생성될 수 있다 -
+// mbDraftSyncChain으로 모든 호출을 한 줄로 세워, 반드시 이전 호출이 완전히 끝난 뒤에야 다음
+// 호출의 "있는지 확인"이 시작되게 한다.
+let mbDraftSyncChain=Promise.resolve();
+function mbSyncDraft(){
+  mbDraftSyncChain=mbDraftSyncChain.then(mbSyncDraftNow).catch(()=>{});
+  return mbDraftSyncChain;
+}
+async function mbSyncDraftNow(){
+  const s=mbGetSession(); if(!s) return;
+  if(!comps.length) return; // 빈 캔버스는 임시저장할 이유가 없다
+  const key=mbGetDraftSessionKey();
+  const payload={owner_id:s.id, session_key:key, mode:mbCurrentMode(), title:mbDraftTitle(), data:mbBuildSaveData(), updated_at:new Date().toISOString()};
+  try{
+    const existing=await mbRestFetch(`/mockup_drafts?owner_id=eq.${s.id}&session_key=eq.${key}&select=id`);
+    if(existing&&existing.length){
+      await mbRestFetch(`/mockup_drafts?id=eq.${existing[0].id}`,{method:'PATCH',body:JSON.stringify(payload),prefer:'return=minimal'});
+    }else{
+      await mbDraftEnforceQuota(s.id);
+      await mbRestFetch('/mockup_drafts',{method:'POST',body:JSON.stringify(payload),prefer:'return=minimal'});
+    }
+  }catch(e){ /* 임시저장 실패는 조용히 무시 - 로컬 autosave가 이미 기본 안전장치 역할을 한다 */ }
+}
+// 최종 저장(mbCloudDoSave) 성공 직후 호출 - "저장하면 목록에서 삭제"에 해당.
+async function mbDraftDeleteCurrent(){
+  const s=mbGetSession(); if(!s) return;
+  try{ await mbRestFetch(`/mockup_drafts?owner_id=eq.${s.id}&session_key=eq.${mbGetDraftSessionKey()}`,{method:'DELETE',prefer:'return=minimal'}); }
+  catch(e){}
+}
+function mbDraftAgo(iso){
+  const m=Math.round((Date.now()-new Date(iso).getTime())/60000);
+  if(m<1) return '방금 전';
+  if(m<60) return m+'분 전';
+  const h=Math.round(m/60);
+  return h<24? h+'시간 전' : Math.round(h/24)+'일 전';
+}
+async function openDraftList(){
+  const s=mbGetSession(); if(!s){ openLogin(); return; }
+  document.getElementById('draftListBody').innerHTML='<div class="draft-empty">불러오는 중...</div>';
+  document.getElementById('draftListBg').classList.add('on');
+  let rows=[];
+  try{ rows=await mbRestFetch(`/mockup_drafts?owner_id=eq.${s.id}&mode=eq.${mbCurrentMode()}&order=updated_at.desc&select=id,title,updated_at,session_key`)||[]; }
+  catch(e){ document.getElementById('draftListBody').innerHTML=`<div class="draft-empty">불러오지 못했습니다.<br>${esc(e.message)}</div>`; return; }
+  mbDraftRenderList(rows);
+}
+function mbDraftRenderList(rows){
+  const body=document.getElementById('draftListBody');
+  if(!rows.length){ body.innerHTML='<div class="draft-empty">저장하지 않은 임시 작업이 없습니다.</div>'; return; }
+  // 지금 화면에 열려 있는 작업이 이 목록의 어느 항목과 같은 것인지(같은 임시 작업 세션 키)
+  // 표시해준다 - "현재 작업 중" 배지. 로그인 안 한 상태거나 세션 키가 아직 없으면(드물지만)
+  // 그냥 아무 항목도 표시하지 않는다.
+  const curKey=mbGetDraftSessionKey();
+  body.innerHTML=rows.map(r=>{
+    const isCurrent=r.session_key&&r.session_key===curKey;
+    return `
+    <div class="draft-row${isCurrent?' draft-row-current':''}">
+      <div class="draft-row-main" onclick="mbDraftOpen('${r.id}')">
+        <div class="draft-row-title">${esc(r.title||'(제목 없는 화면)')}${isCurrent?' <span class="draft-current-badge">현재 작업 중</span>':''}</div>
+        <div class="draft-row-time">${mbDraftAgo(r.updated_at)}</div>
+      </div>
+      <button type="button" class="draft-row-del" onclick="event.stopPropagation();mbDraftDelete('${r.id}')">삭제</button>
+    </div>`;
+  }).join('');
+}
+function closeDraftList(){ document.getElementById('draftListBg').classList.remove('on'); }
+async function mbDraftOpen(id){
+  mbConfirm('이 임시 작업을 불러오면 지금 화면의 작업 내용은 사라집니다.\n계속하시겠습니까?', async function(){
+    try{
+      const rows=await mbRestFetch(`/mockup_drafts?id=eq.${id}&select=data,session_key`);
+      const row=rows&&rows[0]; if(!row) throw new Error('찾을 수 없습니다.');
+      closeDraftList();
+      // mbCloudApplyData()가 render()를 호출해 그 자리에서 자동저장이 바로 실행될 수도 있으므로
+      // (mbCloudDoOpen의 originId/세션 키 처리와 같은 이유), 이 항목의 세션 키를 반드시 먼저
+      // 이어받은 뒤에 데이터를 적용한다 - 순서가 바뀌면 지금 열려는 이 내용이 엉뚱하게 이전
+      // 세션의 임시저장 행에 덮어써진다.
+      if(row.session_key) mbSetDraftSessionKey(row.session_key);
+      mbCloudApplyData(row.data);
+    }catch(e){ mbAlert('열지 못했습니다.\n\n'+e.message); }
+  });
+}
+async function mbDraftDelete(id){
+  mbConfirm('이 임시 작업을 목록에서 삭제하시겠습니까?', async function(){
+    try{ await mbRestFetch(`/mockup_drafts?id=eq.${id}`,{method:'DELETE',prefer:'return=minimal'}); openDraftList(); }
+    catch(e){ mbAlert('삭제하지 못했습니다.\n\n'+e.message); }
+  });
+}
+
+// ============================================================================
+// ---- 목업관리(관리자 전용) ----
+// mb_users.auth_yn='Y'인 사람에게만 계정 메뉴에 노출되는 화면. 조회 전용(입력·수정·삭제 없음)
+// 이고, 접속 로그/회원 정보/Feedback 세 구분을 클라우드 열기의 「내 파일 | 공유파일」 탭 구조와
+// 같은 방식(cl-tabs)으로 나눈다. mb_users(비밀번호 해시 포함)·auth_logs·mockup_access_log·
+// mb_feedback 전부 anon 키로는 원래 SELECT가 막혀 있으므로(RLS), 아래 전용 RPC(mb_admin_list_*)를
+// 통해서만 읽어온다 - 그 RPC들은 매번 "이 p_admin_id가 진짜 관리자인가"를 자기 안에서 다시
+// 확인하고 나서야 데이터를 내어준다(클라이언트가 mbIsAdmin=true라고 우겨도 소용없다).
+// ----------------------------------------------------------------------------
+const mbAdmin={
+  tab:'logs', logsFilter:'all',
+  authLogs:[], authLogsLoaded:false, authLogsHasMore:true,
+  accessLog:[], accessLogLoaded:false, accessLogHasMore:true,
+  logsQuery:'', logsSort:'recent', logsLimit:100, logsLoadingMore:false,
+  statRaw:[], statLoaded:false, statLoading:false, statQuery:'', statSort:'recent',
+  users:[], usersLoaded:false, usersQuery:'', usersSort:'created_desc', usersLimit:100, usersHasMore:true, usersLoadingMore:false, draftLimits:{},
+  feedback:[], feedbackLoaded:false, fbQuery:'', fbSort:'recent', fbExpanded:new Set(), fbLimit:100, fbHasMore:true, fbLoadingMore:false,
+  usage:null, usageLoaded:false, usageTotal:0,
+  userUsageLoaded:false, userBytes:{}, userBytesTotal:0,
+  promptMode: document.body.classList.contains('skin-classic')?'Fat':'Thin',
+  promptCache:{}, promptLoaded:{}, promptSaving:false, promptDirty:false
+};
+const MB_ADMIN_PAGE_SIZE=100;
+// 일자별 통계 탭은 무한스크롤 창(logsLimit) 안의 일부만으로는 정확한 건수를 낼 수 없으므로,
+// 페이지 접속 기록 전체를 한 번에 별도로 받아와(statRaw) 클라이언트에서 날짜+IP로 집계한다.
+// 탭/필터 전환 때마다 다시 받지 않도록 statLoaded 플래그로 최초 1회만 로드한다.
+const MB_ADMIN_STAT_LIMIT=20000;
+async function mbAdminListUsers(limit){
+  const s=mbGetSession();
+  return await mbRestFetch('/rpc/mb_admin_list_users',{method:'POST',body:JSON.stringify({p_admin_id:s.id,p_limit:limit})});
+}
+async function mbAdminListAuthLogs(limit){
+  const s=mbGetSession();
+  return await mbRestFetch('/rpc/mb_admin_list_auth_logs',{method:'POST',body:JSON.stringify({p_admin_id:s.id,p_limit:limit})});
+}
+async function mbAdminListAccessLog(limit){
+  const s=mbGetSession();
+  return await mbRestFetch('/rpc/mb_admin_list_access_log',{method:'POST',body:JSON.stringify({p_admin_id:s.id,p_limit:limit})});
+}
+async function mbAdminListFeedback(limit){
+  const s=mbGetSession();
+  return await mbRestFetch('/rpc/mb_admin_list_feedback',{method:'POST',body:JSON.stringify({p_admin_id:s.id,p_limit:limit})});
+}
+async function mbAdminListStorageUsage(){
+  const s=mbGetSession();
+  return await mbRestFetch('/rpc/mb_admin_storage_usage',{method:'POST',body:JSON.stringify({p_admin_id:s.id})});
+}
+async function mbAdminGetDbTotalSize(){
+  const s=mbGetSession();
+  const r=await mbRestFetch('/rpc/mb_admin_db_total_size',{method:'POST',body:JSON.stringify({p_admin_id:s.id})});
+  return typeof r==='number'?r:(Array.isArray(r)?r[0]:0)||0;
+}
+// AI프롬프트 조회는 관리자 전용이 아니다(질문만 복사 등 실제 사용 경로는 로그인 여부와 무관하게
+// 모든 사용자가 타는다) - 그래서 mb_get_prompt는 admin 검사 없는 공개 RPC. 반대로 수정은
+// mb_admin_update_prompt가 내부에서 auth_yn을 다시 확인해 관리자만 가능하다.
+async function mbAdminGetPrompt(mode){
+  return await mbRestFetch('/rpc/mb_get_prompt',{method:'POST',body:JSON.stringify({p_mode:mode})});
+}
+async function mbAdminSavePrompt(mode,content){
+  const s=mbGetSession();
+  return await mbRestFetch('/rpc/mb_admin_update_prompt',{method:'POST',body:JSON.stringify({p_admin_id:s.id,p_mode:mode,p_content:content})});
+}
+async function openAdminPanel(){
+  const s=mbGetSession();
+  if(!s){ openLogin(); return; }
+  // 메뉴에 떠 있던 상태만 믿지 않고, 여는 바로 그 순간 서버에 다시 한번 확인한다.
+  const ok=await mbCheckAdmin(s.id);
+  mbIsAdmin=ok; // 그 사이 권한이 내려갔으면 다음 메뉴 렌더부터도 항목이 사라지도록 최신값 반영
+  if(!ok){ mbAlert('관리자 권한이 없습니다.'); mbUpdateAccountUI(); return; }
+  Object.assign(mbAdmin,{ tab:'logs', logsFilter:'all',
+    authLogs:[], authLogsLoaded:false, authLogsHasMore:true,
+    accessLog:[], accessLogLoaded:false, accessLogHasMore:true,
+    logsQuery:'', logsSort:'recent', logsLimit:100, logsLoadingMore:false,
+    statRaw:[], statLoaded:false, statLoading:false, statQuery:'', statSort:'recent',
+    users:[], usersLoaded:false, usersQuery:'', usersSort:'created_desc', usersLimit:100, usersHasMore:true, usersLoadingMore:false, draftLimits:{},
+    feedback:[], feedbackLoaded:false, fbQuery:'', fbSort:'recent', fbExpanded:new Set(), fbLimit:100, fbHasMore:true, fbLoadingMore:false,
+    usage:null, usageLoaded:false, usageTotal:0,
+  userUsageLoaded:false, userBytes:{}, userBytesTotal:0,
+    promptMode: document.body.classList.contains('skin-classic')?'Fat':'Thin',
+    promptCache:{}, promptLoaded:{}, promptSaving:false, promptDirty:false });
+  document.getElementById('adminBg').classList.add('on');
+  mbAdminApplySavedModalSize();
+  mbAdminRender();
+  mbAdminEnsureLoaded();
+}
+function closeAdminPanel(){ document.getElementById('adminBg').classList.remove('on'); }
+function mbAdminApplySavedModalSize(){
+  const modal=document.getElementById('adminModal'); if(!modal) return;
+  try{
+    const w=localStorage.getItem('mb_admin_modal_w'), h=localStorage.getItem('mb_admin_modal_h');
+    if(w) modal.style.width=w;
+    if(h) modal.style.height=h;
+  }catch(e){}
+}
+let mbAdminResizeDrag=null;
+function mbAdminResizeStart(e){
+  e.preventDefault();
+  const modal=document.getElementById('adminModal'); if(!modal) return;
+  const rect=modal.getBoundingClientRect();
+  mbAdminResizeDrag={startX:e.clientX,startY:e.clientY,startW:rect.width,startH:rect.height};
+  document.addEventListener('mousemove',mbAdminResizeMove);
+  document.addEventListener('mouseup',mbAdminResizeEnd);
+}
+function mbAdminResizeMove(e){
+  if(!mbAdminResizeDrag) return;
+  const modal=document.getElementById('adminModal'); if(!modal) return;
+  const w=Math.max(640,Math.min(window.innerWidth*0.97,mbAdminResizeDrag.startW+(e.clientX-mbAdminResizeDrag.startX)));
+  const h=Math.max(420,Math.min(window.innerHeight*0.92,mbAdminResizeDrag.startH+(e.clientY-mbAdminResizeDrag.startY)));
+  modal.style.width=w+'px';
+  modal.style.height=h+'px';
+}
+function mbAdminResizeEnd(){
+  mbAdminResizeDrag=null;
+  document.removeEventListener('mousemove',mbAdminResizeMove);
+  document.removeEventListener('mouseup',mbAdminResizeEnd);
+  const modal=document.getElementById('adminModal'); if(!modal) return;
+  try{ localStorage.setItem('mb_admin_modal_w',modal.style.width); localStorage.setItem('mb_admin_modal_h',modal.style.height); }catch(e){}
+}
+function mbAdminRender(){
+  const body=document.getElementById('adminBody'); if(!body) return;
+  const tabs=`<div class="cl-tabs"><div class="cl-tabs-group">
+    <div class="cl-tab ${mbAdmin.tab==='logs'?'on':''}" onclick="mbAdminSwitchTab('logs')">📊 접속 로그</div>
+    <div class="cl-tab ${mbAdmin.tab==='users'?'on':''}" onclick="mbAdminSwitchTab('users')">👤 회원 정보</div>
+    <div class="cl-tab ${mbAdmin.tab==='feedback'?'on':''}" onclick="mbAdminSwitchTab('feedback')">💬 Feedback</div>
+    <div class="cl-tab ${mbAdmin.tab==='usage'?'on':''}" onclick="mbAdminSwitchTab('usage')">💾 사용량</div>
+    <div class="cl-tab ${mbAdmin.tab==='prompts'?'on':''}" onclick="mbAdminSwitchTab('prompts')">🤖 AI프롬프트</div>
+  </div></div>`;
+  let content;
+  if(mbAdmin.tab==='logs') content=mbAdminRenderLogs();
+  else if(mbAdmin.tab==='users') content=mbAdminRenderUsers();
+  else if(mbAdmin.tab==='feedback') content=mbAdminRenderFeedback();
+  else if(mbAdmin.tab==='usage') content=mbAdminRenderUsage();
+  else content=mbAdminRenderPrompts();
+  body.innerHTML=tabs+content;
+  if(mbAdmin.tab==='prompts') mbAdminFillPromptTextarea();
+}
+function mbAdminSwitchTab(t){ mbAdmin.tab=t; mbAdminRender(); mbAdminEnsureLoaded(); }
+// 회원 목록+임시저장 한도를 불러온다. 「회원 정보」 탭과 「사용량」 탭(사용자별 사용량 패널)이
+// 똑같이 이 데이터가 필요하므로 한 곳으로 뽑아 공유한다 - 둘 중 어느 쪽을 먼저 열어도 한 번만
+// 받아오고, usersLoaded 플래그로 재요청을 막는다.
+async function mbAdminEnsureUsersLoaded(){
+  if(mbAdmin.usersLoaded) return;
+  try{ const r=await mbAdminListUsers(mbAdmin.usersLimit)||[]; mbAdmin.users=r; mbAdmin.usersHasMore=r.length===mbAdmin.usersLimit; }
+  catch(e){ mbAdmin.users=[]; mbAdmin.usersHasMore=false; }
+  // 임시 작업 목록 한도(mockup_draft_limits)는 회원 목록 RPC에 없으므로 따로 한 번에 불러와
+  // owner_id -> max_drafts 표로 만들어둔다(행이 없는 사용자는 기본값 30으로 표시).
+  try{ const lim=await mbRestFetch('/mockup_draft_limits?select=owner_id,max_drafts')||[]; mbAdmin.draftLimits={}; lim.forEach(r=>{ mbAdmin.draftLimits[r.owner_id]=r.max_drafts; }); }
+  catch(e){ mbAdmin.draftLimits={}; }
+  mbAdmin.usersLoaded=true;
+}
+// 사용자별 "실제 용량"(KB/MB) - 한도(개수)와는 무관하게, 그 사용자가 mockups(저장한 목업)와
+// mockup_drafts(임시 작업)에 실제로 얼마나 바이트를 차지하고 있는지를 잰다. 두 테이블 모두
+// mockup_draft_limits와 같은 수준으로 RLS가 열려 있어(관리자 RPC 없이) owner_id 필터 없이 전체를
+// 받아올 수 있다 - 어차피 두 테이블을 합쳐도 사용량 탭의 테이블별 용량 목록 기준 수백 KB
+// 수준이라 전체를 내려받아 클라이언트에서 재는 것으로 충분하다. 바이트 수는 실제로 저장되는
+// JSON 문자열(+목업의 SVG 썸네일)을 UTF-8로 인코딩한 길이로 근사한다(TextEncoder) - Postgres
+// 저장소의 인덱스·페이지 오버헤드까지 정확히 맞추는 값은 아니지만, 사용자 간 상대 비교에는
+// 충분하다.
+async function mbAdminLoadUserBytes(){
+  const bytesOf=v=>{ try{ return new TextEncoder().encode(typeof v==='string'?v:JSON.stringify(v||'')).length; }catch(e){ return 0; } };
+  const totals={};
+  try{
+    const [mockups,drafts]=await Promise.all([
+      mbRestFetch('/mockups?select=owner_id,data,thumbnail'),
+      mbRestFetch('/mockup_drafts?select=owner_id,data')
+    ]);
+    (mockups||[]).forEach(r=>{ totals[r.owner_id]=(totals[r.owner_id]||0)+bytesOf(r.data)+bytesOf(r.thumbnail); });
+    (drafts||[]).forEach(r=>{ totals[r.owner_id]=(totals[r.owner_id]||0)+bytesOf(r.data); });
+    mbAdmin.userBytes=totals;
+    mbAdmin.userBytesTotal=Object.values(totals).reduce((s,v)=>s+v,0);
+  }catch(e){ mbAdmin.userBytes={}; mbAdmin.userBytesTotal=0; }
+  mbAdmin.userUsageLoaded=true;
+}
+async function mbAdminEnsureLoaded(){
+  if(mbAdmin.tab==='logs'){
+    // 필터와 상관없이 두 로그를 항상 같이 불러온다 - "전체"에서 시간순으로 합쳐 보여줘야 하므로.
+    const tasks=[];
+    if(!mbAdmin.authLogsLoaded) tasks.push((async()=>{
+      try{ const r=await mbAdminListAuthLogs(mbAdmin.logsLimit)||[]; mbAdmin.authLogs=r; mbAdmin.authLogsHasMore=r.length===mbAdmin.logsLimit; }
+      catch(e){ mbAdmin.authLogs=[]; mbAdmin.authLogsHasMore=false; }
+      mbAdmin.authLogsLoaded=true;
+    })());
+    if(!mbAdmin.accessLogLoaded) tasks.push((async()=>{
+      try{ const r=await mbAdminListAccessLog(mbAdmin.logsLimit)||[]; mbAdmin.accessLog=r; mbAdmin.accessLogHasMore=r.length===mbAdmin.logsLimit; }
+      catch(e){ mbAdmin.accessLog=[]; mbAdmin.accessLogHasMore=false; }
+      mbAdmin.accessLogLoaded=true;
+    })());
+    if(tasks.length){ await Promise.all(tasks); if(mbAdmin.tab==='logs') mbAdminRender(); }
+  } else if(mbAdmin.tab==='users' && !mbAdmin.usersLoaded){
+    await mbAdminEnsureUsersLoaded();
+    if(mbAdmin.tab==='users') mbAdminRender();
+  } else if(mbAdmin.tab==='feedback' && !mbAdmin.feedbackLoaded){
+    try{ const r=await mbAdminListFeedback(mbAdmin.fbLimit)||[]; mbAdmin.feedback=r; mbAdmin.fbHasMore=r.length===mbAdmin.fbLimit; }
+    catch(e){ mbAdmin.feedback=[]; mbAdmin.fbHasMore=false; }
+    mbAdmin.feedbackLoaded=true; if(mbAdmin.tab==='feedback') mbAdminRender();
+  } else if(mbAdmin.tab==='usage'){
+    // 사용량 탭은 세 가지를 함께 채운다 - 테이블별 용량(usage), 사용자 목록+임시저장 한도
+    // (users/draftLimits, 회원 정보 탭과 공유), 사용자별 실제 저장 용량(userBytes, KB/MB).
+    // 이미 불러온 것은 각자의 플래그로 건너뛰므로, 다른 탭에서 먼저 봤다면 다시 받지 않는다.
+    const tasks=[];
+    if(!mbAdmin.usageLoaded) tasks.push((async()=>{
+      try{
+        const [rows,total]=await Promise.all([mbAdminListStorageUsage(),mbAdminGetDbTotalSize()]);
+        mbAdmin.usage=rows||[]; mbAdmin.usageTotal=total||0;
+      }catch(e){ mbAdmin.usage=[]; mbAdmin.usageTotal=0; }
+      mbAdmin.usageLoaded=true;
+    })());
+    if(!mbAdmin.usersLoaded) tasks.push(mbAdminEnsureUsersLoaded());
+    if(!mbAdmin.userUsageLoaded) tasks.push(mbAdminLoadUserBytes());
+    if(tasks.length){ await Promise.all(tasks); if(mbAdmin.tab==='usage') mbAdminRender(); }
+  } else if(mbAdmin.tab==='prompts'){
+    const m=mbAdmin.promptMode;
+    if(!mbAdmin.promptLoaded[m]){
+      try{
+        const text=await mbAdminGetPrompt(m);
+        mbAdmin.promptCache[m]=typeof text==='string'?text:'';
+      }catch(e){ mbAdmin.promptCache[m]=''; }
+      mbAdmin.promptLoaded[m]=true;
+      if(mbAdmin.tab==='prompts'){ mbAdminRender(); }
+    }
+  }
+}
+function mbAdminLogsFilter(v){
+  mbAdmin.logsFilter=v;
+  // 검색창 placeholder·정렬 옵션이 필터마다 달라지므로(특히 일자별 통계) 결과 테이블만이 아니라
+  // 툴바까지 함께 다시 그린다.
+  mbAdminRender();
+}
+function mbAdminSearch(tabKey,v){
+  if(tabKey==='logs'){ if(mbAdmin.logsFilter==='stat') mbAdmin.statQuery=v; else mbAdmin.logsQuery=v; }
+  else if(tabKey==='users') mbAdmin.usersQuery=v;
+  else mbAdmin.fbQuery=v;
+  const el=document.getElementById('adm-'+tabKey+'-results');
+  if(el) el.innerHTML = tabKey==='logs'?mbAdminLogsRows():tabKey==='users'?mbAdminUsersRows():mbAdminFeedbackRows();
+}
+function mbAdminSort(tabKey,v){
+  if(tabKey==='logs'){ if(mbAdmin.logsFilter==='stat') mbAdmin.statSort=v; else mbAdmin.logsSort=v; }
+  else if(tabKey==='users') mbAdmin.usersSort=v;
+  else mbAdmin.fbSort=v;
+  const el=document.getElementById('adm-'+tabKey+'-results');
+  if(el) el.innerHTML = tabKey==='logs'?mbAdminLogsRows():tabKey==='users'?mbAdminUsersRows():mbAdminFeedbackRows();
+}
+// RPC가 한 번에 다 받아오는 게 아니라 매번 "지금까지 보여준 개수 + 100"만큼 다시 서버에 물어보는
+// 방식이다(offset 페이징 대신 이 방식을 쓴 이유: 접속 로그는 로그인 이력·페이지 접속 두 소스를
+// 시간순으로 섞어서 보여줘야 하는데, 두 소스를 각각 독립적으로 offset 페이징하면 경계에서
+// 병합 순서가 어긋날 수 있다 - 매번 "지금까지 필요한 총량"으로 다시 받아오면 이 문제가 아예
+// 생기지 않는다). 데이터가 아주 많아져도 이 조회 자체는 가벼운 정렬+LIMIT라 부담 없다.
+async function mbAdminLoadMore(tabKey){
+  if(tabKey==='logs'){
+    if(mbAdmin.logsFilter==='stat') return; // 일자별 통계는 전량을 한 번에 집계하므로 무한스크롤 추가 로드가 필요 없다
+    if(mbAdmin.logsLoadingMore || (!mbAdmin.authLogsHasMore && !mbAdmin.accessLogHasMore)) return;
+    mbAdmin.logsLoadingMore=true; mbAdmin.logsLimit+=MB_ADMIN_PAGE_SIZE;
+    mbAdminRenderKeepListScroll(tabKey);
+    const tasks=[];
+    if(mbAdmin.authLogsHasMore) tasks.push((async()=>{
+      try{ const r=await mbAdminListAuthLogs(mbAdmin.logsLimit)||[]; mbAdmin.authLogs=r; mbAdmin.authLogsHasMore=r.length===mbAdmin.logsLimit; }catch(e){}
+    })());
+    if(mbAdmin.accessLogHasMore) tasks.push((async()=>{
+      try{ const r=await mbAdminListAccessLog(mbAdmin.logsLimit)||[]; mbAdmin.accessLog=r; mbAdmin.accessLogHasMore=r.length===mbAdmin.logsLimit; }catch(e){}
+    })());
+    await Promise.all(tasks);
+    mbAdmin.logsLoadingMore=false;
+  } else if(tabKey==='users'){
+    if(mbAdmin.usersLoadingMore || !mbAdmin.usersHasMore) return;
+    mbAdmin.usersLoadingMore=true; mbAdmin.usersLimit+=MB_ADMIN_PAGE_SIZE;
+    mbAdminRenderKeepListScroll(tabKey);
+    try{ const r=await mbAdminListUsers(mbAdmin.usersLimit)||[]; mbAdmin.users=r; mbAdmin.usersHasMore=r.length===mbAdmin.usersLimit; }catch(e){}
+    mbAdmin.usersLoadingMore=false;
+  } else {
+    if(mbAdmin.fbLoadingMore || !mbAdmin.fbHasMore) return;
+    mbAdmin.fbLoadingMore=true; mbAdmin.fbLimit+=MB_ADMIN_PAGE_SIZE;
+    mbAdminRenderKeepListScroll(tabKey);
+    try{ const r=await mbAdminListFeedback(mbAdmin.fbLimit)||[]; mbAdmin.feedback=r; mbAdmin.fbHasMore=r.length===mbAdmin.fbLimit; }catch(e){}
+    mbAdmin.fbLoadingMore=false;
+  }
+  mbAdminRenderKeepListScroll(tabKey);
+}
+// 스크롤 위치를 유지한 채로 결과 영역만 다시 그린다("더 불러오는 중..." 표시 → 실제 새 행 반영).
+function mbAdminRenderKeepListScroll(tabKey){
+  const el=document.getElementById('adm-'+tabKey+'-results');
+  if(!el) return;
+  const top=el.scrollTop;
+  el.innerHTML = tabKey==='logs'?mbAdminLogsRows():tabKey==='users'?mbAdminUsersRows():mbAdminFeedbackRows();
+  el.scrollTop=top;
+}
+function mbAdminScrollCheck(e){
+  const el=e.target;
+  if(!el||!el.classList||!el.classList.contains('adm-table-wrap')) return;
+  if(el.scrollTop+el.clientHeight<el.scrollHeight-300) return;
+  if(el.id==='adm-logs-results') mbAdminLoadMore('logs');
+  else if(el.id==='adm-users-results') mbAdminLoadMore('users');
+  else if(el.id==='adm-feedback-results') mbAdminLoadMore('feedback');
+}
+document.addEventListener('scroll', mbAdminScrollCheck, true);
+// 검색 중일 때는(이미 받아온 창 안에서만 걸러 보여주는 것이므로) "더 있음" 안내를 굳이 달지
+// 않는다 - 검색어에 걸리는 게 지금 창 밖에도 있을 수 있어 정확한 개수를 알 수 없기 때문이다.
+function mbAdminMoreHint(hasMore,loadingMore,hasQuery){
+  if(loadingMore) return `<div class="cl-shared-loadmore">더 불러오는 중...</div>`;
+  if(hasMore && !hasQuery) return `<div class="cl-shared-loadmore">아래로 스크롤하면 더 불러옵니다</div>`;
+  return '';
+}
+const ADM_EVENT_LABEL={login:['로그인','#eaf6ef','#1a7a4c'],logout:['로그아웃','#eef1f4','#5f6c78'],signup:['가입','#eaf1fb','#2a5ea8'],login_failed:['로그인 실패','#fdecec','#c0392b'],page_access:['페이지 접속','#fff4e5','#a5650a']};
+function mbAdminRenderLogs(){
+  const f=mbAdmin.logsFilter;
+  if(f==='stat') mbAdminEnsureStatLoaded(); // 최초 진입 시 1회 백그라운드 로드(이미 로드됐으면 내부에서 바로 리턴)
+  const isStat=f==='stat';
+  return `<div class="cl-toolbar">
+    <div class="cl-lineage-seg" style="flex-shrink:0;">
+      <span class="${f==='all'?'on':''}" onclick="mbAdminLogsFilter('all')">전체</span>
+      <span class="${f==='auth'?'on':''}" onclick="mbAdminLogsFilter('auth')">로그인 이력</span>
+      <span class="${f==='access'?'on':''}" onclick="mbAdminLogsFilter('access')">페이지 접속</span>
+      <span class="${f==='stat'?'on':''}" onclick="mbAdminLogsFilter('stat')">일자별 통계</span>
+    </div>
+    <div class="cl-search-box" style="flex:1;max-width:none;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.3"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
+      <input type="text" placeholder="${isStat?'IP로 검색':'사용자명, IP, 위치, 환경으로 검색'}" value="${esc(isStat?mbAdmin.statQuery:mbAdmin.logsQuery)}" oninput="mbAdminSearch('logs',this.value)">
+    </div>
+    <select class="cl-sortselect" onchange="mbAdminSort('logs',this.value)">
+      ${isStat?`
+      <option value="recent" ${mbAdmin.statSort==='recent'?'selected':''}>최신순</option>
+      <option value="oldest" ${mbAdmin.statSort==='oldest'?'selected':''}>오래된순</option>
+      <option value="count_desc" ${mbAdmin.statSort==='count_desc'?'selected':''}>건수 많은순</option>
+      `:`
+      <option value="recent" ${mbAdmin.logsSort==='recent'?'selected':''}>최신순</option>
+      <option value="oldest" ${mbAdmin.logsSort==='oldest'?'selected':''}>오래된순</option>
+      `}
+    </select>
+  </div>
+  <div class="adm-table-wrap" id="adm-logs-results">${mbAdminLogsRows()}</div>`;
+}
+// 페이지 접속 기록(mockup_access_log) 전체를 날짜(YYYY-MM-DD, 로컬 기준)+IP로 묶어 건수를 센다.
+// mbAdminLogsRows()의 다른 필터(전체/로그인 이력/페이지 접속)와 별개로, 무한스크롤 창 크기에
+// 영향받지 않도록 statRaw(전량 별도 로드)만을 재료로 쓴다.
+async function mbAdminEnsureStatLoaded(){
+  if(mbAdmin.statLoaded||mbAdmin.statLoading) return;
+  mbAdmin.statLoading=true;
+  try{ mbAdmin.statRaw=await mbAdminListAccessLog(MB_ADMIN_STAT_LIMIT)||[]; }
+  catch(e){ mbAdmin.statRaw=[]; }
+  mbAdmin.statLoading=false; mbAdmin.statLoaded=true;
+  if(mbAdmin.tab==='logs'&&mbAdmin.logsFilter==='stat'){
+    const el=document.getElementById('adm-logs-results');
+    if(el) el.innerHTML=mbAdminLogsRows();
+  }
+}
+function mbAdminStatRows(){
+  if(mbAdmin.statLoading||!mbAdmin.statLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
+  const q=mbAdmin.statQuery.trim().toLowerCase();
+  const map=new Map();
+  mbAdmin.statRaw.forEach(r=>{
+    const ip=r.external_ip||'(알 수 없음)';
+    if(q && !ip.toLowerCase().includes(q)) return;
+    const d=new Date(r.created_at);
+    const p=n=>String(n).padStart(2,'0');
+    const date=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+    const key=date+'|'+ip;
+    map.set(key,(map.get(key)||0)+1);
+  });
+  if(!map.size) return `<div class="cl-empty">기록이 없습니다.</div>`;
+  const rows=Array.from(map.entries()).map(([key,count])=>{ const i=key.indexOf('|'); return {date:key.slice(0,i), ip:key.slice(i+1), count}; });
+  const s=mbAdmin.statSort;
+  rows.sort((a,b)=>{
+    if(s==='count_desc') return b.count-a.count || (a.date<b.date?1:-1);
+    if(s==='oldest') return a.date<b.date?-1:(a.date>b.date?1:0);
+    return a.date>b.date?-1:(a.date<b.date?1:0);
+  });
+  // 날짜가 넓은 표 안에 파묻혀 잘 안 보인다는 피드백 반영: (1) 표를 내용 너비에 맞게 좁혀서
+  // IP와 건수가 서로 가까이 붙어 보이게 하고, (2) 날짜가 바뀔 때마다 행 배경을 교차시켜
+  // 같은 날짜끼리 한눈에 묶여 보이게 한다.
+  let lastDate=null, band=false;
+  const trs=rows.map(r=>{
+    if(r.date!==lastDate){ band=!band; lastDate=r.date; }
+    const bg=band?'#f3f6fb':'#ffffff';
+    return `<tr style="background:${bg};"><td style="background:${bg};">${esc(r.date)}</td><td style="background:${bg};" class="adm-mono">${esc(r.ip)}</td><td style="background:${bg};"><span class="adm-badge" style="background:#eaf1fb;color:#2a5ea8;">${r.count}건</span></td></tr>`;
+  }).join('');
+  return `<table class="adm-table" style="width:auto;min-width:420px;table-layout:auto;"><thead><tr><th style="width:120px;">날짜</th><th style="width:160px;">IP</th><th style="width:90px;">접속 건수</th></tr></thead><tbody>${trs}</tbody></table>`;
+}
+// auth_logs(로그인/로그아웃/가입 이벤트)와 mockup_access_log(페이지 접속 기록)는 서로 다른 목적의
+// 완전히 독립된 두 기록이라(둘 사이에 외래키로 묶을 만한 실제 관계가 없다 - 페이지 접속은 로그인
+// 여부와 무관하게 매번 남고, 로그인은 접속 없이 세션 복원만으로도 일어날 수 있다), DB에 새 컬럼을
+// 만들어 조인하는 대신 여기서 그냥 "시간순 타임라인"으로 합친다 - 화면에 같이 보여주는 목적에는
+// 이 편이 스키마를 안 건드리면서 더 간단하고, 필터(전체/로그인 이력/페이지 접속)로 언제든 나눠 볼 수도 있다.
+function mbAdminLogsRows(){
+  if(mbAdmin.logsFilter==='stat') return mbAdminStatRows();
+  if(!mbAdmin.authLogsLoaded||!mbAdmin.accessLogLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
+  const f=mbAdmin.logsFilter;
+  let rows=[];
+  if(f!=='access') rows=rows.concat(mbAdmin.authLogs.map(r=>({...r, _kind:'auth'})));
+  if(f!=='auth') rows=rows.concat(mbAdmin.accessLog.map(r=>({...r, _kind:'access'})));
+  const q=mbAdmin.logsQuery.trim().toLowerCase();
+  if(q){
+    rows=rows.filter(r=> r._kind==='auth'
+      ? (r.username||'').toLowerCase().includes(q)
+      : [r.external_ip,r.location,r.hostname,r.os_user].some(v=>(v||'').toLowerCase().includes(q))
+    );
+  }
+  rows.sort((a,b)=>{ const d=new Date(b.created_at)-new Date(a.created_at); return mbAdmin.logsSort==='oldest'?-d:d; });
+  if(!rows.length) return `<div class="cl-empty">기록이 없습니다.</div>`;
+  const hasMore=(f!=='access'&&mbAdmin.authLogsHasMore)||(f!=='auth'&&mbAdmin.accessLogHasMore);
+  return `<table class="adm-table"><thead><tr><th style="width:180px;">시간</th><th style="width:110px;">유형</th><th style="width:140px;">사용자명</th><th>상세</th></tr></thead><tbody>`+
+    rows.map(r=>{
+      if(r._kind==='auth'){
+        const ev=ADM_EVENT_LABEL[r.event_type]||[r.event_type,'#eef1f4','#5f6c78'];
+        return `<tr><td>${mbFmtDate(r.created_at)}</td><td><span class="adm-badge" style="background:${ev[1]};color:${ev[2]};">${esc(ev[0])}</span></td><td>${esc(r.username||'-')}</td><td class="adm-mono">${esc(r.user_id||'-')}</td></tr>`;
+      }
+      const ev=ADM_EVENT_LABEL.page_access;
+      const detail=`${r.external_ip||'-'} · ${r.location||'-'} · ${r.os_user||'-'} · ${r.app_ver||'-'} · ${r.mode||'-'}`;
+      return `<tr><td>${mbFmtDate(r.created_at)}</td><td><span class="adm-badge" style="background:${ev[1]};color:${ev[2]};">${esc(ev[0])}</span></td><td>-</td><td class="adm-ellip" title="${esc(detail)}">${esc(detail)}</td></tr>`;
+    }).join('')+`</tbody></table>`+mbAdminMoreHint(hasMore,mbAdmin.logsLoadingMore,!!q);
+}
+function mbAdminRenderUsers(){
+  return `<div class="cl-toolbar">
+    <div class="cl-search-box" style="flex:1;max-width:none;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.3"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
+      <input type="text" placeholder="아이디, 메모로 검색" value="${esc(mbAdmin.usersQuery)}" oninput="mbAdminSearch('users',this.value)">
+    </div>
+    <select class="cl-sortselect" onchange="mbAdminSort('users',this.value)">
+      <option value="created_desc" ${mbAdmin.usersSort==='created_desc'?'selected':''}>가입일 최신순</option>
+      <option value="created_asc" ${mbAdmin.usersSort==='created_asc'?'selected':''}>가입일 오래된순</option>
+      <option value="username" ${mbAdmin.usersSort==='username'?'selected':''}>아이디순</option>
+      <option value="admin_first" ${mbAdmin.usersSort==='admin_first'?'selected':''}>관리자 먼저</option>
+    </select>
+  </div>
+  <div class="adm-table-wrap" id="adm-users-results">${mbAdminUsersRows()}</div>`;
+}
+function mbAdminUsersRows(){
+  if(!mbAdmin.usersLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
+  const q=mbAdmin.usersQuery.trim().toLowerCase();
+  let rows=mbAdmin.users.slice();
+  if(q) rows=rows.filter(u=>(u.username||'').toLowerCase().includes(q)||(u.note||'').toLowerCase().includes(q));
+  if(mbAdmin.usersSort==='created_asc') rows.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  else if(mbAdmin.usersSort==='username') rows.sort((a,b)=>(a.username||'').localeCompare(b.username||'','ko'));
+  else if(mbAdmin.usersSort==='admin_first') rows.sort((a,b)=>(b.auth_yn==='Y')-(a.auth_yn==='Y'));
+  else rows.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  if(!rows.length) return `<div class="cl-empty">가입한 사용자가 없습니다.</div>`;
+  return `<table class="adm-table"><thead><tr><th style="width:150px;">아이디</th><th>메모</th><th style="width:90px;">권한</th><th style="width:150px;">가입일</th><th style="width:130px;">임시저장 한도</th><th style="width:90px;">비밀번호</th></tr></thead><tbody>`+
+    rows.map(u=>{
+      const admin=u.auth_yn==='Y';
+      const lim=(mbAdmin.draftLimits&&mbAdmin.draftLimits[u.id]!=null)?mbAdmin.draftLimits[u.id]:30;
+      return `<tr>
+        <td>${esc(u.username)}</td>
+        <td class="adm-ellip" title="${esc(u.note||'')}">${esc(u.note||'-')}</td>
+        <td><span class="adm-badge" style="background:${admin?'#fff4e5':'#eef1f4'};color:${admin?'#a5650a':'#5f6c78'};">${admin?'관리자':'일반'}</span></td>
+        <td>${mbFmtDate(u.created_at)}</td>
+        <td>${admin?'<span class="adm-mono" style="color:#9aa4ad;">무제한</span>':`<input type="number" min="0" class="adm-draftlim-input" value="${lim}" data-uid="${esc(u.id)}" onchange="mbAdminSetDraftLimit('${esc(u.id)}',this)">`}</td>
+        <td><button type="button" class="adm-pwreset-btn" onclick="mbAdminResetPassword('${esc(u.id)}','${esc(u.username)}',this)">초기화</button></td>
+      </tr>`;
+    }).join('')+`</tbody></table>`+mbAdminMoreHint(mbAdmin.usersHasMore,mbAdmin.usersLoadingMore,!!q);
+}
+// 관리자가 사용자별 "임시 작업 목록" 한도(mockup_draft_limits.max_drafts)를 직접 조정한다 - 행이
+// 아직 없으면(기본값 30을 그냥 쓰던 사용자) 새로 만들고, 있으면 값만 바꾼다. 이 테이블은 비밀번호처럼
+// 민감한 정보가 아니라서(RLS를 mockups/mockup_drafts와 같은 수준으로 열어뒀다) RPC 없이 REST로
+// 바로 다룬다.
+async function mbAdminSetDraftLimit(userId,inputEl){
+  const v=parseInt(inputEl.value,10);
+  if(isNaN(v)||v<0){ mbAlert('0 이상의 숫자를 입력해 주세요.'); inputEl.value=(mbAdmin.draftLimits[userId]!=null)?mbAdmin.draftLimits[userId]:30; return; }
+  inputEl.disabled=true;
+  try{
+    const existing=await mbRestFetch(`/mockup_draft_limits?owner_id=eq.${userId}&select=owner_id`);
+    if(existing&&existing.length){
+      await mbRestFetch(`/mockup_draft_limits?owner_id=eq.${userId}`,{method:'PATCH',body:JSON.stringify({max_drafts:v}),prefer:'return=minimal'});
+    }else{
+      await mbRestFetch('/mockup_draft_limits',{method:'POST',body:JSON.stringify({owner_id:userId,max_drafts:v}),prefer:'return=minimal'});
+    }
+    mbAdmin.draftLimits[userId]=v;
+  }catch(e){ mbAlert('한도를 저장하지 못했습니다.\n\n'+e.message); inputEl.value=(mbAdmin.draftLimits[userId]!=null)?mbAdmin.draftLimits[userId]:30; }
+  finally{ inputEl.disabled=false; }
+}
+// 비밀번호 초기화 - mb_users.password_hash를 빈 문자열로 바꾸기만 하면 되고(로그인 쪽 로직이
+// 빈 칸이면 통과시키도록 이미 되어 있음), RPC 없이 그냥 그 컬럼 하나만 PATCH한다.
+// 주의: mb_users는 비밀번호 해시 보호를 위해 SELECT 정책이 없다(mbAdminListUsers가 RPC를 쓰는
+// 이유) - 이 UPDATE도 같은 이유로 RLS가 막을 수 있다. 막히면(권한 에러) mb_users에 UPDATE
+// 정책(비밀번호 컬럼만이라도)이 필요하다는 뜻이니 알려주시면 같이 확인하겠습니다.
+async function mbAdminResetPassword(userId,username,btnEl){
+  mbConfirm(`'${username}' 님의 비밀번호를 초기화하시겠습니까?\n초기화하면 비밀번호 없이(빈 칸으로) 로그인할 수 있게 됩니다.`, async function(){
+    btnEl.disabled=true; const orig=btnEl.textContent; btnEl.textContent='처리 중...';
+    try{
+      await mbRestFetch(`/mb_users?id=eq.${userId}`,{method:'PATCH',body:JSON.stringify({password_hash:''}),prefer:'return=minimal'});
+      mbAlert(`'${username}' 님의 비밀번호를 초기화했습니다.`);
+    }catch(e){ mbAlert('초기화하지 못했습니다.\n\n'+e.message); }
+    finally{ btnEl.disabled=false; btnEl.textContent=orig; }
+  });
+}
+function mbAdminRenderFeedback(){
+  return `<div class="cl-toolbar">
+    <div class="cl-search-box" style="flex:1;max-width:none;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.3"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
+      <input type="text" placeholder="작성자, 내용으로 검색" value="${esc(mbAdmin.fbQuery)}" oninput="mbAdminSearch('feedback',this.value)">
+    </div>
+    <select class="cl-sortselect" onchange="mbAdminSort('feedback',this.value)">
+      <option value="recent" ${mbAdmin.fbSort==='recent'?'selected':''}>최신순</option>
+      <option value="oldest" ${mbAdmin.fbSort==='oldest'?'selected':''}>오래된순</option>
+    </select>
+  </div>
+  <div class="adm-table-wrap" id="adm-feedback-results">${mbAdminFeedbackRows()}</div>`;
+}
+function mbAdminFeedbackRows(){
+  if(!mbAdmin.feedbackLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
+  const q=mbAdmin.fbQuery.trim().toLowerCase();
+  let rows=mbAdmin.feedback.slice();
+  if(q) rows=rows.filter(f=>(f.username||'').toLowerCase().includes(q)||(f.content||'').toLowerCase().includes(q));
+  rows.sort((a,b)=>{ const d=new Date(b.created_at)-new Date(a.created_at); return mbAdmin.fbSort==='oldest'?-d:d; });
+  if(!rows.length) return `<div class="cl-empty">받은 의견이 없습니다.</div>`;
+  return `<div class="adm-fb-list">`+rows.map(f=>{
+    const expanded=mbAdmin.fbExpanded.has(f.id);
+    return `<div class="adm-fb-card">
+      <div class="adm-fb-head">
+        <span class="adm-fb-author">${esc(f.username||'익명')}</span>
+        <span class="adm-fb-date">${mbFmtDate(f.created_at)}</span>
+      </div>
+      <div class="adm-fb-body ${expanded?'expanded':''}" onclick="mbAdminToggleFb('${f.id}')">${f.content||''}</div>
+    </div>`;
+  }).join('')+`</div>`+mbAdminMoreHint(mbAdmin.fbHasMore,mbAdmin.fbLoadingMore,!!q);
+}
+function mbAdminToggleFb(id){
+  if(mbAdmin.fbExpanded.has(id)) mbAdmin.fbExpanded.delete(id); else mbAdmin.fbExpanded.add(id);
+  const el=document.getElementById('adm-feedback-results');
+  if(el) el.innerHTML=mbAdminFeedbackRows();
+}
+function mbFmtBytes(n){
+  n=Number(n)||0;
+  if(n<=0) return '0B';
+  const units=['B','KB','MB','GB','TB'];
+  let i=0,v=n;
+  while(v>=1024 && i<units.length-1){ v/=1024; i++; }
+  return (i===0?v:v.toFixed(v<10?2:1))+units[i];
+}
+// Supabase 무료플랜 DB 저장용량 한도(고정값, 500MB) - Management API 없이는 계정의 실제 플랜을
+// 조회할 수 없으므로, 무료플랜 기준으로 코드에 고정해 둔다. 유료플랜으로 바뀌면 이 상수만 바꾸면 된다.
+const ADM_DB_QUOTA_BYTES=500*1024*1024;
+const ADM_USAGE_COLORS=['#4285F4','#FBBC05','#EA4335','#34A853','#9C27B0','#00ACC1','#FF7043','#8D6E63'];
+function mbAdminRenderUsage(){
+  if(!mbAdmin.usageLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
+  const rows=(mbAdmin.usage||[]).filter(r=>Number(r.size_bytes)>0).sort((a,b)=>Number(b.size_bytes)-Number(a.size_bytes));
+  const knownSum=rows.reduce((s,r)=>s+Number(r.size_bytes),0);
+  const total=mbAdmin.usageTotal||knownSum;
+  // 테이블별 용량의 합은 시스템 카탈로그·WAL 등을 뺀 값이라 실제 DB 전체 용량보다 살짝 작을 수
+  // 있다 - 그 차이를 "기타" 구간으로 채워서, 막대 전체 길이가 항상 실제 DB 용량과 맞아떨어지게 한다.
+  const other=Math.max(0,total-knownSum);
+  // 테이블 설명은 하드코딩하지 않고, RPC가 Postgres의 COMMENT ON TABLE 값을 그대로 실어 보내준다
+  // (mb_admin_storage_usage의 description 컬럼) - 그래서 새 테이블을 추가하고 설명을 달아도
+  // 앱 코드를 고칠 필요 없이 바로 반영된다.
+  // "기타"를 항상 맨 끝에 붙이면, 정작 기타 용량이 개별 테이블보다 더 큰 경우(인덱스·시스템
+  // 오버헤드가 큰 경우 등)에도 목록 맨 아래에 깔려 "큰 순→작은 순" 정렬이 깨져 보인다.
+  // 그래서 기타도 다른 테이블과 똑같이 크기 비교 대상에 넣고 한 번에 내림차순 정렬한 뒤,
+  // 색상만 기타는 계속 고정 회색을 쓰고 나머지는 정렬된 순서대로 팔레트를 새로 배정한다.
+  const segs=rows.map(r=>({name:r.table_name,desc:r.description,bytes:Number(r.size_bytes),isOther:false}));
+  if(other>0) segs.push({name:'기타(인덱스·시스템 등)',desc:null,bytes:other,isOther:true});
+  segs.sort((a,b)=>b.bytes-a.bytes);
+  let admColorIdx=0;
+  segs.forEach(s=>{ s.color = s.isOther ? '#c9ced3' : ADM_USAGE_COLORS[admColorIdx++%ADM_USAGE_COLORS.length]; });
+  // 막대 전체 길이는 "한도 대비 지금 쓴 비율"만큼만 채운다(구글 드라이브 화면과 동일한 방식) -
+  // 나머지 빈 회색 트랙이 곧 "앞으로 더 쓸 수 있는 여유분"이 된다.
+  const usedPctOfQuota=total>0?Math.min(100,(total/ADM_DB_QUOTA_BYTES)*100):0;
+  const barSegs=segs.map(s=>{
+    const w=total>0?(s.bytes/total*usedPctOfQuota):0;
+    return `<div style="width:${w}%;background:${s.color};height:100%;" title="${esc(s.name)} ${mbFmtBytes(s.bytes)}"></div>`;
+  }).join('');
+  const tableRows=segs.map(s=>{
+    const p=total>0?(s.bytes/total*100):0;
+    return `<tr><td class="adm-usage-namecell">
+        <span class="adm-usage-dot" style="background:${s.color};"></span><span class="adm-usage-name">${esc(s.name)}</span>
+        ${s.desc?`<span class="adm-usage-desc">${esc(s.desc)}</span>`:''}
+      </td><td class="adm-usage-size">${mbFmtBytes(s.bytes)} <span class="adm-usage-pct">(${p.toFixed(1)}%)</span></td></tr>`;
+  }).join('');
+  const tableBody=tableRows
+    ? `<table class="adm-table"><thead><tr><th>테이블</th><th style="width:130px;">용량 (%)</th></tr></thead><tbody>${tableRows}</tbody></table>`
+    : `<div class="cl-empty">표시할 테이블이 없습니다.</div>`;
+  // 막대 아래는 좌(테이블별 용량)·우(사용자별 사용량) 두 영역으로 나눈다. 둘 다 같은 모양의
+  // 박스(헤더 행 + 테두리, adm-usage-table-wrap)에 표를 담아 시각적으로 짝을 맞춘다. 각자
+  // 내용이 길어지면(테이블이 많거나 회원이 많으면) 그 박스 안에서만 스크롤되도록, 위
+  // 헤드라인·막대는 고정폭(adm-usage-top)에 두고 두 칸(adm-usage-split)만 남은 세로 공간을
+  // 나눠 채운다.
+  return `<div class="adm-usage-wrap">
+    <div class="adm-usage-top">
+      <div class="adm-usage-headline">${mbFmtBytes(total)}<span class="adm-usage-of">/${mbFmtBytes(ADM_DB_QUOTA_BYTES)} 사용 중</span></div>
+      <div class="adm-usage-bar">${barSegs||''}</div>
+    </div>
+    <div class="adm-usage-split">
+      <div class="adm-usage-col">
+        <div class="adm-usage-col-title">테이블별 사용량</div>
+        <div class="adm-usage-table-wrap">${tableBody}</div>
+      </div>
+      <div class="adm-usage-col">
+        <div class="adm-usage-col-title">사용자별 사용량</div>
+        <div class="adm-usage-table-wrap">${mbAdminUsageUserRows()}</div>
+      </div>
+    </div>
+  </div>`;
+}
+// 「사용자별 사용량」 패널 - 아이디 | 임시저장한도 | 사용량 세 컬럼. 회원 정보 탭과 같은
+// users/draftLimits를 그대로 쓰고, 임시저장한도는 그 컬럼 그대로 개수 한도를 보여준다.
+// 사용량 칸은 한도와 무관하게 - 왼쪽 테이블별 사용량과 완전히 같은 뜻으로, 그 사용자가 실제로
+// 차지하는 KB/MB 용량과 (전체 사용자 용량 합 대비) 비율이다. 용량이 큰 사용자가 위로 오도록
+// 내림차순 정렬한다.
+function mbAdminUsageUserRows(){
+  if(!mbAdmin.usersLoaded || !mbAdmin.userUsageLoaded) return `<div class="cl-empty">불러오는 중...</div>`;
+  if(!mbAdmin.users.length) return `<div class="cl-empty">가입한 사용자가 없습니다.</div>`;
+  const bytesOf=u=>mbAdmin.userBytes[u.id]||0;
+  const rows=mbAdmin.users.slice().sort((a,b)=>bytesOf(b)-bytesOf(a) || (a.username||'').localeCompare(b.username||'','ko'));
+  const total=mbAdmin.userBytesTotal||0;
+  const trs=rows.map(u=>{
+    const admin=u.auth_yn==='Y';
+    const lim=admin?'무제한':String((mbAdmin.draftLimits&&mbAdmin.draftLimits[u.id]!=null)?mbAdmin.draftLimits[u.id]:30);
+    const bytes=bytesOf(u);
+    const p=total>0?(bytes/total*100):0;
+    const usageCell=`${mbFmtBytes(bytes)} <span class="adm-usage-pct">(${p.toFixed(1)}%)</span>`;
+    return `<tr><td>${esc(u.username)}</td><td>${esc(lim)}</td><td class="adm-usage-size">${usageCell}</td></tr>`;
+  }).join('');
+  return `<table class="adm-table"><thead><tr><th>아이디</th><th style="width:100px;">임시저장한도</th><th style="width:130px;">사용량</th></tr></thead><tbody>${trs}</tbody></table>`;
+}
+
+// ---- AI프롬프트(이미지 변환의 「질문만 복사」 문구, DB 기준으로 관리) ----
+// 씬모드/팻모드 프롬프트를 각각 DB 한 줄씩(mb_prompts.mode='Thin'/'Fat')에 저장해 두고, 여기서
+// 그대로 불러와 textarea에 채워 편집한 뒤 저장한다. 조회·수정을 굳이 나누지 않고 늘 편집
+// 가능한 하나의 칸으로 둔다(요청대로) - 저장을 눌러야만 실제로 반영된다.
+// 줄바꿈·따옴표 등 특수문자를 안전하게 다루기 위해, HTML 문자열로 채우지 않고(엔티티 이스케이프
+// 문제 소지) textarea를 빈 채로 그린 뒤 .value에 직접 대입한다(mbAdminFillPromptTextarea) -
+// DOM의 value 속성 대입은 HTML 파싱을 거치지 않아 어떤 문자가 들어있어도 그대로 보존된다.
+function mbAdminRenderPrompts(){
+  const m=mbAdmin.promptMode;
+  const loaded=!!mbAdmin.promptLoaded[m];
+  return `<div class="cl-toolbar">
+    <div class="cl-lineage-seg adm-mode-seg" style="flex-shrink:0;">
+      <span class="${m==='Thin'?'on on-thin':''}" onclick="mbAdminPromptModeSwitch('Thin')">Thin Mode</span>
+      <span class="${m==='Fat'?'on on-fat':''}" onclick="mbAdminPromptModeSwitch('Fat')">Fat Mode</span>
+    </div>
+    <div style="flex:1;"></div>
+    <span class="adm-prompt-status" id="adm-prompt-status"></span>
+    <button type="button" class="cl-btn-primary-sm" id="adm-prompt-savebtn" onclick="mbAdminSavePromptClick()" ${loaded?'':'disabled'}>💾 저장</button>
+  </div>
+  <div class="adm-prompt-wrap">
+    ${loaded
+      ? `<textarea id="adm-prompt-textarea" class="adm-prompt-textarea" spellcheck="false" oninput="mbAdminPromptDirty()"></textarea>`
+      : `<div class="cl-empty">불러오는 중...</div>`}
+  </div>`;
+}
+// 「AI프롬프트」 탭을 처음 그리거나(mbAdminRender) 모드를 바꿀 때(mbAdminPromptModeSwitch) 매번
+// 호출된다 - 위 설명대로 textarea.value에 직접 대입해서 채운다.
+function mbAdminFillPromptTextarea(){
+  const ta=document.getElementById('adm-prompt-textarea');
+  if(ta) ta.value=mbAdmin.promptCache[mbAdmin.promptMode]||'';
+}
+function mbAdminPromptModeSwitch(m){
+  if(mbAdmin.promptMode===m) return;
+  function doSwitch(){
+    mbAdmin.promptMode=m; mbAdmin.promptDirty=false;
+    mbAdminRender();
+    mbAdminEnsureLoaded();
+  }
+  if(mbAdmin.promptDirty) mbConfirm('저장하지 않은 변경사항이 있습니다. 그래도 이동할까요?', doSwitch);
+  else doSwitch();
+}
+function mbAdminPromptDirty(){
+  mbAdmin.promptDirty=true;
+  const st=document.getElementById('adm-prompt-status');
+  if(st){ st.textContent='저장하지 않은 변경사항 있음'; st.className='adm-prompt-status dirty'; }
+}
+async function mbAdminSavePromptClick(){
+  const ta=document.getElementById('adm-prompt-textarea'); if(!ta) return;
+  const m=mbAdmin.promptMode;
+  const content=ta.value; // .value을 그대로 읽으므로 줄바꿈·특수문자 전부 원본 그대로 전송된다
+  const btn=document.getElementById('adm-prompt-savebtn');
+  const st=document.getElementById('adm-prompt-status');
+  if(btn){ btn.disabled=true; btn.textContent='저장 중...'; }
+  try{
+    await mbAdminSavePrompt(m,content);
+    mbAdmin.promptCache[m]=content;
+    mbAdmin.promptDirty=false;
+    if(st){ st.textContent='✅ 저장했습니다 ('+(m==='Thin'?'씬모드':'팻모드')+')'; st.className='adm-prompt-status ok'; }
+  }catch(e){
+    if(st){ st.textContent='❌ 저장 실패: '+esc(e.message); st.className='adm-prompt-status err'; }
+  }
+  if(btn){ btn.disabled=false; btn.textContent='💾 저장'; }
+}
+
+// ---- 피드백 ----
+function openFeedback(){
+  const ed=document.getElementById('feedbackEditor');
+  if(ed) ed.innerHTML='';
+  document.getElementById('feedbackBg').classList.add('on');
+  setTimeout(()=>{ const el=document.getElementById('feedbackEditor'); if(el) el.focus(); },0);
+}
+function closeFeedback(){ document.getElementById('feedbackBg').classList.remove('on'); }
+// 아주 가벼운 서식 도구모음 - 별도 라이브러리 없이 브라우저 기본 execCommand로 굵게/기울임/
+// 밑줄/목록/링크만 지원한다(이 앱은 외부 의존성 없는 단일 HTML 파일이라는 설계 원칙 때문에
+// 리치텍스트 에디터 라이브러리를 새로 들여오지 않는다).
+function mbFbCmd(cmd){
+  const ed=document.getElementById('feedbackEditor'); if(!ed) return;
+  ed.focus();
+  if(cmd==='createLink'){
+    const url=prompt('연결할 주소를 입력하세요.','https://');
+    if(!url) return;
+    document.execCommand('createLink',false,url);
+    return;
+  }
+  document.execCommand(cmd,false,null);
+}
+async function submitFeedback(){
+  const ed=document.getElementById('feedbackEditor'); if(!ed) return;
+  const html=(ed.innerHTML||'').trim();
+  const text=(ed.textContent||'').trim();
+  if(!text){ mbAlert('의견을 입력해 주세요.'); return; }
+  const s=mbGetSession();
+  const btn=document.getElementById('feedbackSendBtn');
+  const orig=btn.textContent; btn.disabled=true; btn.textContent='보내는 중...';
+  try{
+    await mbRestFetch('/mb_feedback',{method:'POST',body:JSON.stringify({
+      owner_id:s?s.id:null, username:s?mbCurrentUsername():null, content:html
+    }),prefer:'return=minimal'});
+    closeFeedback();
+  }catch(e){ mbAlert('의견을 보내지 못했습니다.\n\n'+e.message); }
+  finally{ btn.disabled=false; btn.textContent=orig; }
+}
+
+// ---- 회원가입/로그인 모달 ----
+function openSignup(){ document.getElementById('signupErr').style.display='none'; document.getElementById('signupId').value=''; document.getElementById('signupPw').value=''; document.getElementById('signupNote').value=''; document.getElementById('signupBg').classList.add('on'); }
+function closeSignup(){ document.getElementById('signupBg').classList.remove('on'); }
+// 아이디/비밀번호 저장(로그인 편의용) - localStorage에 그대로 저장한다. 비밀번호까지 평문으로
+// 남기는 거라 개인 기기에서만 켜두시라고 안내할 만하지만, 사내에서 가볍게 쓰는 용도로 요청받은
+// 기능이라 그대로 구현한다. 체크 해제하면 즉시 지운다.
+const MB_SAVED_ID_KEY='mb_saved_username', MB_SAVED_PW_KEY='mb_saved_password', MB_AUTO_LOGIN_KEY='mb_auto_login';
+function mbSaveLoginPrefs(id,pw,saveId,savePw,autoLogin){
+  try{ if(saveId) localStorage.setItem(MB_SAVED_ID_KEY,id); else localStorage.removeItem(MB_SAVED_ID_KEY); }catch(e){}
+  try{ if(savePw) localStorage.setItem(MB_SAVED_PW_KEY,pw); else localStorage.removeItem(MB_SAVED_PW_KEY); }catch(e){}
+  // 자동로그인은 아이디·비밀번호가 둘 다 저장돼 있을 때만 의미가 있다 - 화면에서도 그 경우에만
+  // 체크박스를 활성화해두지만(mbUpdateAutoLoginAvailability), 저장하는 쪽에서도 한 번 더 확인한다.
+  try{ if(autoLogin&&saveId&&savePw) localStorage.setItem(MB_AUTO_LOGIN_KEY,'1'); else localStorage.removeItem(MB_AUTO_LOGIN_KEY); }catch(e){}
+}
+function mbLoadLoginPrefs(){
+  let username=null,password=null,autoLogin=false;
+  try{ username=localStorage.getItem(MB_SAVED_ID_KEY); }catch(e){}
+  try{ password=localStorage.getItem(MB_SAVED_PW_KEY); }catch(e){}
+  try{ autoLogin=localStorage.getItem(MB_AUTO_LOGIN_KEY)==='1'; }catch(e){}
+  return {username,password,autoLogin};
+}
+// 자동로그인 체크박스는 아이디 저장·비밀번호 저장이 둘 다 켜져 있을 때만 쓸 수 있다. 둘 중 하나라도
+// 꺼지면(체크 해제 시 즉시) 자동로그인도 강제로 꺼서, "저장 안 된 값으로 자동로그인 켜짐" 같은
+// 앞뒤 안 맞는 상태가 안 생기게 한다.
+function mbUpdateAutoLoginAvailability(){
+  const saveId=document.getElementById('loginSaveId').checked;
+  const savePw=document.getElementById('loginSavePw').checked;
+  const enabled=saveId&&savePw;
+  const auto=document.getElementById('loginAutoLogin');
+  auto.disabled=!enabled;
+  if(!enabled) auto.checked=false;
+  document.getElementById('loginAutoLoginLabel').style.opacity=enabled?'1':'.45';
+}
+function openLogin(){
+  document.getElementById('loginErr').style.display='none';
+  const saved=mbLoadLoginPrefs();
+  document.getElementById('loginId').value=saved.username||'';
+  document.getElementById('loginPw').value=saved.password||'';
+  document.getElementById('loginSaveId').checked=!!saved.username;
+  document.getElementById('loginSavePw').checked=!!saved.password;
+  mbUpdateAutoLoginAvailability();
+  document.getElementById('loginAutoLogin').checked=saved.autoLogin&&!!saved.username&&!!saved.password;
+  document.getElementById('loginBg').classList.add('on');
+}
+function closeLogin(){ document.getElementById('loginBg').classList.remove('on'); }
+async function submitSignup(){
+  const id=document.getElementById('signupId').value.trim();
+  const pw=document.getElementById('signupPw').value;
+  const note=document.getElementById('signupNote').value.trim();
+  const errEl=document.getElementById('signupErr');
+  errEl.style.display='none';
+  if(!id||!pw){ errEl.textContent='아이디와 비밀번호를 입력해 주세요.'; errEl.style.display='block'; return; }
+  const btn=document.getElementById('signupSubmitBtn'); btn.disabled=true; btn.textContent='확인 중...';
+  try{
+    if(await mbCheckUsernameTaken(id)){
+      errEl.textContent='이미 사용 중인 아이디입니다.'; errEl.style.display='block';
+      btn.disabled=false; btn.textContent='가입하기'; return;
+    }
+    btn.textContent='가입 중...';
+    await mbSignup(id,pw,note);
+    closeSignup(); mbUpdateAccountUI();
+  }catch(e){ errEl.textContent=e.message; errEl.style.display='block'; }
+  finally{ btn.disabled=false; btn.textContent='가입하기'; }
+}
+async function submitLogin(){
+  const id=document.getElementById('loginId').value.trim();
+  const pw=document.getElementById('loginPw').value;
+  const saveId=document.getElementById('loginSaveId').checked;
+  const savePw=document.getElementById('loginSavePw').checked;
+  const autoLogin=document.getElementById('loginAutoLogin').checked;
+  const errEl=document.getElementById('loginErr');
+  errEl.style.display='none';
+  if(!id||!pw){ errEl.textContent='아이디와 비밀번호를 입력해 주세요.'; errEl.style.display='block'; return; }
+  mbSaveLoginPrefs(id,pw,saveId,savePw,autoLogin);
+  const btn=document.getElementById('loginSubmitBtn'); btn.disabled=true; btn.textContent='로그인 중...';
+  try{
+    await mbLogin(id,pw);
+    closeLogin(); mbUpdateAccountUI();
+  }catch(e){ errEl.textContent=e.message; errEl.style.display='block'; }
+  finally{ btn.disabled=false; btn.textContent='로그인'; }
+}
+
+// ---- 상단바 계정 영역 ----
+function mbUpdateAccountUI(){
+  const area=document.getElementById('acctArea'); if(!area) return;
+  const s=mbGetSession();
+  if(!s){
+    area.innerHTML=`<button class="ghost" onclick="openLogin()">로그인</button>`;
+    return;
+  }
+  const uname=mbCurrentUsername()||'사용자';
+  area.innerHTML=`
+    <div class="acct-avatar-wrap">
+      <div class="acct-avatar" title="${esc(uname)}" onclick="toggleAcctMenu(event)">${esc(uname[0]||'?').toUpperCase()}</div>
+      <div class="acct-menu" id="acctMenu">
+        <div class="who">${esc(uname)} 님</div>
+        <div class="item" onclick="closeAcctMenu();openCloudSave();">☁ 클라우드 저장</div>
+        <div class="item" onclick="closeAcctMenu();openCloudOpen();">📂 클라우드 열기</div>
+        <div class="item" onclick="closeAcctMenu();openSharedGallery();">🌐 목업마켓</div>
+        <div class="item" onclick="closeAcctMenu();openDraftList();">📝 임시 작업 목록</div>
+        <div class="item logout" onclick="closeAcctMenu();mbLogout();">🚪 로그아웃</div>
+        <div class="item" style="border-top:1px solid #eee;" onclick="closeAcctMenu();openFeedback();">💬 Feedback</div>
+        ${mbIsAdmin?'<div class="item" onclick="closeAcctMenu();openAdminPanel();">🛠 목업관리</div>':''}
+      </div>
+    </div>`;
+}
+function toggleAcctMenu(e){ e.stopPropagation(); const m=document.getElementById('acctMenu'); if(m) m.classList.toggle('on'); }
+function closeAcctMenu(){ const m=document.getElementById('acctMenu'); if(m) m.classList.remove('on'); }
+document.addEventListener('click',()=>{ closeAcctMenu(); });
+
+// ---- 아이콘 조각 (목록/트리에서 반복 사용) ----
+const CL_FOLDER_ICON='<svg width="17" height="14" viewBox="0 0 24 20" fill="#f0b429" style="flex-shrink:0"><path d="M2 4a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4z"/></svg>';
+const CL_FILE_ICON='<svg width="15" height="17" viewBox="0 0 24 28" fill="none" stroke="#5b8bd6" stroke-width="1.6" style="flex-shrink:0"><path d="M5 2h10l6 6v18H5z"/><path d="M15 2v6h6"/></svg>';
+// 씬/팻 모드를 파일 아이콘 색으로 구분한다(씬=초록, 팻=파랑) - 텍스트 배지 대신 아이콘 하나로
+// 표시해서 목록이 덜 복잡해 보이게 한다.
+function clFileIconByMode(mode){
+  const color=mode==='Fat'?'#2f6fb0':'#1e9e6a';
+  return `<svg width="15" height="17" viewBox="0 0 24 28" fill="none" stroke="${color}" stroke-width="1.8" style="flex-shrink:0" title="${mode==='Fat'?'팻모드':'씬모드'}"><path d="M5 2h10l6 6v18H5z"/><path d="M15 2v6h6"/></svg>`;
+}
+const CL_CHEV_RIGHT='<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9" transform="rotate(-90 12 12)"/></svg>';
+const CL_CHEV_DOWN='<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>';
+const CL_PENCIL_ICON='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const CL_TRASH_ICON='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+function clFolderIconSm(on){ return on ? CL_FOLDER_ICON.replace('#f0b429','var(--ax-green-dark)') : CL_FOLDER_ICON; }
+// "최근 저장파일(Local)"은 실제로는 폴더이지만 개념상 "이 기기의 로컬 저장 → 클라우드 자동 동기화"를
+// 나타내므로, 일반 폴더 아이콘(노란 서류철) 대신 구름+위쪽 화살표(업로드/동기화) 아이콘을 쓴다.
+const CL_LOCAL_SYNC_ICON='<svg width="17" height="14" viewBox="0 0 24 20" fill="none" stroke="#4a90d9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M7 15.5a4 4 0 0 1-.5-7.97A5 5 0 0 1 16 6h.4a3.6 3.6 0 0 1 0 7.2H15"/><line x1="11.3" y1="9" x2="11.3" y2="16.5"/><polyline points="8.6,11.3 11.3,8.6 14,11.3"/></svg>';
+function clLocalSyncIconSm(on){ return on ? CL_LOCAL_SYNC_ICON.replace('#4a90d9','var(--ax-green-dark)') : CL_LOCAL_SYNC_ICON; }
+// 즐겨찾기 별 아이콘 - 채워짐(노란색)/빈 상태 두 가지. 트리의 "즐겨찾기" 폴더 아이콘과 파일
+// 행의 별 토글 버튼에서 공용으로 쓴다.
+function clStarIcon(filled){
+  return filled
+    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="#f5b301" stroke="#f5b301" stroke-width="1.4" style="flex-shrink:0"><polygon points="12 2.5 15.1 8.9 22.2 9.9 17.1 14.9 18.3 22 12 18.6 5.7 22 6.9 14.9 1.8 9.9 8.9 8.9"/></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c3cad1" stroke-width="1.6" style="flex-shrink:0"><polygon points="12 2.5 15.1 8.9 22.2 9.9 17.1 14.9 18.3 22 12 18.6 5.7 22 6.9 14.9 1.8 9.9 8.9 8.9"/></svg>';
+}
+// 공유파일이 "복제해서 열기"(더블클릭 포함)된 횟수 - 작은 복제 아이콘 + 숫자만 표시한다(별도
+// 텍스트 라벨 없이 아이콘으로만 의미를 전달).
+function clOpenIcon(){
+  return '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" style="flex-shrink:0"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+}
+function clToggleHTML(on,onclick){
+  return `<label class="cl-toggle" onclick="event.stopPropagation()"><input type="checkbox" ${on?'checked':''} onchange="${onclick}"><span class="trk"></span><span class="dot"></span></label>`;
+}
+function mbFmtDate(s){ if(!s) return '-'; const d=new Date(s); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+
+// ---- 상태 ----
+const mbCloud={ mode:'save', tab:'mine', folderId:null, folders:[], items:[], selectedId:null,
+  searchQuery:'', includeSub:false, expanded:new Set(), tags:[], isPublic:true, filename:'', renamingFolderId:null, renamingItemId:null, fileCounts:{}, favCount:0, mineSort:'name',
+  mineOffset:0, mineHasMore:true, mineLoadingMore:false,
+  treeWidth:(()=>{ try{ const v=parseInt(localStorage.getItem('mb_cloud_tree_w'),10); return (v>=120&&v<=400)?v:400; }catch(e){ return 400; } })(),
+  sharedQuery:'', sharedSort:'recent', sharedTag:'전체', sharedItems:[], sharedTags:['전체'], sharedSelectedId:null,
+  sharedLineage:'originals', // '전체'가 아니라 '원본만'을 기본값으로 - 공유가 쌓일수록 목록이 리비전으로 뒤덮이지 않게 한다
+  sharedOriginFilter:null, sharedOriginFilterTitle:'', // 특정 원본의 리비전만 보는 중이면 그 원본 id/제목
+  sharedCounts:null, // {originals, revisions, all} - 지금 검색어/태그 조건 기준으로 각각 몇 개인지
+  sharedOffset:0, sharedHasMore:true, sharedLoadingMore:false,
+  sharedView:(()=>{ try{ return localStorage.getItem('mb_cloud_shared_view')||'grid'; }catch(e){ return 'grid'; } })(),
+  sharedListWidth:(()=>{ try{ const v=parseInt(localStorage.getItem('mb_cloud_shared_list_w'),10); return (v>=200&&v<=560)?v:400; }catch(e){ return 400; } })(),
+  tagbarExpanded:false,
+  // 지금 편집 중인 캔버스가 「공유파일」에서 열어온 파생본이면, 그 최상위 원본 mockups.id를
+  // 여기 담아둔다(눈에는 안 보이는 내부 추적용 값). null이면 파생 관계 없음(=원본이거나
+  // 완전히 새로 시작한 화면). 저장할 때 이 값을 함께 보내 서버의 origin_id 컬럼에 기록하고,
+  // 전체지우기·불러오기·이미지변환 전체지우기·모드전환처럼 캔버스가 통째로 새로 시작되는
+  // 시점에는 clearOriginTracking()으로 함께 지운다(아래 참고).
+  originId:null };
+// 캔버스가 "새로 시작"되는 모든 지점(전체 지우기/불러오기/이미지 변환 전체 지우기 체크/모드 전환)에서
+// 공통으로 호출해 파생 추적 값을 지운다 - 원본-파생 관계는 "공유파일을 열어서 그대로 이어 작업"할
+// 때만 의미가 있고, 캔버스 내용이 다른 것으로 통째로 바뀌는 순간부터는 더 이상 그 출처와 무관해진다.
+function clearOriginTracking(){
+  mbCloud.originId=null;
+  // 파생 추적 값과 정확히 같은 시점(전체지우기/불러오기/이미지변환 전체지우기/모드전환)에 "임시
+  // 작업" 세션 키도 함께 새로 바꾼다 - 의도를 가지고 새 작업을 시작하는 것이므로, 지금까지 하던
+  // 작업은(마지막 자동저장이 이미 담아둔) 그 자체로 임시 작업 목록에 남고, 이제부터의 새 작업은
+  // 새 항목으로 따로 쌓인다. 여기서 안 바꾸면 새 작업이 옛 작업의 임시저장 행을 그대로 덮어써서
+  // 옛 작업 내용이 사라져 버린다.
+  mbResetDraftSessionKey();
+}
+
+function mbCurrentMode(){ return document.body.classList.contains('skin-classic')?'Fat':'Thin'; }
+function mbBuildSaveData(){
+  const cw=document.getElementById('cw').value, ch=document.getElementById('ch').value;
+  const data={v:1, comps, cw, ch, skin:document.body.classList.contains('skin-classic')?'fat':'thin'};
+  // 파생 출처를 저장 파일 자체에도 "눈에 안 보이는" 내부 태그로 함께 담아 둔다 - DB의 origin_id
+  // 컬럼과 별개로, 이 데이터 블록만 어딘가로 옮겨지거나 내려받아져도 출처 정보가 함께 따라간다.
+  // 편집 화면에는 어디에도 표시되지 않고, 오직 이 JSON 안에만 존재한다.
+  if(mbCloud.originId) data.originId=mbCloud.originId;
+  return data;
+}
+// "공유파일" 카드의 미리보기 이미지 - 실제 화면을 그대로 캡처하려면 별도 라이브러리(html2canvas
+// 등)나 서버 렌더링이 필요해서, 이 앱의 "단일 HTML, 외부 의존성 없음" 원칙에 맞게 여전히 SVG로
+// 직접 그리지만, 예전의 "타입별 색깔 사각형" 와이어프레임보다 실제 화면에 훨씬 가깝게 그린다:
+// 입력창은 흰 배경+테두리 박스로, 그리드는 헤더행+컬럼 구분선+데이터 행 줄무늬가 있는 표로,
+// 버튼은 초록/테두리 버튼으로, 그리고 각 컴포넌트의 실제 텍스트(c.text 등)를 칸 폭에 맞게
+// 잘라서 넣는다. panel/tabs/split 안에 중첩된 컴포넌트도 (지금 켜진 탭 기준으로) 실제 절대
+// 좌표를 계산해 같이 그려서, 그룹으로 묶인 필드들도 빠짐없이 보이게 했다.
+const MB_THUMB_COLORS={grid:'#5b8bd6',button:'#1e9e6a',title:'#2c3e50',section:'#8a97a3',panel:'#c3cad1',
+  input:'#a9c4e8',combo:'#a9c4e8',date:'#a9c4e8',daterange:'#a9c4e8',check:'#f0b429',radio:'#f0b429',
+  label:'#9ca3af',chart:'#8e44ad',tree:'#c0392b',tabs:'#7c5cff',split:'#d9dee3',searchbar:'#0891b2',popup:'#7c5cff'};
+function mbThumbEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// 실제 글자 폭을 재서(autoColWidth()가 그리드 헤더 폭을 잴 때 쓰는 것과 같은 캔버스 측정 방식)
+// 칸 폭에 안 맞으면 말줄임(…)으로 잘라준다 - 대충 글자 수로 어림하는 것보다 훨씬 정확하다.
+function mbThumbFit(text,maxW,fontPx,weight){
+  text=String(text==null?'':text).trim();
+  if(!text||maxW<=1) return '';
+  if(!__gcMeasureCtx) __gcMeasureCtx=document.createElement('canvas').getContext('2d');
+  __gcMeasureCtx.font=`${weight||400} ${fontPx}px "Malgun Gothic","맑은 고딕",-apple-system,sans-serif`;
+  if(__gcMeasureCtx.measureText(text).width<=maxW) return text;
+  let lo=0,hi=text.length;
+  while(lo<hi){
+    const mid=(lo+hi+1)>>1;
+    if(__gcMeasureCtx.measureText(text.slice(0,mid)+'…').width<=maxW) lo=mid; else hi=mid-1;
+  }
+  return lo>0?text.slice(0,lo)+'…':'';
+}
+function mbBuildThumbnailSVG(){
+  const cw=parseInt(document.getElementById('cw').value,10)||1100;
+  const ch=parseInt(document.getElementById('ch').value,10)||700;
+  const W=320,H=200; // 예전(240x140)보다 캔버스를 키워서 텍스트가 조금이라도 더 잘 보이게 한다
+  const scale=Math.min(W/cw,H/ch);
+  const offX=(W-cw*scale)/2, offY=(H-ch*scale)/2;
+  // 지금 켜진 스킨(씬/팻)의 실제 CSS 색상 변수를 그대로 읽어써서, 어떤 스킨으로 저장했든
+  // 미리보기 색감이 실제 화면과 맞게 한다.
+  const csv=getComputedStyle(document.body);
+  const cvar=(name,fb)=>{ const v=(csv.getPropertyValue(name)||'').trim(); return v||fb; };
+  const C={green:cvar('--ax-green','#1e9e6a'), navy:cvar('--ax-navy','#2c3e50'), border:cvar('--ax-border','#d9dee3'),
+    gridHead:cvar('--ax-grid-head','#f0f2f4'), gridHeadFg:cvar('--ax-grid-head-fg','#4b5563'),
+    gray:cvar('--ax-gray','#6b7280'), labelFg:cvar('--ax-label-fg','#374151'),
+    reqBg:cvar('--ax-required-bg','#fffdf4'), roBg:cvar('--ax-readonly-bg','#f6f7f8')};
+  const FF='font-family="Malgun Gothic, 맑은 고딕, -apple-system, sans-serif"';
+  let body='';
+  // isVisible()은 panel/split/tabs 안에 중첩된 컴포넌트까지 포함해서(탭은 지금 활성화된 탭만),
+  // absPos()는 그 중첩 컴포넌트의 캔버스 기준 절대좌표를 계산해준다 - 둘 다 편집기 자체가 이미
+  // 쓰고 있는 함수라 여기서도 그대로 재사용한다.
+  comps.filter(isVisible).forEach(c=>{
+    const ap=absPos(c);
+    const x=offX+ap.x*scale, y=offY+ap.y*scale, w=Math.max(1,c.w*scale), h=Math.max(1,c.h*scale);
+    body+=mbThumbDrawComp(c,x,y,w,h,C,FF);
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><rect width="${W}" height="${H}" fill="#ffffff"/><rect x="0.5" y="0.5" width="${W-1}" height="${H-1}" fill="none" stroke="${C.border}"/>${body}</svg>`;
+}
+function mbThumbDrawComp(c,x,y,w,h,C,FF){
+  const e=mbThumbEsc;
+  const fs=Math.max(3,Math.min(8,h*0.5));
+  switch(c.type){
+    case 'title':
+      return `<text x="${x.toFixed(1)}" y="${(y+h*0.72).toFixed(1)}" font-size="${(fs+1).toFixed(1)}" font-weight="700" fill="${C.navy}" ${FF}>${e(mbThumbFit(c.text,w,fs+1,700))}</text>`;
+    case 'section':
+      return `<text x="${x.toFixed(1)}" y="${(y+h*0.68).toFixed(1)}" font-size="${fs.toFixed(1)}" font-weight="700" fill="${C.navy}" ${FF}>${e(mbThumbFit(c.text,w,fs,700))}</text>`
+        +`<line x1="${x.toFixed(1)}" y1="${(y+h).toFixed(1)}" x2="${(x+w).toFixed(1)}" y2="${(y+h).toFixed(1)}" stroke="${C.border}" stroke-width="0.6"/>`;
+    case 'label':
+      return `<text x="${x.toFixed(1)}" y="${(y+h*0.7).toFixed(1)}" font-size="${fs.toFixed(1)}" fill="${C.labelFg}" ${FF}>${e(mbThumbFit(c.text,w,fs,400))}</text>`;
+    case 'panel': case 'split':
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="none" stroke="${C.border}" stroke-width="0.6" rx="1"/>`;
+    case 'tabs':{
+      const names=ilItems(c,'text'); if(!names.length) return '';
+      const tabH=Math.min(h,h*0.4)||fs+2, tabW=Math.min(w/names.length,w*0.4);
+      const active=c.active||0;
+      let out='', tx=x;
+      names.forEach((n,i)=>{
+        const on=i===active;
+        out+=`<text x="${(tx+2).toFixed(1)}" y="${(y+tabH*0.72).toFixed(1)}" font-size="${Math.max(3,fs-0.5).toFixed(1)}" fill="${on?C.green:C.gray}" font-weight="${on?700:400}" ${FF}>${e(mbThumbFit(n,tabW-3,fs,on?700:400))}</text>`;
+        if(on) out+=`<line x1="${tx.toFixed(1)}" y1="${(y+tabH).toFixed(1)}" x2="${(tx+tabW-4).toFixed(1)}" y2="${(y+tabH).toFixed(1)}" stroke="${C.green}" stroke-width="1"/>`;
+        tx+=tabW;
+      });
+      out+=`<line x1="${x.toFixed(1)}" y1="${(y+tabH).toFixed(1)}" x2="${(x+w).toFixed(1)}" y2="${(y+tabH).toFixed(1)}" stroke="${C.border}" stroke-width="0.5"/>`;
+      return out;
+    }
+    case 'button':{
+      const outline=!!c.outline;
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(3,h*0.2).toFixed(1)}" fill="${outline?'#fff':C.green}" stroke="${C.green}" stroke-width="0.6"/>`
+        +`<text x="${(x+w/2).toFixed(1)}" y="${(y+h*0.66).toFixed(1)}" font-size="${fs.toFixed(1)}" font-weight="700" fill="${outline?C.green:'#fff'}" text-anchor="middle" ${FF}>${e(mbThumbFit(c.text,w-2,fs,700))}</text>`;
+    }
+    case 'check':{
+      const box=Math.max(2,Math.min(h*0.6,w*0.25,6));
+      return `<rect x="${x.toFixed(1)}" y="${(y+(h-box)/2).toFixed(1)}" width="${box.toFixed(1)}" height="${box.toFixed(1)}" rx="1" fill="#fff" stroke="${C.border}" stroke-width="0.6"/>`
+        +`<text x="${(x+box+3).toFixed(1)}" y="${(y+h*0.68).toFixed(1)}" font-size="${fs.toFixed(1)}" fill="${C.labelFg}" ${FF}>${e(mbThumbFit(c.text,w-box-4,fs,400))}</text>`;
+    }
+    case 'radio':{
+      const r=Math.max(1,Math.min(h*0.3,w*0.12,3));
+      const opts=(c.options||'').split(',').map(s=>s.trim()).filter(Boolean);
+      const label=opts.length?opts[0]:c.text;
+      return `<circle cx="${(x+r+1).toFixed(1)}" cy="${(y+h/2).toFixed(1)}" r="${r.toFixed(1)}" fill="#fff" stroke="${C.border}" stroke-width="0.6"/>`
+        +`<text x="${(x+r*2+4).toFixed(1)}" y="${(y+h*0.68).toFixed(1)}" font-size="${fs.toFixed(1)}" fill="${C.labelFg}" ${FF}>${e(mbThumbFit(label,w-r*2-6,fs,400))}</text>`;
+    }
+    case 'input': case 'date': case 'daterange': case 'popup': case 'attach':{
+      const bg=c.readonly?C.roBg:(c.required?C.reqBg:'#fff');
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(2,h*0.15).toFixed(1)}" fill="${bg}" stroke="${C.border}" stroke-width="0.6"/>`
+        +`<text x="${(x+3).toFixed(1)}" y="${(y+h*0.66).toFixed(1)}" font-size="${fs.toFixed(1)}" fill="#333" ${FF}>${e(mbThumbFit(c.text,w-6,fs,400))}</text>`;
+    }
+    case 'combo':{
+      const bg=c.readonly?C.roBg:(c.required?C.reqBg:'#fff');
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(2,h*0.15).toFixed(1)}" fill="${bg}" stroke="${C.border}" stroke-width="0.6"/>`
+        +`<text x="${(x+3).toFixed(1)}" y="${(y+h*0.66).toFixed(1)}" font-size="${fs.toFixed(1)}" fill="#333" ${FF}>${e(mbThumbFit(c.text,w-12,fs,400))}</text>`
+        +`<text x="${(x+w-7).toFixed(1)}" y="${(y+h*0.66).toFixed(1)}" font-size="${fs.toFixed(1)}" fill="${C.gray}" ${FF}>▾</text>`;
+    }
+    case 'searchbar':
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(3,h*0.2).toFixed(1)}" fill="#fff" stroke="${C.border}" stroke-width="0.6"/>`
+        +`<circle cx="${(x+w-9).toFixed(1)}" cy="${(y+h/2-1).toFixed(1)}" r="2" fill="none" stroke="${C.gray}" stroke-width="0.6"/>`;
+    case 'tree':{
+      let out=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#fff" stroke="${C.border}" stroke-width="0.6"/>`;
+      const step=fs+2, rows=Math.max(1,Math.min(5,Math.floor(h/step)));
+      for(let i=0;i<rows;i++){
+        const ry=y+3+i*step, indent=3+(i%3)*4;
+        out+=`<line x1="${(x+indent).toFixed(1)}" y1="${ry.toFixed(1)}" x2="${Math.min(x+w-3,x+indent+w*0.4).toFixed(1)}" y2="${ry.toFixed(1)}" stroke="${MB_THUMB_COLORS.tree}" stroke-width="0.8" stroke-opacity=".45"/>`;
+      }
+      return out;
+    }
+    case 'chart':{
+      let out=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#fbfbfc" stroke="${C.border}" stroke-width="0.6"/>`;
+      const n=4, bw=Math.max(1,w/(n*2.4));
+      for(let i=0;i<n;i++){
+        const bh=h*0.18+(h*0.55)*((i%3)+1)/3;
+        const bx=x+w*0.1+i*bw*2;
+        out+=`<rect x="${bx.toFixed(1)}" y="${(y+h-bh-2).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" fill="${MB_THUMB_COLORS.chart}" fill-opacity=".55"/>`;
+      }
+      return out;
+    }
+    case 'grid':
+      return mbThumbDrawGrid(c,x,y,w,h,C,FF);
+    default:{
+      const color=MB_THUMB_COLORS[c.type]||'#9ca3af';
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" fill-opacity=".18" stroke="${color}" stroke-width="0.6" rx="1"/>`;
+    }
+  }
+}
+// 그리드는 ERP 화면에서 가장 눈에 띄는 요소라 별도 함수로 - 헤더행(색 채우기+컬럼 구분선+가능하면
+// 헤더 글자)과 그 아래 데이터 행 몇 줄(옅은 줄무늬)을 그려서 "표"라는 걸 한눈에 알아보게 한다.
+function mbThumbDrawGrid(c,x,y,w,h,C,FF){
+  const e=mbThumbEsc;
+  const cols=gridColsArr(c);
+  const headH=Math.max(3,Math.min(h*0.28,7));
+  let out=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="1" fill="#fff" stroke="${C.border}" stroke-width="0.6"/>`;
+  out+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${headH.toFixed(1)}" fill="${C.gridHead}"/>`;
+  const n=Math.max(1,Math.min(cols.length||4,10));
+  const colW=w/n;
+  const fs=Math.max(2.6,Math.min(5,headH*0.8));
+  for(let i=0;i<n;i++){
+    const cx=x+i*colW;
+    if(i>0) out+=`<line x1="${cx.toFixed(1)}" y1="${y.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${(y+h).toFixed(1)}" stroke="${C.border}" stroke-width="0.4"/>`;
+    if(cols[i]&&colW>fs*1.8) out+=`<text x="${(cx+2).toFixed(1)}" y="${(y+headH*0.78).toFixed(1)}" font-size="${fs.toFixed(1)}" font-weight="700" fill="${C.gridHeadFg}" ${FF}>${e(mbThumbFit(cols[i],colW-3,fs,700))}</text>`;
+  }
+  const rowH=Math.max(3,Math.min(8,(h-headH)/4));
+  let ry=y+headH, ri=0;
+  while(ry<y+h-0.5){
+    const rh=Math.min(rowH,y+h-ry);
+    if(ri%2===1) out+=`<rect x="${x.toFixed(1)}" y="${ry.toFixed(1)}" width="${w.toFixed(1)}" height="${rh.toFixed(1)}" fill="#f7f8f9"/>`;
+    out+=`<line x1="${x.toFixed(1)}" y1="${(ry+rh).toFixed(1)}" x2="${(x+w).toFixed(1)}" y2="${(ry+rh).toFixed(1)}" stroke="#eef0f2" stroke-width="0.4"/>`;
+    ry+=rh; ri++;
+  }
+  return out;
+}
+function openCloudSave(){
+  if(!mbGetSession()){ openLogin(); return; }
+  Object.assign(mbCloud,{mode:'save',tab:'mine',folderId:null,selectedId:null,searchQuery:'',includeSub:false,
+    tags:[],isPublic:true,filename:screenTitle()||'제목 없음'});
+  document.getElementById('cloudTitle').textContent='☁ 클라우드에 저장';
+  document.getElementById('cloudBg').classList.add('on');
+  mbCloudApplySavedModalSize();
+  const tasks=[mbCloudLoadFolders(),mbCloudLoadItems(),mbCloudLoadFileCounts()];
+  // 지금 화면이 공유파일에서 이어온 리비전이면(mbCloud.originId), 저장 팝업 하단 태그 입력칸을
+  // 원본의 태그로 미리 채워 둔다 - 그대로 저장해도 되고, 자유롭게 더하거나 지우고 저장해도 된다.
+  // (아래 목록에서 기존 파일을 골라 덮어쓰기를 선택하면, 그 파일 자신의 태그가 대신 채워진다 -
+  // 명시적으로 고른 파일이 우선이다.)
+  if(mbCloud.originId) tasks.push(mbCloudPrefillOriginTags());
+  Promise.all(tasks).then(mbCloudRender);
+}
+async function mbCloudPrefillOriginTags(){
+  try{
+    const rows=await mbRestFetch(`/mockups?id=eq.${mbCloud.originId}&select=tags`);
+    const tags=rows&&rows[0]&&Array.isArray(rows[0].tags)?rows[0].tags:[];
+    mbCloud.tags=[...tags];
+  }catch(e){ /* 실패해도 태그 없이 저장을 진행할 수 있어야 하므로 조용히 무시 */ }
+}
+function openCloudOpen(){
+  if(!mbGetSession()){ openLogin(); return; }
+  Object.assign(mbCloud,{mode:'open',tab:'mine',folderId:null,selectedId:null,searchQuery:'',includeSub:false});
+  document.getElementById('cloudTitle').textContent='☁ 클라우드에서 열기';
+  document.getElementById('cloudBg').classList.add('on');
+  mbCloudApplySavedModalSize();
+  Promise.all([mbCloudLoadFolders(),mbCloudLoadItems(),mbCloudLoadFileCounts()]).then(mbCloudRender);
+}
+// 「공유파일」은 이제 클라우드 열기 팝업의 탭이 아니라, 계정 메뉴에서 바로 들어오는 별도의
+// 팝업("목업마켓")이다 - 열기/저장과 같은 모달(cloudBg/cloudModal/cloudBody)을 그대로
+// 재사용하되, mode를 'shared'로 두어 mbCloudRender()가 탭 없이 공유 목록만 그리게 한다.
+function openSharedGallery(){
+  if(!mbGetSession()){ openLogin(); return; }
+  Object.assign(mbCloud,{mode:'shared',tab:'shared'});
+  document.getElementById('cloudTitle').textContent='🌐 목업마켓';
+  document.getElementById('cloudBg').classList.add('on');
+  mbCloudApplySavedModalSize();
+  mbCloudLoadShared().then(mbCloudRenderAndFillShared);
+}
+function closeCloud(){ document.getElementById('cloudBg').classList.remove('on'); }
+// 클라우드 저장/열기 팝업 크기 조절 - 우측 하단 손잡이를 드래그(캔버스 크기 조절과 같은 방식).
+// 탭(내 파일/공유파일)을 바꿔도 이 팝업 자체 크기는 안 바뀌게, 각 탭 내용은 flex:1로 남은 공간을
+// 채우도록 만들었다(고정 픽셀 높이 대신) - 그래서 탭이 달라도 팝업 크기는 항상 동일하게 유지된다.
+function mbCloudApplySavedModalSize(){
+  const modal=document.getElementById('cloudModal'); if(!modal) return;
+  try{
+    const w=localStorage.getItem('mb_cloud_modal_w'), h=localStorage.getItem('mb_cloud_modal_h');
+    if(w) modal.style.width=w;
+    if(h) modal.style.height=h;
+  }catch(e){}
+}
+let mbCloudResizeDrag=null;
+function mbCloudResizeStart(e){
+  e.preventDefault();
+  const modal=document.getElementById('cloudModal'); if(!modal) return;
+  const rect=modal.getBoundingClientRect();
+  mbCloudResizeDrag={startX:e.clientX,startY:e.clientY,startW:rect.width,startH:rect.height};
+  document.addEventListener('mousemove',mbCloudResizeMove);
+  document.addEventListener('mouseup',mbCloudResizeEnd);
+}
+function mbCloudResizeMove(e){
+  if(!mbCloudResizeDrag) return;
+  const modal=document.getElementById('cloudModal'); if(!modal) return;
+  const w=Math.max(640,Math.min(window.innerWidth*0.97,mbCloudResizeDrag.startW+(e.clientX-mbCloudResizeDrag.startX)));
+  const h=Math.max(420,Math.min(window.innerHeight*0.92,mbCloudResizeDrag.startH+(e.clientY-mbCloudResizeDrag.startY)));
+  modal.style.width=w+'px';
+  modal.style.height=h+'px';
+  if(document.getElementById('cloudTagbar')) mbCloudInitTagBar(); // 팝업 폭이 바뀌면 한 줄에 들어가는 칩 수, 즉 2줄을 넘는지 여부도 같이 바뀔 수 있다
+  mbCloudFitSharedPreview(); // 팝업 크기가 바뀌면 공유파일 미리보기 iframe의 배율도 다시 맞춘다
+}
+function mbCloudResizeEnd(){
+  mbCloudResizeDrag=null;
+  document.removeEventListener('mousemove',mbCloudResizeMove);
+  document.removeEventListener('mouseup',mbCloudResizeEnd);
+  const modal=document.getElementById('cloudModal'); if(!modal) return;
+  try{ localStorage.setItem('mb_cloud_modal_w',modal.style.width); localStorage.setItem('mb_cloud_modal_h',modal.style.height); }catch(e){}
+}
+
+// 즐겨찾기처럼 "최근 저장파일(Local)" 폴더도 일반 폴더 목록(트리·목록 어디든)에는 안 섞이고
+// 전용 고정 위치에만 노출되므로, 최상위(parent_id=null) 자식을 구할 때는 그 폴더를 제외한다.
+function mbFolderChildren(parentId){
+  return mbCloud.folders.filter(f=>(f.parent_id||null)===(parentId||null)
+    && !(parentId==null && f.parent_id==null && f.name===MB_LOCAL_AUTOSAVE_FOLDER_NAME));
+}
+function mbFolderPathTo(id){ const path=[]; let cur=id; while(cur){ const f=mbCloud.folders.find(x=>x.id===cur); if(!f)break; path.unshift(f); cur=f.parent_id; } return path; }
+function mbFolderDescendantIds(id){ const out=[]; const stack=[id]; while(stack.length){ const cur=stack.pop(); mbFolderChildren(cur).forEach(f=>{ out.push(f.id); stack.push(f.id); }); } return out; }
+
+async function mbCloudLoadFolders(){
+  const s=mbGetSession(); if(!s){ mbCloud.folders=[]; return; }
+  try{ mbCloud.folders=await mbRestFetch(`/mockup_folders?owner_id=eq.${s.id}&select=id,parent_id,name&order=name.asc`)||[]; }
+  catch(e){ mbCloud.folders=[]; }
+}
+// 폴더트리에 폴더별 파일 개수를 보여주기 위해, 파일 본문(jsonb) 없이 folder_id만 가볍게 전부
+// 가져와서 클라이언트에서 센다. 직접 들어있는 파일 개수만 세고(하위 폴더 것까지 합산하지는 않음) -
+// 탐색기에서 흔히 보는 방식과 같다.
+async function mbCloudLoadFileCounts(){
+  const s=mbGetSession(); if(!s){ mbCloud.fileCounts={}; mbCloud.favCount=0; return; }
+  try{
+    // 지금 켜진 모드(씬/팻)와 다른 모드로 저장된 파일은 애초에 열 수도 없으니 개수에도 안 잡히게,
+    // 목록(mbCloudLoadItems)과 똑같이 mode=eq.<현재모드> 로 걸러서 센다.
+    const rows=await mbRestFetch(`/mockups?owner_id=eq.${s.id}&mode=eq.${mbCurrentMode()}&select=folder_id,is_favorite`)||[];
+    const counts={}; let fav=0;
+    rows.forEach(r=>{ const k=r.folder_id||'__root__'; counts[k]=(counts[k]||0)+1; if(r.is_favorite) fav++; });
+    mbCloud.fileCounts=counts; mbCloud.favCount=fav;
+  }catch(e){ mbCloud.fileCounts={}; mbCloud.favCount=0; }
+}
+// '__fav__'는 실제 폴더가 아니라 즐겨찾기만 모아 보여주는 가상 폴더 id다(폴더트리에서
+// "전체 파일"과 같은 레벨의 별도 항목으로 표시됨) - mbCloud.folderId에 이 값이 들어오면
+// 폴더 구분 없이 is_favorite=true인 파일만 모아서 보여준다.
+const MB_FAV_FOLDER='__fav__';
+// ---- Local 저장 시 클라우드 자동 저장 ----
+// 브라우저별 설정(계정이 아니라 이 기기의 클라우드에 저장 팝업 켬/끔 상태) - 값이 없으면(최초 진입)
+// 기본값은 "사용"이다. '저장'(로컬 HTML 내보내기)을 할 때마다, 로그인 상태이고 이 설정이 켜져
+// 있으면 같은 내용을 '최근 저장파일(Local)' 폴더에도 함께 올린다.
+const MB_LOCAL_AUTOSAVE_KEY='mb_local_autosave_cloud';
+const MB_LOCAL_AUTOSAVE_FOLDER_NAME='최근 저장파일(Local)';
+// 자동 공유(로컬 저장 시 클라우드에 올라가며 공개되는 파일)에 기본으로 다는 태그 - 목업마켓에서
+// 기존에 사람이 직접 공유한 파일과 구분해 따로 걸러볼 수 있게 한다(아래 목업마켓 세그먼트 참고).
+const MB_AUTOSHARE_TAG='자동 공유';
+function mbLocalAutoSaveGet(){ try{ const v=localStorage.getItem(MB_LOCAL_AUTOSAVE_KEY); return v===null?true:v==='1'; }catch(e){ return true; } }
+function mbLocalAutoSaveSet(v){ try{ localStorage.setItem(MB_LOCAL_AUTOSAVE_KEY, v?'1':'0'); }catch(e){} }
+function mbLocalAutoSaveToggle(el){ mbLocalAutoSaveSet(el.checked); }
+// 폴더가 이미 있으면 그 id를, 없으면 최상위에 새로 만들어 그 id를 돌려준다. 실패하면 null -
+// 이 경우 자동 저장만 조용히 건너뛰고 로컬 저장 자체(이미 끝난 뒤 호출됨)는 영향받지 않는다.
+async function mbLocalAutoSaveFindOrCreateFolder(s){
+  try{
+    const rows=await mbRestFetch(`/mockup_folders?owner_id=eq.${s.id}&parent_id=is.null&name=eq.${encodeURIComponent(MB_LOCAL_AUTOSAVE_FOLDER_NAME)}&select=id`);
+    if(rows&&rows.length) return rows[0].id;
+  }catch(e){ /* 조회 실패 시 새로 만들기를 시도 */ }
+  try{
+    const [row]=await mbRestFetch('/mockup_folders',{method:'POST',body:JSON.stringify({owner_id:s.id,parent_id:null,name:MB_LOCAL_AUTOSAVE_FOLDER_NAME})});
+    return row.id;
+  }catch(e){ return null; }
+}
+// 로컬 저장(exportHTML) 직후 호출된다. 클라우드에 저장(mbCloudDoSaveFinish)과 똑같은 모양의
+// 데이터(mockups 테이블 컬럼)로 저장해야, 폴더 안에서 공유·즐겨찾기·삭제 등 기존 파일 기능이
+// 수동으로 저장한 파일과 완전히 동일하게 동작한다. 다만 여기서는 같은 이름이 있어도 덮어쓰지
+// 않고(중복 확인 없이) 매번 새 파일로 추가한다 - 로컬에 저장할 때마다 이력처럼 계속 쌓이게 하기
+// 위함이다.
+async function mbLocalAutoSaveToCloud(baseName){
+  if(!mbLocalAutoSaveGet()) return;
+  const s=mbGetSession(); if(!s) return;
+  try{
+    const folderId=await mbLocalAutoSaveFindOrCreateFolder(s);
+    if(folderId==null) return;
+    const payload={ owner_id:s.id, folder_id:folderId, title:baseName, tags:[MB_AUTOSHARE_TAG], is_public:true,
+      mode:mbCurrentMode(), data:mbBuildSaveData(), thumbnail:mbBuildThumbnailSVG(), updated_at:new Date().toISOString(),
+      origin_id:mbCloud.originId||null };
+    await mbRestFetch('/mockups',{method:'POST',body:JSON.stringify(payload),prefer:'return=minimal'});
+  }catch(e){ /* 자동 백업 실패가 로컬 저장 자체를 막으면 안 되므로 조용히 무시 */ }
+}
+const MB_MINE_PAGE_SIZE=100;
+function mbCloudMineBaseQuery(){
+  const s=mbGetSession();
+  // 씬모드에서 저장한 파일과 팻모드에서 저장한 파일은 구조가 달라 서로 호환되지 않으므로,
+  // "내 파일" 목록도 지금 켜진 모드에 해당하는 것만 보여준다(공유파일 탭과 같은 기준).
+  let q=`/mockups?owner_id=eq.${s.id}&mode=eq.${mbCurrentMode()}&select=id,title,tags,is_public,mode,created_at,updated_at,folder_id,is_favorite&order=updated_at.desc`;
+  if(mbCloud.folderId===MB_FAV_FOLDER){
+    q+='&is_favorite=eq.true';
+  }else if(mbCloud.searchQuery && mbCloud.includeSub){
+    if(mbCloud.folderId!=null){
+      const ids=[mbCloud.folderId,...mbFolderDescendantIds(mbCloud.folderId)];
+      q+=`&folder_id=in.(${ids.join(',')})`;
+    } // 전체 파일에서 하위 폴더 포함 검색이면 폴더 제한 없이 전체 대상
+  }else{
+    q += mbCloud.folderId==null ? '&folder_id=is.null' : `&folder_id=eq.${mbCloud.folderId}`;
+  }
+  if(mbCloud.searchQuery) q+=`&title=ilike.*${encodeURIComponent(mbCloud.searchQuery)}*`;
+  return q;
+}
+// 파일이 100개가 넘는 폴더/즐겨찾기/검색 결과에서는 서버(PostgREST)가 요청당 최대 반환 개수를
+// 두고 있어(우리가 limit을 안 걸어도) 조용히 상한선(대개 100개)에서 잘려 돌아온다 - 그래서 예전
+// 코드처럼 limit 없이 한 번에 다 받아오려 하면 100개 그 이후는 스크롤을 아무리 내려도 원래
+// 존재하지 않는 것처럼 보였다. 공유파일 탭과 동일하게 100개씩 명시적으로 나눠 받아오고, 스크롤로
+// 이어붙이는 방식으로 바꿔서 이 상한선과 무관하게 전체를 다 볼 수 있게 한다.
+async function mbCloudLoadItems(){
+  const s=mbGetSession(); if(!s){ mbCloud.items=[]; mbCloud.mineHasMore=false; return; }
+  mbCloud.mineOffset=0; mbCloud.mineHasMore=true;
+  const q=mbCloudMineBaseQuery()+`&limit=${MB_MINE_PAGE_SIZE}&offset=0`;
+  try{
+    const rows=await mbRestFetch(q)||[];
+    mbCloud.items=rows;
+    mbCloud.mineHasMore=rows.length===MB_MINE_PAGE_SIZE;
+    mbCloud.mineOffset=rows.length;
+  }catch(e){ mbCloud.items=[]; mbCloud.mineHasMore=false; }
+}
+async function mbCloudLoadItemsMore(){
+  if(mbCloud.mineLoadingMore || !mbCloud.mineHasMore) return;
+  mbCloud.mineLoadingMore=true;
+  mbCloudRenderKeepScroll();
+  try{
+    const q=mbCloudMineBaseQuery()+`&limit=${MB_MINE_PAGE_SIZE}&offset=${mbCloud.mineOffset}`;
+    const rows=await mbRestFetch(q)||[];
+    mbCloud.mineHasMore=rows.length===MB_MINE_PAGE_SIZE;
+    mbCloud.mineOffset+=rows.length;
+    if(rows.length) mbCloud.items=mbCloud.items.concat(rows);
+  }catch(e){ /* 실패하면 다음 스크롤/화면-채우기 시점에 다시 시도된다 */ }
+  finally{
+    mbCloud.mineLoadingMore=false;
+    mbCloudRenderKeepScroll();
+    mbCloudCheckMineFillViewport();
+  }
+}
+// 100개를 받아와도 팝업이 크면 스크롤 자체가 안 생겨 "스크롤하면 더 불러오기"가 발동할 기회가
+// 없을 수 있다 - 공유파일 탭과 동일하게, 다시 그린 뒤 목록이 아직 화면을 다 못 채웠고(스크롤 없음)
+// 더 있으면 곧바로 한 번 더 불러온다.
+function mbCloudCheckMineFillViewport(){
+  if(mbCloud.tab!=='mine'||!mbCloud.mineHasMore||mbCloud.mineLoadingMore) return;
+  const list=document.querySelector('#cloudBody .cl-list');
+  if(!list) return;
+  if(list.scrollHeight<=list.clientHeight+4) mbCloudLoadItemsMore();
+}
+function mbCloudMineScrollCheck(e){
+  const el=e.target;
+  if(!el||!el.classList||!el.classList.contains('cl-list')) return;
+  if(mbCloud.tab!=='mine'||!mbCloud.mineHasMore||mbCloud.mineLoadingMore) return;
+  if(el.scrollTop+el.clientHeight>=el.scrollHeight-300) mbCloudLoadItemsMore();
+}
+document.addEventListener('scroll', mbCloudMineScrollCheck, true);
+// 공유파일이 많아지면 한 번에 다 불러오는 건 느리고 낭비이므로, 100개씩 끊어서 불러온다
+// (처음 열 때 100개, 스크롤을 끝까지 내리면 다음 100개... 이런 식으로 이어붙인다).
+// 검색어/정렬/태그 필터처럼 "완전히 새로 불러와야 하는" 조건은 mbCloudLoadShared()가 처음부터
+// 다시 받아오고, 스크롤로 이어받는 쪽은 mbCloudLoadSharedMore()가 담당한다 - 둘 다 같은 쿼리
+// 조건(검색어/정렬/태그)을 써야 하므로 mbCloudSharedBaseQuery()로 공통화해둔다.
+const MB_SHARED_PAGE_SIZE=100;
+function mbCloudSharedOrderClause(){
+  // "작성자순"은 mockups 테이블에 없는 값(username)으로 정렬해야 해서 서버 쿼리로는 못 하고,
+  // 아래에서 사용자 이름을 붙인 뒤 클라이언트에서 다시 정렬한다 - 여기서는 그냥 기본 순서로 받아온다.
+  const orderMap={ recent:'created_at.desc', oldest:'created_at.asc', title:'title.asc', author:'created_at.desc' };
+  return orderMap[mbCloud.sharedSort] || orderMap.recent;
+}
+// 검색어/태그 조건만 떼어낸 것 - 목록 조회와 원본/전체/리비전 개수 집계가 항상 같은 조건을
+// 쓰도록(검색하면 "검색된 결과 안에서의" 개수가 나오도록) 하나로 합쳐 둔다.
+function mbCloudSharedFilterClause(){
+  let q=`is_public=eq.true&mode=eq.${mbCurrentMode()}`;
+  if(mbCloud.sharedQuery) q+=`&title=ilike.*${encodeURIComponent(mbCloud.sharedQuery)}*`;
+  if(mbCloud.sharedTag && mbCloud.sharedTag!=='전체') q+=`&tags=cs.{${encodeURIComponent(mbCloud.sharedTag)}}`;
+  return q;
+}
+function mbCloudSharedBaseQuery(){
+  let q=`/mockups?${mbCloudSharedFilterClause()}&select=id,title,tags,created_at,owner_id,thumbnail,open_count,origin_id`;
+  q += '&order=' + mbCloudSharedOrderClause();
+  // 특정 원본의 리비전만 콕 집어 보는 중이면(배지 클릭), 전체/원본만/리비전만/자동 공유 칩은
+  // 무시하고 그 원본 id를 정확히 참조하는 것들만 가져온다 - 제목 검색이 아니라 실제 origin_id로
+  // 걸기 때문에 이름이 같은 다른 원본과 섞일 일이 없다.
+  if(mbCloud.sharedOriginFilter) q+=`&origin_id=eq.${mbCloud.sharedOriginFilter}`;
+  // '원본만'/'리비전만'은 로컬 저장에서 자동 공유된 파일(자동 공유 태그)을 빼고 보여준다 -
+  // 자동 공유 파일은 '자동 공유' 탭에서(그리고 '전체'에는 다른 파일들과 함께) 본다.
+  else if(mbCloud.sharedLineage==='originals') q+=`&origin_id=is.null&tags=not.cs.{${encodeURIComponent(MB_AUTOSHARE_TAG)}}`;
+  else if(mbCloud.sharedLineage==='revisions') q+=`&origin_id=not.is.null&tags=not.cs.{${encodeURIComponent(MB_AUTOSHARE_TAG)}}`;
+  // '자동 공유' 탭은 그 태그가 붙은 것만 모아 보여준다(원본/리비전 구분 없이). '전체'는 태그와
+  // 무관하게(자동 공유 포함) 모두 보여준다 - 별도 조건 없음.
+  else if(mbCloud.sharedLineage==='autoshare') q+=`&tags=cs.{${encodeURIComponent(MB_AUTOSHARE_TAG)}}`;
+  return q;
+}
+// 실제 데이터는 안 받고 PostgREST의 Content-Range 헤더만으로 "몇 개인지"를 가볍게 물어본다
+// (HEAD + Prefer: count=exact). 목록을 통째로 내려받지 않아도 되니 개수가 아무리 많아도 가볍다.
+async function mbRestCount(path){
+  try{
+    const res=await fetch(`${MB_SUPABASE_URL}/rest/v1${path}`,{
+      method:'HEAD',
+      headers:{'apikey':MB_SUPABASE_KEY,'Authorization':`Bearer ${MB_SUPABASE_KEY}`,'Prefer':'count=exact'}
+    });
+    const range=res.headers.get('content-range'); // 예: "0-9/23" 또는 총 0개면 "*/0"
+    if(!range) return 0;
+    const total=range.split('/')[1];
+    return total==='*'?0:(parseInt(total,10)||0);
+  }catch(e){ return 0; }
+}
+// 원본만/전체/리비전만/자동 공유 칩에 붙는 "총 N개" 숫자 - 지금 검색어/태그 조건(mbCloudSharedFilterClause)은
+// 그대로 유지한 채, 탭마다 정확히 그 탭이 보여줄 조건으로 각각 따로 센다('전체'는 자동 공유 포함
+// 전부, '원본만'/'리비전만'은 자동 공유 제외, '자동 공유'는 그 태그만) - 위 mbCloudSharedBaseQuery()의
+// 조건과 반드시 1:1로 맞아야 화면에 보이는 개수와 칩의 숫자가 어긋나지 않는다. 드릴다운(특정 원본의
+// 리비전만 보는 중) 모드에서는 세그먼트 바 자체가 안 뜨므로 호출하지 않는다.
+async function mbCloudLoadSharedLineageCounts(){
+  const base=mbCloudSharedFilterClause();
+  const noAuto=`tags=not.cs.{${encodeURIComponent(MB_AUTOSHARE_TAG)}}`;
+  try{
+    const [all,originals,revisions,autoshare]=await Promise.all([
+      mbRestCount(`/mockups?${base}`),
+      mbRestCount(`/mockups?${base}&origin_id=is.null&${noAuto}`),
+      mbRestCount(`/mockups?${base}&origin_id=not.is.null&${noAuto}`),
+      mbRestCount(`/mockups?${base}&tags=cs.{${encodeURIComponent(MB_AUTOSHARE_TAG)}}`)
+    ]);
+    mbCloud.sharedCounts={originals,revisions,all,autoshare};
+  }catch(e){ mbCloud.sharedCounts=null; }
+}
+async function mbCloudLoadShared(){
+  mbCloud.sharedOffset=0; mbCloud.sharedHasMore=true;
+  const q=mbCloudSharedBaseQuery()+`&limit=${MB_SHARED_PAGE_SIZE}&offset=0`;
+  // 특정 원본의 리비전만 보는 드릴다운 중에는 세그먼트 바 자체가 안 뜨니 개수를 새로 셀 필요 없다.
+  const countsTask=mbCloud.sharedOriginFilter?Promise.resolve():mbCloudLoadSharedLineageCounts();
+  try{
+    const rows=await mbRestFetch(q)||[];
+    mbCloud.sharedItems=rows;
+    mbCloud.sharedHasMore=rows.length===MB_SHARED_PAGE_SIZE;
+    mbCloud.sharedOffset=rows.length;
+    await mbCloudAttachUsernames(mbCloud.sharedItems);
+    await mbCloudAttachRevisionCounts(mbCloud.sharedItems);
+    if(mbCloud.sharedSort==='author'){
+      mbCloud.sharedItems.sort((a,b)=>(a.username||'').localeCompare(b.username||'','ko'));
+    }
+    await mbCloudLoadSharedTags();
+  }catch(e){ mbCloud.sharedItems=[]; mbCloud.sharedHasMore=false; mbCloud.sharedTags=['전체']; }
+  await countsTask;
+}
+// 지금 화면에 보이는 원본들(origin_id가 없는 항목)에 한해서만, "여기서 파생된 리비전이 몇 개인지"를
+// mockup_derivative_counts 뷰에서 한 번에 물어와 각 항목에 derivative_count로 붙여준다. 목록 전체를
+// 매번 다시 스캔하지 않고 지금 페이지에 보이는 원본 id만 물어보므로, 목록이 아무리 커져도 이 조회
+// 자체는 가볍다.
+async function mbCloudAttachRevisionCounts(items){
+  const originIds=items.filter(it=>!it.origin_id).map(it=>it.id);
+  if(!originIds.length) return;
+  try{
+    const rows=await mbRestFetch(`/mockup_derivative_counts?origin_id=in.(${originIds.join(',')})`)||[];
+    const countMap={}; rows.forEach(r=>{ countMap[r.origin_id]=r.derivative_count; });
+    items.forEach(it=>{ if(!it.origin_id) it.derivative_count=countMap[it.id]||0; });
+  }catch(e){ /* 실패해도 배지만 안 뜰 뿐, 목록 자체는 정상 표시 */ }
+}
+function mbCloudSharedLineageClick(v){ mbCloud.sharedLineage=v; mbCloud.sharedOriginFilter=null; mbCloud.sharedOriginFilterTitle=''; mbCloudLoadShared().then(mbCloudRenderAndFillShared); }
+// 원본 카드의 리비전 개수 배지를 눌렀을 때: 그 원본의 리비전들만 콕 집어 보여주는 "돋보기" 모드로
+// 들어간다. 검색창/태그 필터는 그대로 두고(다시 눌러 빠져나오면 원래 보던 조건 그대로 이어지도록),
+// 위쪽에 "◀ 뒤로 · '제목'의 리비전" 알림줄만 추가로 얹는다.
+function mbCloudShowRevisionsOf(originId){
+  // 제목 문자열을 onclick 안에 직접 끼워 넣으면(따옴표 등 특수문자가 있는 제목일 때 깨질 수
+  // 있어) id만 넘기고, 이미 불러와 둔 목록에서 제목을 안전하게 찾아 쓴다.
+  const it=mbCloud.sharedItems.find(x=>x.id===originId);
+  mbCloud.sharedOriginFilter=originId;
+  mbCloud.sharedOriginFilterTitle=it?it.title:'';
+  mbCloudLoadShared().then(mbCloudRenderAndFillShared);
+}
+function mbCloudClearOriginFilter(){
+  mbCloud.sharedOriginFilter=null; mbCloud.sharedOriginFilterTitle='';
+  mbCloudLoadShared().then(mbCloudRenderAndFillShared);
+}
+// 태그 필터 칩 목록은 "지금까지 불러온 항목"이 아니라(그럼 아직 안 불러온 뒤쪽 페이지에만 있는
+// 태그는 필터로 고를 수조차 없게 된다) 검색 조건에 맞는 전체 데이터에서 따로, 가볍게(태그만)
+// 조회해서 채운다. 지금 선택된 태그 자체는 이 쿼리에 걸지 않아, 다른 태그로 바꿔 누를 수 있게 둔다.
+async function mbCloudLoadSharedTags(){
+  try{
+    let q=`/mockups?is_public=eq.true&mode=eq.${mbCurrentMode()}&select=tags`;
+    if(mbCloud.sharedQuery) q+=`&title=ilike.*${encodeURIComponent(mbCloud.sharedQuery)}*`;
+    const rows=await mbRestFetch(q)||[];
+    const tagSet=new Set(); rows.forEach(r=>(r.tags||[]).forEach(t=>tagSet.add(t)));
+    mbCloud.sharedTags=['전체',...Array.from(tagSet).sort((a,b)=>a.localeCompare(b,'ko'))];
+  }catch(e){ mbCloud.sharedTags=['전체']; }
+}
+// 스크롤을 끝까지 내렸을 때(또는 처음 페이지만으로 화면이 다 안 채워질 때) 다음 100개를 이어붙인다.
+async function mbCloudLoadSharedMore(){
+  if(mbCloud.sharedLoadingMore || !mbCloud.sharedHasMore) return;
+  mbCloud.sharedLoadingMore=true;
+  mbCloudRenderKeepScroll(); // "더 불러오는 중..." 표시
+  try{
+    const q=mbCloudSharedBaseQuery()+`&limit=${MB_SHARED_PAGE_SIZE}&offset=${mbCloud.sharedOffset}`;
+    const rows=await mbRestFetch(q)||[];
+    mbCloud.sharedHasMore=rows.length===MB_SHARED_PAGE_SIZE;
+    mbCloud.sharedOffset+=rows.length;
+    if(rows.length){
+      await mbCloudAttachUsernames(rows);
+      mbCloud.sharedItems=mbCloud.sharedItems.concat(rows);
+      if(mbCloud.sharedSort==='author'){
+        // author순은 서버가 아니라 여기서 정렬하는 값이라, 새로 이어붙인 뒤 전체를 다시 정렬해야
+        // 새 항목들이 알파벳 순서상 맞는 자리에 끼워진다.
+        mbCloud.sharedItems.sort((a,b)=>(a.username||'').localeCompare(b.username||'','ko'));
+      }
+    }
+  }catch(e){ /* 실패하면 그냥 두고, 다음에 다시 스크롤하거나 화면을 채우려 할 때 재시도된다 */ }
+  finally{
+    mbCloud.sharedLoadingMore=false;
+    mbCloudRenderKeepScroll();
+    mbCloudCheckSharedFillViewport();
+  }
+}
+// 100개를 받아와도 팝업이 아주 크거나 화면이 넓으면 스크롤이 아예 생기지 않을 수 있어서(그러면
+// "스크롤을 내리면 더 불러오기"가 발동할 기회 자체가 없다), 매번 다시 그린 뒤 목록 영역이
+// 아직 다 안 채워졌고(스크롤이 없고) 더 불러올 게 남아있으면 곧바로 한 번 더 불러온다.
+function mbCloudCheckSharedFillViewport(){
+  if(mbCloud.tab!=='shared'||!mbCloud.sharedHasMore||mbCloud.sharedLoadingMore) return;
+  const list=document.querySelector('#cloudBody .cl-cards')||document.querySelector('#cloudBody .cl-shared-list-pane');
+  if(!list) return;
+  if(list.scrollHeight<=list.clientHeight+4) mbCloudLoadSharedMore();
+}
+// 목록/카드 영역(스크롤 컨테이너)이 바뀔 때마다 리스너를 다시 붙일 필요 없이, scroll 이벤트는
+// 버블링되지 않으니 document에 캡처 단계로 한 번만 걸어두고 target을 직접 검사한다.
+function mbCloudSharedScrollCheck(e){
+  const el=e.target;
+  if(!el||!el.classList) return;
+  if(!(el.classList.contains('cl-cards')||el.classList.contains('cl-shared-list-pane'))) return;
+  if(mbCloud.tab!=='shared'||!mbCloud.sharedHasMore||mbCloud.sharedLoadingMore) return;
+  if(el.scrollTop+el.clientHeight>=el.scrollHeight-300) mbCloudLoadSharedMore();
+}
+document.addEventListener('scroll', mbCloudSharedScrollCheck, true);
+// PostgREST의 외래키 embed(mb_users(username))는 mockups.owner_id의 FK가 정확히 mb_users(id)를
+// 가리켜야만 동작하는데, 설정이 어긋나 있으면 에러 없이 조용히 실패해서 계속 "알 수 없음"만
+// 나온다. 그 설정에 기대지 않고 RPC로 직접 아이디를 조회해 합치는 방식으로 바꿔 더 안정적으로
+// 만들었다 - mb_users 테이블 자체는 비밀번호 해시 보호를 위해 SELECT를 막아뒀으므로, 이
+// RPC(SECURITY DEFINER 함수)로만 username을 안전하게 꺼내올 수 있다.
+async function mbCloudAttachUsernames(items){
+  const ids=[...new Set(items.map(it=>it.owner_id).filter(Boolean))];
+  if(!ids.length) return;
+  try{
+    const rows=await mbRestFetch('/rpc/mb_get_usernames',{method:'POST',body:JSON.stringify({p_ids:ids})})||[];
+    const map={}; rows.forEach(r=>{ map[r.id]=r.username; });
+    items.forEach(it=>{ it.username=map[it.owner_id]||null; });
+  }catch(e){ /* 실패해도 카드 자체는 보여준다 - 작성자만 '알 수 없음'으로 남는다 */ }
+}
+
+function mbCloudRender(){
+  const body=document.getElementById('cloudBody');
+  // 「공유파일」이 목업마켓으로 분리되면서, 클라우드 열기 팝업에는 이제 '내 파일'만 남는다 -
+  // 예전에 내 파일/공유파일을 고르던 상단 탭 버튼은 더 이상 필요 없다. mode==='shared'면
+  // 목업마켓이므로 공유 목록을, 그 외(save/open)는 항상 내 파일 목록을 그린다.
+  body.innerHTML = (mbCloud.mode==='shared') ? mbCloudRenderShared() : mbCloudRenderMine();
+  if(mbCloud.mode==='shared'){ mbCloudInitTagBar(); mbCloudRenderSharedPreviewFrame(); }
+}
+// mbCloudRender()는 body.innerHTML을 통째로 새로 만들기 때문에, 스크롤을 내려서 보고 있던
+// 목록/트리 요소도 매번 새 엘리먼트로 바뀌면서 스크롤 위치가 0으로 초기화된다. 폴더 이동처럼
+// 목록 내용 자체가 완전히 바뀌는 경우라면 맨 위로 가는 게 자연스럽지만, 그냥 파일 하나를
+// 클릭해서 선택하거나(같은 목록 안에서) 별표를 토글하는 것처럼 "지금 보던 목록은 그대로인데
+// 다시 그려지기만 하는" 경우에는 보던 위치가 그대로 유지돼야 한다. 그런 호출 지점에서는
+// mbCloudRender() 대신 이 함수를 써서, 다시 그리기 전후로 스크롤 위치를 그대로 옮겨준다.
+function mbCloudRenderKeepScroll(){
+  const selectors=['.cl-list','.cl-cards','.cl-shared-list-pane','.cl-tree'];
+  const positions=selectors.map(sel=>{
+    const el=document.querySelector('#cloudBody '+sel);
+    return el?el.scrollTop:null;
+  });
+  mbCloudRender();
+  selectors.forEach((sel,i)=>{
+    if(positions[i]==null) return;
+    const el=document.querySelector('#cloudBody '+sel);
+    if(el) el.scrollTop=positions[i];
+  });
+}
+// 공유파일 목록을 (다시) 불러온 직후에 쓰는 렌더 - 그리고 나서 목록 영역이 스크롤이 생길
+// 만큼 채워졌는지 확인해서, 안 채워졌으면(화면이 넓거나 항목이 적어서) 곧바로 다음 페이지를
+// 이어서 불러온다.
+function mbCloudRenderAndFillShared(){
+  mbCloudRender();
+  mbCloudCheckSharedFillViewport();
+}
+// ---- 내 파일 탭 ----
+function mbCloudTreeChildren(parentId,depth){
+  let html='';
+  mbFolderChildren(parentId).forEach(f=>{
+    const kids=mbFolderChildren(f.id); const open=mbCloud.expanded.has(f.id); const on=mbCloud.folderId===f.id;
+    const count=mbCloud.fileCounts[f.id]||0;
+    if(mbCloud.renamingFolderId===f.id){
+      html+=`<div class="cl-tree-item ${on?'on':''}" style="padding-left:${8+depth*16}px">
+        <span class="chev" onclick="event.stopPropagation();mbCloudToggleExpand('${f.id}')">${kids.length?(open?CL_CHEV_DOWN:CL_CHEV_RIGHT):''}</span>
+        ${clFolderIconSm(on)}
+        <input id="cloudRenameInput" type="text" value="${esc(f.name)}" onclick="event.stopPropagation()"
+          onkeydown="mbCloudRenameKeydown(event,'${f.id}')" onblur="mbCloudCommitRename('${f.id}',this.value)"
+          style="flex:1;min-width:0;padding:2px 5px;border:1.5px solid var(--ax-green);border-radius:4px;font-size:13px;font-family:inherit;">
+      </div>`;
+    }else{
+      html+=`<div class="cl-tree-item ${on?'on':''}" draggable="true"
+          ondragstart="mbDragStart(event,'folder','${f.id}')"
+          ondragover="mbDragOverFolder(event)" ondragleave="mbDragLeaveFolder(event)" ondrop="mbDropOnFolder(event,'${f.id}')"
+          style="padding-left:${8+depth*16}px">
+        <span class="chev" onclick="event.stopPropagation();mbCloudToggleExpand('${f.id}')">${kids.length?(open?CL_CHEV_DOWN:CL_CHEV_RIGHT):''}</span>
+        <span onclick="mbCloudNavigateFolder('${f.id}')" style="display:flex;align-items:center;gap:5px;flex:1;min-width:0;">${clFolderIconSm(on)}<span class="cl-name-text">${esc(f.name)}</span><span class="cl-count">${count}</span></span>
+        <span class="cl-rename-btn" title="이름 바꾸기" onclick="event.stopPropagation();mbCloudStartRenameFolder('${f.id}')">${CL_PENCIL_ICON}</span>
+        <span class="cl-rename-btn" title="폴더 삭제" onclick="event.stopPropagation();mbCloudDeleteFolder('${f.id}')">${CL_TRASH_ICON}</span>
+      </div>`;
+    }
+    if(kids.length && open) html+=mbCloudTreeChildren(f.id,depth+1);
+  });
+  return html;
+}
+function mbCloudStartRenameFolder(id){
+  mbCloud.renamingFolderId=id;
+  mbCloud.expanded.add(id); // 이름을 바꾸는 폴더로 가는 경로가 접혀 있어 안 보이는 일이 없게
+  let p=mbCloud.folders.find(x=>x.id===id); p=p?p.parent_id:null;
+  while(p){ mbCloud.expanded.add(p); const f=mbCloud.folders.find(x=>x.id===p); p=f?f.parent_id:null; }
+  mbCloudRender();
+  setTimeout(()=>{ const el=document.getElementById('cloudRenameInput'); if(el){ el.focus(); el.select(); } },0);
+}
+function mbCloudRenameKeydown(e,id){
+  if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); }
+  else if(e.key==='Escape'){ e.preventDefault(); e.target.onblur=null; mbCloud.renamingFolderId=null; mbCloudRender(); }
+}
+async function mbCloudCommitRename(id,newName){
+  if(mbCloud.renamingFolderId!==id) return; // Escape로 이미 취소된 경우 blur에서 다시 저장하지 않도록
+  const name=(newName||'').trim();
+  const f=mbCloud.folders.find(x=>x.id===id);
+  mbCloud.renamingFolderId=null;
+  if(!name||(f&&f.name===name)){ mbCloudRender(); return; }
+  try{
+    await mbRestFetch(`/mockup_folders?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({name}),prefer:'return=minimal'});
+    if(f) f.name=name;
+  }catch(e){ mbAlert('폴더 이름을 바꾸지 못했습니다.\n\n'+e.message); }
+  mbCloudRender();
+}
+// 폴더를 지우면(DB의 on delete cascade/set null 규칙에 따라) 하위 폴더도 함께 지워지고, 그 안에
+// 있던 파일들은 전체 파일(최상위, folder_id=null)로 이동한다 - 삭제 하나로 파일까지 사라지진 않는다.
+// 폴더를 지우면 그 안의 파일도 함께 지운다(하위 폴더에 있는 파일까지 전부). DB의
+// mockups.folder_id는 on delete set null이라 폴더만 지우면 파일이 최상위로 옮겨가며 살아남는데,
+// 그건 "파일도 삭제"라는 이번 요청과 다르므로 폴더를 지우기 전에 그 안의 파일들부터 명시적으로
+// 지운다. 되돌릴 수 없는 동작이라 확인창 문구도 그에 맞게 분명히 경고한다.
+async function mbCloudDeleteFolder(id){
+  const f=mbCloud.folders.find(x=>x.id===id); if(!f) return;
+  const hasKids=mbFolderChildren(id).length>0;
+  const msg=(hasKids?'이 폴더와 하위 폴더를 모두 삭제할까요?':'이 폴더를 삭제할까요?')+'\n\n안에 있던 파일도 함께 삭제됩니다. 되돌릴 수 없습니다.';
+  mbConfirm(msg, async function(){
+    try{
+      const affected=[id,...mbFolderDescendantIds(id)];
+      await mbRestFetch(`/mockups?folder_id=in.(${affected.join(',')})`,{method:'DELETE',prefer:'return=minimal'});
+      await mbRestFetch(`/mockup_folders?id=eq.${id}`,{method:'DELETE',prefer:'return=minimal'});
+      const needNavigateAway=affected.includes(mbCloud.folderId);
+      await mbCloudLoadFolders();
+      await mbCloudLoadFileCounts();
+      if(needNavigateAway) mbCloud.folderId=f.parent_id;
+      await mbCloudLoadItems();
+      mbCloudRender();
+    }catch(e){ mbAlert('폴더를 삭제하지 못했습니다.\n\n'+e.message); }
+  });
+}
+function mbCloudTreeHTML(){
+  const rootOn=mbCloud.folderId===null;
+  const favOn=mbCloud.folderId===MB_FAV_FOLDER;
+  const total=Object.values(mbCloud.fileCounts).reduce((a,b)=>a+b,0);
+  // "최근 저장파일(Local)"은 실제 폴더이긴 하지만 일반 폴더 트리에 섞이지 않고, 즐겨찾기와
+  // 마찬가지로 구분선 아래 고정 위치(즐겨찾기 바로 다음)에 따로 표시한다 - 아직 한 번도
+  // 자동 저장이 일어나지 않아 폴더 자체가 없으면 이 줄은 아예 안 보인다.
+  const localFolder=mbCloud.folders.find(f=>f.parent_id==null && f.name===MB_LOCAL_AUTOSAVE_FOLDER_NAME);
+  const localOn=!!localFolder && mbCloud.folderId===localFolder.id;
+  const localRow=localFolder ? `<div class="cl-tree-item ${localOn?'on':''}" onclick="mbCloudNavigateFolder('${localFolder.id}')" style="padding-left:8px">
+    <span class="chev"></span>${clLocalSyncIconSm(localOn)}${esc(MB_LOCAL_AUTOSAVE_FOLDER_NAME)}<span class="cl-count">${mbCloud.fileCounts[localFolder.id]||0}</span>
+  </div>` : '';
+  // 즐겨찾기는 실제 폴더 트리(전체 파일과 그 하위 폴더들)를 다 보여준 다음, 구분선 아래 맨
+  // 마지막에 고정으로 배치한다 - 폴더 개수와 무관하게 항상 트리의 제일 아래에 있다.
+  return `<div class="cl-tree-item ${rootOn?'on':''}" ondragover="mbDragOverFolder(event)" ondragleave="mbDragLeaveFolder(event)" ondrop="mbDropOnFolder(event,null)" onclick="mbCloudNavigateFolder(null)" style="padding-left:8px">
+    <span class="chev"></span>${clFolderIconSm(rootOn)}전체 파일<span class="cl-count">${total}</span>
+  </div>`
+  + mbCloudTreeChildren(null,1)
+  + `<div class="cl-tree-sep"></div>
+  <div class="cl-tree-item ${favOn?'on':''}" onclick="mbCloudNavigateFavorites()" style="padding-left:8px">
+    <span class="chev"></span>${clStarIcon(true)}즐겨찾기<span class="cl-count">${mbCloud.favCount||0}</span>
+  </div>`
+  + localRow;
+}
+function mbCloudToggleExpand(id){ if(mbCloud.expanded.has(id)) mbCloud.expanded.delete(id); else mbCloud.expanded.add(id); mbCloudRender(); }
+function mbCloudNavigateFolder(id){ mbCloud.folderId=id; mbCloud.selectedId=null; mbCloud.searchQuery=''; mbCloud.includeSub=false;
+  let p=id; while(p){ mbCloud.expanded.add(p); const f=mbCloud.folders.find(x=>x.id===p); p=f?f.parent_id:null; }
+  mbCloudLoadItems().then(mbCloudRender);
+}
+// "전체 파일"과 같은 레벨의 즐겨찾기 가상 폴더로 이동 - 실제 폴더가 아니므로 트리 경로(expanded)를
+// 건드릴 필요가 없다.
+function mbCloudNavigateFavorites(){
+  mbCloud.folderId=MB_FAV_FOLDER; mbCloud.selectedId=null; mbCloud.searchQuery=''; mbCloud.includeSub=false;
+  mbCloudLoadItems().then(mbCloudRender);
+}
+let mbMineSearchDebounce=null;
+function mbCloudSearchInput(v){
+  mbCloud.searchQuery=v;
+  // 매 글자마다 곧바로 서버에 물어보고 다시 그리는 대신, 입력이 잠깐 멈췄을 때 한 번만 조회한다.
+  clearTimeout(mbMineSearchDebounce);
+  mbMineSearchDebounce=setTimeout(()=>{
+    mbCloudLoadItems().then(()=>{
+      // 결과(트리+목록+하단 바)만 다시 그린다 - 검색창이 있는 toolbar는 손대지 않아야 타이핑
+      // 중인 입력칸(그리고 한글 조합 중인 IME 상태)이 유지된다.
+      const wrap=document.getElementById('cloudMineResultsWrap');
+      if(wrap) wrap.innerHTML=mbCloudRenderMineResults();
+    });
+  },250);
+}
+function mbCloudToggleSub(v){ mbCloud.includeSub=v; mbCloudLoadItems().then(mbCloudRender); }
+// 정렬 기준 변경 - 이미 불러온 목록을 다시 정렬만 하면 되므로 재조회 없이 다시 그리기만 한다.
+function mbCloudMineSort(v){ mbCloud.mineSort=v; mbCloudRender(); }
+// ---- 드래그로 폴더/파일 옮기기 (탐색기처럼) ----
+let mbDragPayload=null;
+function mbDragStart(e,type,id){
+  mbDragPayload={type,id};
+  e.dataTransfer.effectAllowed='move';
+  try{ e.dataTransfer.setData('text/plain',type+':'+id); }catch(err){} // 일부 브라우저는 setData가 없으면 드래그 자체를 막는다
+}
+function mbDragOverFolder(e){ e.preventDefault(); e.currentTarget.classList.add('cl-drop-target'); }
+function mbDragLeaveFolder(e){ e.currentTarget.classList.remove('cl-drop-target'); }
+async function mbDropOnFolder(e,targetFolderId){
+  e.preventDefault();
+  e.currentTarget.classList.remove('cl-drop-target');
+  const payload=mbDragPayload; mbDragPayload=null;
+  if(!payload) return;
+  if(payload.type==='folder'){
+    if(payload.id===targetFolderId) return;
+    const descendants=mbFolderDescendantIds(payload.id);
+    if(targetFolderId!=null && (targetFolderId===payload.id||descendants.includes(targetFolderId))){
+      mbAlert('폴더를 자기 자신이나 그 하위 폴더 안으로는 옮길 수 없습니다.'); return;
+    }
+    const f=mbCloud.folders.find(x=>x.id===payload.id); if(f&&f.parent_id===targetFolderId) return; // 제자리
+    try{
+      await mbRestFetch(`/mockup_folders?id=eq.${payload.id}`,{method:'PATCH',body:JSON.stringify({parent_id:targetFolderId}),prefer:'return=minimal'});
+      if(f) f.parent_id=targetFolderId;
+      mbCloudRender();
+    }catch(err){ mbAlert('폴더를 옮기지 못했습니다.\n\n'+err.message); }
+  }else if(payload.type==='file'){
+    const it=mbCloud.items.find(x=>x.id===payload.id);
+    if(it&&(it.folder_id||null)===(targetFolderId||null)) return; // 제자리
+    try{
+      await mbRestFetch(`/mockups?id=eq.${payload.id}`,{method:'PATCH',body:JSON.stringify({folder_id:targetFolderId}),prefer:'return=minimal'});
+      await mbCloudLoadItems(); await mbCloudLoadFileCounts(); mbCloudRender();
+    }catch(err){ mbAlert('파일을 옮기지 못했습니다.\n\n'+err.message); }
+  }
+}
+function mbCloudStartRenameItem(id){
+  mbCloud.renamingItemId=id;
+  mbCloudRender();
+  setTimeout(()=>{ const el=document.getElementById('cloudItemRenameInput'); if(el){ el.focus(); el.select(); } },0);
+}
+function mbCloudItemRenameKeydown(e,id){
+  if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); }
+  else if(e.key==='Escape'){ e.preventDefault(); e.target.onblur=null; mbCloud.renamingItemId=null; mbCloudRender(); }
+}
+async function mbCloudCommitItemRename(id,newTitle){
+  if(mbCloud.renamingItemId!==id) return; // Escape로 이미 취소된 경우 blur에서 다시 저장하지 않도록
+  const title=(newTitle||'').trim();
+  const it=mbCloud.items.find(x=>x.id===id);
+  mbCloud.renamingItemId=null;
+  if(!title||(it&&it.title===title)){ mbCloudRender(); return; }
+  try{
+    await mbRestFetch(`/mockups?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({title,updated_at:new Date().toISOString()}),prefer:'return=minimal'});
+    if(it) it.title=title;
+    if(mbCloud.mode==='save'&&mbCloud.selectedId===id) mbCloud.filename=title; // 저장 화면에서 그 파일을 고른 상태였다면 파일 이름 칸도 맞춰준다
+  }catch(e){ mbAlert('파일 이름을 바꾸지 못했습니다.\n\n'+e.message); }
+  mbCloudRender();
+}
+async function mbCloudDeleteItem(id){
+  mbConfirm('이 파일을 삭제할까요? 되돌릴 수 없습니다.', async function(){
+    try{
+      await mbRestFetch(`/mockups?id=eq.${id}`,{method:'DELETE',prefer:'return=minimal'});
+      if(mbCloud.selectedId===id) mbCloud.selectedId=null;
+      await mbCloudLoadItems(); await mbCloudLoadFileCounts(); mbCloudRender();
+    }catch(e){ mbAlert('파일을 삭제하지 못했습니다.\n\n'+e.message); }
+  });
+}
+// 폴더트리 폭 조절 - 캔버스와 속성 패널 사이의 splitter와 같은 패턴(드래그 중 mousemove/mouseup은
+// document에 붙여서, 마우스가 splitter 바깥으로 나가도 끊기지 않게 한다). 마지막 폭은
+// localStorage에 저장해 다음에 클라우드 창을 열 때도 유지된다.
+let mbCloudSplitDrag=null;
+function mbCloudSplitStart(e){
+  e.preventDefault();
+  const treeEl=document.querySelector('#cloudBody .cl-tree'); if(!treeEl) return;
+  mbCloudSplitDrag={startX:e.clientX,startW:treeEl.getBoundingClientRect().width};
+  e.currentTarget.classList.add('dragging');
+  document.addEventListener('mousemove',mbCloudSplitMove);
+  document.addEventListener('mouseup',mbCloudSplitEnd);
+}
+function mbCloudSplitMove(e){
+  if(!mbCloudSplitDrag) return;
+  const w=Math.max(120,Math.min(400,mbCloudSplitDrag.startW+(e.clientX-mbCloudSplitDrag.startX)));
+  mbCloud.treeWidth=w;
+  const treeEl=document.querySelector('#cloudBody .cl-tree');
+  if(treeEl) treeEl.style.width=w+'px';
+}
+function mbCloudSplitEnd(){
+  mbCloudSplitDrag=null;
+  document.querySelectorAll('#cloudBody .cl-split.dragging').forEach(el=>el.classList.remove('dragging'));
+  document.removeEventListener('mousemove',mbCloudSplitMove);
+  document.removeEventListener('mouseup',mbCloudSplitEnd);
+  try{ localStorage.setItem('mb_cloud_tree_w',String(mbCloud.treeWidth)); }catch(e){}
+}
+// 공유파일 - 목록으로 보기의 좌(파일 목록)/우(미리보기) 스플리터. 위 mbCloudSplitStart 계열과
+// 같은 패턴이지만 대상 엘리먼트(.cl-shared-list-pane)와 상태값(sharedListWidth)이 다르다.
+let mbCloudSharedSplitDrag=null;
+function mbCloudSharedSplitStart(e){
+  e.preventDefault();
+  const paneEl=document.querySelector('#cloudBody .cl-shared-list-pane'); if(!paneEl) return;
+  mbCloudSharedSplitDrag={startX:e.clientX,startW:paneEl.getBoundingClientRect().width};
+  e.currentTarget.classList.add('dragging');
+  document.addEventListener('mousemove',mbCloudSharedSplitMove);
+  document.addEventListener('mouseup',mbCloudSharedSplitEnd);
+}
+function mbCloudSharedSplitMove(e){
+  if(!mbCloudSharedSplitDrag) return;
+  const w=Math.max(200,Math.min(560,mbCloudSharedSplitDrag.startW+(e.clientX-mbCloudSharedSplitDrag.startX)));
+  mbCloud.sharedListWidth=w;
+  const paneEl=document.querySelector('#cloudBody .cl-shared-list-pane');
+  if(paneEl) paneEl.style.width=w+'px';
+  mbCloudFitSharedPreview(); // 좌우 폭이 바뀌면 우측 미리보기 공간도 바뀌니 배율을 다시 맞춘다
+}
+function mbCloudSharedSplitEnd(){
+  mbCloudSharedSplitDrag=null;
+  document.querySelectorAll('#cloudBody .cl-split.dragging').forEach(el=>el.classList.remove('dragging'));
+  document.removeEventListener('mousemove',mbCloudSharedSplitMove);
+  document.removeEventListener('mouseup',mbCloudSharedSplitEnd);
+  try{ localStorage.setItem('mb_cloud_shared_list_w',String(mbCloud.sharedListWidth)); }catch(e){}
+}
+async function mbCloudNewFolder(){
+  const s=mbGetSession(); if(!s) return;
+  const existing=mbFolderChildren(mbCloud.folderId).map(f=>f.name);
+  let name='새 폴더', n=2; while(existing.includes(name)){ name=`새 폴더 ${n++}`; }
+  try{
+    const [row]=await mbRestFetch('/mockup_folders',{method:'POST',body:JSON.stringify({owner_id:s.id,parent_id:mbCloud.folderId,name})});
+    await mbCloudLoadFolders();
+    // mbCloudNavigateFolder()를 그대로 쓰지 않는 이유: 그 함수는 목록을 비동기로 다시 불러온 뒤에야
+    // render()를 호출하는데, 그 render가 뒤늦게 끝나면 지금 막 열려는 이름 편집 입력칸을 덮어써
+    // 버린다(타이핑 중이던 이름이 날아가거나 포커스가 풀림). 목록 로딩까지 다 끝난 뒤에 편집을
+    // 시작하도록 순서를 명시적으로 맞춘다.
+    mbCloud.folderId=row.id; mbCloud.selectedId=null; mbCloud.searchQuery=''; mbCloud.includeSub=false;
+    let p=row.id; while(p){ mbCloud.expanded.add(p); const f=mbCloud.folders.find(x=>x.id===p); p=f?f.parent_id:null; }
+    await mbCloudLoadItems();
+    mbCloudStartRenameFolder(row.id); // 탐색기처럼, 새로 만든 폴더는 바로 이름을 고칠 수 있게 편집 상태로 시작
+  }catch(e){ mbAlert('폴더를 만들지 못했습니다.\n\n'+e.message); }
+}
+function mbCloudSelectItem(id){
+  // dblclick과 draggable="true"를 같은 요소에 같이 쓰면 브라우저에 따라 두 번째 클릭의 dblclick
+  // 이벤트가 씹히는 경우가 있어(드래그 시작 판정과 겹쳐서), 네이티브 dblclick에 기대지 않고 직접
+  // 두 클릭 사이 시간을 재서 더블클릭을 판정한다 - 폴더 목록의 mbCloudFolderRowClick도 동일.
+  const now=Date.now();
+  const isDouble=mbCloud._lastClickId===id && (now-(mbCloud._lastClickTime||0))<400;
+  mbCloud._lastClickId=id; mbCloud._lastClickTime=now;
+  mbCloud.selectedId=id;
+  if(mbCloud.mode==='save'){
+    const it=mbCloud.items.find(x=>x.id===id);
+    if(it){ mbCloud.filename=it.title; mbCloud.tags=(it.tags||[]).slice(); mbCloud.isPublic=it.is_public; }
+  }
+  mbCloudRenderKeepScroll();
+  if(isDouble) mbCloudActivateItem(id);
+}
+function mbCloudFolderRowClick(id){
+  const now=Date.now();
+  const isDouble=mbCloud._lastClickId===id && (now-(mbCloud._lastClickTime||0))<400;
+  mbCloud._lastClickId=id; mbCloud._lastClickTime=now;
+  if(isDouble) mbCloudNavigateFolder(id);
+}
+// 더블클릭으로 파일을 "활성화"할 때 - 열기 모드는 그 파일을 바로 열고, 저장 모드는 그 파일에
+// 바로 덮어쓰기 저장한다(mbCloudDoSave가 이름 중복 확인을 통해 이미 덮어쓰기 확인창을 띄워준다).
+// 예전에는 저장 모드에서 mbCloudSelectItem(id)를 다시 불렀는데, 그 함수 안의 더블클릭 판정이
+// 매번 "방금 클릭"으로 인식되어 자기 자신을 무한히 재귀 호출해 화면이 멈추는 버그가 있었다.
+function mbCloudActivateItem(id){ mbCloud.selectedId=id; if(mbCloud.mode==='open') mbCloudDoOpen(); else mbCloudDoSave(); }
+async function mbCloudToggleShare(id,checkboxEl){
+  const on=checkboxEl.checked;
+  try{ await mbRestFetch(`/mockups?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({is_public:on}),prefer:'return=minimal'}); const it=mbCloud.items.find(x=>x.id===id); if(it) it.is_public=on; }
+  catch(e){ checkboxEl.checked=!on; mbAlert('공유 설정을 바꾸지 못했습니다.\n\n'+e.message); }
+}
+// 파일 행의 별 토글 - 눌러서 켜면(즐겨찾기 추가) 노란 별로, 다시 누르면(해제) 빈 별로 바뀐다.
+// 즐겨찾기 보기 중에 해제하면 그 파일은 더 이상 이 목록에 나오면 안 되므로 목록을 다시 불러온다.
+async function mbCloudToggleFavorite(id){
+  const it=mbCloud.items.find(x=>x.id===id); if(!it) return;
+  const newVal=!it.is_favorite;
+  try{
+    await mbRestFetch(`/mockups?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({is_favorite:newVal}),prefer:'return=minimal'});
+    it.is_favorite=newVal;
+    mbCloud.favCount=Math.max(0,(mbCloud.favCount||0)+(newVal?1:-1));
+    if(mbCloud.folderId===MB_FAV_FOLDER && !newVal){ await mbCloudLoadItems(); }
+    mbCloudRenderKeepScroll();
+  }catch(e){ mbAlert('즐겨찾기 설정을 바꾸지 못했습니다.\n\n'+e.message); }
+}
+function mbCloudRenderMine(){
+  // '클라우드에 저장' 팝업(save 모드)에서만 보여준다 - 로컬 저장에 관한 설정이라 '클라우드에서
+  // 열기' 팝업에는 필요 없다.
+  const autoBar=mbCloud.mode!=='save' ? '' : `<div class="cl-toolbar" style="gap:10px;">
+    ${clToggleHTML(mbLocalAutoSaveGet(),'mbLocalAutoSaveToggle(this)')}<span style="font-size:12.5px;color:#2c3e50;font-weight:600;">Local 저장 시 자동 공유</span>
+  </div>`;
+  const inFav=mbCloud.folderId===MB_FAV_FOLDER;
+  const path=inFav?[]:mbFolderPathTo(mbCloud.folderId);
+  const crumb=inFav
+    ? `<span class="seg" onclick="mbCloudNavigateFolder(null)">전체 파일</span><span class="sep">/</span><span class="cur">${clStarIcon(true)}즐겨찾기</span>`
+    : `<span class="seg" onclick="mbCloudNavigateFolder(null)">전체 파일</span>`+
+      path.map((f,i)=>`<span class="sep">/</span><span class="${i===path.length-1?'cur':'seg'}" onclick="mbCloudNavigateFolder('${f.id}')">${esc(f.name)}</span>`).join('');
+  const toolbar=`<div class="cl-toolbar">
+    <div class="cl-crumb">${crumb}</div><span style="flex:1"></span>
+    ${inFav?'':`<button class="cl-newfolder-btn" onclick="mbCloudNewFolder()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      새 폴더
+    </button>`}
+    <div class="cl-search-box">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.3"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
+      <input type="text" id="cloudSearchInput" placeholder="${inFav?'즐겨찾기에서 검색':'이 폴더에서 검색'}" value="${esc(mbCloud.searchQuery)}" oninput="mbCloudSearchInput(this.value)">
+    </div>
+    <select class="cl-sortselect" onchange="mbCloudMineSort(this.value)" title="정렬 기준">
+      <option value="name" ${mbCloud.mineSort==='name'?'selected':''}>파일명순</option>
+      <option value="updated" ${mbCloud.mineSort==='updated'?'selected':''}>수정일시순</option>
+      <option value="created" ${mbCloud.mineSort==='created'?'selected':''}>생성일시순</option>
+    </select>
+    ${inFav?'':`<label class="cl-subfolder-chk"><input type="checkbox" ${mbCloud.includeSub?'checked':''} onchange="mbCloudToggleSub(this.checked)">하위 폴더 포함</label>`}
+  </div>`;
+  return autoBar+toolbar+`<div id="cloudMineResultsWrap" class="cl-results-wrap">${mbCloudRenderMineResults()}</div>`;
+}
+// 검색어를 입력할 때마다 이 부분(트리+목록+하단 바)만 다시 그린다 - 검색창이 있는 toolbar는
+// 그대로 둬야 타이핑 중인 입력칸(그리고 한글 조합 중인 IME 상태)이 유지된다. toolbar까지 같이
+// 다시 그리면 입력칸 자체가 새 엘리먼트로 바뀌어서 포커스가 날아가거나, 심하면 한글 조합이
+// 끊겨서 글자가 깨져 보인다.
+function mbCloudRenderMineResults(){
+  const inFav=mbCloud.folderId===MB_FAV_FOLDER;
+  // 즐겨찾기 보기는 여러 폴더에 흩어진 파일을 한데 모아 보여주는 것이라 검색 결과와 마찬가지로
+  // 하위 폴더 목록은 숨기고, 각 파일이 실제로 어느 폴더에 있는지(위치)를 같이 보여준다.
+  const searching=!!mbCloud.searchQuery||inFav;
+  const cols='minmax(90px,1fr) 130px 130px 90px 40px 50px';
+  const heads=searching?['이름','위치','수정일시','공유','','']:['이름','수정일시','생성일시','공유','',''];
+  let rows='';
+  // 폴더는 이름 정보만 불러와 두었으므로(생성/수정일시 없음) 항상 이름순으로 보여주고,
+  // 파일은 상단 정렬 드롭다운(기본: 파일명순)에 따라 정렬한다.
+  const folderList=mbFolderChildren(mbCloud.folderId).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const itemList=mbCloud.items.slice().sort((a,b)=>{
+    if(mbCloud.mineSort==='updated') return new Date(b.updated_at)-new Date(a.updated_at);
+    if(mbCloud.mineSort==='created') return new Date(b.created_at)-new Date(a.created_at);
+    return (a.title||'').localeCompare(b.title||'');
+  });
+  if(!searching) folderList.forEach(f=>{
+    const count=mbCloud.fileCounts[f.id]||0;
+    rows+=`<div class="cl-row" draggable="true"
+        ondragstart="mbDragStart(event,'folder','${f.id}')"
+        ondragover="mbDragOverFolder(event)" ondragleave="mbDragLeaveFolder(event)" ondrop="mbDropOnFolder(event,'${f.id}')"
+        style="grid-template-columns:${cols}" onclick="mbCloudFolderRowClick('${f.id}')">
+      <div class="cl-row-name">${CL_FOLDER_ICON}<span class="cl-name-text">${esc(f.name)}</span><span class="cl-count">${count}</span></div><div class="cl-dim">-</div><div class="cl-dim"></div><div></div><div></div>
+      <div class="cl-row-actions"><span class="cl-rename-btn" title="폴더 삭제" onclick="event.stopPropagation();mbCloudDeleteFolder('${f.id}')">${CL_TRASH_ICON}</span></div>
+    </div>`;
+  });
+  itemList.forEach(it=>{
+    const sel=mbCloud.selectedId===it.id;
+    const c2=searching?`<div class="cl-dim">${esc(mbFolderPathTo(it.folder_id).map(f=>f.name).join(' / ')||'전체 파일')}</div>`:`<div class="cl-dim">${mbFmtDate(it.updated_at)}</div>`;
+    const c3=searching?`<div class="cl-dim">${mbFmtDate(it.updated_at)}</div>`:`<div class="cl-dim">${mbFmtDate(it.created_at)}</div>`;
+    const fileIcon=clFileIconByMode(it.mode);
+    const nameCell=mbCloud.renamingItemId===it.id
+      ? `<div class="cl-row-name">${fileIcon}<input id="cloudItemRenameInput" type="text" value="${esc(it.title)}" onclick="event.stopPropagation()"
+           onkeydown="mbCloudItemRenameKeydown(event,'${it.id}')" onblur="mbCloudCommitItemRename('${it.id}',this.value)"
+           style="flex:1;min-width:0;padding:2px 6px;border:1.5px solid var(--ax-green);border-radius:4px;font-size:13.5px;font-family:inherit;"></div>`
+      : `<div class="cl-row-name">${fileIcon}<span class="cl-name-text">${esc(it.title)}</span></div>`;
+    rows+=`<div class="cl-row ${sel?'sel':''}" draggable="true" ondragstart="mbDragStart(event,'file','${it.id}')"
+        style="grid-template-columns:${cols}" onclick="mbCloudSelectItem('${it.id}')">
+      ${nameCell}${c2}${c3}
+      <div onclick="event.stopPropagation()">${clToggleHTML(it.is_public,`mbCloudToggleShare('${it.id}',this)`)}</div>
+      <div class="cl-star-btn" title="${it.is_favorite?'즐겨찾기 해제':'즐겨찾기 추가'}" onclick="event.stopPropagation();mbCloudToggleFavorite('${it.id}')">${clStarIcon(!!it.is_favorite)}</div>
+      <div class="cl-row-actions">
+        <span class="cl-rename-btn" title="이름 바꾸기" onclick="event.stopPropagation();mbCloudStartRenameItem('${it.id}')">${CL_PENCIL_ICON}</span>
+        <span class="cl-rename-btn" title="파일 삭제" onclick="event.stopPropagation();mbCloudDeleteItem('${it.id}')">${CL_TRASH_ICON}</span>
+      </div>
+    </div>`;
+  });
+  if(!rows) rows=`<div class="cl-empty">${inFav?'즐겨찾기한 파일이 없습니다.':(searching?'검색 결과가 없습니다.':'이 폴더는 비어 있습니다.')}</div>`;
+  const loadMoreRow=mbCloud.mineLoadingMore?`<div class="cl-shared-loadmore">더 불러오는 중...</div>`:'';
+  const listArea=`<div class="cl-body"><div class="cl-tree" style="width:${mbCloud.treeWidth}px">${mbCloudTreeHTML()}</div><div class="cl-split" onmousedown="mbCloudSplitStart(event)"></div><div class="cl-list">
+    <div class="cl-list-head" style="grid-template-columns:${cols}">${heads.map(h=>`<div>${h}</div>`).join('')}</div>${rows}${loadMoreRow}
+  </div></div>`;
+  return listArea+(mbCloud.mode==='save'?mbCloudSaveFooter():mbCloudOpenFooter());
+}
+function mbCloudSaveFooter(){
+  const tagchips=mbCloud.tags.map((t,i)=>`<span class="cl-tagchip">${esc(t)}<span onclick="mbCloudRemoveTag(${i})">×</span></span>`).join('');
+  return `<div class="cl-footer" style="flex-direction:column;align-items:stretch;gap:12px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div title="다른 사용자가 검색하고 열람·복제할 수 있습니다" style="display:flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid #d9ece3;background:#f6faf8;border-radius:6px;flex-shrink:0;">
+        ${clToggleHTML(mbCloud.isPublic,'mbCloudTogglePublic(this)')}<span style="font-size:12.5px;color:#2c3e50;font-weight:600;">공개</span>
+      </div>
+      <span style="font-size:13px;color:#2c3e50;font-weight:600;white-space:nowrap;">파일 이름</span>
+      <input type="text" id="cloudFilenameInput" value="${esc(mbCloud.filename)}" oninput="mbCloud.filename=this.value">
+      <button class="cl-cancel-btn" onclick="closeCloud()">취소</button>
+      <button class="cl-primary-btn" onclick="mbCloudDoSave()">저장</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="font-size:13px;color:#2c3e50;font-weight:600;white-space:nowrap;">태그 <span style="font-weight:400;color:#9ca3af;">(선택)</span></span>
+      <div class="cl-tagbox">${tagchips}<input type="text" id="cloudTagInput" placeholder="입력 후 Enter" onkeydown="mbCloudTagKeydown(event)"></div>
+    </div>
+  </div>`;
+}
+function mbCloudOpenFooter(){
+  const it=mbCloud.items.find(x=>x.id===mbCloud.selectedId);
+  return `<div class="cl-footer">
+    <span style="font-size:12.5px;color:#6b7280;flex:1;">${it?`선택함: <b style="color:#2c3e50;">${esc(it.title)}</b>`:'파일을 선택하세요.'}</span>
+    <button class="cl-cancel-btn" onclick="closeCloud()">취소</button>
+    <button class="cl-primary-btn" ${it?'':'disabled'} onclick="mbCloudDoOpen()">열기</button>
+  </div>`;
+}
+function mbCloudTogglePublic(el){ mbCloud.isPublic=el.checked; }
+function mbCloudTagKeydown(e){
+  if(e.key==='Enter'){
+    e.preventDefault();
+    const v=e.target.value.trim();
+    if(v && !mbCloud.tags.includes(v)){
+      mbCloud.tags.push(v);
+      mbCloudRender(); // 태그 칩 목록을 다시 그리려고 footer 전체를 새로 그리는데, 그러면 지금
+      // 포커스돼 있던 입력칸도 새 엘리먼트로 바뀌면서 포커스가 풀린다 - 연속 입력이 안 되던 원인.
+      // 방금 새로 그려진 입력칸을 다시 포커스해서 바로 다음 태그를 이어 입력할 수 있게 한다.
+      const el=document.getElementById('cloudTagInput');
+      if(el) el.focus();
+    }
+    else e.target.value='';
+  }
+}
+function mbCloudRemoveTag(i){ mbCloud.tags.splice(i,1); mbCloudRender(); }
+async function mbCloudDoSave(){
+  const s=mbGetSession(); if(!s){ openLogin(); return; }
+  const title=(mbCloud.filename||'').trim();
+  if(!title){ mbAlert('파일 이름을 입력해 주세요.'); return; }
+  // 같은 폴더 안에 같은 이름의 파일이 이미 있으면(목록에서 그 파일을 직접 선택해서 저장하는
+  // 경우도 포함) 새로 만들지 않고 그 파일에 덮어쓰는 것으로 처리한다 - 항상 이름으로 판단하므로
+  // 선택 여부와 관계없이 같은 확인 메시지·동작을 탄다. (검색 중이었을 수도 있는 mbCloud.items
+  // 목록 대신, 저장 시점에 서버에서 다시 정확히 확인한다)
+  let targetId=null;
+  try{
+    const folderQ=mbCloud.folderId==null?'&folder_id=is.null':`&folder_id=eq.${mbCloud.folderId}`;
+    const dupRows=await mbRestFetch(`/mockups?owner_id=eq.${s.id}&mode=eq.${mbCurrentMode()}${folderQ}&title=eq.${encodeURIComponent(title)}&select=id`)||[];
+    if(dupRows.length) targetId=dupRows[0].id;
+  }catch(e){ targetId=mbCloud.selectedId; /* 중복 확인 자체가 실패하면, 선택된 파일이 있는 경우에는 그 파일을 대상으로 저장을 계속 진행한다 */ }
+  if(targetId){
+    mbConfirm(`'${title}' 이름의 파일이 이미 있습니다. 덮어쓰시겠습니까?`, function(){ mbCloudDoSaveFinish(s,title,targetId); });
+    return;
+  }
+  mbCloudDoSaveFinish(s,title,targetId);
+}
+async function mbCloudDoSaveFinish(s,title,targetId){
+  // 안전장치: 어떤 경로로든 origin_id가 지금 덮어쓰려는 그 파일 자신을 가리키게 된 상태로
+  // 저장을 시도하면(자기 자신의 파생본이 되는 모순), DB 제약조건에 막혀 저장 자체가 실패해
+  // 버리므로, 여기서 미리 걸러서 null로 되돌린다 - 그 경우는 사실상 "이 파일은 원본"이라는
+  // 뜻이므로 null이 정확한 값이다.
+  const originIdToSave = (targetId && mbCloud.originId===targetId) ? null : (mbCloud.originId||null);
+  const payload={ owner_id:s.id, folder_id:mbCloud.folderId, title, tags:mbCloud.tags, is_public:mbCloud.isPublic,
+    mode:mbCurrentMode(), data:mbBuildSaveData(), thumbnail:mbBuildThumbnailSVG(), updated_at:new Date().toISOString(),
+    origin_id:originIdToSave };
+  try{
+    if(targetId){
+      await mbRestFetch(`/mockups?id=eq.${targetId}`,{method:'PATCH',body:JSON.stringify(payload),prefer:'return=minimal'});
+    }else{
+      await mbRestFetch('/mockups',{method:'POST',body:JSON.stringify(payload),prefer:'return=minimal'});
+    }
+    // 최종 저장이 성공했으므로 "임시 작업 목록"에서 이번 세션 것은 지우고, 새 세션 키로 바꿔둔다 -
+    // 이어서 계속 수정하면 다음 자동저장이 새 임시 작업 행을 만들어 목록에 다시 나타난다.
+    mbDraftDeleteCurrent();
+    mbResetDraftSessionKey();
+    closeCloud();
+  }catch(e){ mbAlert('클라우드에 저장하지 못했습니다.\n\n'+e.message); }
+}
+async function mbCloudDoOpen(){
+  if(!mbCloud.selectedId) return;
+  try{
+    const rows=await mbRestFetch(`/mockups?id=eq.${mbCloud.selectedId}&select=data,title,origin_id`);
+    const row=rows&&rows[0]; if(!row) throw new Error('파일을 찾을 수 없습니다.');
+    // mbCloudApplyData()가 render()를 호출하고, 그 안에서 자동저장이 (조건에 따라) 그 자리에서
+    // 바로 실행될 수도 있다 - 그 스냅샷에도 원본 추적값이 함께 실리도록 반드시 먼저 세팅한다.
+    // 내 파일을 다시 여는 것은 "새로 파생시키는" 게 아니라 이어서 작업하는 것이므로, 이미
+    // 그 파일에 기록돼 있던 원본 추적 값을 그대로 이어받는다(원본 자체면 null 그대로 유지).
+    mbCloud.originId=row.origin_id||null;
+    mbResetDraftSessionKey(); // 다른 파일을 열었으므로 이건 별개의 새 작업 - mbCloudApplyData()가
+    // render()를 호출해 그 자리에서 자동저장이 바로 실행될 수도 있으므로(바로 위 originId와
+    // 같은 이유) 반드시 mbCloudApplyData()보다 먼저 새 세션 키로 바꿔둔다 - 안 그러면 방금 불러온
+    // 이 파일의 내용이 직전 작업의 임시저장 행에 잘못 덮어써진다.
+    mbCloudApplyData(row.data);
+    closeCloud();
+  }catch(e){ mbAlert('열지 못했습니다.\n\n'+e.message); }
+}
+function mbCloudApplyData(d){
+  if(!d||!Array.isArray(d.comps)) throw new Error('화면 구성 정보를 찾을 수 없습니다.');
+  pushHistory();
+  setAppSkin(d.skin==='fat');
+  comps=d.comps;
+  uid=Math.max(0,...comps.map(c=>c.id))+1;
+  if(d.cw){ document.getElementById('cw').value=d.cw; setCW(); }
+  if(d.ch){ document.getElementById('ch').value=d.ch; setCH(); }
+  selectSingle(null); render();
+}
+
+// ---- 공유됨 탭 (다른 사용자의 공개 목업 검색·조회) ----
+// 씬모드/팻모드는 서로 컴포넌트 구성이 달라 호환되지 않으므로, 지금 켜져 있는 모드와 같은
+// 목업만 보여준다(mbCurrentMode()로 서버 쪽에서부터 걸러서 요청한다 - mbCloudLoadShared 참고).
+function mbCloudSharedSetView(v){ mbCloud.sharedView=v; try{ localStorage.setItem('mb_cloud_shared_view',v); }catch(e){} mbCloudRender(); }
+function mbCloudRenderLineageBar(){
+  return mbCloud.sharedOriginFilter
+    ? `<div class="cl-lineagebar cl-lineage-crumb">
+        <span class="cl-lineage-back" onclick="mbCloudClearOriginFilter()">◀ 뒤로</span>
+        <span class="cl-lineage-crumb-text">'${esc(mbCloud.sharedOriginFilterTitle)}'의 리비전</span>
+      </div>`
+    : `<div class="cl-lineagebar">
+        <div class="cl-lineage-seg">
+          <span class="${mbCloud.sharedLineage==='all'?'on':''}" onclick="mbCloudSharedLineageClick('all')">전체${mbCloud.sharedCounts?` (${mbCloud.sharedCounts.all})`:''}</span>
+          <span class="${mbCloud.sharedLineage==='originals'?'on':''}" onclick="mbCloudSharedLineageClick('originals')"><i class="cl-lineage-ic cl-lineage-ic-origin"></i>원본만${mbCloud.sharedCounts?` (${mbCloud.sharedCounts.originals})`:''}</span>
+          <span class="${mbCloud.sharedLineage==='revisions'?'on':''}" onclick="mbCloudSharedLineageClick('revisions')"><i class="cl-lineage-ic cl-lineage-ic-rev"></i>리비전만${mbCloud.sharedCounts?` (${mbCloud.sharedCounts.revisions})`:''}</span>
+          <span class="${mbCloud.sharedLineage==='autoshare'?'on':''}" onclick="mbCloudSharedLineageClick('autoshare')"><i class="cl-lineage-ic cl-lineage-ic-auto"></i>자동 공유${mbCloud.sharedCounts?` (${mbCloud.sharedCounts.autoshare})`:''}</span>
+        </div>
+      </div>`;
+}
+function mbCloudRenderShared(){
+  const gridIcon='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
+  const listIcon='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>';
+  const toolbar=`<div class="cl-toolbar">
+    <div class="cl-search-box" style="flex:1;max-width:none;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.3"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
+      <input type="text" id="cloudSharedSearchInput" placeholder="공유된 목업 검색 (제목, 태그, 작성자)" value="${esc(mbCloud.sharedQuery)}" oninput="mbCloudSharedSearch(this.value)">
+    </div>
+    <select class="cl-sortselect" onchange="mbCloudSharedSort(this.value)">
+      <option value="recent" ${mbCloud.sharedSort==='recent'?'selected':''}>최신순</option>
+      <option value="oldest" ${mbCloud.sharedSort==='oldest'?'selected':''}>오래된순</option>
+      <option value="title" ${mbCloud.sharedSort==='title'?'selected':''}>이름순</option>
+      <option value="author" ${mbCloud.sharedSort==='author'?'selected':''}>작성자순</option>
+    </select>
+    <div class="cl-viewtoggle">
+      <span class="${mbCloud.sharedView==='grid'?'on':''}" title="카드로 보기" onclick="mbCloudSharedSetView('grid')">${gridIcon}</span>
+      <span class="${mbCloud.sharedView==='list'?'on':''}" title="목록으로 보기" onclick="mbCloudSharedSetView('list')">${listIcon}</span>
+    </div>
+  </div>
+  <div id="cloudSharedLineageBar">${mbCloudRenderLineageBar()}</div>
+  <div class="cl-tagbar-wrap">
+    <div class="cl-tagbar" id="cloudTagbar">
+      ${mbCloud.sharedTags.map(t=>`<span class="cl-filterchip ${mbCloud.sharedTag===t?'on':''}" onclick="mbCloudSharedTagClick('${esc(t)}')">${esc(t)}</span>`).join('')}
+    </div>
+    <button type="button" class="cl-tagbar-toggle" id="cloudTagbarToggle" style="display:none" onclick="mbCloudTagbarToggle()"></button>
+  </div>`;
+  return toolbar+`<div id="cloudSharedResultsWrap" class="cl-results-wrap">${mbCloudRenderSharedResults()}</div>`;
+}
+// 검색어를 입력할 때마다 이 부분(목록+하단 바)만 다시 그린다 - 위 toolbar(검색창 포함)는 그대로
+// 둬야 입력 중인 텍스트 필드가 매 글자마다 새로 만들어지지 않는다. 입력칸을 통째로 다시 그리면
+// 한글 조합(IME) 도중 엘리먼트가 바뀌면서 글자가 깨지거나(예: "검색"이 "ㄱㅓㅁㅏㅅ"처럼 조합이
+// 끊겨 나오는 문제) 포커스가 날아가는 문제가 생긴다.
+function mbCloudRenderSharedResults(){
+  const emptyMsg=`<div class="cl-empty" style="grid-column:1/-1;">${mbCurrentMode()==='Fat'?'Fat':'Thin'} 모드로 공유된 목업이 아직 없습니다.</div>`;
+  // 원본 카드에만 붙는 작은 리비전 개수 배지 - 0개(또는 리비전 자체인 항목)면 아무것도 안 그린다.
+  // 평소엔 원본만 조용히 보이다가, 이 숫자를 눌렀을 때만(클릭 시 "리비전만" 필터 + 검색어를 그
+  // 원본 제목으로 맞춰서) 그 원본의 리비전들만 따로 걸러 보여준다 - 옵셔널한 조회.
+  const revisionBadge=(it)=> (!it.origin_id && it.derivative_count>0)
+    ? `<span class="cl-rev-badge" title="이 원본에서 파생된 리비전 ${it.derivative_count}개" onclick="event.stopPropagation();mbCloudShowRevisionsOf('${it.id}')">${it.derivative_count}</span>`
+    : '';
+  let listArea;
+  if(mbCloud.sharedView==='list'){
+    // 목록으로 보기는 탐색기처럼 좌(파일 목록)/우(선택한 파일의 미리보기)로 나눈다 - 카드뷰와
+    // 달리 한 번에 하나씩 자세히 훑어보기 좋은 배치. 좌우 폭은 .cl-split 드래그로 조절되고
+    // localStorage에 저장돼 다음에 열 때도 유지된다.
+    let rows='';
+    mbCloud.sharedItems.forEach(it=>{
+      const sel=mbCloud.sharedSelectedId===it.id;
+      const author=it.username||'알 수 없음';
+      const tag=(it.tags&&it.tags[0])||'';
+      const thumbHtml=it.thumbnail
+        ? `<img src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(it.thumbnail)}" style="width:100%;height:100%;object-fit:cover;" alt="">`
+        : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c3cad1" stroke-width="1.8"><rect x="3" y="4" width="18" height="14" rx="1.5"/><path d="M3 15l4.5-4.5L11 14l4-4 6 6"/></svg>`;
+      rows+=`<div class="cl-explorer-row ${sel?'sel':''}" onclick="mbCloudSharedSelect('${it.id}')" ondblclick="mbCloudSharedOpen('${it.id}')">
+        <div class="cl-thumb-sm">${thumbHtml}</div>
+        <div class="cl-explorer-meta">
+          <div class="cl-explorer-title-row"><span class="cl-name-text">${esc(it.title)}</span>${revisionBadge(it)}</div>
+          <span class="cl-sub">${esc(author)} · ${mbFmtDate(it.created_at)}</span>
+        </div>
+        <div class="cl-explorer-right">
+          ${tag?`<span class="cl-tagpill">${esc(tag)}</span>`:''}
+          <span class="cl-open-count" title="복제해서 열기 횟수">${clOpenIcon()}${it.open_count||0}</span>
+        </div>
+      </div>`;
+    });
+    const loadMoreRow=mbCloud.sharedLoadingMore?`<div class="cl-shared-loadmore">더 불러오는 중...</div>`:'';
+    const listPane=`<div class="cl-shared-list-pane" style="width:${mbCloud.sharedListWidth}px">${rows||emptyMsg}${rows?loadMoreRow:''}</div>`;
+    const selIt=mbCloud.sharedItems.find(x=>x.id===mbCloud.sharedSelectedId);
+    let previewInner;
+    if(selIt){
+      const author=selIt.username||'알 수 없음';
+      const tag=(selIt.tags&&selIt.tags[0])||'';
+      // 정적 썸네일(저장 시점의 SVG 스냅샷) 대신, 선택한 순간 실제 데이터(comps)를 받아와
+      // 진짜 화면 그대로(같은 컴포넌트 렌더링 결과)를 iframe으로 그린다 - mbCloudRenderSharedPreviewFrame()가
+      // 이 컨테이너를 찾아서 채운다. 여기서는 자리와 "불러오는 중" 상태만 마련해둔다.
+      previewInner=`<div class="cl-shared-preview-frame-outer" id="cloudSharedPreviewFrameOuter"><div class="cl-shared-preview-loading">불러오는 중...</div></div>
+        <div class="cl-shared-preview-meta">
+          <span class="cl-shared-preview-meta-title">${esc(selIt.title)}</span>
+          <span class="cl-shared-preview-meta-sep">·</span>
+          <span>${esc(author)}</span>
+          <span class="cl-shared-preview-meta-sep">·</span>
+          <span>${mbFmtDate(selIt.created_at)}</span>
+          ${tag?`<span class="cl-shared-preview-meta-sep">·</span><span class="cl-tagpill">${esc(tag)}</span>`:''}
+        </div>`;
+    }else{
+      previewInner=`<div class="cl-shared-preview-frame-outer"><div class="cl-shared-preview-empty">파일을 선택하면 미리보기가 여기에 표시됩니다.</div></div>`;
+    }
+    listArea=`<div class="cl-shared-split-body">${listPane}<div class="cl-split" onmousedown="mbCloudSharedSplitStart(event)"></div><div class="cl-shared-preview-pane">${previewInner}</div></div>`;
+  }else{
+    let cards='';
+    mbCloud.sharedItems.forEach(it=>{
+      const sel=mbCloud.sharedSelectedId===it.id;
+      const author=it.username||'알 수 없음';
+      const tag=(it.tags&&it.tags[0])||'';
+      // 썸네일은 <img src="data:image/svg+xml..."> 로 렌더링한다 - DOM에 SVG를 직접 삽입하면 그
+      // 안의 <script>나 이벤트 속성이 실행될 수 있는데, "공유"는 다른 사용자의 데이터를 그대로
+      // 보여주는 자리라 안전하게 "이미지"로만 다루는 편이 맞다(이미지로 불러온 SVG는 스크립트가
+      // 실행되지 않는다).
+      const thumbHtml=it.thumbnail
+        ? `<img src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(it.thumbnail)}" style="width:100%;height:100%;object-fit:contain;" alt="">`
+        : `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#c3cad1" stroke-width="1.6"><rect x="3" y="4" width="18" height="14" rx="1.5"/><path d="M3 15l4.5-4.5L11 14l4-4 6 6"/></svg>`;
+      cards+=`<div class="cl-card ${sel?'sel':''}" onclick="mbCloudSharedSelect('${it.id}')" ondblclick="mbCloudSharedOpen('${it.id}')">
+        <div class="cl-card-thumb">${thumbHtml}</div>
+        <div class="cl-card-body">
+          <div class="cl-card-title">${esc(it.title)}${revisionBadge(it)}</div>
+          <div style="font-size:11.5px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(author)}</div>
+          <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px;">${mbFmtDate(it.created_at)}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <span>${tag?`<span class="cl-tagpill">${esc(tag)}</span>`:''}</span>
+            <span class="cl-open-count" title="복제해서 열기 횟수">${clOpenIcon()}${it.open_count||0}</span>
+          </div>
+        </div>
+      </div>`;
+    });
+    const loadMoreCard=mbCloud.sharedLoadingMore?`<div class="cl-shared-loadmore" style="grid-column:1/-1;">더 불러오는 중...</div>`:'';
+    listArea=`<div class="cl-cards">${cards||emptyMsg}${cards?loadMoreCard:''}</div>`;
+  }
+  const it=mbCloud.sharedItems.find(x=>x.id===mbCloud.sharedSelectedId);
+  const footer=`<div class="cl-footer">
+    <span style="font-size:12px;color:#8a97a3;flex:1;">${it?`선택함: <b style="color:#2c3e50;">${esc(it.title)}</b> — 더블클릭하면 내 캔버스에 복제해서 엽니다.`:'클릭하면 선택, 더블클릭하면 바로 엽니다.'}</span>
+    <button class="cl-cancel-btn" onclick="closeCloud()">취소</button>
+    <button class="cl-primary-btn" ${it?'':'disabled'} onclick="mbCloudSharedOpen(mbCloud.sharedSelectedId)">복제해서 열기</button>
+  </div>`;
+  return listArea+footer;
+}
+// 태그 필터 줄 - 칩이 많아도 무한정 늘어나지 않도록 기본은 "최대 2줄"로 접어두고, 그보다
+// 많을 때만 "더보기" 버튼을 보여준다. 눌러서 펼치면 전부 wrap돼서 보이고, "접기"로 다시
+// 2줄로 되돌릴 수 있다. 높이는 칩 하나의 실제 렌더 높이를 재서 정한다(CSS로 미리 못박아두면
+// 폰트 크기 변화 등에 안 맞을 수 있어서).
+function mbCloudInitTagBar(){
+  const bar=document.getElementById('cloudTagbar');
+  const toggle=document.getElementById('cloudTagbarToggle');
+  if(!bar||!toggle) return;
+  const chip=bar.querySelector('.cl-filterchip');
+  if(!chip){ toggle.style.display='none'; bar.style.maxHeight='none'; return; }
+  const collapsedH=chip.offsetHeight*2+6; // 2줄 + 줄 사이 gap(6px)
+  bar.style.maxHeight='none'; // 실제 전체 높이를 재려면 먼저 높이 제한을 풀어야 한다
+  const fullH=bar.scrollHeight;
+  const needsToggle=fullH>collapsedH+1;
+  toggle.style.display=needsToggle?'inline-block':'none';
+  if(!needsToggle){ mbCloud.tagbarExpanded=false; return; }
+  bar.style.maxHeight=mbCloud.tagbarExpanded?'none':collapsedH+'px';
+  toggle.textContent=mbCloud.tagbarExpanded?'접기 ▴':'더보기 ▾';
+}
+function mbCloudTagbarToggle(){
+  mbCloud.tagbarExpanded=!mbCloud.tagbarExpanded;
+  mbCloudInitTagBar();
+}
+let mbSharedSearchDebounce=null;
+function mbCloudSharedSearch(v){
+  mbCloud.sharedQuery=v;
+  // 매 글자마다 곧바로 서버에 물어보고 다시 그리는 대신, 입력이 잠깐 멈췄을 때 한 번만 조회한다
+  // (요청이 겹치는 것도 줄이고, 아래에서 검색창 자체는 건드리지 않으니 어차피 꼭 필요하진 않지만
+  // 서버 부하를 줄이는 차원에서 유지).
+  clearTimeout(mbSharedSearchDebounce);
+  mbSharedSearchDebounce=setTimeout(()=>{
+    mbCloudLoadShared().then(()=>{
+      // 검색 결과(목록+하단 바)와 원본/전체/리비전 개수만 다시 그린다 - 검색창이 있는 toolbar
+      // 전체를 새로 그리면 타이핑 중인 입력칸(그리고 한글 조합 중인 IME 상태)이 끊기므로,
+      // 그 안의 개수 숫자 부분만 targeted하게 갈아 끼운다.
+      const wrap=document.getElementById('cloudSharedResultsWrap');
+      if(wrap) wrap.innerHTML=mbCloudRenderSharedResults();
+      const lineageEl=document.getElementById('cloudSharedLineageBar');
+      if(lineageEl) lineageEl.innerHTML=mbCloudRenderLineageBar();
+      mbCloudCheckSharedFillViewport();
+    });
+  },250);
+}
+function mbCloudSharedSort(v){ mbCloud.sharedSort=v; mbCloudLoadShared().then(mbCloudRenderAndFillShared); }
+function mbCloudSharedTagClick(t){ mbCloud.sharedTag=t; mbCloudLoadShared().then(mbCloudRenderAndFillShared); }
+function mbCloudSharedSelect(id){ mbCloud.sharedSelectedId=id; mbCloudRenderKeepScroll(); }
+async function mbCloudSharedOpen(id){
+  if(!id) return;
+  try{
+    const rows=await mbRestFetch(`/mockups?id=eq.${id}&select=data,title,origin_id,owner_id`);
+    const row=rows&&rows[0]; if(!row) throw new Error('파일을 찾을 수 없습니다.');
+    // 이 화면은 이제부터 row(id)에서 파생된 파일이 된다. 단, row 자신이 이미 다른 원본의 파생본이면
+    // (row.origin_id가 있으면) 그 "최상위 원본"을 그대로 물려받는다 - 파생의 파생이 늘어나도 항상
+    // 맨 위 원본 하나만 가리키게 해서(체인이 아니라 평평한 구조), 나중에 "이 원본에서 몇 개나
+    // 파생됐는지" 셀 때 중간 단계 없이 한 번에 집계할 수 있게 한다.
+    // 공유목록에는 "남이 만든 파일"뿐 아니라 "내가 공개로 올린 내 파일"도 같이 뜬다. 예전에는
+    // 이게 내 파일이면(owner_id가 나) 아예 파생 추적을 하지 않았는데, 그러면 내가 공유한 A를
+    // 마켓에서 받아 A1이라는 새 이름으로 저장해도 A1이 A의 리비전으로 잡히지 않는 문제가 있었다.
+    // 그래서 소유 여부와 관계없이 항상 origin_id를 세팅하도록 바꿨다 - "같은 파일을 그대로
+    // 다시 덮어쓰는" 경우(자기 자신의 파생본이 되는 모순)는 저장 시점(mbCloudDoSave)의 안전장치가
+    // targetId===mbCloud.originId일 때 null로 되돌려 걸러주므로, 여기서는 소유자를 가리지 않고
+    // "마켓/공유목록에서 가져왔다"는 사실 그대로 origin_id를 기록해도 안전하다.
+    // mbCloudApplyData()의 render()가 자동저장을 그 자리에서 바로 실행시킬 수도 있으므로,
+    // 그 스냅샷에도 반영되도록 데이터를 적용하기 전에 먼저 세팅한다.
+    mbCloud.originId = row.origin_id||id;
+    mbCloudApplyData(row.data);
+    closeCloud();
+    // "복제해서 열기"(버튼 클릭이든 더블클릭이든)에 성공한 뒤에만 횟수를 올린다 - 핵심 동작(열기)은
+    // 이미 끝났으니, 횟수 갱신이 실패해도 사용자에게 에러를 보여주지 않고 조용히 넘어간다.
+    mbCloudBumpOpenCount(id);
+  }catch(e){ mbAlert('열지 못했습니다.\n\n'+e.message); }
+}
+function mbCloudBumpOpenCount(id){
+  const it=mbCloud.sharedItems.find(x=>x.id===id);
+  if(it) it.open_count=(it.open_count||0)+1; // 화면에 이미 그려둔 값이 있다면 즉시 반영
+  mbRestFetch('/rpc/mb_increment_open_count',{method:'POST',body:JSON.stringify({p_id:id})}).catch(()=>{});
+}
+// 목록으로 보기 우측의 "진짜" 미리보기 - 저장 시점의 정적 썸네일(SVG 스냅샷)이 아니라, 그
+// 파일의 실제 comps 데이터를 그 화면을 그릴 때 쓰는 것과 완전히 같은 함수(buildExportHTML,
+// HTML로 저장/미리보기 기능이 이미 쓰고 있는 바로 그 함수)로 그대로 그려서 iframe에 넣는다.
+// 지금 편집 중인 캔버스(comps/cw/ch/스킨)를 아주 잠깐 다른 파일의 데이터로 바꿔치기해서 문자열을
+// 만든 다음 곧바로 원래대로 되돌리는 방식이라, 화면을 다시 그리는 사이 텀이 없어(동기적으로
+// 끝남) 실제 편집 중인 캔버스에는 아무 영향도 남기지 않는다.
+function mbCloudBuildPreviewHTML(data){
+  const cwEl=document.getElementById('cw'), chEl=document.getElementById('ch');
+  const origComps=comps, origCw=cwEl.value, origCh=chEl.value;
+  const origFat=document.body.classList.contains('skin-classic');
+  try{
+    comps=data.comps||[];
+    cwEl.value=data.cw; chEl.value=data.ch;
+    document.body.classList.toggle('skin-classic', data.skin==='fat');
+    const full=buildExportHTML();
+    // buildExportHTML()이 만드는 문서는 "다운로드해서 여는 파일" 용이라 페이지 여백/그림자/가운데
+    // 정렬이 들어가 있고, 내용이 캔버스 크기보다 넘치면 스크롤되게 열려 있다(원본에 있는
+    // html,body{overflow:visible!important} 규칙) - 미리보기 iframe에서는 스크롤 대신 확대/축소
+    // 버튼으로 배율만 조절하게 할 것이므로, </head> 바로 앞에 그 여백을 걷어내고 스크롤 자체를
+    // 막는 스타일을 하나 더 끼워 넣는다(마지막에 위치해 !important끼리는 뒤에 오는 규칙이 이겨서,
+    // 원본 내용은 그대로 둔 채 이 부분만 안전하게 덮어쓴다). 우측 상단 고정 바(Alt+O/Alt+P
+    // 뱃지, .mb-topbar)도 여기서만 숨긴다 - 실제로 내려받는 파일/미리보기(previewHTML)에는
+    // 그대로 남아야 하므로 buildExportHTML() 자체는 건드리지 않고, 목업마켓 미리보기 iframe에
+    // 주입되는 이 스타일에서만 감춘다.
+    const override='<style>html,body{overflow:hidden!important;}body{background:#fff!important;margin:0!important;padding:0!important;}.mockup{margin:0!important;border:none!important;box-shadow:none!important;}.mb-topbar{display:none!important;}</style></head>';
+    return full.replace('</head>', override);
+  } finally {
+    comps=origComps; cwEl.value=origCw; chEl.value=origCh;
+    document.body.classList.toggle('skin-classic', origFat);
+  }
+}
+// 선택된 공유 목업의 data를 (처음 한 번만) 받아와 위 함수로 진짜 미리보기를 그려 iframe에
+// 채운다. 같은 파일이 이미 그려져 있으면(스플리터/팝업 크기만 바뀐 경우) 다시 그리지 않고
+// 스케일만 다시 맞춘다 - 매번 iframe을 새로 만들면 깜빡이고 느리다.
+let mbSharedPreviewToken=0;
+// null이면 "맞춤"(가진 공간에 꽉 차게 자동 배율) 상태, 숫자면 사용자가 확대/축소 버튼으로 직접
+// 정한 배율(1=100%) - 새 파일을 선택하면 항상 맞춤부터 다시 시작한다.
+let mbSharedPreviewZoom=null;
+let mbSharedPreviewFitScale=1;
+async function mbCloudRenderSharedPreviewFrame(){
+  const outer=document.getElementById('cloudSharedPreviewFrameOuter');
+  if(!outer) return; // 카드뷰이거나(이 컨테이너 자체가 없음) 선택된 파일이 없으면 할 일 없음
+  const it=mbCloud.sharedItems.find(x=>x.id===mbCloud.sharedSelectedId);
+  if(!it) return;
+  const existingFrame=outer.querySelector('iframe');
+  if(existingFrame && existingFrame.dataset.itemId===it.id){ mbCloudFitSharedPreview(); return; }
+  mbSharedPreviewZoom=null; // 다른 파일을 새로 그릴 때는 확대/축소 상태를 초기화하고 맞춤으로 시작
+  const myToken=++mbSharedPreviewToken;
+  if(!it._previewData){
+    outer.innerHTML='<div class="cl-shared-preview-loading">미리보기를 불러오는 중...</div>';
+    try{
+      const rows=await mbRestFetch(`/mockups?id=eq.${it.id}&select=data`)||[];
+      if(myToken!==mbSharedPreviewToken) return; // 그 사이 다른 파일을 선택했으면 이 결과는 버린다
+      it._previewData=(rows[0]&&rows[0].data)||null;
+    }catch(e){
+      if(myToken!==mbSharedPreviewToken) return;
+      outer.innerHTML='<div class="cl-shared-preview-empty">미리보기를 불러오지 못했습니다.</div>';
+      return;
+    }
+  }
+  if(myToken!==mbSharedPreviewToken) return;
+  if(!it._previewData){ outer.innerHTML='<div class="cl-shared-preview-empty">미리보기가 없습니다.</div>'; return; }
+  let html;
+  try{ html=mbCloudBuildPreviewHTML(it._previewData); }
+  catch(e){ outer.innerHTML='<div class="cl-shared-preview-empty">미리보기를 그리지 못했습니다.</div>'; return; }
+  const cw=parseFloat(it._previewData.cw)||1100, ch=parseFloat(it._previewData.ch)||700;
+  // 이 작은 미리보기는 "실제로 조작해보는 화면"이 아니라 이미지 보듯 훑어보는 용도라, iframe
+  // 자체는 pointer-events:none으로 완전히 죽여서 콤보박스가 열리거나 입력칸에 커서가 생기거나
+  // 텍스트가 선택되는 일이 아예 없게 한다. 대신 그 위(정확히는 부모인 scale-wrap)에서
+  // mousedown을 받아 드래그한 만큼 바깥 스크롤 영역을 이동시켜, 사진 뷰어처럼 손으로 잡고
+  // 이 작은 미리보기는 "실제로 조작해보는 화면"이 아니라 이미지 보듯 훑어보는 용도라, iframe
+  // 자체는 pointer-events:none으로 완전히 죽여서 콤보박스가 열리거나 입력칸에 커서가 생기거나
+  // 텍스트가 선택되는 일이 아예 없게 한다. 대신 그 위(정확히는 부모인 scale-wrap)에서
+  // mousedown을 받아 드래그한 만큼 스크롤 영역을 이동시켜, 사진 뷰어처럼 손으로 잡고 끄는
+  // 느낌을 낸다. 확대/축소 버튼(cl-shared-zoom-ctl)은 스크롤되는 영역(cl-shared-preview-scroll)
+  // 바깥의 outer에 직접 두어서, 아무리 확대해서 드래그로 이리저리 움직여도 화면에 늘 같은
+  // 자리에 고정돼 보인다(스크롤 안쪽에 있으면 콘텐츠와 같이 밀려버린다).
+  outer.innerHTML=`<div class="cl-shared-preview-scroll" id="cloudSharedPreviewScroll">
+      <div class="cl-shared-preview-scale-wrap" onmousedown="mbCloudPreviewDragStart(event)">
+        <iframe id="cloudSharedPreviewFrame" data-item-id="${it.id}" data-cw="${cw}" data-ch="${ch}" sandbox="allow-scripts" scrolling="no" style="width:${cw}px;height:${ch}px;pointer-events:none;"></iframe>
+      </div>
+    </div>
+    <div class="cl-shared-zoom-ctl">
+      <button type="button" onclick="mbCloudSharedZoomStep(-1)" title="축소">－</button>
+      <span class="cl-shared-zoom-pct" id="cloudSharedZoomPct" title="클릭하면 맞춤으로" onclick="mbCloudSharedZoomReset()">100%</span>
+      <button type="button" onclick="mbCloudSharedZoomStep(1)" title="확대">＋</button>
+    </div>`;
+  const frame=document.getElementById('cloudSharedPreviewFrame');
+  frame.srcdoc=html;
+  mbCloudFitSharedPreview();
+}
+// 미리보기를 사진처럼 손으로 잡고 끄는 드래그 - 실제로는 스크롤 영역(cl-shared-preview-scroll)의
+// scrollLeft/Top을 마우스가 움직인 만큼 반대로 옮기는 것뿐이라, 확대해서 스크롤할 내용이
+// 있을 때만 의미가 있고 화면에 다 들어와 있으면(스크롤 자체가 없으면) 그냥 아무 일도 안 난다.
+function mbCloudPreviewDragStart(e){
+  const scroller=document.getElementById('cloudSharedPreviewScroll');
+  if(!scroller) return;
+  e.preventDefault(); // 드래그 중 텍스트/이미지 선택 커서가 뜨는 것 방지
+  const startX=e.clientX, startY=e.clientY;
+  const startLeft=scroller.scrollLeft, startTop=scroller.scrollTop;
+  const wrap=e.currentTarget;
+  wrap.classList.add('dragging');
+  function onMove(ev){
+    scroller.scrollLeft=startLeft-(ev.clientX-startX);
+    scroller.scrollTop=startTop-(ev.clientY-startY);
+  }
+  function onUp(){
+    wrap.classList.remove('dragging');
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('mouseup',onUp);
+  }
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseup',onUp);
+}
+// 스플리터를 끌거나 팝업 크기를 조절할 때마다 불리는, 가벼운 재조정 전용 함수 - iframe을 다시
+// 만들지 않고 CSS transform:scale()만 다시 계산한다. 확대/축소 버튼으로 배율을 직접 정해둔
+// 상태(맞춤이 아닌 상태)라면 그 배율을 그대로 유지하고(공간이 좁아지면 그만큼 잘려 보일 뿐,
+// 스크롤은 생기지 않는다), "맞춤" 상태일 때만 남은 공간에 꽉 차도록 다시 계산한다.
+function mbCloudFitSharedPreview(){
+  const outer=document.getElementById('cloudSharedPreviewFrameOuter');
+  const scroller=document.getElementById('cloudSharedPreviewScroll');
+  const frame=scroller&&scroller.querySelector('iframe');
+  const wrap=scroller&&scroller.querySelector('.cl-shared-preview-scale-wrap');
+  if(!outer||!scroller||!frame||!wrap) return;
+  const cw=parseFloat(frame.dataset.cw), ch=parseFloat(frame.dataset.ch);
+  if(!cw||!ch) return;
+  // 사용 가능한 공간은 확대/축소 버튼이 얹혀 있는 outer가 아니라, 실제로 스크롤되는 안쪽
+  // scroller의 크기를 기준으로 잰다(같은 크기지만, 의미상 이쪽이 맞다).
+  const availW=scroller.clientWidth-16, availH=scroller.clientHeight-16;
+  if(availW<=0||availH<=0) return;
+  mbSharedPreviewFitScale=Math.max(0.02, Math.min(availW/cw, availH/ch));
+  const scale=(mbSharedPreviewZoom==null)?mbSharedPreviewFitScale:mbSharedPreviewZoom;
+  frame.style.transform=`scale(${scale})`;
+  // scale-wrap의 실제 박스 크기(width/height)를 확대된 픽셀 크기로 맞춰준다 - transform은 보이는
+  // 크기만 바꿀 뿐 레이아웃 상 차지하는 공간은 그대로라서, 이렇게 실제 크기를 같이 키워줘야
+  // scroller(overflow:auto)가 "지금 이 안에 다 안 들어가네" 하고 스크롤바를 내어준다. 맞춤 배율
+  // 이하로는(availW/availH 안에 딱 맞거나 더 작게) 절대 커지지 않으므로 이 상태에선 스크롤이
+  // 아예 생기지 않는다.
+  wrap.style.width=(cw*scale)+'px';
+  wrap.style.height=(ch*scale)+'px';
+  const pctEl=document.getElementById('cloudSharedZoomPct');
+  if(pctEl) pctEl.textContent=Math.round(scale*100)+'%';
+}
+// 확대/축소 버튼 - 지금 실제로 보이는 배율(맞춤 상태면 맞춤 배율, 아니면 사용자가 정한 배율)을
+// 기준으로 한 단계씩 20%p 씩 키우거나 줄인다. 이후로는 "맞춤"이 아니라 사용자가 정한 배율을
+// 그대로 유지한다(공간을 늘리거나 줄여도 바뀌지 않음) - "맞춤으로" 글자를 눌러야 다시 자동으로
+// 돌아간다.
+function mbCloudSharedZoomStep(dir){
+  const base=(mbSharedPreviewZoom==null)?mbSharedPreviewFitScale:mbSharedPreviewZoom;
+  let next=base+(dir>0?0.2:-0.2);
+  next=Math.max(0.05, Math.min(4, next));
+  mbSharedPreviewZoom=next;
+  mbCloudFitSharedPreview();
+}
+function mbCloudSharedZoomReset(){
+  mbSharedPreviewZoom=null;
+  mbCloudFitSharedPreview();
+}
+
+checkVersion();
+// 접속 시 로그인 상태 반영. 이미 로그인 세션이 남아있으면 그대로 쓰고, 없으면 "자동로그인"이
+// 켜진 채로 저장된 아이디/비밀번호가 있는지 확인해서 조용히 한 번 로그인을 시도한다(실패해도
+// 그냥 로그아웃 상태로 시작할 뿐, 화면에 에러를 띄우지는 않는다 - 저장된 비밀번호가 바뀐 뒤
+// 방치된 경우 등을 사용자가 접속하자마자 에러로 마주치지 않게 하기 위함).
+(async function(){
+  const s=mbGetSession();
+  if(!s){
+    const saved=mbLoadLoginPrefs();
+    if(saved.autoLogin&&saved.username&&saved.password){
+      try{ await mbLogin(saved.username,saved.password); }catch(e){ /* 조용히 무시 - 필요하면 사용자가 직접 로그인 */ }
+    }
+  } else {
+    // 이미 로그인 세션이 남아있는 경우 - mbLogin()을 안 거치므로 관리자 여부도, 로그인 이력도
+    // 여기서 직접 챙겨야 한다. 이 경로(브라우저를 새로 열었을 때 저장된 세션을 그대로 이어받는
+    // 것)도 사용자 입장에서는 "자동으로 로그인됐다"는 사실 자체는 같으므로, 수동 로그인/저장된
+    // 아이디로 로그인과 똑같이 auth_logs에 남긴다 - 그동안 이 경로만 기록이 안 남고 있었다.
+    mbIsAdmin=await mbCheckAdmin(s.id);
+    mbLogAuthEvent('login',s.id,s.username);
+  }
+  mbUpdateAccountUI();
+})();
+
+
+/* ===== 모바일 Adaptive UI Layer v2 ===== */
+(function(){
+  'use strict';
+
+  /* ---------- 컴포넌트 카탈로그 ---------- */
+  var CATS=[
+    {name:'레이아웃', items:[['title','🅣','제목'],['section','▬','섹션'],['panel','▢','패널'],['tabs','▤','탭'],['split','⊟','분할'],['searchbar','🔍','조회조건']]},
+    {name:'입력', items:[['label','🄰','라벨'],['input','▭','입력'],['combo','▾','콤보'],['date','📅','날짜'],['daterange','📆','기간'],['check','☑','체크'],['radio','◉','라디오'],['popup','≡','팝업'],['attach','📎','첨부파일']]},
+    {name:'액션', items:[['button','⬛','버튼']]},
+    {name:'데이터', items:[['grid','▦','그리드'],['chart','📊','차트'],['tree','🌳','트리']]}
+  ];
+  var LABELS={},ICONS={};
+  CATS.forEach(function(c){c.items.forEach(function(it){LABELS[it[0]]=it[2];ICONS[it[0]]=it[1];});});
+  // 자주 쓰는 순서(도크·레일에 노출)
+  var QUICK=['input','combo','button','grid','searchbar','date','check','label','title'];
+  var recent=[];
+  function pushRecent(t){ recent=[t].concat(recent.filter(function(x){return x!==t;})).slice(0,8); }
+  // 조회조건(searchbar)은 씬모드 전용, 첨부파일(attach)도 씬모드 전용(팻모드 스타일 미대응).
+  // 팝업(popup)은 이제 두 모드 모두 노출(팻모드=코드/명, 씬모드=검색형 - 데스크톱 도구상자와 동일한 규칙).
+  // 도크/레일/전체 시트 어디서든 이 함수로 걸러서 두 모드의 컴포넌트 목록이 데스크톱과 일치하게 한다.
+  function mbTypeVisible(t){
+    var fat=document.body.classList.contains('skin-classic');
+    if(t==='searchbar') return !fat;
+    if(t==='attach') return !fat;
+    return true;
+  }
+
+  /* ---------- 기기 감지 ---------- */
+  function isTouch(){ return ('ontouchstart' in window)||navigator.maxTouchPoints>0; }
+  function detectMode(){
+    if(window.__mbForce) return window.__mbForce;
+    var q=(location.search.match(/[?&]mbmode=(mobile|tablet|pc)/)||[])[1]; if(q) return q;
+    var w=window.innerWidth,h=window.innerHeight,shortSide=Math.min(w,h),longSide=Math.max(w,h);
+    var coarse=false; try{ coarse=!!(window.matchMedia&&window.matchMedia('(pointer:coarse)').matches);}catch(e){}
+    var ua=(navigator.userAgent||'');
+    var phoneUA=/Android.*Mobile|iPhone|iPod/i.test(ua);
+    var tabletUA=/iPad|Android(?!.*Mobile)|Tablet|PlayBook|Silk/i.test(ua);
+    if((coarse&&shortSide<600)||phoneUA) return 'mobile';
+    if((coarse&&shortSide<=1024&&longSide<=1400)||(tabletUA&&!phoneUA)) return 'tablet';
+    return 'pc';
+  }
+  var curMode=null,curOri=null;
+  function applyMode(force){
+    var mode=detectMode();
+    var portrait=window.innerHeight>=window.innerWidth;
+    var oriChanged = (curOri!=null) && (portrait!==(curOri==='portrait'));
+    if(mode===curMode && portrait===(curOri==='portrait') && !force) return;
+    curMode=mode; curOri=portrait?'portrait':'landscape';
+    var b=document.body;
+    b.classList.remove('mb-mobile','mb-tablet','mb-portrait','mb-landscape');
+    if(mode==='mobile') b.classList.add('mb-mobile');
+    else if(mode==='tablet') b.classList.add('mb-tablet');
+    b.classList.add(portrait?'mb-portrait':'mb-landscape');
+    if(typeof updateBrandMode==='function') updateBrandMode();
+    syncModeSwitch(mode);
+    if(mode!=='pc'){
+      // 방향이 바뀌면 미니맵을 기본 위치로 되돌려(이전 방향의 인라인 좌표가 화면 밖으로 나가는 것 방지)
+      if(oriChanged||force) resetMiniMapPos();
+      buildDock(); buildRail(); renderCtx(); syncHistBtns();
+      setTimeout(function(){ mbFit(); clampMiniMap(); updateMiniMap(true); updateZoomBadge(); },60);
+    } else {
+      // PC 로 전환되면 자동 저장을 다시 켠다(모바일/태블릿에서 꺼졌던 경우 대비)
+      try{ if(typeof autosaveReady!=='undefined') autosaveReady=true; }catch(e){}
+    }
+  }
+  // 현재 모드에 맞춰 좌측 하단 전환 버튼의 활성(토글) 표시를 갱신한다
+  function syncModeSwitch(mode){
+    var ids={pc:'msbPc',tablet:'msbTablet',mobile:'msbMobile'};
+    for(var k in ids){
+      var el=document.getElementById(ids[k]);
+      if(el) el.classList.toggle('on', k===mode);
+    }
+  }
+  // 좌측 하단 아이콘으로 PC/태블릿/모바일을 강제 전환한다
+  window.setDeviceMode=function(mode){
+    if(mode!=='pc'&&mode!=='tablet'&&mode!=='mobile') return;
+    if(window.__mbForce===mode) return;  // 이미 그 모드면 무시
+    window.__mbForce=mode;
+    try{ if(typeof mbCloseSheet==='function') mbCloseSheet(); }catch(e){}
+    applyMode(true);
+    // PC 로 돌아갈 때는 모바일 전용 클래스가 applyMode 안에서 제거되어 원래 화면으로 복귀한다
+  };
+
+  // 미니맵을 기본 위치(방향별 CSS)로 되돌린다
+  function resetMiniMapPos(){
+    var map=document.getElementById('mbMiniMap'); if(!map) return;
+    map.classList.remove('mb-moved');
+    map.style.left=''; map.style.right=''; map.style.top=''; map.style.bottom='';
+  }
+  // 미니맵이 화면 밖으로 나갔으면 안으로 끌어들인다(드래그 후 회전 대비)
+  function clampMiniMap(){
+    var map=document.getElementById('mbMiniMap'); if(!map) return;
+    if(!map.classList.contains('mb-moved')) return; // 기본 위치면 CSS 가 처리
+    var vw=window.innerWidth, vh=window.innerHeight;
+    var w=map.offsetWidth||120, h=map.offsetHeight||80;
+    var r=map.getBoundingClientRect();
+    var x=r.left, y=r.top, changed=false;
+    if(x+w>vw-6){ x=vw-w-6; changed=true; }
+    if(x<6){ x=6; changed=true; }
+    if(y+h>vh-6){ y=vh-h-6; changed=true; }
+    if(y<56){ y=56; changed=true; }
+    if(changed){ map.style.left=x+'px'; map.style.top=y+'px'; map.style.right='auto'; map.style.bottom='auto'; }
+  }
+  window.mbResetMiniMap=resetMiniMapPos;
+
+  /* ---------- 유틸 ---------- */
+  window.mbFit=function(){ try{ fitZoomToViewport(); updateZoomBadge(); updateMiniMap(true);}catch(e){} };
+  // 손 도구(Pan): 켜면 컴포넌트 위에서도 드래그가 캔버스 이동(스크롤)만 되도록.
+  window.mbPan=false;
+  window.mbTogglePan=function(){
+    window.mbPan=!window.mbPan;
+    document.body.classList.toggle('mb-pan', window.mbPan);
+    var b=document.getElementById('mbPanBtn'); if(b) b.classList.toggle('mb-on', window.mbPan);
+    if(window.mbPan){
+      // 이동 모드 진입: 선택 해제 + 컨텍스트 바 숨김 + 열린 속성창 닫기
+      // (줌/스크롤 위치는 그대로 유지 — mbFit 리셋 호출 안 함)
+      try{ unmountProps(); }catch(e){}
+      try{ document.getElementById('mbSheetBg').classList.remove('show'); sheetOpen=false; }catch(e){}
+      try{
+        document.getElementById('mbSidePanel').classList.remove('open');
+        document.body.classList.remove('mb-side-open');
+      }catch(e){}
+      try{ selectSingle(null); render(); }catch(e){}
+      try{ renderCtx(); }catch(e){}
+    }
+    // 안내는 상단 배너(#mbPanHint)로만 표시 → 토스트 중복 제거
+  };
+  var toastT=null;
+  window.mbToast=function(msg){ var el=document.getElementById('mbToast'); el.textContent=msg; el.style.display='block'; clearTimeout(toastT); toastT=setTimeout(function(){el.style.display='none';},1500); };
+  function currentZoom(){ var s=document.getElementById('zoomSel'); return s?parseFloat(s.value)||1:1; }
+  function esc(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  window.mbEsc=esc;
+
+  /* ---------- 좌표 변환 ---------- */
+  function clientToCanvas(cx,cy){
+    var cv=document.getElementById('canvas'), z=currentZoom()||1, r=cv.getBoundingClientRect();
+    return {x:Math.max(0,Math.round((cx-r.left)/z)), y:Math.max(0,Math.round((cy-r.top)/z))};
+  }
+  function scrollSelIntoView(){
+    var sc=document.querySelector('.canvas-scroll'); if(!sc||sel==null) return;
+    var c=comps.find(function(x){return x.id===sel;}); if(!c||c.parent) return;
+    var z=currentZoom()||1, pad=40;
+    var cx=c.x*z,cy=c.y*z,cw=(c.w||100)*z,ch=(c.h||40)*z;
+    if(cx<sc.scrollLeft+pad) sc.scrollLeft=Math.max(0,cx-pad);
+    else if(cx+cw>sc.scrollLeft+sc.clientWidth-pad) sc.scrollLeft=cx+cw-sc.clientWidth+pad;
+    if(cy<sc.scrollTop+pad) sc.scrollTop=Math.max(0,cy-pad);
+    else if(cy+ch>sc.scrollTop+sc.clientHeight-pad) sc.scrollTop=cy+ch-sc.clientHeight+pad;
+  }
+
+  /* ---------- 도크(세로) / 레일(가로) 빌드 ---------- */
+  function buildDock(){
+    var d=document.getElementById('mbDockScroll'); if(!d) return;
+    var order=(recent.length?recent.slice(0,3):[]).concat(QUICK).filter(function(v,i,a){return a.indexOf(v)===i;}).filter(mbTypeVisible);
+    var h='';
+    order.forEach(function(t){ h+='<button class="mb-chip" onclick="mbPick(\''+t+'\')"><span class="ic">'+ICONS[t]+'</span>'+LABELS[t]+'</button>'; });
+    h+='<button class="mb-chip all" onclick="mbOpenSheet(\'all\')"><span class="ic">⋯</span>전체</button>';
+    d.innerHTML=h;
+  }
+  function buildRail(){
+    var r=document.getElementById('mbRail'); if(!r) return;
+    var order=(recent.length?recent.slice(0,2):[]).concat(QUICK).filter(function(v,i,a){return a.indexOf(v)===i;}).filter(mbTypeVisible).slice(0,9);
+    var h='';
+    order.forEach(function(t){ h+='<button class="mb-rail-btn" onclick="mbPick(\''+t+'\')"><span class="ic">'+ICONS[t]+'</span>'+LABELS[t]+'</button>'; });
+    h+='<button class="mb-rail-btn more" onclick="mbOpenSheet(\'all\')"><span class="ic">⋯</span>전체</button>';
+    r.innerHTML=h;
+  }
+
+  /* ---------- 컴포넌트 선택 → 탭해서 배치 ---------- */
+  var armedType=null;
+  window.mbPick=function(type){
+    armedType=type; pushRecent(type);
+    mbCloseSheet();
+    document.body.classList.add('mb-arming');
+    var arm=document.getElementById('mbArm');
+    document.getElementById('mbArmTxt').textContent='📍 캔버스를 탭하면 「'+LABELS[type]+'」 생성';
+    arm.style.display='flex';
+    mbToast('놓을 위치를 탭하세요');
+  };
+  window.mbCancelPlace=function(){ armedType=null; document.body.classList.remove('mb-arming'); document.getElementById('mbArm').style.display='none'; };
+  function placeArmed(cx,cy){
+    if(!armedType) return false;
+    var p=clientToCanvas(cx,cy), t=armedType;
+    var d=(typeof defaultSizeFor==='function')?defaultSizeFor(t):((typeof defaults!=='undefined'&&defaults[t])?defaults[t]:{w:120,h:40});
+    armedType=null; document.body.classList.remove('mb-arming'); document.getElementById('mbArm').style.display='none';
+    try{
+      placeNewComponent(t, Math.max(0,p.x-Math.round((d.w||120)/2)), Math.max(0,p.y-Math.round((d.h||40)/2)));
+      scrollSelIntoView(); renderCtx(); updateMiniMap(true);
+      mbToast(LABELS[t]+' 추가됨');
+    }catch(e){ mbToast('생성 실패'); }
+    return true;
+  }
+
+  /* ---------- 컨텍스트 액션바 ---------- */
+  function renderCtx(){
+    var ctx=document.getElementById('mbCtx'); if(!ctx) return;
+    var has=(typeof sel!=='undefined'&&sel!=null);
+    var multi=(typeof selIds!=='undefined'&&selIds.size>1);
+    if(!has && !multi){ ctx.classList.add('hidden'); mbSyncSide(); return; }
+    ctx.classList.remove('hidden');
+    var btns=[
+      ['속성','⚙',"mbOpenProps()"],
+      ['복제','⧉',"mbDo('dup')"],
+      ['앞으로','⤒',"mbDo('front')"],
+      ['뒤로','⤓',"mbDo('back')"],
+      ['삭제','🗑',"mbDo('del')",'danger']
+    ];
+    var h='';
+    btns.forEach(function(b,i){
+      if(i===1||i===4) h+='<div class="mb-ctx-sep"></div>';
+      h+='<button class="mb-ctx-btn'+(b[3]?' '+b[3]:'')+'" onclick="'+b[2]+'"><span class="ic">'+b[1]+'</span>'+b[0]+'</button>';
+    });
+    ctx.innerHTML=h;
+    mbSyncSide();
+  }
+
+  /* ---------- 편집 액션 ---------- */
+  window.mbDo=function(act){
+    try{
+      if(act==='undo'){ undo(); }
+      else if(act==='redo'){ redo(); }
+      else if(act==='del'){ if(sel!=null||selIds.size){ delSel(); mbToast('삭제됨'); } }
+      else if(act==='dup'){
+        if(sel==null && !selIds.size) return;
+        copySelection(); pasteClipboard(); mbToast('복제됨');
+      }
+      else if(act==='front'){ mbZOrder(1); }
+      else if(act==='back'){ mbZOrder(-1); }
+    }catch(e){}
+    renderCtx(); syncHistBtns(); updateMiniMap(true);
+  };
+  function mbZOrder(dir){
+    if(sel==null) return;
+    var i=comps.findIndex(function(c){return c.id===sel;}); if(i<0) return;
+    try{ pushHistory(); }catch(e){}
+    var c=comps.splice(i,1)[0];
+    if(dir>0) comps.push(c); else comps.unshift(c);
+    render();
+  }
+  function syncHistBtns(){
+    var u=document.getElementById('mbUndoBtn'), r=document.getElementById('mbRedoBtn');
+    try{
+      if(u) u.disabled = (typeof undoStack!=='undefined')? !undoStack.length : false;
+      if(r) r.disabled = (typeof redoStack!=='undefined')? !redoStack.length : false;
+    }catch(e){}
+  }
+
+  /* ---------- 줌 ---------- */
+  function updateZoomBadge(){ var b=document.getElementById('mbZoomBadge'); if(b) b.textContent=Math.round((currentZoom()||1)*100)+'%'; }
+  window.mbCycleZoom=function(){
+    var z=currentZoom()||1;
+    var next = z>=0.99 ? 'fit' : (z<0.5? 1 : 1);
+    if(next==='fit'){ mbFit(); } else { try{ setZoom(1); }catch(e){} }
+    updateZoomBadge(); updateMiniMap(true);
+    mbToast('줌 '+Math.round((currentZoom()||1)*100)+'%');
+  };
+
+  /* ---------- Bottom Sheet ---------- */
+  var sheetOpen=false, sheetKind=null;
+  window.mbOpenSheet=function(kind){
+    var body=document.getElementById('mbSheetBody'), title=document.getElementById('mbSheetTitle');
+    if(kind==='all'){ title.textContent='컴포넌트 추가'; body.innerHTML=allCompsHTML(); }
+    else if(kind==='props'){ title.textContent='속성'; mountProps(body); }
+    else if(kind==='layers'){ title.textContent='레이어'; body.innerHTML=layersHTML(); }
+    else if(kind==='opts'){ title.textContent='보기 설정'; body.innerHTML=optsHTML(); syncOptsUI(); }
+    else if(kind==='menu'){ title.textContent='메뉴'; body.innerHTML=menuHTML(); }
+    document.getElementById('mbSheetBg').classList.add('show'); sheetOpen=true; sheetKind=kind;
+  };
+  window.mbCloseSheet=function(){ unmountProps(); document.getElementById('mbSheetBg').classList.remove('show'); sheetOpen=false; sheetKind=null; };
+  window.mbSheetBgTap=function(e){ if(e.target&&e.target.id==='mbSheetBg') mbCloseSheet(); };
+
+  function allCompsHTML(){
+    var h='';
+    var recentVisible=recent.filter(mbTypeVisible);
+    if(recentVisible.length){
+      h+='<div class="mb-cat"><h4>최근</h4><div class="mb-comp-grid">';
+      recentVisible.forEach(function(t){ h+=compBtn(t); }); h+='</div></div>';
+    }
+    CATS.forEach(function(c){
+      var items=c.items.filter(function(it){ return mbTypeVisible(it[0]); });
+      if(!items.length) return;
+      h+='<div class="mb-cat"><h4>'+c.name+'</h4><div class="mb-comp-grid">';
+      items.forEach(function(it){ h+=compBtn(it[0]); }); h+='</div></div>';
+    });
+    return h;
+  }
+  function compBtn(t){ return '<button class="mb-comp" onclick="mbPick(\''+t+'\')"><span class="ic">'+ICONS[t]+'</span>'+LABELS[t]+'</button>'; }
+
+  /* ---------- 속성(세로=시트, 가로=사이드패널) ---------- */
+  var propOrigParent=null,propPlaceholder=null;
+  var propRefreshTimer=null, propLastHTML='';
+  // 속성 패널을 "복사" 방식으로 표시(노드 이동 X → 인앱 브라우저 렌더 이슈 회피).
+  // renderProps 가 #props(화면 밖)에 그린 HTML 을 host 로 복사한다. 인라인 핸들러(upd 등)는
+  // 전역 함수를 호출하므로 복사해도 그대로 동작한다.
+  function mountProps(hostContainer){
+    // 혹시 과거 방식(노드 이동)이 남아 있으면 원복
+    var moved=document.getElementById('props');
+    if(moved && moved.classList.contains('mb-in-sheet')){ try{ legacyUnmount(); }catch(e){} }
+    hostContainer.innerHTML='<div id="mbPropHost"></div>';
+    var host=document.getElementById('mbPropHost');
+    propLastHTML=''; // 새 호스트는 반드시 첫 복사에서 채워지도록 캐시를 비운다
+    copyPropsInto(host);
+    // 열려 있는 동안 값 변경(재렌더)을 반영: 짧은 주기로 HTML 변화 시에만 복사
+    clearInterval(propRefreshTimer);
+    propRefreshTimer=setInterval(function(){
+      var hostNow=document.getElementById('mbPropHost'); if(!hostNow){ clearInterval(propRefreshTimer); return; }
+      copyPropsInto(hostNow);
+    }, 350);
+  }
+  function copyPropsInto(host){
+    if(!host) return;
+    var props=document.getElementById('props');
+    try{ renderProps(); }catch(e){}
+    var htmlNow=props?props.innerHTML:'';
+    // 호스트가 이미 같은 내용으로 채워져 있을 때만 스킵한다.
+    // (아직 비어 있으면 캐시 값과 무관하게 반드시 채운다 → 빈 창 방지)
+    if(host.__filled && htmlNow===propLastHTML) return;
+    // 단, 편집 중 포커스가 host 안 '텍스트 입력칸'에 있을 때만 덮어쓰지 않는다(입력 방해 방지).
+    // 버튼/셀렉트(보기·숨기기 토글 등)에 포커스가 있는 경우는 즉시 반영해야 하므로 예외로 둔다.
+    var ae=document.activeElement;
+    var editing = ae && host.contains(ae) &&
+      (ae.tagName==='TEXTAREA' || (ae.tagName==='INPUT' && ae.type!=='button' && ae.type!=='checkbox' && ae.type!=='radio' && ae.type!=='range'));
+    if(host.__filled && editing) return;
+    propLastHTML=htmlNow;
+    host.innerHTML = htmlNow || '<div class="empty-props" style="color:#94a2ae;text-align:center;padding:24px 0;">컴포넌트를 선택하면<br>여기에 속성이 표시됩니다.</div>';
+    host.__filled=true;
+  }
+  function unmountProps(){
+    clearInterval(propRefreshTimer); propRefreshTimer=null; propLastHTML='';
+    legacyUnmount();
+  }
+  // 과거 노드-이동 방식 잔재 정리(안전)
+  function legacyUnmount(){
+    var props=document.getElementById('props');
+    if(props&&propPlaceholder&&propOrigParent){
+      propOrigParent.insertBefore(props,propPlaceholder);
+      propPlaceholder.remove(); propPlaceholder=null;
+      props.classList.remove('mb-in-sheet'); props.removeAttribute('style');
+    }
+  }
+  // 속성 열기/닫기 토글: 세로=시트 / 가로=사이드패널.
+  // 세로 모드에서는 사이드패널이 CSS로 숨겨지므로(display:none) 반드시 시트를 쓴다.
+  // mb-landscape 가 명시적으로 있고 mb-portrait 가 아닐 때만 사이드패널을 사용한다.
+  window.mbOpenProps=function(){
+    var b=document.body;
+    var useSide = b.classList.contains('mb-landscape') && !b.classList.contains('mb-portrait');
+    if(useSide){
+      var panel=document.getElementById('mbSidePanel');
+      if(panel && panel.classList.contains('open')){ mbCloseSide(); }
+      else { mbOpenSide(); }
+    } else {
+      if(sheetOpen && sheetKind==='props'){ mbCloseSheet(); }
+      else { mbOpenSheet('props'); }
+    }
+  };
+  window.mbOpenSide=function(){
+    var panel=document.getElementById('mbSidePanel'), body=document.getElementById('mbSideBody');
+    document.body.classList.add('mb-side-open'); panel.classList.add('open');
+    mountProps(body);
+    setTimeout(function(){ mbFit(); },240);
+  };
+  window.mbCloseSide=function(){
+    unmountProps();
+    document.getElementById('mbSidePanel').classList.remove('open');
+    document.body.classList.remove('mb-side-open');
+    setTimeout(function(){ mbFit(); },240);
+  };
+  // 선택 변화 시 열려있는 사이드패널 갱신
+  function mbSyncSide(){
+    var panel=document.getElementById('mbSidePanel');
+    if(panel && panel.classList.contains('open')){
+      var host=document.getElementById('mbPropHost');
+      if(host){ copyPropsInto(host); }
+      else { mountProps(document.getElementById('mbSideBody')); }
+    }
+  }
+  // 속성 패널 토글(보기/숨기기 등)이 renderProps 만 호출해도 모바일/태블릿 호스트를 즉시 갱신
+  window.mbSyncProps=function(){
+    var host=document.getElementById('mbPropHost');
+    if(host){ propLastHTML=''; copyPropsInto(host); }
+  };
+
+  /* ---------- 레이어 ---------- */
+  function layersHTML(){
+    if(typeof comps==='undefined'||!comps.length) return '<div class="mb-layer-empty">아직 컴포넌트가 없습니다.<br>아래에서 추가하세요.</div>';
+    var roots=comps.filter(function(c){return !c.parent;}), h='';
+    roots.slice().reverse().forEach(function(c){ h+=layerRow(c,0); h+=childLayers(c.id,1); });
+    return h;
+  }
+  function childLayers(pid,depth){
+    var kids=comps.filter(function(c){return c.parent===pid;}), h='';
+    kids.forEach(function(c){ h+=layerRow(c,depth); h+=childLayers(c.id,depth+1); });
+    return h;
+  }
+  function layerName(c){
+    var t=LABELS[c.type]||c.type;
+    var txt=(c.text||c.labelText||c.gtitle||c.ctitle||'').toString().split('\n')[0].slice(0,16);
+    return t+(txt?' · '+txt:'');
+  }
+  function layerRow(c,depth){
+    var on=(typeof isSel==='function'&&isSel(c.id));
+    return '<div class="mb-layer'+(on?' on':'')+'" style="margin-left:'+(depth*16)+'px" onclick="mbSelectLayer('+c.id+')">'+
+      '<span class="lt">'+(ICONS[c.type]||'▫')+'</span><span>'+esc(layerName(c))+'</span>'+
+      '<span class="lx" onclick="event.stopPropagation();mbDeleteLayer('+c.id+')">🗑</span></div>';
+  }
+  window.mbSelectLayer=function(id){ try{ selectSingle(id); render(); }catch(e){} renderCtx(); if(sheetOpen) mbOpenSheet('layers'); };
+  window.mbDeleteLayer=function(id){ try{ selectSingle(id); delSel(); }catch(e){} renderCtx(); mbOpenSheet('layers'); updateMiniMap(true); };
+
+  /* ---------- 보기설정 ---------- */
+  function optsHTML(){
+    return ''+
+    '<div class="mb-opt-row"><span class="lbl">그리드 스냅</span><div class="ctl">'+
+      '<label class="mb-switch"><input type="checkbox" id="mbOptSnap" onchange="mbOptToggle(\'snapChk\',this.checked)"><span class="track"></span></label></div></div>'+
+    '<div class="mb-opt-row"><span class="lbl">스냅 크기</span><div class="ctl mb-stepper">'+
+      '<button onclick="mbOptSnapSize(-5)">－</button><input type="number" id="mbOptSnapSize" onchange="mbOptSnapSizeSet(this.value)"><button onclick="mbOptSnapSize(5)">＋</button><span style="font-size:12px;color:var(--mb-ink-soft)">px</span></div></div>'+
+    '<div class="mb-opt-row"><span class="lbl">격자 표시</span><div class="ctl">'+
+      '<label class="mb-switch"><input type="checkbox" id="mbOptGrid" onchange="mbOptToggle(\'gridChk\',this.checked)"><span class="track"></span></label></div></div>'+
+    '<div class="mb-opt-row"><span class="lbl">스마트 가이드</span><div class="ctl">'+
+      '<label class="mb-switch"><input type="checkbox" id="mbOptSmart" onchange="mbOptToggle(\'smartChk\',this.checked)"><span class="track"></span></label></div></div>'+
+    '<div class="mb-opt-row"><span class="lbl">캔버스 폭</span><div class="ctl mb-stepper">'+
+      '<button onclick="mbBumpCanvas(\'w\',-50)">－</button><input type="number" id="mbCwInput" onchange="mbApplyCwCh(\'w\')"><button onclick="mbBumpCanvas(\'w\',50)">＋</button></div></div>'+
+    '<div class="mb-opt-row"><span class="lbl">캔버스 높이</span><div class="ctl mb-stepper">'+
+      '<button onclick="mbBumpCanvas(\'h\',-50)">－</button><input type="number" id="mbChInput" onchange="mbApplyCwCh(\'h\')"><button onclick="mbBumpCanvas(\'h\',50)">＋</button></div></div>';
+  }
+  function chk(id){ var e=document.getElementById(id); return e?e.checked:false; }
+  function syncOptsUI(){
+    var m={mbOptSnap:'snapChk',mbOptGrid:'gridChk',mbOptSmart:'smartChk'};
+    Object.keys(m).forEach(function(k){ var e=document.getElementById(k); if(e) e.checked=chk(m[k]); });
+    var ss=document.getElementById('mbOptSnapSize'); var real=document.getElementById('snapSize'); if(ss&&real) ss.value=real.value;
+    mbSyncCanvasInputs();
+  }
+  window.mbOptToggle=function(realId,val){ var e=document.getElementById(realId); if(e && e.checked!==val){ e.checked=val; if(typeof e.onchange==='function') e.onchange(); else e.dispatchEvent(new Event('change')); } updateMiniMap(true); };
+  window.mbOptSnapSize=function(delta){ var real=document.getElementById('snapSize'); if(!real) return; real.value=Math.max(1,(parseInt(real.value,10)||10)+delta); if(real.onchange) real.onchange(); var m=document.getElementById('mbOptSnapSize'); if(m) m.value=real.value; };
+  window.mbOptSnapSizeSet=function(v){ var real=document.getElementById('snapSize'); if(!real) return; real.value=Math.max(1,parseInt(v,10)||10); if(real.onchange) real.onchange(); };
+
+  window.mbBumpCanvas=function(which,delta){
+    var id=which==='w'?'cw':'ch', el=document.getElementById(id); if(!el) return;
+    var v=(parseInt(el.value,10)||(which==='w'?1100:700))+delta; v=Math.max(which==='w'?400:300,v);
+    el.value=v; try{ which==='w'?setCW():setCH(); }catch(e){} mbSyncCanvasInputs(); updateMiniMap(true);
+  };
+  window.mbApplyCwCh=function(which){
+    var srcId=which==='w'?'mbCwInput':'mbChInput', dstId=which==='w'?'cw':'ch';
+    var src=document.getElementById(srcId), dst=document.getElementById(dstId); if(!src||!dst) return;
+    var v=parseInt(src.value,10); if(isNaN(v)) v=(which==='w'?1100:700); v=Math.max(which==='w'?400:300,v);
+    dst.value=v; try{ which==='w'?setCW():setCH(); }catch(e){} mbSyncCanvasInputs(); updateMiniMap(true);
+  };
+  function mbSyncCanvasInputs(){
+    var cw=document.getElementById('cw'),ch=document.getElementById('ch');
+    var mcw=document.getElementById('mbCwInput'),mch=document.getElementById('mbChInput');
+    if(cw&&mcw) mcw.value=parseInt(cw.value,10)||1100;
+    if(ch&&mch) mch.value=parseInt(ch.value,10)||700;
+  }
+
+  /* ---------- 메뉴 ---------- */
+  function menuHTML(){
+    var cur = document.body.classList.contains('mb-mobile') ? 'mobile'
+            : document.body.classList.contains('mb-tablet') ? 'tablet' : 'pc';
+    var seg = ''+
+      '<div class="mb-sheet-label" style="margin-top:14px;">화면 모드</div>'+
+      '<div class="mb-mode-seg">'+
+        '<button class="seg'+(cur==='pc'?' on':'')+'" onclick="setDeviceMode(\'pc\')">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12.5" rx="1.6"/><path d="M8.5 20.5h7M12 16.5v4"/></svg>PC</button>'+
+        '<button class="seg'+(cur==='tablet'?' on':'')+'" onclick="setDeviceMode(\'tablet\')">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2"/><circle cx="12" cy="18.3" r="0.9" fill="currentColor" stroke="none"/></svg>태블릿</button>'+
+        '<button class="seg'+(cur==='mobile'?' on':'')+'" onclick="setDeviceMode(\'mobile\')">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>모바일</button>'+
+      '</div>';
+    // 버전 표기: PC 좌측 하단의 "by June (ver...)" 값을 그대로 가져와 메뉴 맨 아래에 표시
+    var verEl=document.getElementById('verText');
+    var verTxt=verEl?verEl.textContent:'';
+    var verHtml=verTxt?('<div class="mb-menu-ver">'+verTxt+'</div>'):'';
+    // 데스크톱 상단바와 마찬가지로 템플릿 메뉴 항목은 씬모드·팻모드 모두에서 뺀다.
+    var templateHtml='';
+    return ''+
+    '<button class="mb-big-btn" onclick="mbNavItem(\'layers\')"><span class="ic">🗂️</span>레이어</button>'+
+    '<button class="mb-big-btn primary" onclick="mbEnterPreview()"><span class="ic">▶️</span>미리보기</button>'+
+    '<button class="mb-big-btn" onclick="mbSafe(exportHTML)"><span class="ic">💾</span>HTML로 저장</button>'+
+    '<button class="mb-big-btn" onclick="mbSafe(loadJSON)"><span class="ic">📂</span>불러오기</button>'+
+    templateHtml+
+    '<button class="mb-big-btn" onclick="mbClearCanvas()"><span class="ic">🧹</span>전체 지우기</button>'+
+    '<button class="mb-big-btn" onclick="mbSafe(openGuide)"><span class="ic">📖</span>사용 가이드</button>'+
+    seg+verHtml;
+  }
+  window.mbNavItem=function(k){ mbOpenSheet(k); };
+  window.mbSafe=function(fn){ try{ mbCloseSheet(); if(typeof fn==='function') fn(); }catch(e){ mbToast('작업 실패'); } };
+
+  // 모바일 안전 confirm (일부 인앱 브라우저는 window.confirm 을 무시함) + 전체 지우기
+  window.mbClearCanvas=function(){
+    mbCloseSheet();
+    if(typeof comps==='undefined' || !comps.length){ mbToast('지울 내용이 없습니다'); return; }
+    mbConfirm('전체 지우기', '모든 컴포넌트와 캔버스 설정을 처음 상태로 되돌릴까요? 되돌릴 수 없습니다.', '지우기', function(){
+      try{
+        comps=defaultScreen();
+        selectSingle(null);
+        try{ clearOriginTracking(); }catch(e){} // 전체 초기화이므로 공유파일 파생 추적 값도 함께 지운다
+        var cw=document.getElementById('cw'), ch=document.getElementById('ch');
+        if(cw){ cw.value=1100; setCW(); } if(ch){ ch.value=700; setCH(); }
+        var s=document.getElementById('snapChk'); if(s) s.checked=true;
+        var ss=document.getElementById('snapSize'); if(ss) ss.value=10;
+        var g=document.getElementById('gridChk'); if(g) g.checked=true;
+        var sm=document.getElementById('smartChk'); if(sm) sm.checked=true;
+        try{ toggleGrid(); }catch(e){}
+        try{ undoStack=[]; redoStack=[]; updateHistBtns(); }catch(e){}
+        render();
+        mbFit(); renderCtx(); updateMiniMap(true);
+        mbToast('처음 상태로 되돌렸습니다');
+      }catch(e){ mbToast('작업 실패'); }
+    });
+  };
+  // 인앱 확인/알림 다이얼로그(자체 UI) - 브라우저 기본 alert()/confirm() 전부를 이걸로 대체한다.
+  // 인자를 유연하게 받는다: mbConfirm(msg, onOk) 형태(대부분의 자리에서 쓰는 짧은 형태)와
+  // 기존 mbConfirm(title, msg, okLabel, onOk) 4-인자 형태를 모두 지원한다.
+  function mbShowMsgModal(title, msg, okLabel, onOk, hideCancel){
+    var bg=document.getElementById('mbConfirmBg');
+    if(!bg){
+      bg=document.createElement('div'); bg.id='mbConfirmBg';
+      bg.innerHTML='<div id="mbConfirmCard"><h3 id="mbcTitle"></h3><p id="mbcMsg"></p>'+
+        '<div class="mbc-btns"><button class="mbc-cancel" id="mbcCancel">취소</button>'+
+        '<button class="mbc-ok" id="mbcOk"></button></div></div>';
+      document.body.appendChild(bg);
+    }
+    var titleEl=document.getElementById('mbcTitle');
+    titleEl.textContent=title||'';
+    titleEl.style.display=title?'':'none';
+    document.getElementById('mbcMsg').textContent=msg;
+    var okBtn=document.getElementById('mbcOk'); okBtn.textContent=okLabel||'확인';
+    var cancelBtn=document.getElementById('mbcCancel');
+    cancelBtn.style.display=hideCancel?'none':'';
+    bg.classList.add('show');
+    function close(){ bg.classList.remove('show'); okBtn.onclick=null; cancelBtn.onclick=null; bg.onclick=null; }
+    okBtn.onclick=function(){ close(); if(onOk) onOk(); };
+    cancelBtn.onclick=close;
+    bg.onclick=function(e){ if(e.target===bg) close(); };
+    // 모달이 뜨는 순간 확인 버튼에 포커스를 줘서, 엔터 키로도 바로 확인할 수 있게 한다
+    // (원래 브라우저 기본 alert/confirm이 엔터로 닫히던 것과 같은 사용감). ESC로 닫는 것은
+    // 아래 전역 keydown 핸들러(모든 팝업 공통)가 #mbConfirmBg.show를 최우선으로 처리한다.
+    okBtn.focus();
+  }
+  function mbConfirm(a,b,c,d){
+    // 인자 개수/타입으로 짧은 형태(msg, onOk)와 긴 형태(title, msg, okLabel, onOk)를 구분한다.
+    if(typeof b==='function') mbShowMsgModal('', a, '확인', b, false);
+    else if(typeof c==='function') mbShowMsgModal(a, b, '확인', c, false);
+    else mbShowMsgModal(a, b, c, d, false);
+  }
+  window.mbConfirm=mbConfirm;
+  // alert() 대체 - 버튼 하나(확인)만 보여준다. onClose는 선택(닫힌 뒤 실행할 콜백).
+  function mbAlert(msg, onClose){ mbShowMsgModal('', msg, '확인', onClose, true); }
+  window.mbAlert=mbAlert;
+  // 프로그램 전체의 모든 팝업(확인/알림창, 작은 팝업들, 큰 모달들)을 ESC 키 하나로 닫는다.
+  // 우선순위를 둔 이유: 어떤 팝업들은 다른 모달 "위"에 겹쳐 뜰 수 있어서(예: 클라우드 열기
+  // 화면 안에서 뜨는 로그인 팝업, 또는 어느 화면에서든 뜰 수 있는 확인창) - ESC를 누르면
+  // 가장 위에 있을 가능성이 높은 작은 팝업부터 먼저 닫고, 없으면 큰 모달을 닫는다.
+  // .modal-bg 클래스를 쓰는 모달들은 대부분 "closeX 등록" 없이 그냥 클래스만 지워도 충분하지만,
+  // 그 중 저장/기록이 필요한 것들(패치노트 "다시 보지 않기" 체크 등)은 그 로직까지 그대로
+  // 타도록 실제 close 함수를 우선 호출한다.
+  var MB_MODAL_CLOSERS={
+    restoreBg:function(){ closeRestore(); }, convBg:function(){ closeConvert(); },
+    patchBg:function(){ closePatch(); }, guideBg:function(){ closeGuide(); },
+    tmplBg:function(){ closeTemplates(); }, skinBg:function(){ closeSkinPicker(); },
+    draftListBg:function(){ closeDraftList(); }, adminBg:function(){ closeAdminPanel(); },
+    feedbackBg:function(){ closeFeedback(); }, signupBg:function(){ closeSignup(); },
+    loginBg:function(){ closeLogin(); }, cloudBg:function(){ closeCloud(); }
+  };
+  document.addEventListener('keydown',function(e){
+    if(e.key!=='Escape') return;
+    var mbc=document.getElementById('mbConfirmBg');
+    if(mbc&&mbc.classList.contains('show')){ e.preventDefault(); var cb=document.getElementById('mbcCancel'); if(cb) cb.click(); return; }
+    if(document.getElementById('qdPopup')){ e.preventDefault(); closeQuickDate(); return; }
+    if(document.getElementById('lfPopup')){ e.preventDefault(); closeLabelFormat(); return; }
+    var tour=document.getElementById('tourOverlay');
+    if(tour&&tour.style.display!=='none'){ e.preventDefault(); closeTour(); return; }
+    var acct=document.getElementById('acctMenu');
+    if(acct&&acct.classList.contains('on')){ e.preventDefault(); closeAcctMenu(); return; }
+    var openModals=Array.prototype.slice.call(document.querySelectorAll('.modal-bg.on'));
+    if(openModals.length){
+      e.preventDefault();
+      openModals.forEach(function(bg){
+        var fn=MB_MODAL_CLOSERS[bg.id];
+        if(fn) fn(); else bg.classList.remove('on');
+      });
+    }
+  });
+
+  /* ---------- Preview ---------- */
+  // Mobile/tablet preview shows the SAME interactive HTML as 저장/데스크톱 미리보기,
+  // loaded into a full-screen iframe, so component events (combo, tab, check, radio,
+  // tree, split) actually work — not the static design-mode canvas.
+  window.mbEnterPreview=function(){
+    mbCloseSheet();
+    try{ selectSingle(null); render(); }catch(e){}
+    document.body.classList.add('mb-preview');
+    let ok=false;
+    try{
+      const frame=document.getElementById('mbPreviewFrame');
+      if(frame && typeof buildExportHTML==='function'){
+        const html=buildExportHTML();
+        // Center the mockup in the frame and allow pinch/scroll on touch.
+        const doc=frame.contentWindow.document;
+        doc.open(); doc.write(html); doc.close();
+        try{ doc.documentElement.style.height='100%'; }catch(_){}
+        document.body.classList.add('mb-preview-live');
+        ok=true;
+      }
+    }catch(e){ ok=false; }
+    // Fallback to the old static in-place preview if the iframe couldn't be built.
+    if(!ok){ document.body.classList.remove('mb-preview-live'); renderCtx(); setTimeout(mbFit,60); }
+  };
+  window.mbExitPreview=function(){
+    document.body.classList.remove('mb-preview');
+    if(document.body.classList.contains('mb-preview-live')){
+      document.body.classList.remove('mb-preview-live');
+      try{ const frame=document.getElementById('mbPreviewFrame'); if(frame){ const d=frame.contentWindow.document; d.open(); d.write(''); d.close(); } }catch(e){}
+    }
+    setTimeout(mbFit,60);
+  };
+
+  /* ============================================================
+     통합 터치 컨트롤러 — 직접 조작(합성 이벤트 미사용)
+     ============================================================ */
+  function findCmpEl(c){
+    if(!c) return null;
+    var cv=document.getElementById('canvas'), els=cv.querySelectorAll(':scope > .cmp'), match=null;
+    els.forEach(function(el){ if(parseInt(el.style.left,10)===c.x&&parseInt(el.style.top,10)===c.y) match=el; });
+    return match;
+  }
+  function hitTopComp(cx,cy){
+    if(typeof comps==='undefined') return null;
+    var roots=comps.filter(function(c){return !c.parent;});
+    for(var i=roots.length-1;i>=0;i--){ var c=roots[i]; if(cx>=c.x&&cx<=c.x+c.w&&cy>=c.y&&cy<=c.y+c.h) return c; }
+    return null;
+  }
+  function hitHandleScreen(c,sxp,syp){
+    if(!c) return null;
+    var z=currentZoom()||1, box={x:c.x*z,y:c.y*z,w:c.w*z,h:c.h*z}, R=16;
+    if(box.w<3*R && box.h<3*R) return null;
+    var iL=box.x+box.w*0.3,iR=box.x+box.w*0.7,iT=box.y+box.h*0.3,iB=box.y+box.h*0.7;
+    if(sxp>iL&&sxp<iR&&syp>iT&&syp<iB) return null;
+    var pts={se:{x:box.x+box.w,y:box.y+box.h},e:{x:box.x+box.w,y:box.y+box.h/2},s:{x:box.x+box.w/2,y:box.y+box.h}};
+    var best=null,bd=R;
+    for(var k in pts){ var d=Math.hypot(sxp-pts[k].x,syp-pts[k].y); if(d<=bd){bd=d;best=k;} }
+    return best;
+  }
+  function setupTouch(){
+    var sc=document.querySelector('.canvas-scroll'), cv=document.getElementById('canvas');
+    if(!sc||sc.__mbTouch) return; sc.__mbTouch=true;
+    // 이동 모드에서는 컴포넌트의 mousedown/click(합성 마우스 이벤트 포함)이
+    // 선택/이동을 유발하지 못하도록 캡처 단계에서 가로챈다.
+    if(cv && !cv.__mbPanGuard){
+      cv.__mbPanGuard=true;
+      ['mousedown','click'].forEach(function(evt){
+        cv.addEventListener(evt,function(e){
+          if(window.mbPan){ e.stopPropagation(); if(evt==='mousedown') e.preventDefault(); }
+        },true);
+      });
+    }
+    var mode=null,target=null,targetEl=null,rdir=null;
+    var sx=0,sy=0,ox=0,oy=0,ow=0,oh=0,moved=false,committed=false;
+    var startDist=0,startZoom=1,lpTimer=null,lastTap=0;
+    function dist(t){var dx=t[0].clientX-t[1].clientX,dy=t[0].clientY-t[1].clientY;return Math.hypot(dx,dy);}
+    function isPrev(){return document.body.classList.contains('mb-preview');}
+    function commit(){ if(!committed){ try{pushHistory();}catch(e){} committed=true; } }
+
+    sc.addEventListener('touchstart',function(e){
+      if(isPrev()) return;
+      if(e.touches.length===2){ clearTimeout(lpTimer); mode='pinch'; startDist=dist(e.touches); startZoom=currentZoom(); e.preventDefault(); return; }
+      if(e.touches.length!==1) return;
+      var t=e.touches[0]; sx=t.clientX; sy=t.clientY; moved=false; committed=false;
+      // 손 도구가 켜져 있으면 어디를 눌러도 화면 이동(스크롤)만.
+      if(window.mbPan){ mode='scroll'; document.body.classList.add('mb-panning'); return; }
+      if(armedType){ placeArmed(t.clientX,t.clientY); e.preventDefault(); mode=null; return; }
+      var p=clientToCanvas(t.clientX,t.clientY), cr=cv.getBoundingClientRect(), sxp=t.clientX-cr.left, syp=t.clientY-cr.top;
+      var selComp=(sel!=null)?comps.find(function(c){return c.id===sel;}):null;
+      if(selComp&&!selComp.parent){
+        var hh=hitHandleScreen(selComp,sxp,syp);
+        if(hh){ mode='resize'; target=selComp; rdir=hh; ox=selComp.x; oy=selComp.y; ow=selComp.w; oh=selComp.h; targetEl=findCmpEl(selComp); e.preventDefault(); return; }
+      }
+      var c=hitTopComp(p.x,p.y);
+      if(c){
+        target=c; mode='move'; ox=c.x; oy=c.y;
+        if(!isSel(c.id)){ selectSingle(c.id); render(); renderCtx(); }
+        targetEl=findCmpEl(c);
+        // 길게 눌러 속성창 자동 표시하던 동작 제거 → 속성은 컨텍스트 바의 '속성' 버튼으로만 연다.
+        clearTimeout(lpTimer);
+        e.preventDefault(); return;
+      }
+      mode='scroll';
+    },{passive:false});
+
+    sc.addEventListener('touchmove',function(e){
+      if(isPrev()) return;
+      if(mode==='pinch'&&e.touches.length===2){
+        e.preventDefault(); var d=dist(e.touches);
+        if(startDist>0){ var z=Math.min(2,Math.max(0.25,startZoom*(d/startDist))); try{setZoom(Math.round(z*100)/100);}catch(err){} updateZoomBadge(); updateMiniMap(); }
+        return;
+      }
+      if(e.touches.length!==1) return;
+      var t=e.touches[0], ddx=t.clientX-sx, ddy=t.clientY-sy;
+      if(!moved&&(Math.abs(ddx)>4||Math.abs(ddy)>4)){ moved=true; clearTimeout(lpTimer); }
+      if(mode==='move'&&target){
+        e.preventDefault(); if(!moved) return; commit();
+        var z=currentZoom()||1;
+        target.x=Math.max(0,snap(ox+ddx/z)); target.y=Math.max(0,snap(oy+ddy/z));
+        if(targetEl){ targetEl.style.left=target.x+'px'; targetEl.style.top=target.y+'px'; } else { render(); targetEl=findCmpEl(target); }
+        if(chk('smartChk')){ try{ clearGuides(); drawGuides(computeGuides(target,target.x,target.y)); }catch(err){} }
+      } else if(mode==='resize'&&target){
+        e.preventDefault(); if(!moved) return; commit();
+        var z2=currentZoom()||1, nw=ow, nh=oh;
+        if(rdir==='se'||rdir==='e') nw=Math.max(20,snap(ow+ddx/z2));
+        if(rdir==='se'||rdir==='s') nh=Math.max(20,snap(oh+ddy/z2));
+        target.w=nw; target.h=nh;
+        if(targetEl){ targetEl.style.width=target.w+'px'; targetEl.style.height=target.h+'px'; } else { render(); targetEl=findCmpEl(target); }
+      }
+    },{passive:false});
+
+    function endTouch(e){
+      if(isPrev()) return;
+      clearTimeout(lpTimer);
+      if(mode==='pinch'){ if(!e.touches||e.touches.length<2) mode=null; updateZoomBadge(); return; }
+      if(mode==='move'||mode==='resize'){
+        try{ clearGuides(); }catch(err){}
+        if(moved){ render(); }
+        try{ updateMiniMap(true); renderCtx(); }catch(err){}
+        mode=null; target=null; targetEl=null; rdir=null; return;
+      }
+      if(mode==='scroll'){
+        if(!moved){
+          if(!window.mbPan){
+            try{ selectSingle(null); render(); }catch(err){} renderCtx();
+          }
+          var now=Date.now();
+          if(now-lastTap<300){ var z=currentZoom(); if(z>=0.99){mbFit();}else{try{setZoom(1);}catch(e2){}} updateZoomBadge(); lastTap=0; } else lastTap=now;
+        }
+      }
+      document.body.classList.remove('mb-panning');
+      mode=null; target=null; targetEl=null; rdir=null;
+    }
+    sc.addEventListener('touchend',endTouch,{passive:false});
+    sc.addEventListener('touchcancel',function(){ clearTimeout(lpTimer); document.body.classList.remove('mb-panning'); mode=null; target=null; targetEl=null; rdir=null; },{passive:true});
+  }
+
+  /* ---------- 캔버스 코너 리사이즈 터치 ---------- */
+  function setupCanvasResizeTouch(){
+    var handle=document.getElementById('canvasResize'); if(!handle||handle.__mbCR) return; handle.__mbCR=true;
+    var cd=null;
+    handle.addEventListener('touchstart',function(e){
+      if(e.touches.length!==1) return; e.preventDefault(); e.stopPropagation();
+      var t=e.touches[0]; cd={sx:t.clientX,sy:t.clientY,ow:canvas.offsetWidth,oh:canvas.offsetHeight};
+    },{passive:false});
+    handle.addEventListener('touchmove',function(e){
+      if(!cd||e.touches.length!==1) return; e.preventDefault(); e.stopPropagation();
+      var t=e.touches[0], z=currentZoom()||1, w=cd.ow+(t.clientX-cd.sx)/z, h=cd.oh+(t.clientY-cd.sy)/z;
+      if(chk('snapChk')){ var s=parseInt(document.getElementById('snapSize').value)||10; w=Math.round(w/s)*s; h=Math.round(h/s)*s; }
+      w=Math.max(400,w); h=Math.max(300,h);
+      canvas.style.width=w+'px'; canvas.style.height=h+'px'; try{applyZoom();}catch(err){}
+      var cwEl=document.getElementById('cw'),chEl=document.getElementById('ch');
+      if(cwEl) cwEl.value=Math.round(w); if(chEl) chEl.value=Math.round(h);
+      mbSyncCanvasInputs(); updateMiniMap();
+    },{passive:false});
+    function end(){ cd=null; }
+    handle.addEventListener('touchend',end,{passive:false});
+    handle.addEventListener('touchcancel',end,{passive:true});
+  }
+
+  /* ---------- 미니맵 ---------- */
+  var miniState={sig:'',maxW:120,maxH:88,scale:1};
+  function miniEls(){ return {map:document.getElementById('mbMiniMap'),cvs:document.getElementById('mbMiniCanvas'),view:document.getElementById('mbMiniView')}; }
+  function canvasLogicalSize(){ var w=parseInt(canvas.style.width,10)||canvas.offsetWidth||1100, h=parseInt(canvas.style.height,10)||canvas.offsetHeight||700; return {w:w,h:h}; }
+  function updateMiniMap(force){
+    var e=miniEls(); if(!e.map||!e.cvs) return;
+    var isPC = !document.body.classList.contains('mb-mobile') && !document.body.classList.contains('mb-tablet');
+    // PC 에서는 미니맵 체크가 켜져 있을 때만(그리고 미리보기 아닐 때만) 갱신
+    if(isPC && !document.body.classList.contains('mb-pc-mini')) return;
+    if(document.body.classList.contains('mb-preview')) return;
+    if(e.map.classList.contains('mini-collapsed')) return;
+    var sc=document.querySelector('.canvas-scroll'); if(!sc) return;
+    var probe=e.cvs.getContext&&e.cvs.getContext('2d'); if(!probe) return;
+    var cs=canvasLogicalSize(), z=(typeof zoom!=='undefined'?zoom:1)||1;
+    var scale=Math.min(miniState.maxW/cs.w,miniState.maxH/cs.h);
+    var mw=Math.max(40,Math.round(cs.w*scale)), mh=Math.max(30,Math.round(cs.h*scale));
+    var vx=sc.scrollLeft/z,vy=sc.scrollTop/z,vw=sc.clientWidth/z,vh=sc.clientHeight/z;
+    var sig=[cs.w,cs.h,z,Math.round(vx),Math.round(vy),Math.round(vw),Math.round(vh),comps.length,comps.map(function(c){return c.id+':'+c.x+','+c.y+','+c.w+','+c.h+','+c.type+(isSel(c.id)?'*':'');}).join('|')].join(';');
+    if(!force&&sig===miniState.sig) return;
+    miniState.sig=sig; miniState.scale=scale;
+    e.map.style.width=mw+'px'; e.map.style.height=mh+'px';
+    var dpr=window.devicePixelRatio||1;
+    e.cvs.width=Math.round(mw*dpr); e.cvs.height=Math.round(mh*dpr); e.cvs.style.width=mw+'px'; e.cvs.style.height=mh+'px';
+    var ctx=probe; ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,mw,mh);
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,mw,mh);
+    var pal={title:'#22303f',section:'#8a949c',panel:'#cfd6dc',tabs:'#b9c3cc',split:'#b9c3cc',searchbar:'#dfe8f0',label:'#c9cfd5',input:'#e3f0ea',combo:'#e3f0ea',date:'#e3f0ea',daterange:'#e3f0ea',check:'#e3f0ea',radio:'#e3f0ea',button:'#1e9e6a',grid:'#eef3f7',chart:'#e7eef6',tree:'#eef3f7'};
+    comps.forEach(function(c){ if(c.parent) return; var x=c.x*scale,y=c.y*scale,w=Math.max(1,c.w*scale),h=Math.max(1,c.h*scale);
+      ctx.fillStyle=pal[c.type]||'#dde3e8'; ctx.fillRect(x,y,w,h);
+      ctx.strokeStyle='rgba(0,0,0,.08)'; ctx.lineWidth=0.5; ctx.strokeRect(x+0.25,y+0.25,w-0.5,h-0.5);
+      if(isSel(c.id)){ ctx.strokeStyle='#2680eb'; ctx.lineWidth=1.2; ctx.strokeRect(x,y,w,h); }
+    });
+    ctx.strokeStyle='#d9dee3'; ctx.lineWidth=1; ctx.strokeRect(0.5,0.5,mw-1,mh-1);
+    var rx=Math.max(0,vx*scale),ry=Math.max(0,vy*scale),rw=Math.min(mw-rx,vw*scale),rh=Math.min(mh-ry,vh*scale);
+    if(vw>=cs.w){rx=0;rw=mw;} if(vh>=cs.h){ry=0;rh=mh;}
+    e.view.style.left=rx+'px'; e.view.style.top=ry+'px'; e.view.style.width=Math.max(6,rw)+'px'; e.view.style.height=Math.max(6,rh)+'px';
+  }
+  function miniScrollTo(cx,cy){
+    var e=miniEls(), sc=document.querySelector('.canvas-scroll'); if(!e.map||!sc) return;
+    var r=e.cvs.getBoundingClientRect(), scale=miniState.scale||1, z=(typeof zoom!=='undefined'?zoom:1)||1;
+    var mx=cx-r.left,my=cy-r.top, cxL=mx/scale,cyL=my/scale, vw=sc.clientWidth/z,vh=sc.clientHeight/z;
+    sc.scrollLeft=Math.max(0,(cxL-vw/2)*z); sc.scrollTop=Math.max(0,(cyL-vh/2)*z); updateMiniMap(true);
+  }
+  window.mbToggleMiniMap=function(ev){ if(ev) ev.stopPropagation(); var map=document.getElementById('mbMiniMap'); if(!map) return; var col=map.classList.toggle('mini-collapsed'); var b=document.getElementById('mbMiniToggle'); if(b) b.textContent=col?'▣':'◱'; if(!col) updateMiniMap(true); };
+  window.mbUpdateMiniMap=function(){ updateMiniMap(true); };
+  // PC 상단 툴바의 「미니맵」 체크박스: 켜면 미니맵 표시, 끄면 숨김
+  window.togglePcMiniMap=function(){
+    var chk=document.getElementById('miniChk');
+    var on=chk?chk.checked:true;
+    document.body.classList.toggle('mb-pc-mini', on);
+    if(on){
+      // 켜질 때 접힘 상태였다면 펼친 상태로 되돌리고 갱신
+      var map=document.getElementById('mbMiniMap');
+      if(map){ map.classList.remove('mb-moved'); }
+      updateMiniMap(true);
+    }
+  };
+  function setupMiniMap(){
+    var e=miniEls(); if(!e.map||e.map.__mbMini) return; e.map.__mbMini=true;
+    var sc=document.querySelector('.canvas-scroll'); if(sc) sc.addEventListener('scroll',function(){ updateMiniMap(); },{passive:true});
+    var moveH=document.getElementById('mbMiniMove');
+
+    // (A) 손잡이로 미니맵 위치 이동
+    var moving=false, moDX=0, moDY=0;
+    function moStart(cx,cy){
+      var r=e.map.getBoundingClientRect(); moving=true; moDX=cx-r.left; moDY=cy-r.top;
+      e.map.classList.add('mb-moved');
+    }
+    function moMove(cx,cy){
+      if(!moving) return;
+      var vw=window.innerWidth, vh=window.innerHeight, w=e.map.offsetWidth, h=e.map.offsetHeight;
+      var x=Math.min(Math.max(6,cx-moDX), vw-w-6), y=Math.min(Math.max(56,cy-moDY), vh-h-6);
+      e.map.style.left=x+'px'; e.map.style.top=y+'px'; e.map.style.right='auto'; e.map.style.bottom='auto';
+    }
+    function moEnd(){ moving=false; }
+    if(moveH){
+      moveH.addEventListener('touchstart',function(ev){ if(ev.touches.length!==1) return; ev.preventDefault(); ev.stopPropagation(); moStart(ev.touches[0].clientX,ev.touches[0].clientY); },{passive:false});
+      moveH.addEventListener('touchmove',function(ev){ if(!moving||ev.touches.length!==1) return; ev.preventDefault(); ev.stopPropagation(); moMove(ev.touches[0].clientX,ev.touches[0].clientY); },{passive:false});
+      moveH.addEventListener('touchend',function(ev){ ev.stopPropagation(); moEnd(); },{passive:true});
+      moveH.addEventListener('mousedown',function(ev){ ev.preventDefault(); ev.stopPropagation(); moStart(ev.clientX,ev.clientY); var mm=function(m){ moMove(m.clientX,m.clientY); }; var mu=function(){ moEnd(); document.removeEventListener('mousemove',mm); document.removeEventListener('mouseup',mu); }; document.addEventListener('mousemove',mm); document.addEventListener('mouseup',mu); });
+    }
+
+    // (B) 지도 본문 드래그/탭 = 뷰포트 이동(스크롤)
+    var navDrag=false;
+    e.map.addEventListener('touchstart',function(ev){
+      if(ev.target&&(ev.target.id==='mbMiniToggle'||ev.target.id==='mbMiniMove')) return;
+      if(e.map.classList.contains('mini-collapsed')) return;
+      if(ev.touches.length!==1) return; navDrag=true; ev.preventDefault(); ev.stopPropagation();
+      miniScrollTo(ev.touches[0].clientX,ev.touches[0].clientY);
+    },{passive:false});
+    e.map.addEventListener('touchmove',function(ev){ if(!navDrag||ev.touches.length!==1) return; ev.preventDefault(); ev.stopPropagation(); miniScrollTo(ev.touches[0].clientX,ev.touches[0].clientY); },{passive:false});
+    e.map.addEventListener('touchend',function(){ navDrag=false; },{passive:true});
+
+    // (B-PC) 마우스로 지도 본문을 클릭/드래그하면 뷰포트 이동(스크롤) — PC 지원
+    var mNav=false;
+    e.map.addEventListener('mousedown',function(ev){
+      if(ev.target&&(ev.target.id==='mbMiniToggle'||ev.target.id==='mbMiniMove')) return;
+      if(e.map.classList.contains('mini-collapsed')) return;
+      ev.preventDefault(); ev.stopPropagation(); mNav=true;
+      miniScrollTo(ev.clientX,ev.clientY);
+      var mm=function(m){ if(mNav){ miniScrollTo(m.clientX,m.clientY); } };
+      var mu=function(){ mNav=false; document.removeEventListener('mousemove',mm); document.removeEventListener('mouseup',mu); };
+      document.addEventListener('mousemove',mm); document.addEventListener('mouseup',mu);
+    });
+
+    setInterval(function(){ updateMiniMap(); },300);
+    updateMiniMap(true);
+  }
+
+  /* ---------- 코치마크 ---------- */
+  function maybeCoach(){ if(localStorage.getItem('mb_coach_v2')==='1') return; document.getElementById('mbCoach').classList.add('show'); }
+  window.mbCloseCoach=function(){ document.getElementById('mbCoach').classList.remove('show'); localStorage.setItem('mb_coach_v2','1'); };
+
+  /* ---------- render() 후킹: 선택/컨텍스트/미니맵 동기화 ---------- */
+  // 모바일 상단바 타이틀: 배지 안에 기존 PC의 M 로고 이미지를 넣고, 글자색은 PC 톤(흰색)에 맞춘다.
+  function setupBrandLogo(){
+    var brand=document.getElementById('mbBrand'); if(!brand || brand.__logo) return;
+    // PC 로고의 이미지(.brand-m img)를 그대로 가져와 배지에 넣는다(원본 색상 유지)
+    var pcImg=document.querySelector('.topbar .brand .brand-box .brand-m img');
+    brand.innerHTML='<span class="mb-brand-mark"></span>'
+      +'<span class="mb-brand-txt">Mockup<span class="mb-brand-accent"> Builder</span><span class="mb-brand-shine"></span></span>'
+      +'<span class="mb-brand-mode" id="mbBrandMode"></span>';
+    var markEl=brand.querySelector('.mb-brand-mark');
+    if(pcImg && pcImg.getAttribute('src')){
+      var img=document.createElement('img');
+      img.src=pcImg.getAttribute('src');
+      img.alt='M';
+      markEl.appendChild(img);
+    } else {
+      markEl.textContent='M'; markEl.classList.add('mb-mark-fallback');
+    }
+    brand.setAttribute('aria-label','Mockup Builder');
+    brand.__logo=true;
+    updateBrandMode();
+  }
+  // 현재 모드(mobile/tablet)를 브랜드 옆에 아이콘으로 표시
+  function updateBrandMode(){
+    var el=document.getElementById('mbBrandMode'); if(!el) return;
+    var b=document.body;
+    var tabletSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2"/><circle cx="12" cy="18.3" r="0.9" fill="currentColor" stroke="none"/></svg>';
+    var mobileSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>';
+    if(b.classList.contains('mb-tablet')){ el.innerHTML=tabletSvg; el.setAttribute('aria-label','태블릿'); el.style.display='inline-flex'; }
+    else if(b.classList.contains('mb-mobile')){ el.innerHTML=mobileSvg; el.setAttribute('aria-label','모바일'); el.style.display='inline-flex'; }
+    else { el.innerHTML=''; el.removeAttribute('aria-label'); el.style.display='none'; }
+  }
+  window.__mbUpdateBrandMode=updateBrandMode;
+
+  function hookRender(){
+    if(window.__mbRenderHooked) return; window.__mbRenderHooked=true;
+    var _r=window.render;
+    window.render=function(){ var out=_r.apply(this,arguments); try{ if(curMode&&curMode!=='pc'){ renderCtx(); syncHistBtns(); } else { updateMiniMap(); } }catch(e){} return out; };
+  }
+
+  // 모바일/태블릿에서는 투어(화면 둘러보기)를 비활성화한다.
+  // 투어는 PC 요소(도구상자·속성패널 등)에 스포트라이트를 비추므로 모바일에서 오작동한다.
+  function hookTour(){
+    if(window.__mbTourHooked) return; window.__mbTourHooked=true;
+    var _start=window.startTour;
+    window.startTour=function(){
+      if(document.body.classList.contains('mb-mobile')||document.body.classList.contains('mb-tablet')){
+        // 혹시 자동 시작으로 떠 있으면 닫고, 다시 뜨지 않도록 seen 표시
+        try{ var ov=document.getElementById('tourOverlay'); if(ov) ov.style.display='none'; }catch(e){}
+        try{ localStorage.setItem('mb_tour_seen','1'); }catch(e){}
+        return;
+      }
+      return _start&&_start.apply(this,arguments);
+    };
+    // 자동 시작(load 후 600ms)이 이미 예약돼 있어도, 모바일이면 오버레이를 즉시 닫는다.
+    if(document.body.classList.contains('mb-mobile')||document.body.classList.contains('mb-tablet')){
+      try{ localStorage.setItem('mb_tour_seen','1'); }catch(e){}
+      var kill=function(){ var ov=document.getElementById('tourOverlay'); if(ov) ov.style.display='none'; };
+      kill(); setTimeout(kill,650); setTimeout(kill,1200);
+    }
+  }
+
+  /* ---------- init ---------- */
+  function init(){
+    hookRender();
+    applyMode();
+    hookTour();
+    setupBrandLogo();
+    setupTouch(); setupCanvasResizeTouch(); setupMiniMap();
+    // PC 미니맵: 기본 켜짐(체크박스 상태 반영). 모바일/태블릿은 자체 위치를 쓰므로 이 클래스와 무관.
+    try{ if(typeof togglePcMiniMap==='function') togglePcMiniMap(); }catch(e){}
+    updateZoomBadge();
+    if(curMode&&curMode!=='pc') maybeCoach();
+    var rt=null;
+    window.addEventListener('resize',function(){ clearTimeout(rt); rt=setTimeout(function(){ applyMode(); },200); });
+    window.addEventListener('orientationchange',function(){ setTimeout(function(){ applyMode(true); },260); });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else init();
+
+  window.mbForceMode=function(m){ window.__mbForce=m||null; applyMode(true); };
+  window.mbAutoMode=function(){ window.__mbForce=null; applyMode(true); };
+  // 스킨(Thin↔Fat) 전환 시 모바일/태블릿의 도크·레일(컴포넌트 목록: 조회조건↔팝업)과
+  // 브랜드 모드 표시를 다시 그린다. PC 모드에서는 할 일이 없다.
+  window.mbRefreshForSkin=function(){
+    try{ if(curMode&&curMode!=='pc'){ buildDock(); buildRail(); } }catch(e){}
+    try{ if(typeof updateBrandMode==='function') updateBrandMode(); }catch(e){}
+  };
+})();
+
+/* ===== 부트스트랩 / 접속 로그 ===== */
+(function(){
+  'use strict';
+  /*
+   * mockup-accesslog.js (인라인) - Mockup Builder 페이지 접속 시 Supabase에 접속 로그를 기록한다.
+   * daaf-wave(src/main/accesslog.js)의 access_log INSERT 로직을 브라우저 환경으로 이식한 버전.
+   * - 이 페이지는 Electron/Node가 아닌 순수 브라우저 스크립트라서 PC 호스트명(os.hostname())이나
+   *   Windows 로그인 계정(os.userInfo())은 얻을 수 없다. 대신 hostname 자리에는 페이지가
+   *   서비스되는 도메인(location.hostname, 파일을 직접 열었으면 'local-file')을 넣고,
+   *   os_user 자리에는 사람을 특정하는 대신 기기/환경 정보(브라우저 종류·언어·시간대·해상도)를
+   *   한 줄로 묶어서 넣는다(getDeviceEnvInfo).
+   * - 외부(공인) IP·지역(도시,국가코드)은 ipapi.co(실패 시 ipify로 IP만 폴백)로, 앱 버전은 좌측 하단
+   *   verText의 "ver.YYYYMMDD.NNN" 문자열을 그대로 사용.
+   * - Supabase REST(mockup_access_log 테이블)로 INSERT 한다. RLS로 INSERT만 허용된 publishable 키 사용.
+   * - mode 컬럼(테이블 맨 마지막 컬럼)에는 접속 시점의 씬모드/팻모드를 'Thin'/'Fat' 문자열로 넣는다.
+   * - 전송에 실패해도(사내망 차단 등) 페이지 동작에는 영향을 주지 않으며,
+   *   실패 시 브라우저에는 파일 시스템이 없으므로 localStorage에 최근 50건까지 백업 기록한다.
+   */
+  const SUPABASE_URL = 'https://jflfqxrfdjdtsxzqwpkf.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_rwEALrEkpDBQa6pJy7ovlw_MJ9LXE6z';
+
+  // 현재 시각을 한국시간(KST, UTC+9) 오프셋이 명시된 ISO 문자열로 만든다.
+  // 예: 2026-08-27T09:12:34.567+09:00 (accesslog.js의 nowKstIso와 동일한 로직)
+  function nowKstIso(){
+    const d = new Date();
+    const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    const y = kst.getUTCFullYear(), mo = pad(kst.getUTCMonth() + 1), da = pad(kst.getUTCDate());
+    const h = pad(kst.getUTCHours()), mi = pad(kst.getUTCMinutes()), s = pad(kst.getUTCSeconds());
+    const ms = String(kst.getUTCMilliseconds()).padStart(3, '0');
+    return `${y}-${mo}-${da}T${h}:${mi}:${s}.${ms}+09:00`;
+  }
+
+  // "플랫폼" 자리는 OS 종류가 아니라 브라우저 종류(Chrome/Edge/Firefox/Safari 등)를 넣는다.
+  // Chromium 계열은 navigator.userAgentData.brands 가 있으면 그걸 우선 쓰고, 없으면
+  // navigator.userAgent 문자열을 순서대로 검사한다(Edge가 Chrome 문자열도 포함하므로 먼저 체크).
+  function detectBrowserName(){
+    try{
+      if (navigator.userAgentData && Array.isArray(navigator.userAgentData.brands)) {
+        const brands = navigator.userAgentData.brands.map(b => b.brand);
+        if (brands.includes('Microsoft Edge')) return 'Edge';
+        if (brands.includes('Opera')) return 'Opera';
+        if (brands.includes('Google Chrome')) return 'Chrome';
+      }
+      const ua = navigator.userAgent || '';
+      if (/Edg\//.test(ua)) return 'Edge';
+      if (/OPR\//.test(ua) || /Opera/.test(ua)) return 'Opera';
+      if (/Chrome\//.test(ua)) return 'Chrome';
+      if (/Firefox\//.test(ua)) return 'Firefox';
+      if (/Safari\//.test(ua)) return 'Safari';
+      return 'unknown';
+    }catch(_){
+      return 'unknown';
+    }
+  }
+
+  // os_user 자리에는 Windows 로그인 계정을 알 수 없는 대신, 기기/환경 정보(브라우저 종류·언어·시간대·해상도)를
+  // 한 줄로 묶어서 넣는다. 사람을 특정하진 못하지만 어떤 환경에서 접속했는지 파악하는 데는 쓸모 있다.
+  function getDeviceEnvInfo(){
+    try{
+      const platform = detectBrowserName();
+      const language = navigator.language || 'unknown';
+      let timezone = 'unknown';
+      try{ timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown'; }catch(_){}
+      const resolution = (screen && screen.width && screen.height) ? `${screen.width}x${screen.height}` : 'unknown';
+      return `${platform} | ${language} | ${timezone} | ${resolution}`;
+    }catch(_){
+      return null;
+    }
+  }
+
+  // 좌측 하단 표기("by June (ver.20260826.001)")에서 "ver.YYYYMMDD.NNN"만 뽑아 앱 버전으로 사용.
+  function readAppVersion(){
+    try{
+      const el = document.getElementById('verText');
+      const m = ((el && el.textContent) || '').match(/ver\.\d{8}\.\d{3}/);
+      if (m) return m[0];
+    }catch(_){}
+    return 'unknown';
+  }
+
+  // 씬모드/팻모드 - 팻모드는 <body>에 'skin-classic' 클래스가 붙는 것으로 판단한다(그리드 등
+  // 여러 컴포넌트가 렌더링 시점에 document.body.classList.contains('skin-classic')로 이미 같은
+  // 방식으로 구분하고 있어 그와 일치시킨다).
+  function readSkinMode(){
+    try{
+      return document.body.classList.contains('skin-classic') ? 'Fat' : 'Thin';
+    }catch(_){
+      return 'unknown';
+    }
+  }
+
+  function fetchWithTimeout(url, opts, ms){
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    return fetch(url, Object.assign({}, opts, { signal: ctrl.signal })).finally(() => clearTimeout(timer));
+  }
+
+  // 외부 IP + 지역(도시, 국가코드)을 한 번에 가져온다. ipapi.co가 막히면(사내망 차단·레이트리밋 등)
+  // IP만이라도 얻을 수 있게 ipify로 폴백한다(이때 location은 null).
+  async function fetchIpAndLocation(){
+    try{
+      const r = await fetchWithTimeout('https://ipapi.co/json/', {}, 5000);
+      const j = await r.json();
+      if (j && j.ip && !j.error) {
+        const city = j.city || null;
+        const countryCode = j.country_code || j.country || null;
+        const loc = (city && countryCode) ? `${city}, ${countryCode}` : (countryCode || null);
+        return { ip: j.ip, location: loc, countryCode: countryCode ? String(countryCode).toUpperCase() : null };
+      }
+    }catch(_){}
+    try{
+      const r = await fetchWithTimeout('https://api.ipify.org?format=json', {}, 5000);
+      const j = await r.json();
+      return { ip: (j && j.ip) ? j.ip : null, location: null, countryCode: null };
+    }catch(_){
+      return { ip: null, location: null, countryCode: null };
+    }
+  }
+
+  // 전송 실패 시 로컬 백업 기록. 브라우저에는 access.log 같은 파일이 없으므로 localStorage를 사용,
+  // 최근 50건까지만 보관해 무한정 쌓이지 않게 한다.
+  function writeLocalFallback(row, reason){
+    try{
+      const KEY = 'mockup_access_log_fallback';
+      const list = JSON.parse(localStorage.getItem(KEY) || '[]');
+      list.push(Object.assign({}, row, { _failed: reason, _at: new Date().toISOString() }));
+      while (list.length > 50) list.shift();
+      localStorage.setItem(KEY, JSON.stringify(list));
+    }catch(_){}
+  }
+
+  /* ----- 해외 접속 차단 -----
+   * 접속 로그용으로 조회한 국가코드(ipapi.co)가 KR이 아니면 앱 화면을 모두 숨기고 안내 문구만 보여준다.
+   * - 접속 로그 INSERT는 차단 여부와 관계없이 그대로 수행한다(해외 접속도 기록에 남는다).
+   * - 국가코드를 알 수 없는 경우(ipapi 차단·레이트리밋·타임아웃 → ipify 폴백)는 막지 않는다(fail-open).
+   *   사내망에서 ipapi가 막혀 있어도 국내 사용자가 차단되지 않게 하기 위함.
+   * - 마지막으로 확인된 국가코드를 localStorage에 캐시해, 이전에 해외로 판정된 브라우저는 다음 접속 때
+   *   조회 결과를 기다리지 않고 즉시 차단 화면을 띄운다. 새 조회 결과가 KR이면 차단을 해제한다.
+   * - 차단 화면은 style.css가 아닌 JS 주입 스타일을 쓰므로 MB_APP_CSS_B64 스냅샷 재생성이 필요 없다. */
+  const GEO_ALLOWED = ['KR'];
+  const GEO_CACHE_KEY = 'mb_geo_country';
+  let geoBlocked = false;
+
+  function geoIsAllowed(cc){ return !cc || GEO_ALLOWED.indexOf(cc) >= 0; }
+
+  function geoKeyGuard(e){
+    if (!geoBlocked) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+
+  function geoShowBlock(){
+    if (geoBlocked) return;
+    geoBlocked = true;
+    try{
+      if (!document.getElementById('mbGeoBlockStyle')) {
+        const st = document.createElement('style');
+        st.id = 'mbGeoBlockStyle';
+        st.textContent =
+          'html.mb-geo-blocked,html.mb-geo-blocked body{overflow:hidden!important;background:#f4f6f8!important;}' +
+          'html.mb-geo-blocked body>*:not(#mbGeoBlock){display:none!important;}' +
+          '#mbGeoBlock{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;' +
+            'background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;padding:24px;box-sizing:border-box;}' +
+          '#mbGeoBlock .mb-geo-inner{text-align:center;max-width:520px;}' +
+          '#mbGeoBlock h1{margin:0 0 12px;font-size:28px;font-weight:700;color:#2c3e50;letter-spacing:-0.01em;}' +
+          '#mbGeoBlock p{margin:0;font-size:15px;line-height:1.6;color:#6b7280;}';
+        (document.head || document.documentElement).appendChild(st);
+      }
+      if (!document.getElementById('mbGeoBlock')) {
+        const box = document.createElement('div');
+        box.id = 'mbGeoBlock';
+        box.setAttribute('role', 'alert');
+        box.innerHTML = '<div class="mb-geo-inner"><h1>Access Restricted</h1>' +
+          '<p>This service is not available from your current location.</p></div>';
+        document.body.appendChild(box);
+      }
+      document.documentElement.classList.add('mb-geo-blocked');
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      // 숨겨진 화면에 대한 단축키(Alt+O/P, Ctrl+S 등)도 동작하지 않게 캡처 단계에서 차단
+      ['keydown','keypress','keyup','paste','drop','dragover'].forEach(t => window.addEventListener(t, geoKeyGuard, true));
+    }catch(_){}
+  }
+
+  function geoHideBlock(){
+    if (!geoBlocked) return;
+    geoBlocked = false;
+    try{
+      document.documentElement.classList.remove('mb-geo-blocked');
+      const box = document.getElementById('mbGeoBlock');
+      if (box) box.remove();
+      ['keydown','keypress','keyup','paste','drop','dragover'].forEach(t => window.removeEventListener(t, geoKeyGuard, true));
+    }catch(_){}
+  }
+
+  function geoApply(cc){
+    if (!cc) return; // 판단 불가 → 현재 상태 유지(캐시로 이미 차단된 경우 그대로 차단)
+    try{ localStorage.setItem(GEO_CACHE_KEY, cc); }catch(_){}
+    if (geoIsAllowed(cc)) geoHideBlock(); else geoShowBlock();
+  }
+
+  // 부트 시점: 이전에 해외로 판정된 브라우저면 조회를 기다리지 않고 즉시 차단
+  try{
+    const cached = localStorage.getItem(GEO_CACHE_KEY);
+    if (cached && !geoIsAllowed(cached)) geoShowBlock();
+  }catch(_){}
+
+  // 이번 페이지 로드가 브라우저 새로고침(F5·새로고침 버튼·location.reload)인지 판별.
+  // Navigation Timing Level 2를 우선 쓰고, 미지원 브라우저는 구형 performance.navigation으로 폴백.
+  function isReloadNavigation(){
+    try{
+      const nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+      if (nav && nav.type) return nav.type === 'reload';
+      if (performance.navigation) return performance.navigation.type === 1; // TYPE_RELOAD
+    }catch(_){}
+    return false;
+  }
+
+  // opts.skipInsert=true 이면 국가 조회·해외 차단 판정만 하고 DB INSERT는 하지 않는다.
+  async function logMockupAccess(opts){
+    const geo = await fetchIpAndLocation();
+    geoApply(geo.countryCode); // 차단 판정은 로그 기록 여부와 무관하게 매번 수행
+    if (opts && opts.skipInsert) return;
+    const row = {
+      created_at: nowKstIso(), // 명시하지 않으면 테이블의 default now()가 UTC로 채움
+      external_ip: geo.ip,
+      hostname: location.hostname || 'local-file',
+      os_user: getDeviceEnvInfo(),
+      app_ver: readAppVersion(),
+      location: geo.location, // "도시, 국가코드" 형태. 조회 실패 시 null
+      mode: readSkinMode() // 'Thin' 또는 'Fat' - 접속 시점의 씬모드/팻모드
+    };
+
+    // 키가 아직 채워지지 않았으면 전송하지 않음(로컬에만 남김)
+    if (SUPABASE_KEY.includes('여기에')) {
+      writeLocalFallback(row, 'key-not-configured');
+      return;
+    }
+
+    try{
+      const res = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/mockup_access_log`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(row)
+      }, 8000);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        writeLocalFallback(row, `http-${res.status}:${text.slice(0, 200)}`);
+      }
+    }catch(e){
+      writeLocalFallback(row, String(e && e.message ? e.message : e));
+    }
+  }
+
+  // 새로고침으로 다시 연 경우에는 접속 로그를 남기지 않는다(해외 차단 판정은 그대로 수행).
+  // 새 탭·주소창 입력·링크·북마크로 연 경우와 씬/팻 모드 전환(setAppSkin) 로그는 기존대로 남는다.
+  function init(){ logMockupAccess({ skipInsert: isReloadNavigation() }); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+  // 모드(씬/팻)가 바뀔 때도 같은 로그를 한 번 더 남긴다 - setAppSkin()이 로고 클릭이든 파일
+  // 불러오기든 모드가 바뀌는 유일한 통로라서, 거기서 이 함수를 호출하면 "언제 어떤 모드였는지"의
+  // 타임라인이 접속 로그만으로 만들어진다. 최초 접속 로그(위 init)와 완전히 같은 형태의 행이라
+  // mode 컬럼만 보고 그 시점의 모드를 그대로 읽을 수 있다.
+  window.mbLogAccess = function(){ return logMockupAccess(); };
+})();
