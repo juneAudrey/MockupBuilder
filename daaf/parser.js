@@ -48,22 +48,6 @@
     const execRe = /\/wf\/(\d+)\/execute/g;
     while ((m = execRe.exec(text)) !== null) addRef(refs, m[1], null);
 
-    // 2-1) '/wf/' + 변수 + '/execute' 형태의 동적 호출 — 국내/해외/반품처럼 선택된 행 타입에 따라
-    // 분기별로 다른 WF를 실행하는 코드(리터럴 uid가 아니라 변수로 URL을 조합)에서 흔하다. 이 패턴은
-    // 위 execRe(리터럴 숫자만 매칭)로는 못 잡혀서, 이런 WF들은 지금까지 파도타기 탐색·조회 자체가
-    // 안 되고 있었다(그래프에 나타나지 않음). 변수명을 찾은 뒤, 그 변수에 대입되는 모든 숫자 리터럴을
-    // (실행 시점엔 그중 하나만 타지만 정적 분석으론 알 수 없으므로) 전부 후보로 추가한다.
-    const dynExecRe = /\/wf\/['"]\s*\+\s*(\w+)\s*\+\s*['"]\/execute/g;
-    const seenDynVars = new Set();
-    while ((m = dynExecRe.exec(text)) !== null) {
-      const v = m[1];
-      if (seenDynVars.has(v)) continue;
-      seenDynVars.add(v);
-      const assignRe = new RegExp(v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "\\s*=\\s*['\"](\\d+)['\"]", 'g');
-      let am;
-      while ((am = assignRe.exec(text)) !== null) addRef(refs, am[1], null);
-    }
-
     // 3) serviceId 만 있고 uid 없는 경우도 노드로 (uid=null, id 로 후속 조회)
     ids.forEach(i => {
       const hasUidNear = uids.some(u => Math.abs(u.pos - i.pos) < 400);
@@ -238,31 +222,6 @@
       const c = text[i];
       if (c === openCh) depth++;
       else if (c === closeCh) { depth--; if (depth === 0) return text.slice(openIdx, i + 1); }
-    }
-    return null;
-  }
-
-  // $pageObjects['name'] = (args) => { ... } 헬퍼 정의를 스크립트 모음(scriptTexts, 보통
-  // [onLoad, ...버튼 usrEventFn들])에서 찾아, 그 본문 안의 '/wf/{uid}/execute' 직접호출 uid를
-  // 반환한다. 버튼이 $pageObjects['search'](...) 처럼 헬퍼를 "이름으로만" 호출하는 경우, 실제 WF는
-  // 그 버튼 자신의 스크립트가 아니라 이 헬퍼 정의 안에 있다 — 조회 버튼에 남아있는 leftover
-  // serviceUid/serviceId 보다 이쪽이 실제 동작을 더 정확히 반영하므로, WF 배지 판정 시
-  // (compLink/computeLinkMap 양쪽) leftover 값보다 먼저 확인한다.
-  // computeInitValueMap 의 헬퍼 분석(analyzeHelper, 초기값 체인 추적용)과 같은 원리를 WF 배지
-  // 판정용으로 가볍게 재사용한 버전 — 여기서는 uid 하나만 있으면 충분해 파라미터 치환 등은 생략한다.
-  function findHelperWfUid(fnName, scriptTexts) {
-    if (!fnName || !scriptTexts) return null;
-    const defRe = new RegExp('\\$pageObjects\\[\\s*["\']' + fnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\']\\s*\\]\\s*=\\s*\\([^)]*\\)\\s*=>\\s*\\{');
-    for (const txt of scriptTexts) {
-      if (!txt) continue;
-      const m = defRe.exec(txt);
-      if (!m) continue;
-      const braceIdx = txt.indexOf('{', m.index);
-      if (braceIdx === -1) continue;
-      const body = sliceBalanced(txt, braceIdx, '{', '}');
-      if (!body) continue;
-      const wm = /\/wf\/(\d+)\/execute/.exec(body);
-      if (wm) return wm[1];
     }
     return null;
   }
@@ -507,49 +466,6 @@
     return map;
   }
 
-  // 헤더그리드 행 선택 → 타입별로 다른 WF를 인라인 ajax 호출로 실행해 각기 다른 하위 그리드에
-  // 채우는 패턴(예: fncLoadDetailGrid의 국내/해외/반품 분기)을 잡아낸다. 버튼 form[] 같은 선언적
-  // 바인딩이 아니라 "'/wf/' + uid변수 + '/execute.do'" 처럼 문자열 조합으로 URL을 만들기 때문에
-  // computeGridServiceMap(선언적 serviceId/serviceUid만 스캔)으로는 못 잡는다.
-  //
-  // 잡는 방식: (1) ajax.postJson(...'/wf/'+VAR+'/execute...) 호출을 찾아 uid 변수명(VAR)을 얻고,
-  // (2) 그 콜백 본문 안에서 실제 .resetData(...)를 호출하는 그리드 변수명을 찾은 뒤,
-  // (3) VAR 에 대입되는 모든 숫자 리터럴(분기별 uid 값)을 찾아, 각 대입 지점 근처(±400자)에서
-  // 그리드 변수에 실제 그리드ID가 대입되는 코드를 찾아 (그리드ID, uid) 로 짝짓는다.
-  // 분기가 코드 순서상 우연히 다른 그리드와 가까워 오탐할 수 있으나, 이 정도 근접 매칭도 없이
-  // 아예 못 잡는 것보다는 낫다(배지는 참고용이며, 틀리면 그래프 이동 시 바로 드러난다).
-  function extractInlineBranchedWfMap(resourceJsText) {
-    const map = {}; // gridId -> [{navKey,uid,id,label}]
-    if (!resourceJsText) return map;
-    const text = resourceJsText;
-    const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const add = (gid, uid) => {
-      if (!gid || !uid) return;
-      const navKey = 'WF:u' + uid;
-      const arr = map[gid] || (map[gid] = []);
-      if (!arr.some(x => x.navKey === navKey)) arr.push({ navKey, uid, id: null, label: 'uid=' + uid });
-    };
-    const callRe = /\/wf\/['"]\s*\+\s*(\w+)\s*\+\s*['"]\/execute/g;
-    let m;
-    while ((m = callRe.exec(text)) !== null) {
-      const uidVar = m[1];
-      const cbWindow = text.slice(m.index, Math.min(text.length, m.index + 1500));
-      const gridMatch = new RegExp('(\\w+)\\.resetData\\(').exec(cbWindow);
-      if (!gridMatch) continue;
-      const gridVar = gridMatch[1];
-      const assignRe = new RegExp(esc(uidVar) + "\\s*=\\s*['\"](\\d+)['\"]", 'g');
-      let am;
-      while ((am = assignRe.exec(text)) !== null) {
-        const uidVal = am[1];
-        const nearby = text.slice(am.index, Math.min(text.length, am.index + 200));
-        const gridAssignRe = new RegExp(esc(gridVar) + '\\s*=\\s*(\\w+)');
-        const gm = gridAssignRe.exec(nearby);
-        if (gm) add(gm[1], uidVal);
-      }
-    }
-    return map;
-  }
-
   function computeGridServiceMap(resourceJson) {
     const map = {}; // gridId -> [{navKey, uid, id, label}]
     let obj;
@@ -569,11 +485,8 @@
                    : (o.serviceUid != null ? String(o.serviceUid) : null);
       const svcId = pv.serviceId || o.serviceId || null;
       // (a) WF 서비스를 가진 노드(버튼 등)의 form[] 바인딩 → 각 target 그리드에 연결
-      // f.useYn === false 는 "등록만 돼있고 이 버튼 조회로는 채워지지 않는" 대상이다(예: 메인 조회
-      // 버튼 form[] 에 상세 그리드들이 이름만 올라가 있고 실제로는 별도 인라인 WF 로 채워지는 경우).
-      // 여기서 걸러내지 않으면 서로 무관한 그리드들이 전부 같은 버튼의 WF 배지를 달게 된다.
       const forms = Array.isArray(pv.form) ? pv.form : (Array.isArray(o.form) ? o.form : null);
-      if ((svcUid || svcId) && forms) forms.forEach(f => { if (f && f.target && f.useYn !== false) add(f.target, svcUid, svcId); });
+      if ((svcUid || svcId) && forms) forms.forEach(f => { if (f && f.target) add(f.target, svcUid, svcId); });
       // (b) 그리드 바인딩 노드가 자체 서비스로 조회하는 경우
       if (o.type === 'grid' && o.target && (svcUid || svcId)) add(o.target, svcUid, svcId);
       Object.keys(o).forEach(k => scan(o[k]));
@@ -886,27 +799,11 @@
     return renderGridColumnsTableFromDefs(computeGridColumnDefs(go, lookupNode, popupByTitle, dict));
   }
 
-  function buildDesignHtml(resourceJson, resourceHtml, dict, lookupNode, initMap, resourceJsText, authMap) {
+  function buildDesignHtml(resourceJson, resourceHtml, dict, lookupNode, initMap, resourceJsText) {
     let obj;
     try { obj = JSON.parse(resourceJson); } catch (e) { return null; }
     const page = obj && obj.page;
     if (!page) return null;
-    authMap = authMap || {}; // 하위 호환: 호출부가 아직 authMap 을 안 넘기면 빈 맵으로 동작(AUTH 배지 없음)
-
-    // WF 배지 판정용 "간접호출 헬퍼" 스크립트 풀: onLoad + 화면 안 모든 버튼의 usrEventFn.
-    // 버튼이 $pageObjects['search'](...) 처럼 헬퍼를 이름으로만 부르고 실제 WF 호출은 그 헬퍼
-    // 정의(보통 onLoad) 안에 있는 경우, 여기서 미리 모아둔 텍스트 풀로 findHelperWfUid() 가
-    // 그 헬퍼 정의를 찾는다. compLink()가 이 목록을 참조한다(아래 클로저).
-    const pageOnLoadText = (page.propertyValue && typeof page.propertyValue.onLoad === 'string') ? page.propertyValue.onLoad : '';
-    const wfScriptPool = [pageOnLoadText];
-    (function collectBtnScripts(o) {
-      if (!o || typeof o !== 'object') return;
-      if (Array.isArray(o)) { o.forEach(collectBtnScripts); return; }
-      const pv0 = o.propertyValue || {};
-      if (typeof pv0.usrEventFn === 'string' && pv0.usrEventFn.trim()) wfScriptPool.push(pv0.usrEventFn);
-      Object.keys(o).forEach(k => collectBtnScripts(o[k]));
-    })(page);
-
     const langMap = extractLangMap(resourceHtml || '');
     const ddSingle = (dict && dict.single) || {};   // z_dd_lang: 컴포넌트 id → 현재 언어 라벨
     // 그리드 배지 대상 병합: (a) 그리드 자체가 서비스로 조회/처리되는 경우(WF, computeGridServiceMap)
@@ -914,17 +811,6 @@
     // + (c) 그리드 "컬럼" 자체의 콤보 WF(serviceId/serviceUid)와, resourceJsText 가 주어지면
     // 컬럼 액션 버튼(Tracking No 팝업 등)의 UI 연결까지 buildGridColumnsTableHtml 안에서 함께 반영한다.
     const gridWfMap = computeGridServiceMap(resourceJson); // gridId -> [{navKey,label,...}] (kind는 항상 wf)
-    // 헤더그리드 선택에 따라 인라인 ajax로 다른 WF를 호출해 채우는 하위 그리드(국내/해외/반품 등)도
-    // 배지에 포함시킨다. 화면에 따라 스크립트가 별도 RESOURCE_JS 파일(resourceJsText)에 있기도 하고,
-    // MMGMQUI0017처럼 RESOURCE_JSON 자체의 eventFnc/onLoad 문자열 안에 박혀있기도 해서(RESOURCE_JS는
-    // 비어있음) 둘 다 이어붙여서 스캔해야 한다 — resourceJsText만 보면 후자의 경우 항상 빈 결과였다.
-    {
-      const inlineMap = extractInlineBranchedWfMap((resourceJson || '') + '\n' + (resourceJsText || ''));
-      Object.keys(inlineMap).forEach(gid => {
-        const arr = gridWfMap[gid] || (gridWfMap[gid] = []);
-        inlineMap[gid].forEach(l => { if (!arr.some(x => x.navKey === l.navKey)) arr.push(l); });
-      });
-    }
     // 그리드 컬럼 액션 버튼(cellTemplate + RESOURCE_JS 클릭 핸들러)이 여는 UI 팝업 — resourceJsText 가
     // 없는 호출부(RESOURCE_JS 미전달)에서는 빈 맵이 되어 기존처럼 WF만 표시된다(하위 호환).
     const gridColumnPopupMap = computeGridColumnPopups(resourceJson, resourceJsText); // gridId -> {title -> {programId,label}}
@@ -980,15 +866,12 @@
       const label = labelOf(pv);
       const req = pv.isRequired ? '<span class="req">*</span>' : '';
       const w = (pv.style && pv.style.width) ? (';width:' + pv.style.width) : '';
-      // 숨김 여부: visible:false, style.display:none, hide/d-none 클래스, 또는 isDisplay:false
-      // (런타임 변수/플래그로만 조건부 표시되는 컴포넌트 — column/form 컨테이너뿐 아니라 개별
-      // 콤보/입력/그리드 등에도 쓰인다). 숨겨진 컨트롤도 강제로 표시하되 사용자가 인지할 수 있도록
-      // "숨겨짐" 배지를 붙이고 흐리게 처리한다 — 이 배지와는 별개로 WF/UI/Rp/IV 연결 뱃지는 hidden
-      // 여부와 무관하게 항상 계산되므로(아래 link/initTag), 숨겨진 컴포넌트도 연결 정보는 그대로 보인다.
-      const isHidden = (pv.visible === false) || (pv.isDisplay === false)
+      // 숨김 여부: visible:false 또는 style.display:none 등. 숨겨진 컨트롤도 강제로 표시하되
+      // 사용자가 인지할 수 있도록 "숨김" 배지를 붙이고 흐리게 처리한다.
+      const isHidden = (pv.visible === false)
         || (pv.style && /display\s*:\s*none/i.test(String(pv.style.display || pv.style || '')))
         || /(^|\s)(hide|d-none)(\s|$)/.test(String(pv.className || ''));
-      const hiddenBadge = isHidden ? '<span class="dz-hidden-tag">숨겨짐</span>' : '';
+      const hiddenBadge = isHidden ? '<span class="dz-hidden-tag">숨김</span>' : '';
       // 연결 표시(link): 저장WF/팝업UI/리포트 등과 엮인 컨트롤은 클릭 가능한 링크로 렌더
       const link = compLink(node, pv, o);
       const dataAttr = link ? (' data-navkey="' + esc(link.navKey) + '" title="' + esc(link.title) + '"') : '';
@@ -1005,17 +888,9 @@
         ? ('<span class="dz-link-tag dz-init-tag ' + initCls + '" data-init-id="' + esc(pv.id) + '" title="초기값 추적 정보 보기 (클릭)">IV</span>')
         : '';
 
-      // 권한체크(AUTH) 배지: 버튼의 usrEventFn 안에 useAuthGuard/hasPermission 패턴(권한 없으면
-      // 화면을 잠그는 구조)이 있으면 붙인다. IV 배지와 마찬가지로 그래프 이동이 아니라, 클릭하면
-      // (app.js bindAuthBadges) 그 usrEventFn 코드 자체를 상세패널에 보여준다.
-      const authInfo = (authMap && pv.id) ? authMap[pv.id] : null;
-      const authTag = authInfo
-        ? ('<span class="dz-link-tag dz-auth-tag" data-auth-id="' + esc(pv.id) + '" title="권한체크 로직 보기 (클릭)">🔒</span>')
-        : '';
-
-      // 뱃지(숨김/연결/초기값/권한체크)는 컨트롤 박스 안이 아니라 "라벨 텍스트 오른쪽"에 붙인다
-      // (요청사항: 컴포넌트 안에 넣은 뱃지가 마음에 안 든다 — 그리드 제외 모든 컴포넌트는 라벨 우측으로).
-      const badgesInner = (hiddenBadge || linkTag || initTag || authTag) ? (hiddenBadge + linkTag + initTag + authTag) : '';
+      // 뱃지(숨김/연결/초기값)는 컨트롤 박스 안이 아니라 "라벨 텍스트 오른쪽"에 붙인다(요청사항:
+      // 컴포넌트 안에 넣은 뱃지가 마음에 안 든다 — 그리드 제외 모든 컴포넌트는 라벨 우측으로).
+      const badgesInner = (hiddenBadge || linkTag || initTag) ? (hiddenBadge + linkTag + initTag) : '';
       const badgeSlot = badgesInner ? ('<span class="dz-label-badges">' + badgesInner + '</span>') : '';
       const field = (inner) => '<div class="dz-field' + linkCls + hiddenCls + '"' + dataAttr + '>'
         + (label ? ('<label>' + esc(label) + req + badgeSlot + '</label>')
@@ -1039,24 +914,10 @@
         case 'button': {
           // 연결(link)된 버튼은 클릭 이벤트를 받아야 하므로 disabled 를 걸지 않는다.
           // (disabled 버튼은 click 이벤트가 발생하지 않아 그래프 이동이 동작하지 않음)
-          // AUTH 배지만 있고 link 는 없는 버튼(예: 조회 버튼이 WF 배지 없이 권한체크만 있는 경우)도
-          // 배지가 클릭을 받아야 하므로 authInfo 유무도 함께 확인한다.
-          const btnDis = (link || authInfo) ? '' : ' disabled';
-          const btnType = (link || authInfo) ? ' type="button"' : '';
-          // 라벨/이름이 아예 없는 버튼(예: 검색 입력창 옆의 팝업조회 아이콘버튼)은 실제 화면에서도
-          // 텍스트 없이 아이콘만 있다 — "button" 이라는 플레이스홀더 글자를 보여주는 대신 아이콘
-          // 글리프만 표시한다(자주 쓰이는 fa-search 만 우선 매핑, 그 외 아이콘은 작은 점으로 대체).
-          const hasTextLabel = !!(label || pv.id);
-          const iconGlyph = pv.icon === 'fa-search' ? '🔍' : (pv.icon ? '◾' : '');
-          // btn-search 관례 버튼(조회 버튼)은 DD사전에 이 버튼 id가 개별 등록돼있지 않으면
-          // JSON에 박힌 영어 라벨("Search")이 그대로 나온다 — 실제 화면은 항상 "조회"이므로
-          // 이 관례 버튼만은 라벨을 고정한다(다른 버튼은 원래 label/DD 우선순위 그대로 유지).
-          const forcedLabel = pv.btnColor === 'btn-search' ? '조회' : null;
-          const btnText = forcedLabel || (hasTextLabel ? esc(label || pv.id) : (iconGlyph || 'button'));
-          const iconOnlyCls = (!forcedLabel && !hasTextLabel && iconGlyph) ? ' dz-btn-icon-only' : '';
-          return '<button class="dz-btn' + linkCls + hiddenCls + iconOnlyCls + '"' + dataAttr + btnType + btnDis
-            + (!forcedLabel && !hasTextLabel && pv.icon ? (' title="' + esc(pv.icon) + '"') : '') + '>'
-            + btnText + hiddenBadge + linkTag + authTag + '</button>';
+          const btnDis = link ? '' : ' disabled';
+          const btnType = link ? ' type="button"' : '';
+          return '<button class="dz-btn' + linkCls + hiddenCls + '"' + dataAttr + btnType + btnDis + '>'
+            + esc(label || pv.id || 'button') + hiddenBadge + linkTag + '</button>';
         }
         case 'heading':
           return '<div class="dz-heading' + hiddenCls + '">' + esc(pv.text || label) + hiddenBadge + '</div>';
@@ -1169,29 +1030,6 @@
         // eventType 은 있는데 정작 링크 필드를 못 찾은 예외적인 경우 — 아래 일반 폴백으로 넘어간다.
       }
       // 1) 저장/실행 버튼 등: serviceUid/serviceId (BTN_WORKFLOW 계열, 또는 eventType 없는 콤보/그리드)
-      //    단, BTN_USR_EVENT 버튼은 이 값이 예전 바인딩 방식의 leftover(잔재)일 수 있다 — 지금은
-      //    usrEventFn 커스텀 스크립트로 동작이 바뀌었는데 Screen Builder가 예전 serviceUid/serviceId
-      //    필드를 안 지운 채로 남겨두는 경우가 실무에서 나온다(예: 조회 버튼이 WF:712로 표시되지만
-      //    실제로는 다른 WF를 호출하는 경우). 그래서 BTN_USR_EVENT 버튼에 한해, 그 스크립트가
-      //    $pageObjects['xxx'](...) 형태로 헬퍼를 "이름으로만" 호출하고 그 헬퍼 정의(보통 onLoad)
-      //    안에 실제 '/wf/{uid}/execute' 호출이 있으면, leftover 값보다 그걸 우선한다.
-      if (pv.eventType === 'BTN_USR_EVENT' && typeof pv.usrEventFn === 'string' && pv.usrEventFn.indexOf('$pageObjects[') !== -1) {
-        const helperCallRe = /\$pageObjects\[['"]([A-Za-z0-9_]+)['"]\]\s*\(/g;
-        const seenFn = new Set();
-        let hcm;
-        while ((hcm = helperCallRe.exec(pv.usrEventFn)) !== null) {
-          const fnName = hcm[1];
-          if (seenFn.has(fnName)) continue;
-          seenFn.add(fnName);
-          const uid = findHelperWfUid(fnName, wfScriptPool);
-          if (uid) {
-            const navKey = 'WF:u' + uid;
-            const idPart = 'uid=' + uid;
-            const title = withExtra(navKey, idPart, 'WF 연결: ' + idPart + " · 간접호출($pageObjects['" + fnName + "']) (더블클릭: 그래프 이동)");
-            return { navKey, cls: 'lk-wf', badge: 'WF', title };
-          }
-        }
-      }
       const wfLink = findWfLink(pv);
       if (wfLink) return wfLink;
       // 2) 팝업 버튼: programId — 실제로는 대부분 최상위 pv.programId 가 아니라
@@ -1243,19 +1081,6 @@
       return null;
     }
 
-    // isDisplay:false 컨테이너(column/form 등) 공통 처리: 페이지 로드 시 숨겨져 있다가 특정
-    // 변수/플래그나 선택된 행 타입(국내/해외/반품 등)에 따라 런타임에만 보이는 조건부 영역이다.
-    // 이 미리보기는 런타임 조건을 실행하지 않으므로 무조건 펼쳐서 다른 영역과 나란히 그리는 대신,
-    // "기본 숨김" 배지를 달아 조건부 표시 영역임을 명시한다(예: 국내/해외/반품 상세 그리드처럼
-    // 서로 배타적으로 하나만 보여야 하는 폼들이 미리보기에선 전부 펼쳐져 보이는 문제의 원인).
-    function dzHiddenDeco(pv) {
-      const hidden = pv.isDisplay === false;
-      return {
-        cls: hidden ? ' dz-col-hidden' : '',
-        badge: hidden ? '<div class="dz-col-hidden-badge">🔒 숨겨짐 (조건부 표시 영역)</div>' : ''
-      };
-    }
-
     function renderNode(node) {
       if (!node || typeof node !== 'object') return '';
       const t = node.type;
@@ -1266,57 +1091,17 @@
       if (t === 'component') return renderComp(node);
       if (t === 'row') {
         const border = /border-line/.test(cls) ? ' dz-border' : '';
-        const kidNodes = node.child || [];
-        const hasExplicitWidths = kidNodes.length >= 2 && kidNodes.every(c => {
-          const cpv = (c && c.propertyValue) || {};
-          return c && c.type === 'column' && ((cpv.style && (cpv.style.maxWidth || cpv.style.width)) || cpv.widthLaptop);
-        });
-        const nowrap = hasExplicitWidths ? ' style="flex-wrap:nowrap;align-items:flex-start"' : '';
-        return '<div class="dz-row' + border + '"' + nowrap + '>' + kids + '</div>';
+        return '<div class="dz-row' + border + '">' + kids + '</div>';
       }
       if (t === 'column') {
-        // widthLaptop(그리드 기준 폭)과 propertyValue.style(px/%, camelCase 인라인 스타일 객체) 둘 다
-        // 컬럼 폭을 지정하는 데 쓰인다. style 쪽이 더 구체적(실제 화면의 좌우 분할 비율, 예:
-        // colLeftMain maxWidth:67%+marginRight:20px / colRightLot maxWidth:31%)인데 이제까지는
-        // widthLaptop만 반영하고 style은 통째로 무시하고 있었다 — 그래서 두 컬럼이 항상
-        // flex:1 1 0 균등분배로 떨어져 줄바꿈/겹침이 났다.
-        const styleParts = [];
-        if (pv.widthLaptop) {
-          const wpx = parseInt(pv.widthLaptop, 10);
-          styleParts.push('flex:0 0 ' + (wpx ? (pv.widthLaptop <= 12 ? (pv.widthLaptop / 12 * 100) + '%' : pv.widthLaptop + 'px') : 'auto'));
-        }
-        if (pv.style && typeof pv.style === 'object') {
-          Object.keys(pv.style).forEach(k => {
-            const v = pv.style[k];
-            if (v == null || v === '') return;
-            const kebab = k.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
-            styleParts.push(kebab + ':' + v);
-          });
-          // maxWidth가 있는데 flex-basis(flex:0 0 ..)를 안 줬으면 flex-shrink 로 인해 좁아지려는
-          // 힘이 없어 여전히 균등분배(flex:1 1 0)를 따라가 버린다 — maxWidth를 실제 폭으로 쓰려면
-          // flex-basis도 같이 맞춰줘야 두 컬럼이 지정한 비율대로 나란히 앉는다.
-          if (pv.style.maxWidth && !pv.widthLaptop) styleParts.push('flex:0 0 ' + pv.style.maxWidth);
-        }
-        const wl = styleParts.length ? (' style="' + styleParts.join(';') + '"') : '';
-        const deco = dzHiddenDeco(pv);
-        return '<div class="dz-col' + deco.cls + '"' + wl + '>' + deco.badge + kids + '</div>';
+        const wl = pv.widthLaptop ? (' style="flex:0 0 ' + (parseInt(pv.widthLaptop, 10) ? (pv.widthLaptop <= 12 ? (pv.widthLaptop / 12 * 100) + '%' : pv.widthLaptop + 'px') : 'auto') + '"') : '';
+        return '<div class="dz-col"' + wl + '>' + kids + '</div>';
       }
       if (t === 'form') {
         const isSearch = /search-wrap/.test(cls);
-        const deco = dzHiddenDeco(pv);
-        return '<div class="dz-form' + (isSearch ? ' dz-search' : '') + deco.cls + '">' + deco.badge + kids + '</div>';
+        return '<div class="dz-form' + (isSearch ? ' dz-search' : '') + '">' + kids + '</div>';
       }
-      if (t === 'container' || t === 'block') {
-        const deco = dzHiddenDeco(pv);
-        // InputGroup(예: 발주번호 입력창+옆의 팝업검색 아이콘버튼)은 formLabel 을 컨테이너 자체가
-        // 들고 있고 안의 input 컴포넌트에는 라벨이 없다 — 이걸 안 읽으면 라벨이 통째로 사라진다.
-        const isInputGroup = node.editorAttr && node.editorAttr.componentClass === 'layout/InputGroup';
-        if (isInputGroup && pv.formLabel) {
-          return '<div class="dz-field' + deco.cls + '"><label>' + esc(pv.formLabel) + '</label>'
-            + '<div class="dz-ctrl dz-inputgroup">' + deco.badge + kids + '</div></div>';
-        }
-        return '<div class="dz-container' + deco.cls + '">' + deco.badge + kids + '</div>';
-      }
+      if (t === 'container' || t === 'block') return '<div class="dz-container">' + kids + '</div>';
       // 탭(신청대상/상신내역/미신청 같은 서브탭 네비게이션): 실제 화면은 Bootstrap nav-tabs(<ul class="nav
       // nav-tabs">)로 마크업되는데, 이 트리 순회는 그 실제 HTML이 아니라 JSON을 그대로 근사 재구성하는
       // 경로라서 이 타입을 처리하지 않으면 tabContainer/tab 노드가 그냥 "래퍼 없는 노드"로 취급되어
@@ -1342,11 +1127,8 @@
         const go = pv.gridOptions || {};
         const gid = go.gridId || null;
         const gtitle = go.title || '';
-        // 그리드 자체가 isDisplay:false(런타임 조건부 표시)인 경우 헤더에 "(숨겨짐)" 표시를 덧붙인다.
-        // WF 연결 뱃지(headBadges, 아래)는 hidden 여부와 무관하게 이미 항상 계산되므로 그대로 같이 보인다.
-        const gridHiddenTag = pv.isDisplay === false ? ' <span class="dz-hidden-tag">숨겨짐</span>' : '';
         const headLabel = '📊 ' + (gtitle ? esc(gtitle) : '데이터 그리드 영역')
-          + (gid ? (' <span style="font-weight:400;color:#94a3b8">(' + esc(gid) + ')</span>') : '') + gridHiddenTag;
+          + (gid ? (' <span style="font-weight:400;color:#94a3b8">(' + esc(gid) + ')</span>') : '');
         // 컬럼 정의를 먼저 한 번 계산해 둔다 — (i) 컬럼별 제목+뱃지 표 렌더링과 (ii) 그리드 상단
         // 배지 목록에서 "이미 컬럼에 매핑된 배지"를 걸러내는 데 함께 쓴다(요청사항: 상단 줄에는
         // 어느 컬럼에도 안 붙은 WF/UI만 남긴다).
@@ -1572,66 +1354,6 @@
     return map;
   }
 
-  // [권한체크 배지] 버튼의 usrEventFn 안에서 useAuthGuard/hasPermission 패턴을 찾아 그 블록만
-  // 잘라 반환한다. 예)
-  //   const { useAuthGuard } = $pageObjects;
-  //   const { hasPermission } = useAuthGuard();
-  //   if (!hasPermission()) { ... }
-  // 이 패턴은 화면 JSON 안의 커스텀 스크립트로만 존재하고, useAuthGuard 자체의 실제 구현(권한을
-  // 어느 테이블/키로 판정하는지)은 런타임에 주입되는 프레임워크 공통 JS 쪽이라 배포정보 어디에도
-  // 없다 — 그래서 Daaf Wave 는 "이 버튼에 권한체크가 있다"는 사실과 그 호출부 코드까지만 보여주고,
-  // 실제 판정 로직 추적은 범위 밖으로 둔다.
-  // 정규식만으로 블록 끝을 자르면 중첩된 객체 리터럴이나 if 안의 또 다른 {}가 있을 때 잘못 잘릴 수
-  // 있어, if(!hasPermission()){ ... } 블록의 여는/닫는 중괄호를 직접 카운팅해 정확히 짝을 맞춘다.
-  function extractAuthGuardBlock(usrEventFn) {
-    if (!usrEventFn || typeof usrEventFn !== 'string') return null;
-    if (usrEventFn.indexOf('useAuthGuard') === -1) return null;
-
-    const startIdx = usrEventFn.indexOf('useAuthGuard');
-    // useAuthGuard 를 구조분해할당하는 라인의 시작(줄바꿈 다음)까지 백트래킹 — 보통 그 위에
-    // 다른 코드가 없어 이 라인부터 보여주는 게 자연스럽다.
-    let blockStart = usrEventFn.lastIndexOf('\n', startIdx);
-    blockStart = blockStart === -1 ? 0 : blockStart + 1;
-
-    // hasPermission() 을 검사하는 if 블록의 끝(짝 맞는 '}')까지 괄호 카운팅으로 추출.
-    const ifIdx = usrEventFn.indexOf('if', startIdx);
-    const braceOpenIdx = ifIdx !== -1 ? usrEventFn.indexOf('{', ifIdx) : -1;
-    if (ifIdx === -1 || braceOpenIdx === -1) {
-      // if 블록을 못 찾는 예외적인 형태면 훅 선언부 주변만이라도 보여준다.
-      return usrEventFn.slice(blockStart, Math.min(usrEventFn.length, startIdx + 200)).trim();
-    }
-    let depth = 0, i = braceOpenIdx;
-    for (; i < usrEventFn.length; i++) {
-      if (usrEventFn[i] === '{') depth++;
-      else if (usrEventFn[i] === '}') { depth--; if (depth === 0) { i++; break; } }
-    }
-    return usrEventFn.slice(blockStart, i).trim();
-  }
-
-  // 화면(RESOURCE_JSON) 전체에서 권한체크 패턴이 있는 버튼을 모아 { compId(=pv.id): info } 형태로
-  // 반환한다. computeInitValueMap 과 동일하게 pv.id 를 키로 쓴다(html 모드 오버레이도 같은 id로
-  // DOM 요소를 찾으므로 구조를 맞춰야 한다).
-  function computeAuthGuardMap(resourceJson) {
-    const map = {};
-    let obj;
-    try { obj = JSON.parse(resourceJson); } catch (e) { return map; }
-    const page = obj && obj.page;
-    if (!page) return map;
-    (function walk(o) {
-      if (!o || typeof o !== 'object') return;
-      if (Array.isArray(o)) { o.forEach(walk); return; }
-      const pv = o.propertyValue || {};
-      if (pv.id && typeof pv.usrEventFn === 'string') {
-        const authCode = extractAuthGuardBlock(pv.usrEventFn);
-        if (authCode) {
-          map[pv.id] = { authCode, fullEventFn: pv.usrEventFn, label: pv.label || pv.formLabel || pv.id };
-        }
-      }
-      Object.keys(o).forEach(k => walk(o[k]));
-    })(page);
-    return map;
-  }
-
   function computeLinkMap(resourceJson, resourceJsText) {
     const map = {};
     const addLink = (id, link) => {
@@ -1646,13 +1368,6 @@
     // 로 확인되는 target 에만 배지를 남긴다.
     const realGridIds = collectGridIds(resourceJson);
     const gridMap = computeGridServiceMap(resourceJson);
-    {
-      const inlineMap = extractInlineBranchedWfMap((resourceJson || '') + '\n' + (resourceJsText || ''));
-      Object.keys(inlineMap).forEach(gid => {
-        const arr = gridMap[gid] || (gridMap[gid] = []);
-        inlineMap[gid].forEach(l => { if (!arr.some(x => x.navKey === l.navKey)) arr.push(l); });
-      });
-    }
     Object.keys(gridMap).forEach(gid => {
       if (!realGridIds.has(gid)) return;
       gridMap[gid].forEach(l => addLink(gid, { navKey: l.navKey, label: l.label, kind: 'wf' }));
@@ -1682,18 +1397,6 @@
     } catch (e) { /* 무시 */ }
     let obj;
     try { obj = JSON.parse(resourceJson); } catch (e) { return map; }
-    // WF 배지 판정용 "간접호출 헬퍼" 스크립트 풀 — compLink()(buildDesignHtml, json 모드)와 동일한
-    // 원리를 html 모드(computeLinkMap)에도 그대로 적용해, 두 렌더링 경로의 배지 판정이 갈리지
-    // 않게 한다(예: 조회 버튼의 leftover serviceUid가 실제 WF보다 우선 표시되는 문제).
-    const pageOnLoadText = (obj && obj.page && obj.page.propertyValue && typeof obj.page.propertyValue.onLoad === 'string') ? obj.page.propertyValue.onLoad : '';
-    const wfScriptPool = [pageOnLoadText, resourceJsText || ''];
-    (function collectBtnScripts(o) {
-      if (!o || typeof o !== 'object') return;
-      if (Array.isArray(o)) { o.forEach(collectBtnScripts); return; }
-      const pv0 = o.propertyValue || {};
-      if (typeof pv0.usrEventFn === 'string' && pv0.usrEventFn.trim()) wfScriptPool.push(pv0.usrEventFn);
-      Object.keys(o).forEach(k => collectBtnScripts(o[k]));
-    })(obj);
     (function scan(o) {
       if (!o || typeof o !== 'object') return;
       if (Array.isArray(o)) { o.forEach(scan); return; }
@@ -1718,30 +1421,8 @@
         const svcId = pv.serviceId || null;
         const navKey = svcUid ? ('WF:u' + svcUid) : (svcId ? ('WF:s' + svcId) : null);
         const label = svcId || (svcUid ? ('uid=' + svcUid) : null);
-        // (a-0) leftover serviceUid/serviceId 보다 먼저 확인: BTN_USR_EVENT 버튼이 자기 스크립트
-        //    안에서 곧장 WF를 부르지 않고 $pageObjects['xxx'](...) 헬퍼를 이름으로만 호출하는 경우,
-        //    진짜 WF는 그 헬퍼 정의(보통 onLoad) 안에 있다 — findHelperWfUid()로 찾아지면 그게
-        //    실제 동작을 더 정확히 반영하므로, (a) 규칙의 leftover 값 대신 이것만 배지로 남긴다
-        //    (조회 버튼에 leftover WF와 실제 WF 두 개가 동시에 뜨는 혼란을 막기 위해 else 로 분기).
-        let indirectUid = null;
-        if (typeof pv.usrEventFn === 'string' && pv.usrEventFn.indexOf('$pageObjects[') !== -1) {
-          const helperCallRe = /\$pageObjects\[['"]([A-Za-z0-9_]+)['"]\]\s*\(/g;
-          const seenFn = new Set();
-          let hcm;
-          while ((hcm = helperCallRe.exec(pv.usrEventFn)) !== null) {
-            if (seenFn.has(hcm[1])) continue;
-            seenFn.add(hcm[1]);
-            const uid = findHelperWfUid(hcm[1], wfScriptPool);
-            if (uid) { indirectUid = uid; break; }
-          }
-        }
-        if (compKey && indirectUid) {
-          // (a) 컴포넌트 자체가 WF 서비스를 가짐(버튼/콤보 등) — 단, 간접호출 실제값이 있으면 그것으로 대체.
-          addLink(compKey, { navKey: 'WF:u' + indirectUid, label: 'uid=' + indirectUid, kind: 'wf', custom: true });
-        } else if (navKey && compKey) {
-          // (a) 컴포넌트 자체가 WF 서비스를 가짐 (버튼/콤보 등)
-          addLink(compKey, { navKey, label, kind: 'wf' });
-        }
+        // (a) 컴포넌트 자체가 WF 서비스를 가짐 (버튼/콤보 등)
+        if (navKey && compKey) addLink(compKey, { navKey, label, kind: 'wf' });
         // (a-2) BTN_USR_EVENT 버튼: 선언적 serviceId/serviceUid 바인딩이 없고, usrEventFn(커스텀 JS)
         //    안에서 ajax.postJson(... '/wf/{uid}/execute...' ...) 형태로 WF 를 직접 호출하는 경우가
         //    실무 화면(결의전표등록 저장 등)에 흔하다. 이 경우 (a) 규칙은 navKey 를 못 만들어 배지가
@@ -2188,5 +1869,5 @@
     return out;
   }
 
-  return { extractServiceRefs, extractTables, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, extractHeaderLabels, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeAuthGuardMap, computeGridServiceMap, extractInlineBranchedWfMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
+  return { extractServiceRefs, extractTables, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, extractHeaderLabels, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeGridServiceMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
 });

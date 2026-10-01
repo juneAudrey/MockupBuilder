@@ -24,7 +24,6 @@ window.WaveOffline = (function () {
     getCfg = opts.getCfg; getProductCd = opts.getProductCd; getLang = opts.getLang;
     onModeChange = opts.onModeChange; onDataChange = opts.onDataChange; setStatus = opts.setStatus;
     bind();
-    initTablesToggle();
     window.api.onOfflineProgress(handleProgress);
     restoreSavedFile();
   }
@@ -56,6 +55,7 @@ window.WaveOffline = (function () {
     el('btnOffCancel').addEventListener('click', cancelSync);
     el('btnOffDelSel').addEventListener('click', deleteSelected);
     el('offlineModal').addEventListener('click', (e) => { if (e.target.id === 'offlineModal') close(); });
+    el('offTablesToggle').addEventListener('click', toggleTablesBody);
     // 다운로드용 DB 접속정보 선택 다이얼로그
     el('dlConnX').addEventListener('click', closeConnPicker);
     el('dlConnCancel').addEventListener('click', closeConnPicker);
@@ -107,10 +107,8 @@ window.WaveOffline = (function () {
   function renderTables() {
     const box = el('offTableRows'); box.innerHTML = '';
     const mt = (state.manifest && state.manifest.tables) || {};
-    let syncedCount = 0, totalRows = 0;
     ALL_TABLES.forEach(key => {
       const info = mt[key];
-      if (info) { syncedCount++; totalRows += (Number(info.rows) || 0); }
       const div = document.createElement('div');
       div.className = 'off-tr';
       div.innerHTML =
@@ -120,27 +118,28 @@ window.WaveOffline = (function () {
         '<span><input type="checkbox" data-tk="' + key + '" checked></span>';
       box.appendChild(div);
     });
-    renderTablesSummary(syncedCount, totalRows);
+    updateTablesSummary();
   }
 
-  function renderTablesSummary(syncedCount, totalRows) {
-    const sum = el('offTablesSummary'); if (!sum) return;
-    sum.textContent = syncedCount
-      ? '테이블 정보 · 총 ' + ALL_TABLES.length + '개 (동기화됨 ' + syncedCount + '개 · ' + fmtNum(totalRows) + '행)'
-      : '테이블 정보 · 총 ' + ALL_TABLES.length + '개 (다운로드 전)';
+  // 테이블 목록이 길어(14개) 팝업이 너무 길어지는 문제 — 기본은 접어두고, 접힌 상태에서도
+  // 몇 개 중 몇 개가 다운로드돼 있는지 요약해서 보여준다. 펼치면 기존 표(선택 체크박스 포함)가
+  // 그대로 나온다 — 체크박스는 접힌 동안에도 DOM에 남아있어 다운로드/삭제 동작에는 영향 없음.
+  function updateTablesSummary() {
+    const mt = (state.manifest && state.manifest.tables) || {};
+    const downloaded = ALL_TABLES.filter(k => mt[k]).length;
+    const sum = el('offTablesSummary');
+    if (sum) sum.textContent = '다운로드됨 ' + downloaded + '/' + ALL_TABLES.length;
   }
 
-  function initTablesToggle() {
-    const toggleBtn = el('offTablesToggle');
+  function toggleTablesBody() {
     const body = el('offTablesBody');
-    const arrow = el('offTablesArrow');
-    if (!toggleBtn || toggleBtn.dataset.bound) return;
-    toggleBtn.dataset.bound = '1';
-    toggleBtn.addEventListener('click', () => {
-      const collapsed = body.style.display === 'none';
-      body.style.display = collapsed ? 'block' : 'none';
-      arrow.textContent = collapsed ? '▾ 접기' : '▸ 펼치기';
-    });
+    const icon = el('offTablesToggleIcon');
+    const label = el('offTablesToggleLabel');
+    if (!body) return;
+    const show = body.style.display === 'none';
+    body.style.display = show ? 'block' : 'none';
+    if (icon) icon.textContent = show ? '▼' : '▶';
+    if (label) label.textContent = show ? ' 테이블 목록 접기' : ' 테이블 목록 펼치기';
   }
 
   // 단일 파일 전체 용량(테이블별이 아니라 파일 하나의 크기)을 안내 영역에 표시.

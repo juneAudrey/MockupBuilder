@@ -142,8 +142,9 @@
 
   /* ---------- 설정: WF 복호화 키 ---------- */
   // RESOURCE_WF 가 {"_enc":"..."} 형태(암호화된 값)일 때 로컬에서 바로 복호화하는 데 쓰는
-  // 키 하나만 관리한다. 네트워크 호출이 전혀 없고, 켜고 끄는 스위치도 없다 — main 프로세스가
-  // 데이터 모양만 보고 자동으로 복호화를 시도한다(wfCipher.js 참고).
+  // 키 하나만 관리한다. 네트워크 호출이 전혀 없고, 켜고 끄는 스위치도 없다 — 이 키는
+  // settings.json(main 프로세스)에 저장되고, 실제 복호화는 fetchWave()/fetchWfByUids()가
+  // 결과를 받은 뒤 wfDecryptRows() 에서 Web Crypto API로 직접 처리한다(아래 참고).
   function setWfCipherResult(msg, kind) {
     const box = el('wfCipherResult');
     if (!box) return;
@@ -188,8 +189,97 @@
     }
   }
 
+  /* ---------- 접속 로그(Supabase) ----------
+   * PC 식별 정보(호스트명/Windows 사용자명)만 Node os 모듈 전용이라 IPC(pc:info)로 받아오고,
+   * 그 외(현재 버전 판단, 외부 IP 조회, Supabase 전송, 실패 시 로컬 백업 요청)는 전부 여기
+   * (렌더러)에서 처리한다 — Node 의존성이 없는 순수 계산+fetch라서, 로깅 방식이 바뀌어도
+   * 클라이언트(Electron) 재빌드 없이 웹 배포 zip만 다시 올리면 반영된다.
+   * SUPABASE_KEY는 RLS로 INSERT만 허용된 publishable 키라 클라이언트 코드에 그대로 둬도
+   * 안전하다(Supabase가 공식적으로 권장하는 사용 방식).
+   */
+  const SUPABASE_URL = 'https://jflfqxrfdjdtsxzqwpkf.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_rwEALrEkpDBQa6pJy7ovlw_MJ9LXE6z';
+
+  // 화면 하단 "by June (ver.YYYYMMDD.NNN)" credit 텍스트에서 실제 배포 버전을 직접 읽는다 —
+  // 이 화면 자신이 곧 그 버전이므로, 예전처럼 IPC로 "보고"할 필요 없이 그 자리에서 바로 안다.
+  const APP_VERSION = (() => {
+    try {
+      const creditEl = document.querySelector('.credit');
+      const m = creditEl && creditEl.textContent && creditEl.textContent.match(/ver\.\d{8}\.\d{3}/);
+      return m ? m[0] : 'unknown';
+    } catch (_) { return 'unknown'; }
+  })();
+
+  function nowKstIso() {
+    const d = new Date();
+    const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000); // UTC 기준 시각에 9시간 더함
+    const pad = (n) => String(n).padStart(2, '0');
+    const y = kst.getUTCFullYear(), mo = pad(kst.getUTCMonth() + 1), da = pad(kst.getUTCDate());
+    const h = pad(kst.getUTCHours()), mi = pad(kst.getUTCMinutes()), s = pad(kst.getUTCSeconds());
+    const ms = String(kst.getUTCMilliseconds()).padStart(3, '0');
+    return `${y}-${mo}-${da}T${h}:${mi}:${s}.${ms}+09:00`;
+  }
+
+  // 공인 IP 캐시 — 접속 로그 전송 시 이미 한 번 조회하므로, .erp 내보내기처럼 빈번한 동작에서
+  // 매번 네트워크를 타지 않도록 최근 조회값을 재사용한다.
+  let _cachedExternalIp = null;
+  async function fetchExternalIp() {
+    try {
+      const r = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(5000) });
+      const j = await r.json();
+      _cachedExternalIp = (j && j.ip) ? j.ip : _cachedExternalIp;
+      return _cachedExternalIp;
+    } catch (_) { return _cachedExternalIp; } // 실패 시 이전에 캐시된 값이라도 반환(없으면 null)
+  }
+
+  let _pcInfo = null;
+  async function getPcInfo() {
+    if (_pcInfo) return _pcInfo;
+    try {
+      if (window.api && window.api.pcInfo) {
+        const r = await window.api.pcInfo();
+        if (r && r.ok) _pcInfo = r.info || {};
+      }
+    } catch (_) {}
+    return _pcInfo || {};
+  }
+
+  async function logAccessFromRenderer() {
+    const pc = await getPcInfo();
+    const row = {
+      created_at: nowKstIso(), // 명시하지 않으면 테이블의 default now()가 UTC로 채움
+      external_ip: await fetchExternalIp(),
+      hostname: pc.hostname || null,
+      os_user: pc.osUser || null,
+      app_ver: APP_VERSION
+    };
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/access_log`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(row),
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        if (window.api && window.api.accessLogFallback) {
+          try { await window.api.accessLogFallback({ row, reason: `http-${res.status}:${text.slice(0, 200)}` }); } catch (_) {}
+        }
+      }
+    } catch (e) {
+      if (window.api && window.api.accessLogFallback) {
+        try { await window.api.accessLogFallback({ row, reason: String((e && e.message) || e) }); } catch (_) {}
+      }
+    }
+  }
+
   // 사용 동의 게이트: 아직 동의하지 않았으면 모달을 띄우고 그 전까지 앱 사용을 막는다.
-  // [동의] → 메인에서 동의 저장 + 접속 로그 전송, [동의 안 함] → 앱 종료(로그 전송 없음).
+  // [동의] → 메인에 동의 저장 + 여기(렌더러)서 접속 로그 전송, [동의 안 함] → 앱 종료(로그 전송 없음).
   async function consentGate() {
     if (!window.api || !window.api.consentGet) return; // 웹 미리보기 등 방어
     let agreed = false;
@@ -197,7 +287,7 @@
       const r = await window.api.consentGet();
       agreed = !!(r && r.agreed);
     } catch (_) {}
-    if (agreed) return; // 이미 동의함 → 그냥 진행
+    if (agreed) { logAccessFromRenderer(); return; } // 이미 동의함 → 접속 로그만 남기고 그냥 진행
 
     const modal = el('consentModal');
     if (!modal) return;
@@ -209,6 +299,7 @@
       agreeBtn.disabled = true;
       try { await window.api.consentAgree(); } catch (_) {}
       modal.style.display = 'none';
+      logAccessFromRenderer(); // 동의한 경우에만 기록 (거부 시 호출되지 않음)
     };
     if (declineBtn) declineBtn.onclick = async () => {
       try { await window.api.consentDecline(); } catch (_) {}
@@ -1251,6 +1342,91 @@
     return w;
   }
 
+  /* ---------- .erp 파일 포맷 조립/해석 (main은 저장/열기 대화상자 + 텍스트 읽기/쓰기만 담당) ----------
+   * 파일 구조 (텍스트):
+   *   1) 사람이 읽는 평문 안내문 (AI에게 처리 방법을 알려줌)
+   *   2) 구분선
+   *   3) [DAAFWAVE-META] 로 시작하는 줄 + 메타데이터 한 줄(간단 인코딩, Base64) — 생성 PC 정보
+   *   4) 구분선
+   *   5) [DAAFWAVE-DATA] 로 시작하는 줄 + 본문(JSON을 gzip 압축 후 Base64) — 실제 분석 대상
+   * 메타(3)와 본문(5)을 서로 다른 블록으로 완전히 분리해 두어, AI가 "본문만" 디코딩하도록
+   * 안내하면 메타데이터는 분석에 섞여 들어가지 않는다.
+   * gzip/Base64 인코딩은 Node의 zlib/Buffer 없이도 브라우저 네이티브 CompressionStream/
+   * DecompressionStream + btoa/atob로 동일하게 처리할 수 있는 순수 계산이라 렌더러에 둔다 —
+   * 포맷이 바뀌어도 클라이언트(Electron) 재빌드 없이 웹 배포 zip만 다시 올리면 반영된다.
+   */
+  const ERP_GUIDE_TEXT =
+`[DAAF WAVE EXPORT FILE]
+이 파일은 Daaf Wave(파도타기)에서 내보낸 배포정보 분석용 파일입니다.
+
+AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
+"이 .erp 파일의 [DAAFWAVE-DATA] 블록 값을 Base64 디코딩한 뒤 gzip 압축
+해제하면 UTF-8 JSON입니다. 이 JSON을 분석해줘."
+
+[DAAFWAVE-META] 블록은 파일 생성 환경 정보(사내 관리용)이며 분석 대상이
+아닙니다. 무시하고 [DAAFWAVE-DATA] 블록만 사용하세요.
+`;
+
+  function erpBytesToB64(bytes) {
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+  }
+  function erpB64EncodeUtf8(str) {
+    return erpBytesToB64(new TextEncoder().encode(str));
+  }
+  function erpB64DecodeUtf8(b64) {
+    return new TextDecoder('utf-8').decode(wfB64ToBytes(b64));
+  }
+  async function erpGzipCompress(bytes) {
+    const cs = new CompressionStream('gzip');
+    const writer = cs.writable.getWriter();
+    writer.write(bytes);
+    writer.close();
+    return new Uint8Array(await new Response(cs.readable).arrayBuffer());
+  }
+  async function erpGzipDecompress(bytes) {
+    const ds = new DecompressionStream('gzip');
+    const writer = ds.writable.getWriter();
+    writer.write(bytes);
+    writer.close();
+    return new Uint8Array(await new Response(ds.readable).arrayBuffer());
+  }
+
+  async function buildErpFileContent(json, meta) {
+    const metaB64 = erpB64EncodeUtf8(JSON.stringify(meta || {}));
+    const dataGz = await erpGzipCompress(new TextEncoder().encode(json));
+    const dataB64 = erpBytesToB64(dataGz);
+    return ERP_GUIDE_TEXT +
+      '\n' + '='.repeat(60) + '\n' +
+      '[DAAFWAVE-META]\n' + metaB64 + '\n' +
+      '\n' + '='.repeat(60) + '\n' +
+      '[DAAFWAVE-DATA]\n' + dataB64 + '\n';
+  }
+
+  // .erp 원문 텍스트(main이 그대로 읽어온 것) → META/DATA 블록 파싱.
+  // DATA(JSON)는 그래프 복원용, META는 "생성 정보 카드" 표시용으로 분리해서 준다.
+  async function parseErpFileContent(text) {
+    const metaMatch = text.match(/\[DAAFWAVE-META\]\r?\n([^\r\n]+)/);
+    const dataMatch = text.match(/\[DAAFWAVE-DATA\]\r?\n([^\r\n]+)/);
+    if (!dataMatch) return { ok: false, error: '올바른 Daaf Wave .erp 파일이 아닙니다 (DATA 블록 없음).' };
+
+    let meta = {};
+    try { if (metaMatch) meta = JSON.parse(erpB64DecodeUtf8(metaMatch[1])); } catch (_) {}
+
+    let json;
+    try {
+      const plain = await erpGzipDecompress(wfB64ToBytes(dataMatch[1]));
+      json = JSON.parse(new TextDecoder('utf-8').decode(plain));
+    } catch (e) {
+      return { ok: false, error: '파일 내용을 해석할 수 없습니다(손상되었을 수 있음): ' + String((e && e.message) || e) };
+    }
+    return { ok: true, meta, data: json };
+  }
+
   /* ---------- .erp 파일 불러오기 (저장된 결과를 재조회 없이 그대로 복원) ---------- */
   const ERP_TABLE_TO_TYPE = { z_ui_deploy_info: 'UI', z_wf_deploy_info: 'WF', z_mo_deploy_info: 'Mo', z_rp_deploy_info: 'Rp' };
 
@@ -1294,16 +1470,19 @@
     try { r = await window.api.loadErp(); } catch (e) { setStatus('불러오기 실패: ' + e.message, true); return; }
     if (!r || r.canceled) return;
     if (!r.ok) { setStatus('불러오기 실패: ' + (r.error || '알 수 없는 오류'), true); return; }
+
+    const parsed = await parseErpFileContent(r.content || '');
+    if (!parsed.ok) { setStatus('불러오기 실패: ' + parsed.error, true); return; }
     _lastErpPath = r.path || '';
 
     // 1) 생성 정보 카드 먼저 표시 (확인을 눌러야 목록/그래프에 반영)
-    const m = r.meta || {};
+    const m = parsed.meta || {};
     el('erpInfoCreatedAt').textContent = m.createdAt ? new Date(m.createdAt).toLocaleString() : '-';
     el('erpInfoHostname').textContent = m.hostname || '-';
     el('erpInfoOsUser').textContent = m.osUser || '-';
     el('erpInfoExternalIp').textContent = m.externalIp || '-';
     el('erpInfoAppVer').textContent = m.appVer || '-';
-    const s = (r.data && r.data.summary) || {};
+    const s = (parsed.data && parsed.data.summary) || {};
     el('erpInfoSummary').textContent =
       `포함 항목 · UI ${s.UI || 0} / WF ${s.WF || 0} / Rp ${s.Rp || 0} / Mo ${s.Mo || 0} / 테이블 ${s.TABLE || 0}`;
 
@@ -1311,7 +1490,7 @@
     modal.style.display = 'flex';
     el('erpInfoOk').onclick = () => {
       modal.style.display = 'none';
-      applyLoadedErp(r.data);
+      applyLoadedErp(parsed.data);
     };
   }
 
@@ -1786,25 +1965,115 @@
     if (offlineActive && WaveOffline.isOnline()) {
       const r = await window.api.offlineQueryWave({ filePath: WaveOffline.folder(), wave, keyType, keyValue, tenantId, coCd, relaxed });
       if (!r.ok) throw new Error(r.error);
+      // 오프라인 파일도 DB에서 그대로 받아 저장해온 것이라 RESOURCE_WF가 암호화된 값일 수
+      // 있다 — main 프로세스는 더 이상 복호화하지 않고 그대로 넘겨주므로, 여기(브라우저)에서
+      // DB 접속 모드와 동일하게 복호화한다.
+      if (wave === 'WF') await wfDecryptRows(r.rows);
       return r.rows;
     }
     if (demoMode) return demoFetchWave(wave, keyType, keyValue);
     const r = await window.api.fetchWave({ cfg, wave, tenantId, coCd, keyType, keyValue, relaxed });
     if (!r.ok) throw new Error(r.error);
-    if (wave === 'WF') reportWfDecryptOutcome(r.rows);
+    if (wave === 'WF') await wfDecryptRows(r.rows);
     return r.rows;
   }
   async function fetchWfByUids(uids, tenantId, coCd) {
     if (offlineActive && WaveOffline.isOnline()) {
       const r = await window.api.offlineQueryWfByUids({ filePath: WaveOffline.folder(), uids, tenantId });
       if (!r.ok) throw new Error(r.error);
+      await wfDecryptRows(r.rows);
       return r.rows;
     }
     if (demoMode) return demoFetchWfByUids(uids);
     const r = await window.api.fetchWfByUids({ cfg, tenantId, coCd, uids });
     if (!r.ok) throw new Error(r.error);
-    reportWfDecryptOutcome(r.rows);
+    await wfDecryptRows(r.rows);
     return r.rows;
+  }
+
+  /* ---------- WF 복호화 (브라우저 내장 Web Crypto API — Node 없이 렌더러에서 직접 처리) ----------
+   * main 프로세스(Electron 클라이언트, 재빌드해야만 배포되는 쪽)는 더 이상 RESOURCE_WF를 손대지
+   * 않고 DB/오프라인 파일에서 읽은 그대로(암호화된 채) 넘겨준다. 실제 AES-256-GCM 복호화는 여기
+   * app.js(웹 배포 zip에 들어있는 파일 — GitHub Pages만 갱신하면 즉시 반영됨)에서 처리한다.
+   * 복호화 키 자체는 settings.json(사용자 PC 로컬 파일)에 저장돼 있어 읽기/쓰기만 IPC로 하고,
+   * 그 키를 가지고 실제로 복호화하는 로직은 전부 이 아래에 있다 — 나중에 또 알고리즘을 고쳐야
+   * 하면(예: 서버 쪽이 암호화 방식을 바꾸는 경우) 이 부분만 고치고 웹 배포 zip만 다시 올리면
+   * 된다(클라이언트 재빌드 불필요).
+   */
+  const WF_ENC_PATTERN = /^\s*\{\s*"_enc"\s*:/;
+  function wfLooksEncrypted(text) {
+    return typeof text === 'string' && WF_ENC_PATTERN.test(text);
+  }
+  function wfB64ToBytes(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  // 설정에 저장된 키 문자열을 AES-256 CryptoKey로 바꾼다. 우선 Base64로 디코딩해서 정확히
+  // 32byte가 나오면 그대로 쓰고(정상 케이스), 아니면 UTF-8 바이트 기준 16/24/32byte를 시도하고,
+  // 그래도 아니면 SHA-256 해시로 32byte를 만든다(임의 문자열을 키로 써도 되도록 하는 폴백).
+  async function wfDeriveKey(rawKey) {
+    const trimmed = String(rawKey == null ? '' : rawKey).trim();
+    let keyBytes = null;
+    try {
+      const b = wfB64ToBytes(trimmed);
+      if (b.length === 32) keyBytes = b;
+    } catch (e) { /* Base64 아님 — 아래 폴백으로 진행 */ }
+    if (!keyBytes) {
+      const utf8 = new TextEncoder().encode(trimmed);
+      if (utf8.length === 16 || utf8.length === 24 || utf8.length === 32) keyBytes = utf8;
+      else keyBytes = new Uint8Array(await crypto.subtle.digest('SHA-256', utf8));
+    }
+    return crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+  }
+  // text: DB/오프라인 파일에서 읽은 RESOURCE_WF 원본 문자열({"_enc":"..."} 형태여야 함).
+  // rawKey: 설정에 저장된 키 문자열.
+  // 반환(Promise): { ok:true, plain, wasEncrypted } 또는 { ok:false, error:{ reason, detail, code } }
+  async function wfDecryptOne(text, rawKey) {
+    if (!wfLooksEncrypted(text)) return { ok: true, plain: text, wasEncrypted: false };
+    if (!rawKey) {
+      return { ok: false, error: { reason: '복호화 키가 설정되어 있지 않습니다. 설정(⚙)에서 복호화 키를 입력하고 저장한 뒤 다시 시도하세요.', code: 'NO_KEY' } };
+    }
+    let payload;
+    try { payload = JSON.parse(text); }
+    catch (e) {
+      return { ok: false, error: { reason: 'RESOURCE_WF 값이 예상한 {"_enc":"..."} 형태(JSON)가 아닙니다.', detail: String(text).slice(0, 300), code: 'BAD_ENVELOPE' } };
+    }
+    const b64 = payload && payload._enc;
+    if (!b64 || typeof b64 !== 'string') {
+      return { ok: false, error: { reason: '_enc 필드를 찾을 수 없습니다.', detail: String(text).slice(0, 300), code: 'NO_ENC_FIELD' } };
+    }
+    try {
+      const raw = wfB64ToBytes(b64);
+      const IV_LEN = 12, TAG_LEN = 16;
+      if (raw.length <= IV_LEN + TAG_LEN) throw new Error('암호문 길이가 IV(12바이트)+인증태그(16바이트)보다 작거나 같습니다.');
+      const iv = raw.subarray(0, IV_LEN);
+      const rest = raw.subarray(IV_LEN); // 암호문+태그(Web Crypto는 태그가 뒤에 붙은 통짜 버퍼를 그대로 받음)
+      const key = await wfDeriveKey(rawKey);
+      const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, tagLength: TAG_LEN * 8 }, key, rest);
+      return { ok: true, plain: new TextDecoder('utf-8').decode(plainBuf), wasEncrypted: true };
+    } catch (err) {
+      return { ok: false, error: { reason: '복호화에 실패했습니다. 입력한 키가 올바르지 않거나, 암호문이 손상되었을 수 있습니다.', detail: String((err && err.message) || err), code: 'DECRYPT_FAILED' } };
+    }
+  }
+  // 설정에 저장된 키를 읽어와(IPC — settings.json 파일 접근만 main 프로세스를 거침) WF 행
+  // 목록의 RESOURCE_WF를 그 자리에서 전부 복호화한다(실패한 행은 원본을 그대로 두고
+  // __decryptError만 채움 — 데이터 손실 없음). 평문(암호화 안 된) 값은 손대지 않는다.
+  async function wfDecryptRows(rows) {
+    if (!rows || !rows.length) return rows;
+    let rawKey = '';
+    if (window.api && window.api.cipherKeyGet) {
+      try { const r = await window.api.cipherKeyGet(); if (r && r.ok) rawKey = r.key || ''; } catch (e) { /* 무시 */ }
+    }
+    for (const r of rows) {
+      if (!r || typeof r.RESOURCE_WF !== 'string' || !wfLooksEncrypted(r.RESOURCE_WF)) continue;
+      const res = await wfDecryptOne(r.RESOURCE_WF, rawKey);
+      if (res.ok) { r.RESOURCE_WF = res.plain; r.__decrypted = true; r.__decryptError = null; }
+      else { r.__decrypted = false; r.__decryptError = res.error; }
+    }
+    reportWfDecryptOutcome(rows);
+    return rows;
   }
 
   // WF 복호화 결과를 상태표시줄에 요약한다 — 실패한 WF가 있으면 몇 건인지, 어떤 종류의
@@ -2234,7 +2503,11 @@
         const uid = btn.getAttribute('data-uid');
         btn.disabled = true; btn.textContent = '복호화 중…';
         try {
-          const r = await window.api.cipherDecryptOne(n.raw && n.raw.RESOURCE_WF);
+          let rawKey = '';
+          if (window.api && window.api.cipherKeyGet) {
+            try { const kr = await window.api.cipherKeyGet(); if (kr && kr.ok) rawKey = kr.key || ''; } catch (e2) { /* 무시 */ }
+          }
+          const r = await wfDecryptOne(n.raw && n.raw.RESOURCE_WF, rawKey);
           if (n.raw) {
             if (r.ok) {
               n.raw.RESOURCE_WF = r.plain;
@@ -4600,11 +4873,22 @@
     const stamp = tstamp();
     const base = 'wave_' + buildExportBaseName(keys) + '_' + stamp;
 
-    // 생성 PC 정보(메타)는 메인 프로세스에서 조합해 받는다(외부 IP는 접속 로그 조회 시 캐시된 값 사용).
-    let exportMeta = {};
-    try { const m = await window.api.exportMeta(); if (m && m.ok) exportMeta = m.meta; } catch (_) {}
+    // 생성 정보 메타: PC 식별 정보(호스트명/OS 사용자명)만 IPC(pc:info)로 받고 나머지
+    // (생성 시각/외부 IP/버전)는 렌더러가 이미 알고 있는 값을 그대로 쓴다.
+    const pc = await getPcInfo();
+    const exportMeta = {
+      createdAt: nowKstIso(),
+      hostname: pc.hostname || null,
+      osUser: pc.osUser || null,
+      externalIp: _cachedExternalIp, // 접속 로그 전송 시 캐시된 값 재사용(없으면 null)
+      appVer: APP_VERSION
+    };
 
-    const r = await window.api.saveErp({ defaultName: base + '.erp', json, meta: exportMeta });
+    let content;
+    try { content = await buildErpFileContent(json, exportMeta); }
+    catch (e) { setStatus('저장 실패(인코딩 오류): ' + String((e && e.message) || e), true); return; }
+
+    const r = await window.api.saveErp({ defaultName: base + '.erp', content });
     if (r.ok) setStatus('저장 완료 · ' + r.path);
     else if (!r.canceled) setStatus('저장 실패', true);
   }
