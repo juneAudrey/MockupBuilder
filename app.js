@@ -360,6 +360,28 @@ async function pasteFromClipboard(){
   }
   pasteClipboard();
 }
+// 부모 관계 복구: 존재하지 않는 부모를 가리키거나, 부모를 따라 올라가다 자기 자신으로 돌아오는
+// (순환) 컴포넌트는 최상위로 꺼낸다. 순환이 남아 있으면 위치 계산·드롭 판정이 끝나지 않아 화면이
+// 멈추므로, 불러오기·자동저장 복구·클라우드 열기·붙여넣기 직후에 호출한다. 고친 개수를 돌려준다.
+function mbRepairParentCycles(list){
+  if(!Array.isArray(list)) return 0;
+  const byId=new Map(); list.forEach(c=>{ if(c&&c.id!=null) byId.set(c.id,c); });
+  let fixed=0;
+  const promote=c=>{ delete c.parent; delete c.tabIdx; delete c.pane; delete c.dock; fixed++; };
+  list.forEach(c=>{
+    if(!c||!c.parent) return;
+    if(!byId.has(c.parent)||c.parent===c.id){ promote(c); return; }
+    const seen=new Set([c.id]); let cur=byId.get(c.parent);
+    while(cur){
+      if(seen.has(cur.id)){ promote(c); break; }
+      seen.add(cur.id);
+      if(!cur.parent) break;
+      cur=byId.get(cur.parent);
+      if(!cur) break;
+    }
+  });
+  return fixed;
+}
 function pasteClipboard(){
   if(!clipboard.length)return;
   pushHistory();
@@ -370,14 +392,16 @@ function pasteClipboard(){
   // - a Tab container selected -> paste into its currently active page
   // - a component that lives inside a Tab selected -> paste into that same Tab/page
   // - anything else (or no clear single selection) -> paste as top-level, same as before
-  let targetParent=null, targetTabIdx=0;
+  let targetParent=null, targetTabIdx=0, targetPane=0;
   if(selIds.size===1){
     const curSel=comps.find(x=>x.id===sel);
     if(curSel){
       if(curSel.type==='tabs'){ targetParent=curSel.id; targetTabIdx=curSel.active||0; }
-      else if(curSel.parent){ targetParent=curSel.parent; targetTabIdx=curSel.tabIdx||0; }
+      else if(curSel.parent){ targetParent=curSel.parent; targetTabIdx=curSel.tabIdx||0; targetPane=curSel.pane||0; }
     }
   }
+  const targetComp=targetParent?comps.find(x=>x.id===targetParent):null;
+  if(!targetComp) targetParent=null;
 
   const clipIds=new Set(clipboard.map(c=>c.id));
   const idMap={};
@@ -397,13 +421,20 @@ function pasteClipboard(){
       return; // relative x/y unchanged, it moves with its new parent automatically
     }
     // this item is a "root" of the copied selection: decide where it lands
+    // 붙여넣는 위치(부모)의 종류에 맞는 속성만 남긴다 - 스플릿이면 선택한 컴포넌트와 같은 칸(pane),
+    // 탭이면 같은 페이지(tabIdx), 패널이면 둘 다 없음. (예전에는 복사 원본의 pane이 그대로 남아
+    // 우측 칸 컴포넌트를 선택하고 붙여넣어도 좌측 칸으로 들어갔다.)
     if(targetParent){
-      nc.parent=targetParent; nc.tabIdx=targetTabIdx;
+      nc.parent=targetParent;
+      if(targetComp.type==='tabs'){ nc.tabIdx=targetTabIdx; delete nc.pane; delete nc.dock; }
+      else if(targetComp.type==='split'){ nc.pane=targetPane; delete nc.tabIdx; if(nc.dock==='fill') nc.dock='none'; }
+      else { delete nc.tabIdx; delete nc.pane; delete nc.dock; }
     } else {
-      delete nc.parent; delete nc.tabIdx;
+      delete nc.parent; delete nc.tabIdx; delete nc.pane; delete nc.dock;
     }
     nc.x=(nc.x||0)+off; nc.y=(nc.y||0)+off;
   });
+  mbRepairParentCycles(comps); // 외부(OS 클립보드)에서 온 데이터가 이상해도 부모 순환이 생기지 않게
   const newIds=created.map(o=>o.nc.id);
   selIds=new Set(newIds);
   sel = newIds.length?newIds[newIds.length-1]:null;
@@ -468,11 +499,11 @@ function splitPaneRects(c){
 // Resolves a component's absolute canvas-space position by walking up its parent chain,
 // so hit-testing/placement still works correctly for nested containers (split-in-split,
 // split-in-tab, etc), not just one level of nesting.
-function absPos(comp){
+function absPos(comp,_depth){
   if(!comp.parent) return {x:comp.x,y:comp.y};
   const p=comps.find(x=>x.id===comp.parent);
-  if(!p) return {x:comp.x,y:comp.y};
-  const pAbs=absPos(p);
+  if(!p||(_depth||0)>64) return {x:comp.x,y:comp.y}; // 64단계 초과 = 부모 순환, 재귀 중단
+  const pAbs=absPos(p,(_depth||0)+1);
   if(p.type==='split'){
     const r=splitPaneRects(p);
     const off=(comp.pane||0)===0?r.pane0:r.pane1;
@@ -487,8 +518,9 @@ function absPos(comp){
 // A nested component is only "live" (clickable/hit-testable) if every Tab ancestor
 // has it on its currently active page; otherwise it's sitting on a hidden tab page.
 function isVisible(comp){
-  let cur=comp;
+  let cur=comp, guard=0;
   while(cur&&cur.parent){
+    if(++guard>64) break; // 부모 순환(잘못 저장된 파일 등)에도 무한루프에 빠지지 않도록
     const p=comps.find(x=>x.id===cur.parent);
     if(!p) break;
     if(p.type==='tabs'&&(cur.tabIdx||0)!==(p.active||0)) return false;
@@ -499,8 +531,9 @@ function isVisible(comp){
 // True if `comp` is nested anywhere underneath the component with id `ancestorId`
 // (used to stop a split container from being dropped inside its own descendant).
 function isDescendantOf(comp,ancestorId){
-  let cur=comp;
+  let cur=comp, guard=0;
   while(cur&&cur.parent){
+    if(++guard>64) return true; // 순환이면 '자손'으로 간주해 그 안으로 넣지 못하게 한다
     if(cur.parent===ancestorId) return true;
     cur=comps.find(x=>x.id===cur.parent);
   }
@@ -884,7 +917,7 @@ canvas.addEventListener('mousedown',e=>{
 // an ancestor that merely happens to also contain that point, regardless of container type.
 function containerDepth(c){
   let d=0, cur=c;
-  while(cur&&cur.parent){ cur=comps.find(x=>x.id===cur.parent); if(!cur)break; d++; }
+  while(cur&&cur.parent&&d<64){ cur=comps.find(x=>x.id===cur.parent); if(!cur)break; d++; }
   return d;
 }
 // Single hit-test covering tabs/split/panel together, at any nesting depth and in any
@@ -894,10 +927,19 @@ function containerDepth(c){
 // recently) so a nested container is always preferred over the ancestor(s) it sits inside.
 // Returns null, or {kind:'tab'|'split'|'panel', c, cx, cy, pane, rects} - cx/cy is always the
 // content area's own absolute top-left, ready to convert a drop point into local coordinates.
-function hitTestContainer(px,py){
+function hitTestContainer(px,py,excludeIds){
   const cands=[];
+  // excludeIds: 지금 끌고 있는 컴포넌트들. 끌려가는 컨테이너 자신이나 그 안쪽 컨테이너는
+  // 커서 아래에 함께 따라오므로 놓을 대상에서 빼야 한다(빼지 않으면 자기 자손의 자식이 되어 부모 순환 발생).
+  const excluded=c=>{
+    if(!excludeIds||!excludeIds.size) return false;
+    let cur=c, guard=0;
+    while(cur&&guard++<64){ if(excludeIds.has(cur.id)) return true; if(!cur.parent) break; cur=comps.find(x=>x.id===cur.parent); }
+    return false;
+  };
   comps.forEach(c=>{
     if(!isVisible(c))return;
+    if(excluded(c))return;
     if(c.type==='tabs'){
       const abs=absPos(c);
       const cx=abs.x, cy=abs.y+TAB_HEADER_H, cw=c.w, ch=c.h-TAB_HEADER_H;
@@ -1065,6 +1107,7 @@ function restoreAutosave(){
     // 스냅샷에 모드 정보가 있으면 그 모드로 맞춘다(없는 옛 스냅샷은 지금 모드 그대로).
     if(d.skin && mbNormSkin(d.skin)!==mbGetSkin()) setAppSkin(mbNormSkin(d.skin));
     comps=d.comps;
+    mbRepairParentCycles(comps);
     uid=Math.max(0,...comps.map(c=>c.id||0))+1;
     if(d.cw){document.getElementById('cw').value=d.cw;setCW();}
     if(d.ch){document.getElementById('ch').value=d.ch;setCH();}
@@ -2480,7 +2523,7 @@ function finalizeReparentDrag(d){
   // matched correctly instead of the outer container always winning.
   const hitX = d.curX!=null ? d.curX : (d.c.x+d.c.w/2);
   const hitY = d.curY!=null ? d.curY : (d.c.y+d.c.h/2);
-  const targetShared=hitTestContainer(hitX,hitY);
+  const targetShared=hitTestContainer(hitX,hitY,movingIds);
   items.forEach(comp=>{
     if(!comp) return;
     if(comp.parent && movingIds.has(comp.parent)) return; // moves together with its own container automatically
@@ -2489,9 +2532,8 @@ function finalizeReparentDrag(d){
     const {x:absX,y:absY}=absPos(comp);
     let target=targetShared;
     // don't allow a tab/split/panel container to be dropped inside itself or one of its own descendants
-    if(target&&
-       ((target.kind==='tab'&&comp.type==='tabs')||(target.kind==='split'&&comp.type==='split')||(target.kind==='panel'&&comp.type==='panel'))&&
-       (target.c.id===comp.id||isDescendantOf(target.c,comp.id))) target=null;
+    // (컨테이너 종류와 무관하게 - 예: 스플릿을 자기 안의 패널에 넣는 경우도 막는다)
+    if(target&&(target.c.id===comp.id||isDescendantOf(target.c,comp.id))) target=null;
     if(target&&target.kind==='tab'){
       comp.parent=target.c.id;
       comp.tabIdx=target.c.active||0;
@@ -4818,6 +4860,7 @@ function doLoad(e){
       // skin 정보가 없는 구버전 파일은 항상 씬모드로 연다.
       setAppSkin(mbSkinFromData(d));
       comps=d.comps;
+      mbRepairParentCycles(comps); // 예전 버전에서 부모 순환이 생긴 채 저장된 파일도 열리게
       uid=Math.max(0,...comps.map(c=>c.id))+1;
       { const ds=mbDefaultCanvasSize(); // 크기 정보가 없는 파일은 그 모드의 기본 크기
         document.getElementById('cw').value=d.cw||ds.w; setCW();
@@ -9680,6 +9723,7 @@ function mbCloudApplyData(d){
   pushHistory();
   setAppSkin(mbSkinFromData(d));
   comps=d.comps;
+  mbRepairParentCycles(comps);
   uid=Math.max(0,...comps.map(c=>c.id))+1;
   { const ds=mbDefaultCanvasSize();
     document.getElementById('cw').value=d.cw||ds.w; setCW();
