@@ -1945,3 +1945,8 @@ body.skin-classic #qbBtn, body.skin-mobile #qbBtn{display:none!important;}
 .qb-card.on .cd{color:#3f7a62;}
 .qb-card.on::after{content:'✓ 선택';width:auto;height:auto;border-radius:999px;padding:3px 9px;line-height:1.3;top:-11px;right:10px;font-size:11px;box-shadow:0 2px 6px rgba(30,158,106,.35);}
 #qbBg .qb-input.sm.err{border-color:#e03131;box-shadow:0 0 0 3px rgba(224,49,49,.15);}
+
+/* 상단바 주요 버튼 높이 통일 (기준: 미리보기 버튼 31px) - 이모지·아이콘 유무와 상하 패딩 차이로 28~33px로 제각각이던 것을 맞춘다. */
+.topbar #qbBtn,.topbar #convertBtn,.topbar #clearBtn,.topbar #jsonLoadBtn,.topbar #exportBtn,.topbar #previewBtn{
+  height:31px;box-sizing:border-box;padding-top:0;padding-bottom:0;
+  display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;}
