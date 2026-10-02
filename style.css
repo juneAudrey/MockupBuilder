@@ -1876,3 +1876,72 @@ body.skin-mobile .ax-btn .mb-btn-search-ic.with-text{margin-right:6px;}
    원래 테두리가 없던 버튼은 테두리 1px만큼 안쪽 여백을 줄여 버튼 크기가 그대로 유지되게 한다. */
 .topbar #convertBtn,.topbar #clearBtn,.topbar #jsonLoadBtn,.topbar #exportBtn,.topbar #previewBtn{border:1px solid #fff!important;}
 .topbar #convertBtn,.topbar #exportBtn,.topbar #previewBtn{padding:6px 13px;}
+
+/* ===== Quick Builder (씬모드 전용) ===== */
+/* 팻모드·모바일모드에서는 버튼을 숨긴다(추후 모드별 패턴으로 구현 예정). */
+body.skin-classic #qbBtn, body.skin-mobile #qbBtn{display:none!important;}
+.topbar button.btn-qb{background:#e8590c;display:inline-flex;align-items:center;gap:5px;}
+.topbar button.btn-qb:hover{background:#c94b06;}
+.topbar button.btn-qb svg{width:14px;height:14px;flex-shrink:0;}
+.topbar #qbBtn{border:1px solid #fff!important;padding:6px 13px;}
+
+#qbBg .modal{width:760px;max-width:94vw;overflow:hidden;display:flex;flex-direction:column;}
+#qbBg .modal-h h2{display:flex;align-items:center;gap:8px;}
+#qbBg .modal-h h2 svg{width:17px;height:17px;}
+.qb-prog{margin-left:auto;margin-right:14px;font-size:12px;font-weight:600;background:rgba(255,255,255,.16);padding:3px 10px;border-radius:999px;letter-spacing:.3px;}
+.qb-dots{display:flex;gap:6px;padding:14px 22px 0;}
+.qb-dots i{flex:1;height:4px;border-radius:2px;background:#e3e8ed;}
+.qb-dots i.done{background:var(--ax-green);}
+.qb-dots i.cur{background:var(--ax-green);opacity:.55;}
+.qb-body{height:392px;padding:16px 22px 18px;box-sizing:border-box;display:flex;flex-direction:column;}
+.qb-title{font-size:16px;font-weight:700;color:var(--ax-navy);display:flex;align-items:baseline;gap:8px;}
+.qb-title .n{color:var(--ax-green);font-size:15px;}
+.qb-title .sub{font-size:12.5px;font-weight:600;color:#e8590c;}
+.qb-desc{font-size:12.5px;color:#6b7684;margin:6px 0 16px;line-height:1.5;}
+.qb-main{flex:1;min-height:0;display:flex;flex-direction:column;}
+
+.qb-input{width:100%;box-sizing:border-box;height:40px;border:1px solid #cfd6dd;border-radius:6px;padding:0 12px;font-size:14px;outline:none;}
+.qb-input:focus{border-color:var(--ax-green);box-shadow:0 0 0 3px var(--ax-green-light);}
+.qb-input.sm{width:64px;height:34px;font-size:13px;text-align:center;padding:0 6px;}
+.qb-input:disabled{background:#f3f5f7;color:#aab2bb;}
+
+.qb-cards{display:grid;gap:12px;}
+.qb-card{border:1.5px solid #dfe4e9;border-radius:10px;padding:10px 10px 9px;cursor:pointer;background:#fff;position:relative;text-align:center;transition:border-color .12s,box-shadow .12s;}
+.qb-card:hover{border-color:#b9c3cc;}
+.qb-card.on{border-color:var(--ax-green);box-shadow:0 0 0 3px var(--ax-green-light);}
+.qb-card.on::after{content:'✓';position:absolute;top:7px;right:8px;width:18px;height:18px;border-radius:50%;background:var(--ax-green);color:#fff;font-size:11px;line-height:18px;font-weight:700;}
+.qb-card svg{display:block;width:100%;height:auto;}
+.qb-card .cl{font-size:13px;font-weight:700;color:var(--ax-navy);margin-top:8px;}
+.qb-card .cd{font-size:11.5px;color:#7a8591;margin-top:3px;line-height:1.4;}
+
+.qb-row{display:flex;align-items:center;gap:5px;flex-wrap:nowrap;}
+.qb-row + .qb-row{margin-top:14px;}
+.qb-row-l{width:62px;font-size:12.5px;font-weight:700;color:#3b4652;flex-shrink:0;}
+.qb-tile{min-width:35px;height:34px;padding:0 8px;box-sizing:border-box;border:1.5px solid #dfe4e9;border-radius:7px;background:#fff;font-size:13.5px;font-weight:700;color:#3b4652;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}
+.qb-tile:hover{border-color:#b9c3cc;}
+.qb-tile.on{border-color:var(--ax-green);background:var(--ax-green);color:#fff;}
+.qb-tile.txt{font-size:12.5px;font-weight:600;}
+.qb-hint{font-size:11.5px;color:#9aa3ad;margin-left:4px;}
+.qb-pv{margin-top:auto;border:1px dashed #d5dbe1;border-radius:8px;background:#f8fafb;padding:12px 14px;}
+.qb-pv-l{font-size:11px;font-weight:700;color:#9aa3ad;margin-bottom:8px;letter-spacing:.3px;}
+.qb-pv svg{display:block;width:100%;height:auto;}
+
+#qbBg .modal-f{justify-content:space-between;align-items:center;}
+.qb-f-l{font-size:11.5px;color:#9aa3ad;}
+.qb-f-r{display:flex;gap:8px;}
+#qbBg .modal-f .qb-prev{background:#eef1f4;color:#4a5560;}
+#qbBg .modal-f .qb-next{background:#fff;color:var(--ax-green-dark);border:1.5px solid var(--ax-green);}
+#qbBg .modal-f .qb-done{background:var(--ax-green);color:#fff;}
+/* --- v2: 선택 강조 · 직접입력 우측 정렬 --- */
+.qb-tail{margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding-left:12px;border-left:1px solid #e3e8ed;}
+.qb-tail-sep{width:1px;height:22px;background:#e3e8ed;margin:0 4px;}
+.qb-card{border:2px solid #e3e8ed;}
+.qb-card .cl{transition:color .12s;}
+.qb-cards.has-on .qb-card:not(.on) svg{opacity:.45;filter:grayscale(1);}
+.qb-cards.has-on .qb-card:not(.on) .cl,.qb-cards.has-on .qb-card:not(.on) .cd{color:#a3acb5;}
+.qb-cards.has-on .qb-card:not(.on):hover svg{opacity:.8;filter:none;}
+.qb-card.on{border:2px solid var(--ax-green);background:#eefaf4;box-shadow:0 0 0 4px rgba(30,158,106,.16),0 8px 20px rgba(30,158,106,.18);}
+.qb-card.on .cl{color:var(--ax-green-dark);}
+.qb-card.on .cd{color:#3f7a62;}
+.qb-card.on::after{content:'✓ 선택';width:auto;height:auto;border-radius:999px;padding:3px 9px;line-height:1.3;top:-11px;right:10px;font-size:11px;box-shadow:0 2px 6px rgba(30,158,106,.35);}
+#qbBg .qb-input.sm.err{border-color:#e03131;box-shadow:0 0 0 3px rgba(224,49,49,.15);}

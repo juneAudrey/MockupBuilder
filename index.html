@@ -26,6 +26,7 @@
     <span class="sp"></span>
     <div class="btn-group">
       <button id="templateBtn" class="btn-teal" onclick="openTemplates()">📑 템플릿</button>
+      <button id="qbBtn" class="btn-qb" onclick="openQuickBuilder()" title="몇 번의 선택으로 화면 뼈대를 자동 배치 (Thin Mode 전용)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4.5 13.5H11L10 22l8.5-11.5H12L13 2z" fill="currentColor" fill-opacity=".25"/></svg>Quick Builder</button>
       <button id="convertBtn" class="btn-violet" onclick="openConvert()">🖼 이미지 변환</button>
     </div>
     <div class="btn-group">
@@ -204,7 +205,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20261001.001)</span>
+      <span id="verText">by June (ver.20261001.002)</span>
     </div>
   </div>
 
@@ -434,7 +435,7 @@
           <tr><td class="k">복사</td><td><b>Ctrl+드래그</b>(끌면서 복사) 또는 <b>Ctrl+C → Ctrl+V</b></td></tr>
           <tr><td class="k">삭제</td><td>선택 후 <b>Del</b> 키</td></tr>
           <tr><td class="k">되돌리기</td><td><b>Ctrl+Z</b> / 다시 실행 <b>Ctrl+Y</b></td></tr>
-          <tr><td class="k">창 닫기</td><td><b>Esc</b> — 패치 내역·가이드·템플릿·이미지 변환·둘러보기 창을 닫습니다</td></tr>
+          <tr><td class="k">창 닫기</td><td><b>Esc</b> — 패치 내역·가이드·템플릿·Quick Builder·이미지 변환·둘러보기 창을 닫습니다</td></tr>
           <tr><td class="k">화면 확대·축소</td><td>위쪽 <b>확대/축소</b> 버튼 또는 <b>Ctrl+마우스휠</b> (실제 크기는 안 변함)</td></tr>
           <tr><td class="k">줄 맞추기</td><td>끌면 분홍색 안내선이 나타나 자동으로 맞춰집니다</td></tr>
           <tr><td class="k">자동 저장</td><td>수정 후 잠시 뒤 자동 저장. 가이드 버튼 옆에 <b>저장 시각</b>이 잠깐 표시됩니다</td></tr>
@@ -530,6 +531,17 @@
         </span>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Quick Builder Modal (씬모드 전용) -->
+<div class="modal-bg" id="qbBg">
+  <div class="modal">
+    <div class="modal-h"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4.5 13.5H11L10 22l8.5-11.5H12L13 2z" fill="currentColor" fill-opacity=".25"/></svg>Quick Builder</h2><span class="qb-prog" id="qbProg"></span><span class="x" onclick="closeQuickBuilder()">×</span></div>
+    <div class="qb-dots" id="qbDots"></div>
+    <div class="qb-body" id="qbBody"></div>
+    <div class="modal-f"><span class="qb-f-l">마지막 단계에서 완료를 누르면 캔버스에 배치합니다</span>
+      <div class="qb-f-r"><button type="button" class="qb-prev" id="qbPrev" onclick="qbNav(-1)">이전</button><button type="button" class="qb-next" id="qbNext" onclick="qbNav(1)">다음</button><button type="button" class="qb-done" id="qbDone" onclick="qbFinish()">완료</button></div></div>
   </div>
 </div>
 
