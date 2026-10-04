@@ -22,18 +22,20 @@
     <button class="tb-icon-btn" onclick="openSkinPicker()" title="화면 모드 전환 (Thin Mode / Fat Mode / Mobile Mode)"><img data-ic="mode" src="data:image/png;base64,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" alt="화면 모드 전환"></button>
     <button id="guideBtn" class="tb-icon-btn" onclick="openGuide()" title="사용자 가이드"><img data-ic="guide" src="data:image/png;base64,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" alt="사용자 가이드"></button>
     <button class="tb-icon-btn" onclick="startTour()" title="화면 둘러보기 (신규 사용자 안내)"><img data-ic="tour" src="data:image/png;base64,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" alt="화면 둘러보기"></button>
+    <button id="uiZoomBtn" class="tb-icon-btn tb-zoom-btn" type="button" onclick="toggleUiZoom(event)" aria-haspopup="dialog" aria-expanded="false" title="화면 배율 조정 (현재 100%) — 글씨와 화면 전체를 크게 또는 작게 볼 수 있어요"><svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="uzGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3bc9db"/><stop offset="1" stop-color="#0b7285"/></linearGradient></defs><circle cx="32" cy="32" r="32" fill="#fff"/><circle cx="28.5" cy="28.5" r="13.5" fill="#e3fafc" stroke="url(#uzGrad)" stroke-width="5"/><path d="M38.6 38.6 48.5 48.5" stroke="url(#uzGrad)" stroke-width="7.5" stroke-linecap="round"/><path d="M22 28.5h13M28.5 22v13" stroke="#0b7285" stroke-width="4.2" stroke-linecap="round"/></svg><span class="uz-pct">100%</span></button>
     <span id="autosaveMark" class="autosave-mark"></span>
     <span class="sp"></span>
     <div class="btn-group">
-      <button id="templateBtn" class="btn-teal" onclick="openTemplates()">📑 템플릿</button>
-      <button id="qbBtn" class="btn-qb" onclick="openQuickBuilder()" title="몇 번의 선택으로 화면 뼈대를 자동 배치 (Thin Mode 전용)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4.5 13.5H11L10 22l8.5-11.5H12L13 2z" fill="currentColor" fill-opacity=".25"/></svg>Quick Builder</button>
-      <button id="convertBtn" class="btn-violet" onclick="openConvert()">🖼 이미지 변환</button>
+      <button id="templateBtn" class="btn-teal" onclick="openTemplates()" title="템플릿">📑<span class="tb-lbl">템플릿</span></button>
+      <button id="convertBtn" class="btn-violet" onclick="openConvert()" title="이미지 변환">🖼<span class="tb-lbl">이미지 변환</span></button>
+      <button id="qbBtn" class="btn-qb" onclick="openQuickBuilder()" title="몇 번의 선택으로 화면 뼈대를 자동 배치 (Thin Mode 전용)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4.5 13.5H11L10 22l8.5-11.5H12L13 2z" fill="currentColor" fill-opacity=".25"/></svg><span class="tb-lbl">Quick Builder</span></button>
+      <button id="spBtn" class="btn-sp" onclick="openSpecBuilder()" title="목업을 바탕으로 사양서 스킬용 프롬프트를 만듭니다 (Thin Mode 전용)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" fill="currentColor" fill-opacity=".2"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span class="tb-lbl">사양서 프롬프트</span><span class="sp-beta" title="Beta(β) · 시범 기능" aria-label="베타(시범 기능)">β</span></button>
     </div>
     <div class="btn-group">
       <button id="clearBtn" class="ghost" onclick="clearCanvas()">전체 지우기</button>
       <button id="jsonLoadBtn" class="ghost" onclick="loadJSON()" title="저장해둔 HTML 파일 불러오기">불러오기</button>
       <button id="exportBtn" onclick="exportHTML()" title="화면을 HTML 파일로 저장">저장</button>
-      <button id="previewBtn" class="btn-teal" onclick="previewHTML()" title="컴포넌트 이벤트가 동작하는 미리보기를 새 탭에서 열기">👁 미리보기</button>
+      <button id="previewBtn" class="btn-teal" onclick="previewHTML()" title="컴포넌트 이벤트가 동작하는 미리보기를 새 탭에서 열기">👁<span class="tb-lbl">미리보기</span></button>
     </div>
     <input type="file" id="fileIn" accept=".html,.htm,.json" style="display:none" onchange="doLoad(event)">
     <span class="tb-sep" style="background:rgba(255,255,255,.35);"></span>
@@ -42,7 +44,7 @@
 
   <!-- 회원가입 -->
   <div class="modal-bg" id="signupBg">
-    <div class="modal" style="width:400px;max-width:92vw;">
+    <div class="modal" style="width:400px;max-width:calc(var(--vw) * 92);">
       <div class="modal-h"><h2>👤 회원가입</h2><span class="x" onclick="closeSignup()">×</span></div>
       <div class="modal-b" style="padding:24px 24px 22px;">
         <div id="signupErr" class="acct-err" style="display:none;"></div>
@@ -68,7 +70,7 @@
 
   <!-- 로그인 -->
   <div class="modal-bg" id="loginBg">
-    <div class="modal" style="width:400px;max-width:92vw;">
+    <div class="modal" style="width:400px;max-width:calc(var(--vw) * 92);">
       <div class="modal-h"><h2>🔑 로그인</h2><span class="x" onclick="closeLogin()">×</span></div>
       <div class="modal-b" style="padding:24px 24px 22px;">
         <div id="loginErr" class="acct-err" style="display:none;"></div>
@@ -100,7 +102,7 @@
 
   <!-- 피드백 -->
   <div class="modal-bg" id="feedbackBg">
-    <div class="modal" style="width:460px;max-width:92vw;">
+    <div class="modal" style="width:460px;max-width:calc(var(--vw) * 92);">
       <div class="modal-b" style="padding:26px 26px 22px;position:relative;">
         <span class="x" onclick="closeFeedback()" style="position:absolute;top:20px;right:20px;font-size:20px;line-height:1;opacity:.5;cursor:pointer;color:#333;">×</span>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
@@ -131,7 +133,7 @@
 
   <!-- 클라우드 저장/열기 -->
   <div class="modal-bg" id="cloudBg">
-    <div class="modal" id="cloudModal" style="width:1500px;height:760px;max-width:97vw;max-height:92vh;display:flex;flex-direction:column;position:relative;">
+    <div class="modal" id="cloudModal" style="width:1500px;height:760px;max-width:calc(var(--vw) * 97);max-height:calc(var(--vh) * 92);display:flex;flex-direction:column;position:relative;">
       <div class="modal-h"><h2 id="cloudTitle">☁ 클라우드에 저장</h2><span class="x" onclick="closeCloud()">×</span></div>
       <div id="cloudBody"></div>
       <div class="cl-resize-handle" onmousedown="mbCloudResizeStart(event)" title="드래그하여 크기 조절"></div>
@@ -140,7 +142,7 @@
 
   <!-- 목업관리(관리자 전용) -->
   <div class="modal-bg" id="adminBg">
-    <div class="modal" id="adminModal" style="width:1500px;height:760px;max-width:97vw;max-height:92vh;display:flex;flex-direction:column;position:relative;">
+    <div class="modal" id="adminModal" style="width:1500px;height:760px;max-width:calc(var(--vw) * 97);max-height:calc(var(--vh) * 92);display:flex;flex-direction:column;position:relative;">
       <div class="modal-h"><h2>🛠 목업관리</h2><span class="x" onclick="closeAdminPanel()">×</span></div>
       <div id="adminBody"></div>
       <div class="cl-resize-handle" onmousedown="mbAdminResizeStart(event)" title="드래그하여 크기 조절"></div>
@@ -205,7 +207,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><circle cx="12" cy="18.5" r="0.85" fill="currentColor" stroke="none"/></svg>
         </button>
       </div>
-      <span id="verText">by June (ver.20261001.002)</span>
+      <span id="verText">by June (ver.20261004.001)</span>
     </div>
   </div>
 
@@ -257,7 +259,7 @@
 
 <!-- Convert Modal -->
 <div class="modal-bg" id="convBg">
-  <div class="modal" style="width:900px;max-width:96vw;">
+  <div class="modal" style="width:900px;max-width:calc(var(--vw) * 96);">
     <div class="modal-h">
       <h2>🖼 화면 캡처로 컴포넌트 만들기</h2>
       <span class="x" onclick="closeConvert()">×</span>
@@ -334,7 +336,7 @@
 
 <!-- Templates Modal -->
 <div class="modal-bg" id="restoreBg">
-  <div class="modal" style="width:420px;max-width:92vw;">
+  <div class="modal" style="width:420px;max-width:calc(var(--vw) * 92);">
     <div class="modal-h">
       <h2>💾 이전 작업 복구</h2>
       <span class="x" onclick="closeRestore()">×</span>
@@ -352,7 +354,7 @@
 
 <!-- 임시 작업 목록 (로그인 상태에서, 최종 저장을 안 한 최근 작업을 DB에 안전장치로 자동 보관) -->
 <div class="modal-bg" id="draftListBg">
-  <div class="modal" style="width:440px;max-width:92vw;max-height:80vh;display:flex;flex-direction:column;">
+  <div class="modal" style="width:440px;max-width:calc(var(--vw) * 92);max-height:calc(var(--vh) * 80);display:flex;flex-direction:column;">
     <div class="modal-h">
       <h2>📝 임시 작업 목록</h2>
       <span class="x" onclick="closeDraftList()">×</span>
@@ -362,7 +364,7 @@
 </div>
 
 <div class="modal-bg" id="patchBg">
-  <div class="modal" style="width:620px;max-width:94vw;">
+  <div class="modal" style="width:620px;max-width:calc(var(--vw) * 94);">
     <div class="modal-h">
       <h2>🎉 업데이트 안내</h2>
       <span class="x" onclick="closePatch()">×</span>
@@ -379,7 +381,7 @@
 </div>
 
 <div class="modal-bg" id="guideBg">
-  <div class="modal" style="width:720px;max-width:94vw;">
+  <div class="modal" style="width:720px;max-width:calc(var(--vw) * 94);">
     <div class="modal-h">
       <h2 class="mb-pop-h2"><img class="mb-pop-ic" data-ic-src="guide" alt="">사용자 가이드</h2>
       <span class="x" onclick="closeGuide()">×</span>
@@ -545,8 +547,18 @@
   </div>
 </div>
 
+<div class="modal-bg" id="spBg">
+  <div class="modal">
+    <div class="modal-h"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" fill="currentColor" fill-opacity=".2"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>사양서 프롬프트<span class="sp-beta" title="Beta(β) · 시범 기능" aria-label="베타(시범 기능)">β</span></h2><span class="sp-file" id="spFile"></span><span class="sp-prog" id="spProg"></span><span class="x" onclick="closeSpecBuilder()">×</span></div>
+    <div class="sp-steps" id="spSteps"></div>
+    <div class="sp-body" id="spBody"></div>
+    <div class="modal-f"><span class="sp-f-l" id="spMeta"></span>
+      <div class="sp-f-r"><button type="button" class="sp-b-prev" id="spDone" onclick="spFinish()">닫기</button><button type="button" class="sp-b-prev" id="spPrev" onclick="spNav(-1)">이전</button><button type="button" class="sp-b-main" id="spNext" onclick="spNav(1)">다음</button></div></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="tmplBg">
-  <div class="modal" style="width:760px;max-width:92vw;">
+  <div class="modal" style="width:760px;max-width:calc(var(--vw) * 92);">
     <div class="modal-h">
       <h2>📑 템플릿 불러오기</h2>
       <span class="x" onclick="closeTemplates()">×</span>
@@ -563,7 +575,7 @@
 </div>
 
 <div class="modal-bg" id="skinBg">
-  <div class="modal" style="width:720px;max-width:94vw;">
+  <div class="modal" style="width:720px;max-width:calc(var(--vw) * 94);">
     <div class="modal-h">
       <h2 class="mb-pop-h2"><img class="mb-pop-ic" data-ic-src="mode" alt="">화면 모드 전환</h2>
       <span class="x" onclick="closeSkinPicker()">×</span>

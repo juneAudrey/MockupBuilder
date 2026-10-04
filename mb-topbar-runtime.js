@@ -56,6 +56,43 @@
     '</div>';
   document.body.insertAdjacentHTML('afterbegin', overlayHtml);
   document.body.insertAdjacentHTML('afterbegin', topbarHtml);
+  // 「프롬프트 복사」 뱃지 - 사양서 프롬프트 빌더(씬모드)로 만든 프롬프트가 이 파일의 데이터 블록(specPrompt)에
+  // 들어 있을 때만 「사양서 템플릿(Alt+S)」 오른쪽에 붙인다. 프롬프트가 없는 파일(예전 파일, 팻·모바일, 미작성)은
+  // 뱃지 자체가 생기지 않는다. 외부 스크립트라 CSS가 없는 예전 저장 파일에서도 보이도록 기본 스타일을 인라인으로 둔다.
+  // 이 스크립트는 파일 맨 아래 데이터 블록(__mb_src__)보다 먼저 실행되므로, 데이터 블록이 아직 없으면
+  // 문서 파싱이 끝난 뒤(DOMContentLoaded)에 다시 시도한다.
+  (function addPromptBadge(){
+    if(!document.getElementById('__mb_src__')&&document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',addPromptBadge,{once:true}); return; }
+    var prompt='';
+    try{ var srcEl=document.getElementById('__mb_src__'); var src=srcEl?JSON.parse(srcEl.textContent):null; prompt=(src&&typeof src.specPrompt==='string')?src.specPrompt:''; }catch(e){ prompt=''; }
+    if(!prompt) return;
+    var bs=document.getElementById('mbBadgeS'); if(!bs) return;
+    var tipText='사양서 프롬프트 복사 · 목업 html과 함께 Claude에 붙여넣기';
+    bs.insertAdjacentHTML('afterend',
+      '<div class="mb-badge prompt" id="mbBadgeC" onclick="window.mbCopySpecPrompt()" style="background:#e6f4f6;border-color:#0b7285;color:#0b5563;">'+
+        '<span class="ic">📋</span><span class="kbd" style="background:#0b7285;">Prompt</span><span class="t">프롬프트 복사</span>'+
+        '<span class="mb-badge-tip">'+tipText+'</span>'+
+      '</div>');
+    function flash(ok){
+      var b=document.getElementById('mbBadgeC'); if(!b) return;
+      var tip=b.querySelector('.mb-badge-tip'), t=b.querySelector('.t'), k=b.querySelector('.kbd');
+      b.classList.toggle('done',!!ok); t.textContent=ok?'복사됨':'복사 실패';
+      tip.textContent=ok?'복사했습니다 · 목업 html과 함께 Claude에 붙여넣으세요':'복사하지 못했습니다. 다시 눌러 주세요.';
+      b.style.background=ok?'#0b7285':'#fff0f0'; b.style.color=ok?'#fff':'#c92a2a'; k.style.background=ok?'#fff':'#c92a2a'; k.style.color=ok?'#0b7285':'#fff';
+      clearTimeout(b._h); b._h=setTimeout(function(){ b.classList.remove('done'); t.textContent='프롬프트 복사'; tip.textContent=tipText; b.style.background='#e6f4f6'; b.style.color='#0b5563'; k.style.background='#0b7285'; k.style.color='#fff'; },2200);
+    }
+    function legacyCopy(){
+      var ta=document.createElement('textarea'); ta.value=prompt; ta.setAttribute('readonly','');
+      ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0;'; document.body.appendChild(ta); ta.select();
+      var ok=false; try{ ok=document.execCommand('copy'); }catch(e){} ta.remove(); return ok;
+    }
+    window.mbCopySpecPrompt=function(){
+      try{
+        if(navigator.clipboard&&window.isSecureContext){ navigator.clipboard.writeText(prompt).then(function(){ flash(true); },function(){ flash(legacyCopy()); }); }
+        else flash(legacyCopy());
+      }catch(e){ flash(legacyCopy()); }
+    };
+  })();
   // 상단 바 높이만큼의 여백도 이 스크립트가 실제로 성공했을 때만 준다 - 로드 자체가 실패하면
   // 이 줄이 아예 실행이 안 되므로 빈 여백만 남는 일도 없다.
   document.body.style.paddingTop='66px';
