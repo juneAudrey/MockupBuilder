@@ -29,7 +29,7 @@
       <button id="templateBtn" class="btn-teal" onclick="openTemplates()" title="템플릿">📑<span class="tb-lbl">템플릿</span></button>
       <button id="convertBtn" class="btn-violet" onclick="openConvert()" title="이미지 변환">🖼<span class="tb-lbl">이미지 변환</span></button>
       <button id="qbBtn" class="btn-qb" onclick="openQuickBuilder()" title="몇 번의 선택으로 화면 뼈대를 자동 배치 (Thin Mode 전용)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4.5 13.5H11L10 22l8.5-11.5H12L13 2z" fill="currentColor" fill-opacity=".25"/></svg><span class="tb-lbl">Quick Builder</span></button>
-      <button id="spBtn" class="btn-sp" onclick="openSpecBuilder()" title="목업을 바탕으로 사양서 스킬용 프롬프트를 만듭니다 (Thin Mode 전용)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" fill="currentColor" fill-opacity=".2"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span class="tb-lbl">사양서 프롬프트</span><span class="sp-beta" title="Beta(β) · 시범 기능" aria-label="베타(시범 기능)">β</span></button>
+      <button id="spBtn" class="btn-sp" onclick="openSpecBuilder()" title="목업을 바탕으로 사양서 스킬용 프롬프트를 만듭니다 (Thin Mode 전용)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" fill="currentColor" fill-opacity=".2"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span class="tb-lbl">사양서 프롬프트</span><span class="sp-beta" title="Beta · 시범 기능" aria-label="베타(시범 기능)">Beta</span></button>
     </div>
     <div class="btn-group">
       <button id="clearBtn" class="ghost" onclick="clearCanvas()">전체 지우기</button>
@@ -549,7 +549,7 @@
 
 <div class="modal-bg" id="spBg">
   <div class="modal">
-    <div class="modal-h"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" fill="currentColor" fill-opacity=".2"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>사양서 프롬프트<span class="sp-beta" title="Beta(β) · 시범 기능" aria-label="베타(시범 기능)">β</span></h2><span class="sp-file" id="spFile"></span><span class="sp-prog" id="spProg"></span><span class="x" onclick="closeSpecBuilder()">×</span></div>
+    <div class="modal-h"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" fill="currentColor" fill-opacity=".2"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>사양서 프롬프트<span class="sp-beta" title="Beta · 시범 기능" aria-label="베타(시범 기능)">Beta</span></h2><span class="sp-file" id="spFile"></span><span class="sp-prog" id="spProg"></span><span class="x" onclick="closeSpecBuilder()">×</span></div>
     <div class="sp-steps" id="spSteps"></div>
     <div class="sp-body" id="spBody"></div>
     <div class="modal-f"><span class="sp-f-l" id="spMeta"></span>

@@ -1,11 +1,14 @@
 (function(){
   // ============================================================================
-  // Mockup Builder 상단 바(Alt+O/Alt+P/Alt+S) 런타임 - 외부 파일로 분리된 버전.
+  // Mockup Builder 상단 바(Alt+O/Alt+P/Alt+S/Alt+C) 런타임 - 외부 파일로 분리된 버전.
   // 이 스크립트가 성공적으로 로드된 경우에만 상단 바가 나타난다. 로드 자체가 안 되면(오프라인,
   // 서버 문제 등) 이 안의 코드는 아예 실행되지 않으므로 - 목업 자체(탭/체크박스/콤보박스 등
   // 상호작용)에는 전혀 영향이 없고, 상단 바 관련 버튼 세 개만 조용히 안 보일 뿐이다.
   // ============================================================================
   if(document.getElementById('mbTopbar')) return; // 이미 만들어져 있으면(중복 실행 등) 다시 안 만든다
+  // 사양서 관련 기능(Alt+S 사양서 템플릿 · Alt+C 프롬프트 복사)은 씬모드 화면에서만 제공한다.
+  // 팻모드는 <body class="skin-classic">, 모바일은 <body class="skin-mobile">로 저장되므로 그 클래스로 판단한다.
+  var mbIsThin=!(document.body.classList.contains('skin-classic')||document.body.classList.contains('skin-mobile'));
   var topbarHtml =
     '<div class="mb-topbar" id="mbTopbar" data-ai-ignore="true" aria-hidden="true">'+
       '<div class="mb-badge toggle on" id="mbBadgeO" onclick="window.mbToggleDiffHide()">'+
@@ -16,10 +19,11 @@
         '<span class="ic">📷</span><span class="kbd">Alt+P</span>'+
         '<span class="mb-badge-tip">화면 캡처</span>'+
       '</div>'+
+      (mbIsThin?
       '<div class="mb-badge spec" id="mbBadgeS" onclick="window.mbOpenSpecExport()">'+
         '<span class="ic">📊</span><span class="kbd">Alt+S</span>'+
-        '<span class="mb-badge-tip">사양서 매핑 템플릿 내보내기(.xlsx)</span>'+
-      '</div>'+
+        '<span class="mb-badge-tip">사양서 템플릿 내보내기(.xlsx)</span>'+
+      '</div>':'')+
     '</div>';
   var overlayHtml =
     '<div class="mb-cap-overlay" id="mbCapOverlay" hidden>'+
@@ -62,24 +66,28 @@
   // 이 스크립트는 파일 맨 아래 데이터 블록(__mb_src__)보다 먼저 실행되므로, 데이터 블록이 아직 없으면
   // 문서 파싱이 끝난 뒤(DOMContentLoaded)에 다시 시도한다.
   (function addPromptBadge(){
+    if(!mbIsThin) return; // 씬모드 화면에서만
     if(!document.getElementById('__mb_src__')&&document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',addPromptBadge,{once:true}); return; }
     var prompt='';
     try{ var srcEl=document.getElementById('__mb_src__'); var src=srcEl?JSON.parse(srcEl.textContent):null; prompt=(src&&typeof src.specPrompt==='string')?src.specPrompt:''; }catch(e){ prompt=''; }
     if(!prompt) return;
     var bs=document.getElementById('mbBadgeS'); if(!bs) return;
-    var tipText='사양서 프롬프트 복사 · 목업 html과 함께 Claude에 붙여넣기';
+    // 다른 뱃지(👁 Alt+O · 📷 Alt+P · 📊 Alt+S)와 같은 「아이콘 + 단축키」 모양. 단축키 Alt+C.
+    var tipText='사양서 프롬프트 복사 (Alt+C) · 목업 html과 함께 Claude에 붙여넣기';
     bs.insertAdjacentHTML('afterend',
       '<div class="mb-badge prompt" id="mbBadgeC" onclick="window.mbCopySpecPrompt()" style="background:#e6f4f6;border-color:#0b7285;color:#0b5563;">'+
-        '<span class="ic">📋</span><span class="kbd" style="background:#0b7285;">Prompt</span><span class="t">프롬프트 복사</span>'+
+        '<span class="ic">📋</span><span class="kbd" style="background:#0b7285;color:#fff;">Alt+C</span>'+
         '<span class="mb-badge-tip">'+tipText+'</span>'+
       '</div>');
     function flash(ok){
       var b=document.getElementById('mbBadgeC'); if(!b) return;
-      var tip=b.querySelector('.mb-badge-tip'), t=b.querySelector('.t'), k=b.querySelector('.kbd');
-      b.classList.toggle('done',!!ok); t.textContent=ok?'복사됨':'복사 실패';
+      var tip=b.querySelector('.mb-badge-tip'), ic=b.querySelector('.ic'), k=b.querySelector('.kbd');
+      b.classList.toggle('done',!!ok); ic.textContent=ok?'✅':'⚠️';
       tip.textContent=ok?'복사했습니다 · 목업 html과 함께 Claude에 붙여넣으세요':'복사하지 못했습니다. 다시 눌러 주세요.';
       b.style.background=ok?'#0b7285':'#fff0f0'; b.style.color=ok?'#fff':'#c92a2a'; k.style.background=ok?'#fff':'#c92a2a'; k.style.color=ok?'#0b7285':'#fff';
-      clearTimeout(b._h); b._h=setTimeout(function(){ b.classList.remove('done'); t.textContent='프롬프트 복사'; tip.textContent=tipText; b.style.background='#e6f4f6'; b.style.color='#0b5563'; k.style.background='#0b7285'; k.style.color='#fff'; },2200);
+      // 복사 결과 안내가 바로 보이도록 잠깐 말풍선을 띄운다
+      tip.style.display='block';
+      clearTimeout(b._h); b._h=setTimeout(function(){ b.classList.remove('done'); ic.textContent='📋'; tip.textContent=tipText; tip.style.display=''; b.style.background='#e6f4f6'; b.style.color='#0b5563'; k.style.background='#0b7285'; k.style.color='#fff'; },2200);
     }
     function legacyCopy(){
       var ta=document.createElement('textarea'); ta.value=prompt; ta.setAttribute('readonly','');
@@ -92,6 +100,10 @@
         else flash(legacyCopy());
       }catch(e){ flash(legacyCopy()); }
     };
+    // Alt+C: 프롬프트 복사(프롬프트가 들어 있는 파일에서만 동작)
+    document.addEventListener('keydown',function(e){
+      if(e.altKey&&!e.ctrlKey&&!e.metaKey&&(e.key==='c'||e.key==='C'||e.code==='KeyC')){ e.preventDefault(); window.mbCopySpecPrompt(); }
+    });
   })();
   // 상단 바 높이만큼의 여백도 이 스크립트가 실제로 성공했을 때만 준다 - 로드 자체가 실패하면
   // 이 줄이 아예 실행이 안 되므로 빈 여백만 남는 일도 없다.
@@ -147,7 +159,7 @@
     if(e.altKey&&(e.key==='o'||e.key==='O')){
       e.preventDefault();
       window.mbToggleDiffHide();
-    } else if(e.altKey&&(e.key==='s'||e.key==='S')){
+    } else if(mbIsThin&&e.altKey&&(e.key==='s'||e.key==='S')){
       e.preventDefault();
       window.mbOpenSpecExport();
     }
@@ -738,7 +750,7 @@
   };
 
     /* ==================================================================================
-     Alt+S: 사양서 매핑 템플릿(.xlsx) 내보내기.
+     Alt+S: 사양서 템플릿(.xlsx) 내보내기.
      화면에 이미 있는 정보(라벨/타입/필수/읽기전용/그리드 컬럼/버튼)만 기계적으로 뽑아 UNIERP AX
      프로그램 사양서와 같은 7개 시트(0.변경이력~6.단위테스트) 구조로 정리한다. 업무 로직(뭘 누르면
      뭐가 되는지)·저장 테이블·SQL처럼 화면 구조만으로는 알 수 없는 항목은 채우지 않고 공란으로
@@ -1021,7 +1033,8 @@
     text.split('\n').forEach(function(line){
       nLines += Math.max(1, Math.ceil(mbXlDisplayWidth(line)/Math.max(totalColWidth,4)));
     });
-    const h=Math.max(minHeight, Math.round(nLines*fontSize*1.7+6));
+    // 기준 서식과 같은 줄 높이: 1줄 21.45 · 2줄 36.6 · 3줄 51.9 … (9pt 기준 한 줄 15.15pt)
+    const h=Math.max(minHeight, Math.round((6.3+nLines*fontSize*15.15/9)*100)/100);
     return Math.min(h,409);
   }
   function mbXlColWidthSum(ws, colStart, colEnd){
@@ -1049,7 +1062,7 @@
   }
   function mbXlSectionBanner(ws, ncol, r, text){
     mbXlMergeRow(ws, ncol, r, text, {font:mbXlFontBanner(), fill:MB_XL_FILL_BANNER});
-    ws.getRow(r).height=20;
+    ws.getRow(r).height=20.1;
     return r+1;
   }
   // 본문 문단(화면설명/안내문 등) - 좌측·중앙 정렬, 테두리 없음, 줄바꿈 줄 수에 맞춰 행 높이 자동.
@@ -1083,7 +1096,7 @@
       c.value=h; c.font=mbXlFontColHead(); c.fill=MB_XL_FILL_COLHEAD; c.border=MB_XL_BORDER_ALL;
       c.alignment={horizontal:'center', vertical:'middle', wrapText:true};
     });
-    ws.getRow(r).height=26; r++;
+    ws.getRow(r).height=26.1; r++;
     rows.forEach(function(row){
       let maxH=18;
       row.forEach(function(v,i){
@@ -1104,16 +1117,243 @@
     return r;
   }
 
+  // 표의 열 수가 시트 폭(ncol)보다 적으면 마지막 열을 시트 폭 끝까지 병합해 오른쪽 선을 맞춘다(사양서 표준과 동일).
+  function mbXlDataTable2(ws, ncol, r, headers, rows){
+    const nh=headers.length, span=Math.max(ncol,nh);
+    const put=function(row,col,v,font,align,fill){
+      const end=(col===nh)?span:col;
+      if(end>col) ws.mergeCells(row,col,row,end);
+      const c=ws.getCell(row,col);
+      if(v!==null&&v!==undefined&&v!=='') c.value=v;
+      c.font=font; c.alignment=align; c.border=MB_XL_BORDER_ALL; if(fill) c.fill=fill;
+      for(let k=col+1;k<=end;k++){ const cc=ws.getCell(row,k); cc.border=MB_XL_BORDER_ALL; if(fill) cc.fill=fill; }
+      return end;
+    };
+    headers.forEach(function(h,i){ put(r,i+1,h,mbXlFontColHead(),{horizontal:'center',vertical:'middle',wrapText:true},MB_XL_FILL_COLHEAD); });
+    ws.getRow(r).height=26.1; r++;
+    rows.forEach(function(row){
+      let maxH=18;
+      for(let i=0;i<nh;i++){
+        const v=row[i];
+        const end=put(r,i+1,v,mbXlFontBody(),{horizontal:'left',vertical:'top',wrapText:true});
+        maxH=Math.max(maxH, mbXlEstRowHeight(v, mbXlColWidthSum(ws,i+1,end), 9, 18));
+      }
+      ws.getRow(r).height=maxH; r++;
+    });
+    return r;
+  }
+  // SQL·코드 블록 - Consolas 9pt, 크림색(FBF8E7) 배경, 좌측·상단 정렬, 테두리 없음
+  function mbXlCodeBlock(ws, ncol, r, text){
+    ws.mergeCells(r,1,r,ncol);
+    const c=ws.getCell(r,1); c.value=text;
+    c.font={name:'Consolas', size:9, color:{argb:'FF1A1A1A'}};
+    c.alignment={horizontal:'left', vertical:'top', wrapText:true};
+    for(let col=1;col<=ncol;col++) ws.getCell(r,col).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFBF8E7'}};
+    // 코드 블록(Consolas)은 기준 서식처럼 한 줄 약 13.6pt
+    const cw=Math.max(mbXlColWidthSum(ws,1,ncol),4); let n=0;
+    String(text).split('\n').forEach(function(l){ n+=Math.max(1,Math.ceil(mbXlDisplayWidth(l)/cw)); });
+    ws.getRow(r).height=Math.min(409,Math.max(18,Math.round((8+n*13.6)*100)/100));
+    return r+1;
+  }
+  function mbXlParaLines(ws, ncol, r, lines){ lines.forEach(function(l){ r=mbXlParaBlock(ws,ncol,r,l); }); return r; }
+
   const MB_SPEC_FIELD_HEADERS=['한글명','영문컬럼ID','저장/조회 테이블','표시타입','기본값·설명(관련정보)','입력필수','Read Only','Display'];
   function mbSpecFieldTable(ws, r, sectionTitle, rows){
     r=mbXlSectionBanner(ws, 8, r, sectionTitle);
     const vals=rows.map(function(row){
-      return [row.label, '', '', row.type, row.note||'', row.required?'Y(필수)':'N(선택)', row.readonly?'Y':'N', 'Y'];
+      return row.vals ? row.vals : [row.label, '', '', row.type, row.note||'', row.required?'Y(필수)':'N(선택)', row.readonly?'Y':'N', 'Y'];
     });
-    return mbXlDataTable(ws, 8, r, MB_SPEC_FIELD_HEADERS, vals);
+    return mbXlDataTable2(ws, 8, r, MB_SPEC_FIELD_HEADERS, vals);
+  }
+  const mbsNoteOpt=function(f){ return mbSpecNoteFor(f.type||'text', f.options); };
+  const mbsStrip=function(s){ return String(s||'').replace(/\s*\([^()]*\)/g,'').trim(); };
+
+  /* ==================================================================================
+     사양서 프롬프트(빌더) 정보로 사양서 채우기 - AI 없이 만드는 「사양서 작성 스킬의 열화판」.
+     데이터: 데이터 블록의 spec(빌더 입력값, 프로그램 단위) + comps[i].spec(항목별 입력값).
+     원칙: 입력에 있는 사실만 옮긴다. 없는 값은 공란(지어내지 않음), SQL은 테이블·컬럼ID·조인 조건이
+     모두 있을 때만 「초안」으로 만든다. 규칙 번호(R01…/P01…)는 빌더 프롬프트와 같은 순서로 매긴다
+     (app.js spItems/spDerivedRules와 같은 규칙) - 프롬프트로 만든 AI 사양서와 대조할 수 있게.
+  ==================================================================================== */
+  const MBS_INPUT_TYPES=['input','combo','date','daterange','check','radio','popup','attach'];
+  const MBS_TYPE_LABEL={input:'텍스트',combo:'콤보',date:'날짜',daterange:'기간',check:'체크',radio:'라디오',popup:'팝업',attach:'첨부파일',text:'텍스트',search:'검색팝업'};
+  const MBS_ACT={search:'조회',save:'저장',delete:'삭제',jump:'화면 이동',popup:'팝업 열기',custom:'직접 입력'};
+  const MBS_MATCH={eq:'같음',like:'포함(앞뒤 % Like)',range:'범위(From~To)',in:'선택값'};
+  const MBS_KIND={reg:'등록',inq:'조회',rep:'리포트(조회/출력)'};
+  const MBS_DEV={new:'신규 개발',std:'표준 프로그램 수정',copy:'표준 복사 후 수정'};
+  const MBS_DEV_GUIDE=['입력 콤포넌트: 입력 허용 길이를 제한하여 문자열 잘림 오류 방지 (원초적 오류 표시 방지)','필수값 누락 오류 시 명확한 메시지 표시 및 포커스 이동 (예. 품목을 입력하세요.) (사용자 인지)','그리드 행복사 후 저장 시 Key, attachId 등에 유의',"조회 조건에 '공장'이 존재하면 기본값으로 사용자 공장 입력",'조회 조건은 항상 표시 (조회 시 접히지 않음, 사용자가 직접 접기 가능)','그리드 정렬: 문자(좌측), 숫자(우측, 천단위 콤마), 날짜(가운데), 그 외(기본)','기간 콤포넌트: From 날짜가 To 날짜보다 크지 않도록 체크(표준 메시지)','데이터 수정 후 저장하지 않고 조회(또는 확정 등) 시 "변경된 데이터가 있습니다. 계속 진행하시겠습니까?" 메시지','하단 버튼은 스크롤에 영향받지 않도록 고정','고정 하단 버튼과 그리드 공존 시 메인 프로그램에 스크롤 없도록','그리드 행추가 시 필수/비필수 색상 확인 (예. 구매요청등록(비정상), 공급처지정등록(정상))','Table 컬럼 사이즈 및 샘플 데이터 사이즈에 맞게 그리드 컬럼 폭 조절','그리드 Cell 선택 및 복사 가능 (RowSelect 시 Cell 복사 불가)','조회 시 그리드 헤더 체크 해제'];
+  const mbsT=function(s){ return String(s==null?'':s).trim(); };
+  const mbsCircled=function(i){ return '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮'.charAt(i)||('('+(i+1)+')'); };
+  // 3.기능사양(사용자 매뉴얼)은 존댓말 설명체 - 이 함수가 만든 문장 끝만 바꾼다(사용자가 쓴 문장은 그대로 둔다)
+  const mbsPolite=function(s){ return String(s).replace(/한다\.$/,'합니다.').replace(/된다\.$/,'됩니다.').replace(/없다\.$/,'없습니다.').replace(/있다\.$/,'있습니다.').replace(/이다\.$/,'입니다.'); };
+  const mbsCamel=function(id){ return String(id).toLowerCase().replace(/_([a-z0-9])/g,function(_,c){ return c.toUpperCase(); }); };
+
+  function mbSpecModel(src){
+    const S=src&&src.spec; if(!S||typeof S!=='object') return null;
+    const comps=src.comps||[];
+    const B=Object.assign({project:'',author:'',module:'',subModule:'',name:'',date:'',kind:'',devType:'new',base:'',refs:'',purpose:'',uiType:'',blType:'',freq:''},S.basic||{});
+    const P=Object.assign({aiFill:true,prev:[],next:[],flowNote:'',rules:[],ex:[],roles:[],rolesDiff:false,perms:{},raw:''},S.proc||{});
+    ['prev','next','rules','ex','roles'].forEach(function(k){ if(!Array.isArray(P[k])) P[k]=[]; });
+    if(!P.perms||typeof P.perms!=='object') P.perms={};
+    const O=Object.assign({guide:true,summary:false},S.opts||{});
+    const comp=function(id){ return comps.find(function(c){ return c.id===id; }); };
+    const cs=function(c){ return (c&&c.spec)||{}; };
+    const absXY=function(c){ let x=c.x||0,y=c.y||0,p=c.parent,g=0; while(p!=null&&g++<20){ const pc=comp(p); if(!pc) break; x+=pc.x||0; y+=pc.y||0; p=pc.parent; } return {x:x,y:y}; };
+    const sorted=function(list){ return list.slice().sort(function(p,q){ const a=absXY(p),b=absXY(q); return (a.y-b.y)||(a.x-b.x); }); };
+    const gridCols=function(c){ return String(c.text||'').split(',').map(function(s){ return s.trim(); }); };
+    const labelOf=function(c){
+      if(MBS_INPUT_TYPES.indexOf(c.type)>=0&&c.showLabel!==false&&mbsT(c.labelText)) return mbsT(c.labelText);
+      const a=absXY(c); let best=null,bd=1e9;
+      comps.forEach(function(l){ if(l.type!=='label'||l.parent!==c.parent||!mbsT(l.text)) return; const b=absXY(l); let d=1e9;
+        if(Math.abs((a.y+c.h/2)-(b.y+l.h/2))<Math.max(c.h,l.h)/2+4&&b.x+l.w<=a.x+12) d=a.x-(b.x+l.w);
+        else if(b.y+l.h<=a.y+6&&a.y-(b.y+l.h)<30&&Math.abs(b.x-a.x)<40) d=(a.y-(b.y+l.h))+5;
+        if(d>=-12&&d<220&&d<bd){ bd=d; best=l; } });
+      return best?mbsT(best.text):(MBS_TYPE_LABEL[c.type]||'항목');
+    };
+    const gridCanWrite=function(c){ return !!c&&c.type==='grid'&&c.showToolbar!==false&&(c.stdAdd!==false||c.stdDelete!==false||gridCols(c).some(function(_,i){ return !(c.colReadonly||[])[i]; })||(c.userBtns||[]).length>0); };
+    const srcsGet=function(owner){
+      if(owner==='inputs'){ if(Array.isArray(S.inSrcs)) return S.inSrcs; const set=[]; comps.filter(function(c){ return MBS_INPUT_TYPES.indexOf(c.type)>=0; }).forEach(function(c){ const t=mbsT(cs(c).table).toUpperCase(); if(t&&!set.some(function(x){ return x.t===t; })) set.push({t:t,read:true,write:B.kind==='reg'}); }); return set; }
+      const c=comp(+String(owner).slice(1)); if(!c) return [];
+      const s=cs(c); if(Array.isArray(s.srcs)) return s.srcs;
+      const t=mbsT(s.table).toUpperCase(); return t?[{t:t,read:true,write:gridCanWrite(c)}]:[];
+    };
+    const joinGet=function(owner){ return owner==='inputs'?mbsT(S.inJoin):mbsT(cs(comp(+String(owner).slice(1))).join); };
+    const colSpec=function(c,bag,i){ const s=cs(c); return (s[bag]&&s[bag][i])||{}; };
+    const btnSpec=function(it){ const c=comp(it.cid); if(!c) return {}; if(it.ub==null) return cs(c); const s=cs(c); return (s.btns&&s.btns['b'+it.ub])||{}; };
+    // 항목 목록(빌더 3단계 「화면 설명」의 번호와 같은 순서)
+    const items=[]; const all=sorted(comps);
+    all.filter(function(c){ return c.type==='searchbar'; }).forEach(function(c){ items.push({key:'c'+c.id,kind:'search',cid:c.id,name:'조회조건'}); });
+    const ins=all.filter(function(c){ return MBS_INPUT_TYPES.indexOf(c.type)>=0; });
+    if(ins.length) items.push({key:'inputs',kind:'inputs',cid:ins[0].id,cids:ins.map(function(c){ return c.id; }),name:'입력 항목'});
+    all.filter(function(c){ return c.type==='grid'; }).forEach(function(c){
+      items.push({key:'c'+c.id,kind:'grid',cid:c.id,name:mbsT(c.gtitle)||'목록'});
+      if(c.showToolbar!==false) (c.userBtns||[]).forEach(function(u,i){ if(u&&mbsT(u.label)) items.push({key:'c'+c.id+'.b'+i,kind:'btn',cid:c.id,ub:i,name:mbsT(u.label),where:'그리드 버튼',grid:mbsT(c.gtitle)||'목록'}); });
+    });
+    all.filter(function(c){ return c.type==='button'; }).forEach(function(c){ items.push({key:'c'+c.id,kind:'btn',cid:c.id,name:mbsT(c.text)||'버튼'}); });
+    // 저장·삭제 대상(테이블(컬럼)) - 빌더 spWriteTargets와 같은 규칙
+    const writeTargets=function(it){
+      const parts=[], push=function(t,cols){ parts.push(t+(cols.length?'('+cols.join(', ')+')':'')); };
+      const fromGrid=function(c){ const L=srcsGet('c'+c.id), W=L.filter(function(x){ return x.write; }); if(!W.length) return; const cols=gridCols(c), ro=c.colReadonly||[];
+        W.forEach(function(w){ const mine=cols.map(function(n,i){ const k=colSpec(c,'cols',i); const t=k.t||(L.length===1?L[0].t:''); return (t===w.t&&!ro[i])?(k.colId||n):null; }).filter(Boolean); push(w.t,(W.length>1||L.length>1)?mine:[]); }); };
+      if(it.ub!=null){ const c=comp(it.cid); if(c) fromGrid(c); }
+      else { comps.filter(function(c){ return c.type==='grid'; }).forEach(fromGrid);
+        const L=srcsGet('inputs'), W=L.filter(function(x){ return x.write; });
+        W.forEach(function(w){ const mine=comps.filter(function(c){ return MBS_INPUT_TYPES.indexOf(c.type)>=0&&!c.readonly; }).map(function(c){ const s=cs(c); const t=s.table||(L.length===1?L[0].t:''); return t===w.t?(s.colId||labelOf(c)):null; }).filter(Boolean); push(w.t,W.length>1?mine:[]); }); }
+      return parts.filter(function(v,i,a){ return a.indexOf(v)===i; }).join(', ');
+    };
+    // 규칙(R01…) - 빌더 spDerivedRules와 같은 순서·내용
+    const R=[];
+    items.forEach(function(it){
+      if(it.kind==='search'){ const c=comp(it.cid), s=cs(c), fs=c.fields||[];
+        const parts=fs.map(function(f,i){ return f.type==='empty'?null:((f.label||'조건'+(i+1))+'='+MBS_MATCH[colSpec(c,'fields',i).match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like')]); }).filter(Boolean);
+        R.push({key:'q:'+it.key,item:it,title:'조회조건 검색',on:'[조회]',cond:'[조회] 클릭 시',proc:'조건별 검색 방식: '+parts.join(', ')+'.'+(s.emptyAll===false?'':' 입력하지 않은 조건은 적용하지 않는다(전체 조회).')+(mbsT(s.note)?' '+mbsT(s.note):''),checks:fs.some(function(f){ return f.required; })?[{cond:'필수 조회조건이 비어 있으면',msg:'(필수 조건)을(를) 입력하세요. (표준 메시지)'}]:[]}); }
+      if(it.kind==='grid'){ const c=comp(it.cid), s=cs(c), cols=gridCols(c), ro=c.colReadonly||[];
+        if(s.sortCol!=null&&s.sortCol!==''&&cols[+s.sortCol]!=null) R.push({item:it,title:'그리드 정렬',on:it.name,cond:'조회 결과 표시 시',proc:cols[+s.sortCol]+' '+(s.sortDir==='desc'?'내림차순':'오름차순')+'으로 정렬한다.',checks:[],kindTag:'sort'});
+        const ed=cols.filter(function(_,i){ return !ro[i]; });
+        if(ro.some(Boolean)) R.push({item:it,title:'그리드 편집 범위',on:it.name,cond:'',proc:ed.length?('편집 가능 컬럼: '+ed.join(', ')+'. 나머지 컬럼은 읽기전용.'):'모든 컬럼 읽기전용.',checks:[],kindTag:'edit'});
+        if(mbsT(s.note)) R.push({item:it,title:it.name+' 규칙',on:it.name,cond:'',proc:mbsT(s.note),checks:[]}); }
+      if(it.kind==='btn'){ const s=btnSpec(it); if(!s.action||!MBS_ACT[s.action]) return; const a=s.action, nm='['+it.name+']';
+        const pf=s.passFrom||'row';
+        const via={row:s.pass?('선택 행의 '+s.pass+' 값으로 '):'선택 행의 키 값으로 ',cond:'조회조건('+(s.passCond||'전체')+') 값으로 ',both:'선택 행의 '+(s.pass||'키 값')+'과 조회조건('+(s.passCond||'전체')+') 값으로 '}[pf]||'';
+        const base={search:'조회조건으로 목록을 조회한다.',save:'입력·수정한 내용을 저장한다.',delete:'선택한 데이터를 삭제한다.',jump:via+(mbsT(s.target)||'대상')+' 화면으로 이동하고 자동 조회한다.',popup:(mbsT(s.target)||'팝업')+'을(를) 열고, 고른 값을 '+(s.pass||'해당 항목')+'에 넣는다.',custom:''}[a];
+        let proc=[base,mbsT(s.proc)].filter(Boolean).join(' ');
+        if(a==='save'||a==='delete'){ const tg=writeTargets(it); if(tg) proc+=' '+(a==='save'?'저장':'삭제')+' 대상: '+tg+'.'; }
+        R.push({key:it.key,item:it,title:it.name+' 버튼 · '+MBS_ACT[a],on:nm+(it.where?' ('+it.where+')':''),cond:nm+' 클릭 시',proc:proc,action:a,target:mbsT(s.target),checks:(s.checks||[]).filter(function(k){ return mbsT(k.cond)||mbsT(k.msg); })}); }
+    });
+    (S.rules||[]).filter(function(r){ return mbsT(r.title)||mbsT(r.proc)||mbsT(r.cond); }).forEach(function(r){ R.push({title:mbsT(r.title)||'화면 규칙',on:'화면 전체',cond:mbsT(r.cond),proc:mbsT(r.proc),checks:mbsT(r.msg)?[{cond:'',msg:mbsT(r.msg)}]:[],global:true}); });
+    R.forEach(function(r,i){ r.id='R'+String(i+1).padStart(2,'0'); });
+    const PR=P.rules.filter(function(r){ return mbsT(r.text); }).map(function(r,i){ return {id:'P'+String(i+1).padStart(2,'0'),tag:mbsT(r.tag)||'기타',text:mbsT(r.text)}; });
+    const procAny=!!(P.prev.length||P.next.length||mbsT(P.flowNote)||PR.length||P.roles.length||mbsT(P.raw)||P.ex.some(function(e){ return mbsT(e.a); }));
+    const EX=procAny?P.ex.filter(function(e){ return mbsT(e.q); }).map(function(e){ return {q:mbsT(e.q),a:mbsT(e.a)}; }):[];
+    // 테이블(4.기술사양 4-1) - 빌더 「사용하는 테이블」에 저장된 행 + 화면 설명의 데이터 출처
+    const usage={};
+    const addU=function(t,where,read,write){ t=mbsT(t).toUpperCase(); if(!t) return; const u=usage[t]||(usage[t]={where:[],read:false,write:false}); if(u.where.indexOf(where)<0) u.where.push(where); u.read=u.read||read; u.write=u.write||write; };
+    comps.filter(function(c){ return c.type==='grid'; }).forEach(function(c){ srcsGet('c'+c.id).forEach(function(x){ addU(x.t,'그리드',x.read,x.write); }); });
+    comps.filter(function(c){ return c.type==='searchbar'; }).forEach(function(c){ srcsGet('c'+c.id).forEach(function(x){ addU(x.t,'조회조건',x.read,x.write); }); });
+    srcsGet('inputs').forEach(function(x){ addU(x.t,'입력 항목',x.read,x.write); });
+    const tables=[]; const seenT={};
+    (S.tables||[]).forEach(function(t){ const id=mbsT(t.id).toUpperCase(); if(!id||seenT[id]) return; seenT[id]=1;
+      const crud=['c','r','u','d'].filter(function(k){ return t[k]; }).map(function(k){ return k.toUpperCase(); }).join('/');
+      tables.push({id:id,name:mbsT(t.name),crud:crud,kind:t.kind||'기존',note:mbsT(t.note),where:(usage[id]||{}).where||[]}); });
+    Object.keys(usage).forEach(function(id){ if(seenT[id]) return; const u=usage[id]; tables.push({id:id,name:'',crud:[u.read?'R':'',u.write?'U':''].filter(Boolean).join('/')||'R',kind:'기존',note:'',where:u.where}); });
+    // 「테이블 정보」(자유 입력)에 적힌 테이블: 이름·신규/컬럼추가 표시를 보태고, 화면에 안 쓰인 테이블도 목록에 넣는다
+    mbSpecTableInfoHeads(S.newCols).forEach(function(h){ const t=tables.find(function(x){ return x.id===h.id; });
+      if(t){ if(!t.name&&h.name) t.name=h.name; if(t.kind==='기존'&&h.kind) t.kind=h.kind; t.info=true; }
+      else tables.push({id:h.id,name:h.name,crud:h.kind==='신규'?'C/R/U/D':'',kind:h.kind||'기존',note:'',where:[],info:true}); });
+    // 공통코드(콤보)
+    const combos=[];
+    comps.filter(function(c){ return c.type==='searchbar'; }).forEach(function(c){ (c.fields||[]).forEach(function(f,i){ if(f.type==='combo'||f.type==='radio') combos.push({key:'c'+c.id+'.f'+i,name:f.label||('조건'+(i+1)),where:'조회조건',colId:mbsT(colSpec(c,'fields',i).colId),type:f.type}); }); });
+    comps.filter(function(c){ return c.type==='combo'||c.type==='radio'; }).forEach(function(c){ combos.push({key:'c'+c.id,name:labelOf(c),where:'입력 항목',colId:mbsT(cs(c).colId),type:c.type}); });
+    const codes=(S.codes&&typeof S.codes==='object')?S.codes:{};
+    return {S:S,B:B,P:P,O:O,comps:comps,items:items,R:R,PR:PR,EX:EX,procAny:procAny,tables:tables,combos:combos,codes:codes,
+      comp:comp,cs:cs,colSpec:colSpec,btnSpec:btnSpec,gridCols:gridCols,labelOf:labelOf,srcsGet:srcsGet,joinGet:joinGet,writeTargets:writeTargets};
+  }
+
+  // 조회 SQL 초안 - 그리드의 조회 테이블·컬럼ID(·조인 조건)가 모두 있을 때만 만든다. 하나라도 없으면 null.
+  function mbSpecGridSQL(M,it){
+    const c=M.comp(it.cid); if(!c) return null;
+    const L=M.srcsGet(it.key).filter(function(x){ return x.read; }).map(function(x){ return x.t; });
+    if(!L.length) return null;
+    const join=M.joinGet(it.key);
+    if(L.length>1&&!join) return null;
+    const alias={}; L.forEach(function(t,i){ alias[t]=String.fromCharCode(97+i); });
+    const cols=M.gridCols(c), map=[];
+    for(let i=0;i<cols.length;i++){ if(!cols[i]) continue; const k=M.colSpec(c,'cols',i); const id=mbsT(k.colId).toUpperCase(); if(!id||!/^[A-Z_][A-Z0-9_$#]*$/.test(id)) return null;
+      const t=(k.t&&alias[k.t])?k.t:(L.length===1?L[0]:null); if(!t) return null;
+      map.push({label:cols[i],colId:id,table:t,alias:alias[t],expr:alias[t]+'.'+id.toLowerCase()}); }
+    if(!map.length) return null;
+    const binds=[':tenantId',':coCd'], where=[map[0].alias+'.tenant_id = :tenantId','  AND '+map[0].alias+'.co_cd = :coCd'], notes=[];
+    M.items.filter(function(x){ return x.kind==='search'; }).forEach(function(sit){ const sc=M.comp(sit.cid); const sL=M.srcsGet(sit.key).map(function(x){ return x.t; });
+      (sc.fields||[]).forEach(function(f,i){ if(f.type==='empty') return; const k=M.colSpec(sc,'fields',i); const ids=mbsT(k.colId).toUpperCase().split(/\s*[,/]\s*/).filter(function(x){ return /^[A-Z_][A-Z0-9_$#]*$/.test(x); }); if(!ids.length) return;
+        const t=(k.t&&alias[k.t])?k.t:((sL.length===1&&alias[sL[0]])?sL[0]:null);
+        const al=t?alias[t]:(map.find(function(m){ return m.colId===ids[0]; })||map[0]).alias;
+        const m=k.match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like');
+        const b=':'+mbsCamel(ids[0]); let cond;
+        if(m==='range'){ cond=al+'.'+ids[0].toLowerCase()+' BETWEEN '+b+'From AND '+b+'To'; binds.push(b+'From',b+'To'); }
+        else if(m==='like'){ cond=ids.map(function(id){ return al+'.'+id.toLowerCase()+" LIKE CONCAT('%', "+b+", '%')"; }).join(' OR '); if(ids.length>1) cond='('+cond+')'; binds.push(b); }
+        else if(m==='in'){ cond=al+'.'+ids[0].toLowerCase()+' IN ('+b+')'; binds.push(b); }
+        else { cond=al+'.'+ids[0].toLowerCase()+' = '+b; binds.push(b); }
+        where.push('  AND '+cond+'   -- '+(f.label||'조건'+(i+1))); }); });
+    const lines=['SELECT '+map.map(function(m,i){ return (i?'     , ':'')+m.expr; }).join('\n')];
+    lines.push('  FROM '+L[0].toLowerCase()+' '+alias[L[0]]+' ${nolock}');
+    L.slice(1).forEach(function(t,i){ lines.push(' INNER JOIN '+t.toLowerCase()+' '+alias[t]+' ${nolock}'+(i===0?'\n    ON '+join:'')); });
+    lines.push(' WHERE '+where.join('\n'));
+    const s=M.cs(c); if(s.sortCol!=null&&s.sortCol!==''){ const mm=map.find(function(m){ return m.label===cols[+s.sortCol]; }); if(mm) lines.push(' ORDER BY '+mm.expr+(s.sortDir==='desc'?' DESC':'')); }
+    return {sql:lines.join('\n'),binds:binds.filter(function(v,i,a){ return a.indexOf(v)===i; }),map:map,tables:L,alias:alias};
+  }
+
+  // 「테이블 정보」 자유 입력에서 지정한 테이블의 컬럼 줄을 찾아 표로 만든다(확실히 읽히는 줄만). 못 읽으면 null.
+  // 「테이블 정보」에서 테이블 머리줄(테이블ID [한글명] [※ 컬럼 추가/신규])만 골라낸다
+  function mbSpecTableInfoHeads(text){
+    const out=[];
+    String(text||'').replace(/\r/g,'').split('\n').forEach(function(raw){ const l=raw.trim(); if(!l) return;
+      const cells=l.split(/\t|\s{2,}/).map(function(x){ return x.trim(); }).filter(Boolean); if(cells.length>2) return;
+      const m=l.match(/([A-Za-z][A-Za-z0-9_$#]*_[A-Za-z0-9_$#]+)/); if(!m) return;
+      if(/^(n?var)?char|int\b|numeric|decimal|date|\bpk\b|not\s*null/i.test(l.replace(m[1],''))) return; // 컬럼 줄
+      const id=m[1].toUpperCase(); if(out.some(function(x){ return x.id===id; })) return;
+      const nm=l.replace(m[1],'').replace(/[()（）:：※\-]/g,' ').replace(/컬럼\s*추가|신규|테이블|생성|추가/g,'').trim();
+      out.push({id:id,name:/[가-힣]/.test(nm)?nm.replace(/\s+/g,' '):'',kind:/컬럼\s*추가|add\s*col/i.test(l)?'컬럼추가':(/신규|new\b|생성/i.test(l)?'신규':'')}); });
+    return out;
+  }
+  function mbSpecParseTableInfo(text,tableId){
+    const lines=String(text||'').replace(/\r/g,'').split('\n'); const T=String(tableId).toUpperCase(); let on=false, out=[], name='';
+    const isHead=function(l){ const m=l.match(/([A-Za-z][A-Za-z0-9_$#]*_[A-Za-z0-9_$#]+)/); return m?m[1].toUpperCase():null; };
+    for(const raw of lines){ const l=raw.trim(); if(!l){ if(on&&out.length) break; continue; }
+      const cells=l.split(/\t|\s{2,}/).map(function(x){ return x.trim(); }).filter(Boolean);
+      if(cells.length<=2&&isHead(l)){ const h=isHead(l); if(h===T){ on=true; const nm=l.replace(new RegExp(h,'i'),'').replace(/[()（）:：※]/g,' ').replace(/컬럼\s*추가|신규|테이블/g,'').trim(); name=/[가-힣]/.test(nm)?nm.replace(/\s+/g,' '):''; continue; } else if(on){ break; } }
+      if(!on) continue;
+      if(cells.length<2||!/^[A-Za-z_][A-Za-z0-9_$#]*$/.test(cells[0])) continue;
+      const typ=cells.find(function(x){ return /^(n?var)?char|^n?varchar|^(tiny|small|big)?int|^numeric|^decimal|^float|^date|^datetime|^bit|^n?text/i.test(x); })||'';
+      const m=typ.match(/^([A-Za-z]+)\s*\(([^)]*)\)/);
+      const nmv=(cells.find(function(x,i){ return i>0&&/[가-힣]/.test(x); })||(cells[1]!==typ?cells[1]:''));
+      const rem=cells.slice(1).filter(function(x){ return x!==nmv&&x!==typ&&!/^(pk|fk|not\s*null|null|y|n|key)$/i.test(x); }).join(' ');
+      out.push({rem:rem,id:cells[0].toUpperCase(),nm:nmv,type:m?m[1].toLowerCase():typ.toLowerCase(),len:m?m[2]:'',pk:cells.some(function(x){ return /^pk$/i.test(x); })?'PK':'',nn:(/not\s*null/i.test(l)||cells.some(function(x){ return /^pk$/i.test(x); }))?'N':(/\bnull\b/i.test(l)?'Y':'')});
+    }
+    return out.length?{name:name,cols:out}:null;
   }
 
   window.mbOpenSpecExport=async function(){
+    if(!mbIsThin) return; // 씬모드 화면에서만
     const badge=document.getElementById('mbBadgeS');
     const badgeOrigHtml=badge?badge.innerHTML:'';
     if(badge){ badge.style.pointerEvents='none'; badge.style.opacity='.6'; }
@@ -1138,140 +1378,293 @@
 
       const ExcelJS=await mbLoadExcelJS();
       const wb=new ExcelJS.Workbook();
-      const todayStr=new Date().toISOString().slice(0,10).replace(/-/g,'.');
+      const srcData=JSON.parse(document.getElementById('__mb_src__').textContent);
+      const M=mbSpecModel(srcData); // 사양서 프롬프트 입력이 없으면 null → 화면 구조만으로 채운다(기존 방식)
+      const B=M?M.B:{};
       const todayIso=new Date().toISOString().slice(0,10);
-      const programType=mbSpecProgramType(spec);
-      const etcFeature=mbSpecEtcFeature(spec);
-      const descText=mbSpecDescText(spec);
+      const dateIso=(M&&/^\d{4}-\d{2}-\d{2}$/.test(mbsT(B.date)))?mbsT(B.date):todayIso;
+      const dateDot=dateIso.replace(/-/g,'.');
+      const progName=(M&&mbsT(B.name))||spec.title;
+      const modSub=M?((mbsStrip(B.module)||mbsStrip(B.subModule))?(mbsStrip(B.module)+' / '+mbsStrip(B.subModule)):' / '):' / ';
+      const author=M?mbsT(B.author):'';
+      const pgmId=M?mbsT(B.pgmId):'';
+      const headKV=[['모듈 / 서브모듈',modSub],['프로그램ID / 프로그램명',pgmId+' / '+progName],['작성자 / 작성일',author+' / '+dateIso]];
+      const purposeLines=M?String(B.purpose||'').split('\n').map(mbsT).filter(Boolean):[];
+      const circled=function(lines){ return lines.length>1?lines.map(function(l,i){ return mbsCircled(i)+' '+l; }).join('\n'):(lines[0]||''); };
+      const gridItems=M?M.items.filter(function(i){ return i.kind==='grid'; }):[];
+      const searchItems=M?M.items.filter(function(i){ return i.kind==='search'; }):[];
+      const btnRules=M?M.R.filter(function(r){ return r.action; }):[];
+      const ruleOfItem=function(key){ return M?M.R.find(function(r){ return r.key===key; }):null; };
+      const sqls={}; gridItems.forEach(function(it){ const q=mbSpecGridSQL(M,it); if(q) sqls[it.key]=q; });
+      const typeOf=function(t){ return mbSpecTypeLabel(t||'text'); };
+      const actSummary=function(r){ return r?(MBS_ACT[r.action]+(r.target?' ('+r.target+')':'')+' ('+r.id+')'):''; };
 
-      // 화면LO의 [조회조건 Selection]/[섹션]/[그리드] 표에 쓸 필드 그룹을 한 번만 모아 여러
-      // 시트(2.화면LO의 표, 4.기술사양의 Display 컬럼 매핑)에서 재사용한다.
+      // 화면LO의 [조회조건 Selection]/[섹션]/[그리드] 표에 쓸 필드 그룹(사양서 프롬프트 입력이 있으면 컬럼ID·테이블·설명까지)
       const fieldGroups=[];
-      spec.searchbars.forEach(function(sb){ fieldGroups.push({title:'[조회조건 Selection]  (저장 없음)', rows:sb.rows}); });
-      spec.sections.forEach(function(s){ fieldGroups.push({title:'['+s.title+']', rows:s.rows}); });
-      spec.grids.forEach(function(g){ fieldGroups.push({title:'['+g.title+'] 그리드', rows:g.rows, isGrid:true}); });
+      if(!M){
+        spec.searchbars.forEach(function(sb){ fieldGroups.push({title:'[조회조건 Selection]  (저장 없음)', rows:sb.rows.map(function(x){ return x.label==='[조회]'?{vals:['조회','-','-','버튼',x.note,'N','N','Y']}:x; })}); });
+        spec.sections.forEach(function(s){ fieldGroups.push({title:'['+s.title+']', rows:s.rows}); });
+        spec.grids.forEach(function(g){ fieldGroups.push({title:'[그리드] '+g.title, rows:g.rows, isGrid:true}); });
+        if(spec.buttons.length && !spec.searchbars.length) fieldGroups.push({title:'[버튼]', rows:spec.buttons.map(function(b){ return {label:b,type:'버튼',required:false,readonly:false,note:''}; })});
+      } else {
+        searchItems.forEach(function(it){
+          const c=M.comp(it.cid), s=M.cs(c), rr=ruleOfItem('q:'+it.key);
+          const rows=(c.fields||[]).map(function(f,i){ if(f.type==='empty'||!mbsT(f.label)) return null; const k=M.colSpec(c,'fields',i);
+            const m=k.match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like');
+            const code=M.codes['c'+c.id+'.f'+i];
+            const desc=[MBS_MATCH[m]+' 검색', mbsT(k.note), code?('공통코드 : '+code):'', mbsNoteOpt(f)].filter(Boolean).join('. ');
+            return {vals:[mbsT(f.label), mbsT(k.colId), '저장안함(조회전용)', typeOf(f.type), desc, f.required?'Y(필수)':'N(선택)', 'N', 'Y']}; }).filter(Boolean);
+          rows.push({vals:['조회','-','-','버튼','조회조건으로 목록 조회'+(s.emptyAll===false?'':'. 입력하지 않은 조건은 적용하지 않음(전체 조회)')+(rr?' ('+rr.id+')':''),'N','N','Y']});
+          fieldGroups.push({title:'[조회조건 Selection]  (저장 없음)', rows:rows});
+        });
+        const inIt=M.items.find(function(i){ return i.kind==='inputs'; });
+        const formRows=[];
+        if(inIt){ const L=M.srcsGet('inputs'), W=L.filter(function(x){ return x.write; });
+          inIt.cids.forEach(function(id){ const c=M.comp(id); if(!c) return; const s=M.cs(c);
+            const t=mbsT(s.table)||(L.length===1?L[0].t:'');
+            const tbl=c.readonly?'조회전용(저장안함)':(t&&W.some(function(w){ return w.t===t; })?t:(t?t:''));
+            const code=M.codes['c'+c.id];
+            formRows.push({vals:[M.labelOf(c), mbsT(s.colId), tbl, typeOf(c.type==='attach'?'file':c.type), [mbsT(s.note), code?('공통코드 : '+code):''].filter(Boolean).join('. '), c.required?'Y(필수)':'N(선택)', c.readonly?'Y':'N', 'Y']}); }); }
+        M.items.filter(function(i){ return i.kind==='btn'&&i.ub==null; }).forEach(function(it){ const r=ruleOfItem(it.key);
+          formRows.push({vals:[it.name,'-','-','버튼', r?(r.proc+' ('+r.id+')'):'', 'N','N','Y']}); });
+        if(formRows.length) fieldGroups.push({title:'[Form / Display]', rows:formRows});
+        gridItems.forEach(function(it){
+          const c=M.comp(it.cid), cols=M.gridCols(c), ro=c.colReadonly||[], rq=c.colRequired||[], ct=c.colTypes||[], L=M.srcsGet(it.key), W=L.filter(function(x){ return x.write; }), s=M.cs(c);
+          const rows=cols.map(function(n,i){ if(!n) return null; const k=M.colSpec(c,'cols',i);
+            const t=k.t||(L.length===1?L[0].t:(W.length===1?W[0].t:''));
+            const tbl=ro[i]?'조회전용(저장안함)':t;
+            const extra=[]; if(!ro[i]) extra.push('편집 가능'); if(s.sortCol!=null&&s.sortCol!==''&&+s.sortCol===i) extra.push((s.sortDir==='desc'?'내림차순':'오름차순')+' 정렬');
+            return {vals:[n, mbsT(k.colId), tbl, typeOf(ct[i]||'input'), [mbsT(k.note)].concat(extra).filter(Boolean).join('. '), rq[i]?'Y(필수)':'N', ro[i]?'Y':'N', 'Y']}; }).filter(Boolean);
+          M.items.filter(function(b){ return b.kind==='btn'&&b.ub!=null&&b.cid===it.cid; }).forEach(function(b){ const r=ruleOfItem(b.key); rows.push({vals:[b.name,'-','-','버튼', r?(r.proc+' ('+r.id+')'):'그리드 버튼', 'N','N','Y']}); });
+          fieldGroups.push({title:'[그리드] '+it.name, rows:rows, isGrid:true});
+        });
+      }
 
       // ── 0.변경이력 ──────────────────────────────────────────────────────────────
       {
-        const ws=wb.addWorksheet('0.변경이력');
+        const ws=wb.addWorksheet('0.변경이력',{views:[{showGridLines:false}]});
         [5,14,70,20,12].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
         let r=1;
         r=mbXlSheetTitle(ws,5,r,'0. 변경이력  (Change History)');
-        r=mbXlDataTable(ws,5,r,['No','변경 일자','변경 내용','담당자','요청자'],
-          [[1, todayStr, '최초 작성', '', '']]);
+        r=mbXlDataTable2(ws,5,r,['No','변경 일자','변경 내용','담당자','요청자'],[[1, dateDot, '최초 작성', '', '']]);
       }
 
       // ── 1.개요 ──────────────────────────────────────────────────────────────────
       {
-        const ws=wb.addWorksheet('1.개요');
+        const ws=wb.addWorksheet('1.개요',{views:[{showGridLines:false}]});
         [26,45,25,25].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
         let r=1;
         r=mbXlSheetTitle(ws,4,r,'1. 개요  (Overview)');
-        const pairs=[
-          ['프로젝트 명',''], ['모듈 / 서브모듈',' / '], ['프로그램ID',''], ['프로세스ID','-'],
-          ['프로그램명', spec.title], ['프로그램 개요',''], ['요청자 / 요청일',' / '],
-          ['예상 개발기간 / 완료희망일',''], ['개발자 / 개발완료일',' / '],
-          ['우선순위(A/B/C)',''], ['난이도(H/M/L)',''], ['프로그램 유형', programType],
-          ['재사용 PGM-ID','-'], ['수행빈도',''], ['기타 특성', etcFeature]
-        ];
+        let pairs;
+        if(!M){
+          pairs=[['프로젝트 명',''],['모듈 / 서브모듈',' / '],['프로그램ID',''],['프로세스ID','-'],['프로그램명',spec.title],['프로그램 개요',''],['요청자 / 요청일',' / '],['예상 개발기간 / 완료희망일',''],['개발자 / 개발완료일',' / '],['우선순위(A/B/C)',''],['난이도(H/M/L)',''],['프로그램 유형',mbSpecProgramType(spec)],['재사용 PGM-ID','-'],['수행빈도',''],['기타 특성',mbSpecEtcFeature(spec)]];
+        } else {
+          const acts=[]; if(searchItems.length) acts.push('조회'); btnRules.forEach(function(rr){ const a=MBS_ACT[rr.action]; if(a&&acts.indexOf(a)<0) acts.push(a); });
+          const ptype=(MBS_KIND[B.kind]||mbSpecProgramType(spec))+(acts.length?' ('+acts.join('·')+')':'');
+          const etc=[]; const st=mbSpecEtcFeature(spec); if(st) etc.push(st);
+          if(B.devType&&B.devType!=='new') etc.push('▷ 개발 방식 : '+MBS_DEV[B.devType]+(mbsT(B.base)?' (기준 '+mbsT(B.base)+')':''));
+          if(mbsT(B.refs)) etc.push('▷ 참고 프로그램 : '+mbsT(B.refs));
+          const jumps=btnRules.filter(function(rr){ return rr.action==='jump'&&rr.target; }).map(function(rr){ return rr.target; });
+          if(jumps.length) etc.push('▷ 이동 대상 프로그램 : '+jumps.join(', '));
+          if(M.P.prev.length||M.P.next.length) etc.push('▷ 업무 흐름 : '+[M.P.prev.join(', '),'['+progName+']',M.P.next.join(', ')].filter(Boolean).join(' → '));
+          if(M.P.roles.length) etc.push('▷ 사용 역할 : '+M.P.roles.join(', '));
+          pairs=[['프로젝트 명',mbsT(B.project)],['모듈 / 서브모듈',modSub],['프로그램ID',pgmId],['프로세스ID','-'],['프로그램명',progName],['프로그램 개요',circled(purposeLines)],['요청자 / 요청일',' / '],['예상 개발기간 / 완료희망일',''],['개발자 / 개발완료일',' / '],['우선순위(A/B/C)',''],['난이도(H/M/L)',''],['프로그램 유형',ptype],['재사용 PGM-ID',(B.devType&&B.devType!=='new'&&mbsT(B.base))?mbsT(B.base):'-'],['수행빈도',mbsT(B.freq)]];
+          if(mbsT(B.uiType)) pairs.push(['UI 유형',mbsT(B.uiType)]);
+          if(mbsT(B.blType)) pairs.push(['BL 유형',mbsT(B.blType)]);
+          pairs.push(['기타 특성',etc.join('\n')]);
+        }
         pairs.forEach(function(p){ r=mbXlKVRow(ws,4,1,r,p[0],p[1],{fill:MB_XL_FILL_LABEL}); });
       }
 
       // ── 2.화면LO ────────────────────────────────────────────────────────────────
       {
-        const ws=wb.addWorksheet('2.화면LO');
-        [16,18,22,22,40,12,16,12].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        const ws=wb.addWorksheet('2.화면LO',{views:[{showGridLines:false}]});
+        [16,18,26,22,40,12,16,12].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
         let r=1;
         r=mbXlSheetTitle(ws,8,r,'2. 화면 LAYOUT  (Screen Layout)');
-        r=mbXlHeaderKV(ws,8,r,[
-          ['모듈 / 서브모듈',' / '],
-          ['프로그램ID / 프로그램명',' / '+spec.title],
-          ['작성자 / 작성일',' / '+todayIso]
-        ]);
+        r=mbXlHeaderKV(ws,8,r,headKV);
         r=mbXlSectionBanner(ws,8,r,'■ 화면설명');
-        r=mbXlParaBlock(ws,8,r,descText);
+        let desc;
+        if(!M) desc=mbSpecDescText(spec);
+        else {
+          const L=[]; let n=0;
+          searchItems.forEach(function(it){ const c=M.comp(it.cid); const parts=(c.fields||[]).filter(function(f){ return f.type!=='empty'&&mbsT(f.label); }).map(function(f){ const i=(c.fields||[]).indexOf(f); const m=M.colSpec(c,'fields',i).match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like'); return '['+mbsT(f.label)+']('+({eq:'같음',like:'포함',range:'범위',in:'선택값'})[m]+')'; });
+            L.push(mbsCircled(n++)+' 조회'); L.push('　[조회조건]을 입력하고 [조회]를 누르면'+(gridItems.length?' ['+gridItems.map(function(g){ return g.name; }).join('], [')+']에':'')+' 목록이 표시된다.'); if(parts.length) L.push('　▷ 검색 방식 : '+parts.join('·')); });
+          gridItems.forEach(function(it){ const c=M.comp(it.cid), cols=M.gridCols(c), ro=c.colReadonly||[], Ls=M.srcsGet(it.key);
+            L.push(mbsCircled(n++)+' ['+it.name+'] 그리드');
+            const rs=Ls.filter(function(x){ return x.read; }).map(function(x){ return x.t; }), wsT=Ls.filter(function(x){ return x.write; }).map(function(x){ return x.t; });
+            if(Ls.length) L.push('　▷ 데이터 : '+[rs.length?('조회 '+rs.join(' + ')+(rs.length>1?' JOIN':'')):'', wsT.length?('저장 '+wsT.join(', ')):''].filter(Boolean).join(' / '));
+            const ed=cols.filter(function(x,i){ return x&&!ro[i]; }); L.push('　▷ 편집 : '+(ed.length===cols.filter(Boolean).length?'모든 컬럼 편집 가능':(ed.length?ed.map(function(x){ return '['+x+']'; }).join('·')+'만 편집 가능':'조회 전용')));
+            const std=[]; if(c.showToolbar!==false){ if(c.stdAdd!==false) std.push('행추가'); if(c.stdCopy!==false) std.push('행복사'); if(c.stdDelete!==false) std.push('행삭제'); }
+            if(!std.length&&c.showToolbar!==false) L.push('　▷ 행추가·행삭제 없음'); });
+          const scrBtns=btnRules.filter(function(rr){ return rr.item&&rr.item.ub==null; });
+          if(scrBtns.length){ L.push(mbsCircled(n++)+' 버튼'); scrBtns.forEach(function(rr){ L.push('　▷ ['+rr.item.name+'] : '+MBS_ACT[rr.action]+(rr.target?' ('+rr.target+')':'')); }); }
+          desc=L.length?L.join('\n'):mbSpecDescText(spec);
+        }
+        r=mbXlParaBlock(ws,8,r,desc);
 
         r=mbXlSectionBanner(ws,8,r,'■ 화면 Mock-up');
         const targetImgW=900;
         const scale=targetImgW/shotDims.w;
         const imgW=targetImgW, imgH=Math.round(shotDims.h*scale);
         const imgId=wb.addImage({buffer:shotBuf, extension:'png'});
+        // 사양서 표준처럼 기본 높이(15pt) 행 여러 줄에 걸쳐 이미지를 얹는다(이미지 아래 표와 겹치지 않게 행을 확보)
+        const nRows=Math.ceil((imgH*0.75)/15)+1;
         ws.addImage(imgId,{tl:{col:0,row:r-1}, ext:{width:imgW,height:imgH}});
-        ws.getRow(r).height=Math.round(imgH*0.75)+10;
-        r++;
+        for(let k=0;k<nRows;k++) ws.getRow(r+k).height=15;
+        r+=nRows+1;
 
         fieldGroups.forEach(function(g){ r=mbSpecFieldTable(ws, r, g.title, g.rows); });
-        if(spec.buttons.length && !spec.searchbars.length){
-          // 조회조건이 없는 화면은 표준 [조회] 버튼이 자동으로 붙지 않으므로, 버튼 목록을
-          // 별도 [버튼] 표로 한 번 더 남긴다(조회조건이 있으면 그 표에 이미 [조회]가 포함됨).
-          r=mbSpecFieldTable(ws, r, '[버튼]', spec.buttons.map(function(b){
-            return {label:b, type:'버튼', required:false, readonly:false, note:''};
-          }));
-        }
       }
 
       // ── 3.기능사양 ──────────────────────────────────────────────────────────────
       {
-        const ws=wb.addWorksheet('3.기능사양');
+        const ws=wb.addWorksheet('3.기능사양',{views:[{showGridLines:false}]});
         [22,16,16,16,16,16,16,16].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
         let r=1;
         r=mbXlSheetTitle(ws,8,r,'3. 기능사양  (Functional Specification / 사용자 매뉴얼)');
-        r=mbXlHeaderKV(ws,8,r,[
-          ['모듈 / 서브모듈',' / '],
-          ['프로그램ID / 프로그램명',' / '+spec.title],
-          ['작성자 / 작성일',' / '+todayIso],
-          ['프로그램 목적','']
-        ]);
-        r=mbXlParaBlock(ws,8,r,"※ 본 시트는 사용자(현업) 관점의 기능 설명입니다. 사용 테이블·컬럼ID·SQL 등 기술 내용은 '4.기술사양' 시트를 참조하십시오. (XL-R08)");
+        r=mbXlHeaderKV(ws,8,r,headKV.concat([['프로그램 목적', purposeLines.join('\n')]]));
+        if(M){
+          const secs=[];
+          const ov=purposeLines.length?purposeLines.map(function(l,i){ return mbsCircled(i)+' '+l; }):[];
+          if(ov.length) secs.push(['화면 개요',ov]);
+          if(M.P.prev.length||M.P.next.length||mbsT(M.P.flowNote)){ const L=[]; let k=1;
+            if(M.P.prev.length) L.push((k++)+') 앞 단계 : '+M.P.prev.map(function(x){ return '['+x+']'; }).join(', '));
+            L.push((k++)+') 이 화면 : ['+progName+']');
+            if(M.P.next.length) L.push((k++)+') 다음 단계 : '+M.P.next.map(function(x){ return '['+x+']'; }).join(', '));
+            String(M.P.flowNote||'').split('\n').map(mbsT).filter(Boolean).forEach(function(l){ L.push((k++)+') '+l); });
+            secs.push(['업무 흐름',L]); }
+          if(M.PR.length) secs.push(['업무 규칙·제약',M.PR.map(function(p,i){ return (i+1)+') ['+p.tag+'] '+p.text+' ('+p.id+')'; })]);
+          if(M.EX.length) secs.push(['예외 처리',M.EX.map(function(e,i){ return (i+1)+') '+e.q+' → '+(e.a||'표준 메시지·처리를 따릅니다.'); })]);
+          if(M.P.roles.length) secs.push(['사용자·권한',M.P.rolesDiff?M.P.roles.map(function(ro,i){ return (i+1)+') '+ro+' : '+(mbsT(M.P.perms[ro])||''); }):['1) 사용 역할 : '+M.P.roles.join(', ')+' (역할별 권한 동일)']]);
+          searchItems.forEach(function(it){ const c=M.comp(it.cid), s=M.cs(c), L=[]; let k=1;
+            (c.fields||[]).forEach(function(f){ if(f.type==='empty'||!mbsT(f.label)) return; L.push((k++)+') ['+mbsT(f.label)+'] 조건을 입력합니다.'+(f.required?'(필수)':'')); });
+            const rr=ruleOfItem('q:'+it.key);
+            L.push((k++)+') [조회] 버튼을 누르면 조건에 맞는 목록이 '+(gridItems.length?'['+gridItems.map(function(g){ return g.name; }).join('], [')+']에 ':'')+'표시됩니다.'+(rr?' ('+rr.id+')':''));
+            if(s.emptyAll!==false) L.push('· 입력하지 않은 조건은 적용하지 않고 전체를 조회합니다.');
+            if(mbsT(s.note)) L.push('· '+mbsT(s.note));
+            secs.push(['조회 방법',L]); });
+          const gl=[]; gridItems.forEach(function(it){ M.R.filter(function(rr){ return rr.item===it; }).forEach(function(rr){ gl.push('· ['+it.name+'] '+mbsPolite(rr.proc)+' ('+rr.id+')'); }); });
+          if(gl.length) secs.push(['그리드 사용',gl]);
+          if(btnRules.length){ const L=[]; let k=1;
+            btnRules.forEach(function(rr){ L.push((k++)+') ['+rr.item.name+']'+(rr.item.where?'('+rr.item.where+')':'')+' : '+mbsPolite(rr.proc)+' ('+rr.id+')');
+              rr.checks.forEach(function(ck){ L.push('　· '+(mbsT(ck.cond)?mbsT(ck.cond)+' ':'')+(mbsT(ck.msg)?'"'+mbsT(ck.msg)+'" 안내 후 처리를 멈춥니다.':'처리를 멈춥니다.')); }); });
+            secs.push(['처리 절차',L]); }
+          const gr=M.R.filter(function(rr){ return rr.global; });
+          if(gr.length) secs.push(['알아두면 좋은 규칙',gr.map(function(rr){ return '· '+rr.title+' : '+(rr.cond?rr.cond+' → ':'')+rr.proc+(rr.checks.length&&rr.checks[0].msg?' ("'+rr.checks[0].msg+'")':'')+' ('+rr.id+')'; })]);
+          const bl=M.items.filter(function(i){ return i.kind==='btn'; }).map(function(it){ const rr=ruleOfItem(it.key); return '· ['+it.name+']'+(it.where?'('+it.where+')':'')+(rr?' : '+MBS_ACT[rr.action]+(rr.target?' ('+rr.target+')':''):''); });
+          if(bl.length) secs.push(['버튼',bl]);
+          secs.forEach(function(sc,i){ r=mbXlSectionBanner(ws,8,r,(i+1)+'. '+sc[0]); r=mbXlParaLines(ws,8,r,sc[1]); });
+        }
+        r=mbXlParaBlock(ws,8,r,"※ 본 시트는 사용자(현업) 관점의 기능 설명입니다. 사용 테이블·컬럼ID·SQL 등 기술 내용은 '4.기술사양' 시트를 참조하십시오.");
       }
 
       // ── 4.기술사양 ──────────────────────────────────────────────────────────────
       {
-        const ws=wb.addWorksheet('4.기술사양');
-        [14,46,14,30,8,8].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
-        let r=1;
+        const ws=wb.addWorksheet('4.기술사양',{views:[{showGridLines:false}]});
+        [14,46,24,30,8,30].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        let r=1, n=0; const sec=function(t){ r=mbXlSectionBanner(ws,6,r,'4-'+(++n)+'. '+t); };
         r=mbXlSheetTitle(ws,6,r,'4. 기술사양  (Technical Specification)');
-        r=mbXlHeaderKV(ws,6,r,[
-          ['모듈 / 서브모듈',' / '],
-          ['프로그램ID / 프로그램명',' / '+spec.title],
-          ['작성자 / 작성일',' / '+todayIso]
-        ]);
-        const gridRows=[];
-        spec.grids.forEach(function(g){ gridRows.push.apply(gridRows, g.rows); });
-        if(gridRows.length){
-          r=mbXlSectionBanner(ws,6,r,'4-1. Display 컬럼 매핑');
-          const headers=['한글명','영문컬럼ID','원천 테이블(별칭)','SQL 표현식/산출','표시타입','비고'];
-          const vals=gridRows.map(function(row){ return [row.label, '', '', '', row.type, row.note||'']; });
-          r=mbXlDataTable(ws,6,r,headers,vals);
-        }
+        r=mbXlHeaderKV(ws,6,r,headKV);
+        if(M&&M.tables.length){ sec('테이블 정보');
+          r=mbXlDataTable2(ws,6,r,['Table명','Table ID','CRUD','비고'],M.tables.map(function(t){ return [t.name,t.id,t.crud,[({신규:'신규 테이블',컬럼추가:'컬럼 추가',뷰:'뷰 생성·수정'})[t.kind]||'',t.where.length?t.where.join('·')+'에서 사용':(t.info?'테이블 정보에 정의':'화면 외'),t.note].filter(Boolean).join(' · ')]; })); }
+        if(M){ const cb=M.combos.filter(function(x){ return M.codes[x.key]||x.colId; });
+          if(cb.length){ sec('콤보/조회 Service UID  (Data searchType : Workflow)');
+            r=mbXlDataTable2(ws,6,r,['항목(한글)','영문컬럼ID','표시타입','Service UID','비고'],cb.map(function(x){ return [x.name+'('+x.where+')',x.colId,x.type==='radio'?'옵션버튼(Radio)':'Combobox','',M.codes[x.key]?('공통코드 '+M.codes[x.key]):'']; })); } }
+        const allBinds=[];
+        gridItems.forEach(function(it){ const q=sqls[it.key]; if(!q) return; sec('조회 SQL ['+it.name+'] (ANSI JOIN · 초안)');
+          q.binds.forEach(function(b){ if(allBinds.indexOf(b)<0) allBinds.push(b); });
+          const rr=M.R.find(function(x){ return x.key==='q:'+(searchItems[0]||{}).key; }), sr=M.R.find(function(x){ return x.item===it&&x.kindTag==='sort'; });
+          r=mbXlParaBlock(ws,6,r,'바인드 : '+q.binds.join(', ')+(rr?' · 검색 조건 '+rr.id:'')+(sr?' · 정렬 '+sr.id:'')+' · 화면에서 입력한 테이블·컬럼ID로 만든 초안');
+          r=mbXlCodeBlock(ws,6,r,q.sql); });
+        const gridRowsAll=[];
+        if(M) gridItems.forEach(function(it){ const c=M.comp(it.cid), cols=M.gridCols(c), ro=c.colReadonly||[], ct=c.colTypes||[], L=M.srcsGet(it.key), q=sqls[it.key];
+          cols.forEach(function(nm,i){ if(!nm) return; const k=M.colSpec(c,'cols',i); const mm=q?q.map.find(function(m){ return m.label===nm&&m.colId===mbsT(k.colId).toUpperCase(); }):null;
+            const t=k.t||(L.length===1?L[0].t:'');
+            gridRowsAll.push([nm, mbsT(k.colId), mm?(mm.table.toLowerCase()+'('+mm.alias+')'):(t?t.toLowerCase():''), mm?mm.expr:'', typeOf(ct[i]||'input'), [ro[i]?'읽기전용':'편집 가능', mbsT(k.note)].filter(Boolean).join(' · ')]); }); });
+        else spec.grids.forEach(function(g){ g.rows.forEach(function(row){ gridRowsAll.push([row.label,'','','',row.type,row.note||'']); }); });
+        if(gridRowsAll.length){ sec('Display 컬럼 매핑'); r=mbXlDataTable2(ws,6,r,['한글명','영문컬럼ID','원천 테이블(별칭)','SQL 표현식 / 산출','표시타입','비고'],gridRowsAll); }
+        if(M){ const msg=[];
+          M.R.forEach(function(rr){ rr.checks.forEach(function(ck){ msg.push([rr.item?(rr.item.kind==='search'?'조회':rr.item.name):'화면 전체','('+rr.id+') '+[mbsT(ck.cond)||rr.cond].filter(Boolean).join(''),'',mbsT(ck.msg)]); }); });
+          M.EX.filter(function(e){ return e.a; }).forEach(function(e){ msg.push(['예외',e.q,'',e.a]); });
+          if(msg.length){ sec('처리 로직 & 저장 전 체크로직 (메시지코드)'); r=mbXlDataTable2(ws,6,r,['구분','조건 / 로직','메시지코드','메시지 문구'],msg); } }
+        if(allBinds.length){ sec('바인드 변수 (Bind Variables)'); r=mbXlParaBlock(ws,6,r,allBinds.join(', ')); }
+        if(M){ const ucc=[]; String(M.S.codeValues||'').split('\n').forEach(function(l){ const t=l.trim().split(/\t|\s{2,}|\s+/).filter(Boolean); if(t.length>=3&&/^[A-Z]{1,4}\d{2,5}$/i.test(t[0])) ucc.push(['','',t[0].toUpperCase(),t[1],t.slice(2).join(' ')]); });
+          if(ucc.length){ sec('사용자 종합코드'); r=mbXlDataTable2(ws,6,r,['TENANT_ID','CO_CD','MAJOR_CD','MINOR_CD','MINOR_NM'],ucc); }
+          const etc=[]; if(Object.keys(sqls).length) etc.push('· ${nolock} : DBMS 힌트 플레이스홀더(배포 시 실제 DBMS에 맞게 대체)');
+          String(M.S.policyExtra||'').split('\n').map(mbsT).filter(Boolean).forEach(function(l){ etc.push('· '+l.replace(/^[-·•]\s*/,'')); });
+          if(etc.length){ sec('기타'); r=mbXlParaLines(ws,6,r,etc); } }
       }
 
       // ── 5.테이블 레이아웃 ──────────────────────────────────────────────────────
       {
-        const ws=wb.addWorksheet('5.테이블 레이아웃');
-        [20,18,12,8,6,6,8,22].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        const ws=wb.addWorksheet('5.테이블 레이아웃',{views:[{showGridLines:false}]});
+        [20,18,12,8,6,6,8,40].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
         let r=1;
         r=mbXlSheetTitle(ws,8,r,'5. 테이블 레이아웃  (Table Layout)');
-        r=mbXlParaBlock(ws,8,r,'저장/조회 대상 테이블·컬럼 정보는 화면 구성에 나타나지 않는다.');
+        if(!M) r=mbXlParaBlock(ws,8,r,'저장/조회 대상 테이블·컬럼 정보는 화면 구성에 나타나지 않는다.');
+        else {
+          const nt=M.tables.filter(function(t){ return t.kind==='신규'||t.kind==='컬럼추가'||(t.info&&mbSpecParseTableInfo(M.S.newCols,t.id)); });
+          const anyNew=nt.some(function(t){ return t.kind==='신규'||t.kind==='컬럼추가'; });
+          const info=String(M.S.newCols||'');
+          if(!nt.length) r=mbXlParaBlock(ws,8,r,M.tables.length?"본 프로그램은 신규 테이블을 생성하지 않는다. 사용 테이블은 '4.기술사양' 참조.":'저장/조회 대상 테이블 정보가 입력되지 않았다.');
+          else {
+            r=mbXlParaBlock(ws,8,r,anyNew?'※ 테이블 디자인은 컨설턴트 협의 필요. 아래는 「테이블 정보」에 입력된 컬럼 구조 기준.':"※ 본 프로그램은 신규 테이블을 생성하지 않는다. 아래는 「테이블 정보」에 입력된 기존 테이블 구조(참고).");
+            nt.forEach(function(t){ const p=mbSpecParseTableInfo(info,t.id); const nm=t.name||(p&&p.name)||'';
+              r=mbXlSectionBanner(ws,8,r,'Table : '+t.id+(nm?' ('+nm+')':'')+(t.kind==='컬럼추가'?' - 컬럼 추가':(t.kind==='신규'?'':(anyNew?' - 기존 테이블(참고)':''))));
+              if(p) r=mbXlDataTable2(ws,8,r,['Column ID','Column Name','Type','Length','Key','Null','Default','Remark'],p.cols.map(function(c){ return [c.id,c.nm,c.type,c.len,c.pk,c.nn,'',c.rem||'']; }));
+              else r=mbXlDataTable2(ws,8,r,['Column ID','Column Name','Type','Length','Key','Null','Default','Remark'],[]); });
+            if(info.trim()&&!nt.some(function(t){ return mbSpecParseTableInfo(info,t.id); })){ r=mbXlSectionBanner(ws,8,r,'테이블 정보 (입력 원문)'); r=mbXlCodeBlock(ws,8,r,info.trim()); }
+          }
+        }
       }
 
       // ── 6.단위테스트 ────────────────────────────────────────────────────────────
       {
-        const ws=wb.addWorksheet('6.단위테스트');
-        [6,34,20,34,8,14,12,14].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        const ws=wb.addWorksheet('6.단위테스트',{views:[{showGridLines:false}]});
+        [6,40,22,40,8,14,12,14].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
         let r=1;
         r=mbXlSheetTitle(ws,8,r,'6. 단위테스트  (Unit Test)');
         r=mbXlSectionBanner(ws,8,r,'■ 테스트 케이스');
-        r=mbXlDataTable(ws,8,r,['순번','테스트 절차','테스트 데이터','예상결과','결과','오류내역','조치예정일','조치내역'],[]);
+        const tc=[];
+        if(M){
+          searchItems.forEach(function(it){ const c=M.comp(it.cid), rr=ruleOfItem('q:'+it.key), id=rr?'['+rr.id+'] ':'';
+            (c.fields||[]).forEach(function(f,i){ if(f.type==='empty'||!mbsT(f.label)) return; const m=M.colSpec(c,'fields',i).match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like');
+              if(f.required) tc.push([id+'['+mbsT(f.label)+'] 미입력 상태로 [조회]',mbsT(f.label)+' 공란','필수 입력 안내, 조회 중단']);
+              tc.push([id+'['+mbsT(f.label)+'] 입력 후 [조회]',({like:'일부 문자열',eq:'목록 값 선택',range:'시작~종료 범위',in:'값 선택'})[m],MBS_MATCH[m]+' 조건으로 조회']); }); });
+          if(searchItems.length) tc.push(['조회 결과 0건 확인','존재하지 않는 조건','"조회된 데이터가 없습니다." 안내(표준 메시지)']);
+          M.R.filter(function(rr){ return rr.kindTag; }).forEach(function(rr){ tc.push(['['+rr.id+'] ['+rr.item.name+'] '+(rr.kindTag==='edit'?'편집 불가 컬럼 수정 시도':'조회 결과 정렬 확인'),'-',rr.proc]); });
+          gridItems.forEach(function(it){ const c=M.comp(it.cid); if(c.showToolbar!==false&&c.stdAdd===false&&c.stdDelete===false) tc.push(['['+it.name+'] 행추가/행삭제 버튼 유무 확인','-','행추가·행삭제 기능 없음']); });
+          btnRules.forEach(function(rr){ tc.push(['['+rr.id+'] ['+rr.item.name+'] 클릭','정상 데이터',rr.proc]);
+            rr.checks.forEach(function(ck){ tc.push(['['+rr.id+'] ['+rr.item.name+'] 클릭 - '+(mbsT(ck.cond)||'조건 위반'),'조건에 해당하는 데이터',(mbsT(ck.msg)?'"'+mbsT(ck.msg)+'" 안내, ':'')+'처리 중단']); }); });
+          M.R.filter(function(rr){ return rr.global; }).forEach(function(rr){ tc.push(['['+rr.id+'] '+rr.title+(rr.cond?' - '+rr.cond:''),'-',rr.proc]); });
+          M.PR.forEach(function(p){ tc.push(['['+p.id+'] 업무 규칙 확인 - '+p.text,'규칙에 맞는/어긋나는 데이터','규칙대로 처리(어긋나면 처리 중단)']); });
+          M.EX.filter(function(e){ return e.a; }).forEach(function(e){ tc.push(['예외 - '+e.q,'해당 상황 데이터',e.a]); });
+        }
+        r=mbXlDataTable2(ws,8,r,['순번','테스트 절차','테스트 데이터','예상결과','결과','오류내역','조치예정일','조치내역'],tc.map(function(t,i){ return [i+1,t[0],t[1],t[2],'','','','']; }));
         r=mbXlSectionBanner(ws,8,r,'■ 공통 체크리스트');
-        MB_SPEC_CHECKLIST.forEach(function(line){ r=mbXlParaBlock(ws,8,r,line); });
+        const cl=MB_SPEC_CHECKLIST.slice(); if(M&&M.B.kind==='rep') cl[5]='· 리포트 : 출력물 vs 미리보기 일치 확인';
+        cl.forEach(function(line){ r=mbXlParaBlock(ws,8,r,line); });
+      }
+
+      // ── 99.개발지침 (사양서 프롬프트에서 개발지침 옵션을 켠 경우) ─────────────────
+      if(M&&M.O.guide!==false){
+        const ws=wb.addWorksheet('99.개발지침',{views:[{showGridLines:false}]});
+        [6,15,15,15,15,15,15,15].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+        let r=1;
+        r=mbXlSheetTitle(ws,8,r,'99. 개발지침  (Development Guidelines)');
+        r=mbXlParaBlock(ws,8,r,'사양서에 별도 기술하지 않은 사항은 하기 지침을 따른다.'); r++;
+        r=mbXlSectionBanner(ws,8,r,'■ 공통 개발지침');
+        const top=r+1;
+        r=mbXlDataTable2(ws,8,r,['No','지침'],MBS_DEV_GUIDE.map(function(g,i){ return [i+1,g]; }));
+        for(let k=top;k<r;k++) ws.getCell(k,1).alignment={horizontal:'center',vertical:'top',wrapText:true};
       }
 
       const buf=await wb.xlsx.writeBuffer();
       const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
       const suggestedName='사양서_'+(spec.title||'mockup').replace(/[\/:*?"<>|]/g,'_')+'.xlsx';
       const saved=await mbSaveBlobWithPicker(blob,suggestedName,'Excel 파일','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.xlsx');
-      if(saved) showMbToast('사양서 매핑 템플릿(.xlsx)이 저장되었습니다');
+      if(saved) showMbToast('사양서 템플릿(.xlsx)이 저장되었습니다');
     }catch(err){
       alert('사양서 템플릿을 만들지 못했습니다.\n\n'+(err&&err.message?err.message:err));
     } finally {

@@ -2252,8 +2252,8 @@ input.sp-prole.add:focus::placeholder{color:#b3bcc5;}
 
 /* 사양서 프롬프트 · BETA 표시(B 기호) */
 .sp-beta{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin-left:6px;border-radius:50%;font-size:12px;font-weight:400;font-style:italic;line-height:1;vertical-align:middle;font-family:"Cambria Math",Cambria,"Times New Roman",Georgia,serif;flex:none;cursor:help;padding-right:1px;box-sizing:border-box;}
-.topbar button.btn-sp .sp-beta{background:#fff;color:#0b7285;margin-left:6px;margin-right:-4px;}
-#spBg .modal-h h2 .sp-beta{background:#e7f4f6;color:#0b7285;box-shadow:inset 0 0 0 1px #b7d6dc;width:19px;height:19px;font-size:13px;margin-left:8px;}
+.topbar button.btn-sp .sp-beta{width:auto;height:auto;border-radius:0;background:none;color:#ffe066;font-family:inherit;font-size:9.5px;font-weight:800;font-style:italic;letter-spacing:.02em;padding:0;align-self:flex-start;margin:3px 0 0 3px;}
+#spBg .modal-h h2 .sp-beta{width:auto;height:auto;border-radius:0;background:none;box-shadow:none;color:#e8890c;font-family:inherit;font-size:10.5px;font-weight:800;font-style:italic;letter-spacing:.02em;padding:0;align-self:flex-start;margin:0 0 0 -4px;}
 
 .sp-opt-t{font-size:11px;font-weight:600;color:#8b96a1;margin-left:4px;}
 
