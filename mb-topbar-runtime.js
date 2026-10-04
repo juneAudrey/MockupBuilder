@@ -1088,30 +1088,6 @@
     ws.getRow(r).height=mbXlEstRowHeight(value, mbXlColWidthSum(ws,labelSpan+1,ncol), 9, 18);
     return r+1;
   }
-  // 데이터 표 - 컬럼헤더는 연파랑 배경+남색 굵은 9pt 가운데정렬 높이 26, 본문은 9pt 좌측·상단
-  // 정렬(모든 컬럼 동일, wrap)에 행마다 셀 내용 중 가장 긴 줄바꿈 기준으로 높이를 자동 계산한다.
-  function mbXlDataTable(ws, ncol, r, headers, rows){
-    headers.forEach(function(h,i){
-      const c=ws.getCell(r,i+1);
-      c.value=h; c.font=mbXlFontColHead(); c.fill=MB_XL_FILL_COLHEAD; c.border=MB_XL_BORDER_ALL;
-      c.alignment={horizontal:'center', vertical:'middle', wrapText:true};
-    });
-    ws.getRow(r).height=26.1; r++;
-    rows.forEach(function(row){
-      let maxH=18;
-      row.forEach(function(v,i){
-        if(i>=headers.length) return;
-        const c=ws.getCell(r,i+1);
-        if(v!==null && v!==undefined && v!=='') c.value=v;
-        c.font=mbXlFontBody();
-        c.border=MB_XL_BORDER_ALL; c.alignment={horizontal:'left', vertical:'top', wrapText:true};
-        maxH=Math.max(maxH, mbXlEstRowHeight(v, ws.getColumn(i+1).width||8.43, 9, 18));
-      });
-      ws.getRow(r).height=maxH;
-      r++;
-    });
-    return r;
-  }
   function mbXlHeaderKV(ws, ncol, r, pairs){
     pairs.forEach(function(p){ r=mbXlKVRow(ws, ncol, 2, r, p[0], p[1], {fill:MB_XL_FILL_LABEL}); });
     return r;
@@ -1245,7 +1221,7 @@
     const R=[];
     items.forEach(function(it){
       if(it.kind==='search'){ const c=comp(it.cid), s=cs(c), fs=c.fields||[];
-        const parts=fs.map(function(f,i){ return f.type==='empty'?null:((f.label||'조건'+(i+1))+'='+MBS_MATCH[colSpec(c,'fields',i).match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like')]); }).filter(Boolean);
+        const parts=fs.map(function(f,i){ return f.type==='empty'?null:((f.label||'조건'+(i+1))+'='+(MBS_MATCH[colSpec(c,'fields',i).match]||MBS_MATCH[f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like'])); }).filter(Boolean);
         R.push({key:'q:'+it.key,item:it,title:'조회조건 검색',on:'[조회]',cond:'[조회] 클릭 시',proc:'조건별 검색 방식: '+parts.join(', ')+'.'+(s.emptyAll===false?'':' 입력하지 않은 조건은 적용하지 않는다(전체 조회).')+(mbsT(s.note)?' '+mbsT(s.note):''),checks:fs.some(function(f){ return f.required; })?[{cond:'필수 조회조건이 비어 있으면',msg:'(필수 조건)을(를) 입력하세요. (표준 메시지)'}]:[]}); }
       if(it.kind==='grid'){ const c=comp(it.cid), s=cs(c), cols=gridCols(c), ro=c.colReadonly||[];
         if(s.sortCol!=null&&s.sortCol!==''&&cols[+s.sortCol]!=null) R.push({item:it,title:'그리드 정렬',on:it.name,cond:'조회 결과 표시 시',proc:cols[+s.sortCol]+' '+(s.sortDir==='desc'?'내림차순':'오름차순')+'으로 정렬한다.',checks:[],kindTag:'sort'});
@@ -1258,12 +1234,12 @@
         const base={search:'조회조건으로 목록을 조회한다.',save:'입력·수정한 내용을 저장한다.',delete:'선택한 데이터를 삭제한다.',jump:via+(mbsT(s.target)||'대상')+' 화면으로 이동하고 자동 조회한다.',popup:(mbsT(s.target)||'팝업')+'을(를) 열고, 고른 값을 '+(s.pass||'해당 항목')+'에 넣는다.',custom:''}[a];
         let proc=[base,mbsT(s.proc)].filter(Boolean).join(' ');
         if(a==='save'||a==='delete'){ const tg=writeTargets(it); if(tg) proc+=' '+(a==='save'?'저장':'삭제')+' 대상: '+tg+'.'; }
-        R.push({key:it.key,item:it,title:it.name+' 버튼 · '+MBS_ACT[a],on:nm+(it.where?' ('+it.where+')':''),cond:nm+' 클릭 시',proc:proc,action:a,target:mbsT(s.target),checks:(s.checks||[]).filter(function(k){ return mbsT(k.cond)||mbsT(k.msg); })}); }
+        R.push({key:it.key,item:it,title:it.name+' 버튼 · '+MBS_ACT[a],on:nm+(it.where?' ('+it.where+')':''),cond:nm+' 클릭 시',proc:proc,action:a,target:mbsT(s.target),checks:(s.checks||[]).filter(function(k){ return k&&(mbsT(k.cond)||mbsT(k.msg)); })}); }
     });
     (S.rules||[]).filter(function(r){ return mbsT(r.title)||mbsT(r.proc)||mbsT(r.cond); }).forEach(function(r){ R.push({title:mbsT(r.title)||'화면 규칙',on:'화면 전체',cond:mbsT(r.cond),proc:mbsT(r.proc),checks:mbsT(r.msg)?[{cond:'',msg:mbsT(r.msg)}]:[],global:true}); });
     R.forEach(function(r,i){ r.id='R'+String(i+1).padStart(2,'0'); });
     const PR=P.rules.filter(function(r){ return mbsT(r.text); }).map(function(r,i){ return {id:'P'+String(i+1).padStart(2,'0'),tag:mbsT(r.tag)||'기타',text:mbsT(r.text)}; });
-    const procAny=!!(P.prev.length||P.next.length||mbsT(P.flowNote)||PR.length||P.roles.length||mbsT(P.raw)||P.ex.some(function(e){ return mbsT(e.a); }));
+    const procAny=!!(P.prev.length||P.next.length||mbsT(P.flowNote)||PR.length||P.roles.length||mbsT(P.raw)||P.ex.some(function(e){ return e&&mbsT(e.a); }));
     const EX=procAny?P.ex.filter(function(e){ return mbsT(e.q); }).map(function(e){ return {q:mbsT(e.q),a:mbsT(e.a)}; }):[];
     // 테이블(4.기술사양 4-1) - 빌더 「사용하는 테이블」에 저장된 행 + 화면 설명의 데이터 출처
     const usage={};
@@ -1322,17 +1298,28 @@
     return {sql:lines.join('\n'),binds:binds.filter(function(v,i,a){ return a.indexOf(v)===i; }),map:map,tables:L,alias:alias};
   }
 
-  // 「테이블 정보」 자유 입력에서 지정한 테이블의 컬럼 줄을 찾아 표로 만든다(확실히 읽히는 줄만). 못 읽으면 null.
-  // 「테이블 정보」에서 테이블 머리줄(테이블ID [한글명] [※ 컬럼 추가/신규])만 골라낸다
+  // 「테이블 정보」에서 테이블 머리줄(테이블ID [한글명] [※ 컬럼 추가/신규])을 알아본다.
+  // 컬럼 줄(「CUST_CD  거래처코드」처럼 두 칸짜리)과 헷갈리지 않도록, 글 맨 앞이나 빈 줄 바로 다음 줄이면서
+  // ① 괄호 이름 ② 신규/컬럼추가 표시 ③ 다음 줄이 머리글 행이거나 3칸 이상의 컬럼 줄 - 중 하나를 만족할 때만 머리줄로 본다.
+  function mbsTiHeadAt(lines,i){
+    const l=String(lines[i]||'').trim(); if(!l) return null;
+    const prev=i>0?String(lines[i-1]||'').trim():'';
+    const c=l.split(/\t|\s{2,}|\|/).map(function(x){ return x.trim(); }).filter(Boolean); if(!c.length||c.length>2) return null;
+    const m=l.match(/([A-Za-z][A-Za-z0-9_$#]*_[A-Za-z0-9_$#]+)/); if(!m) return null;
+    const rest=l.split(m[1]).join(' ');
+    if(MBS_TI_TYPE.test(rest.replace(/[|()（）]/g,' ').trim())||/\bpk\b|not\s*null/i.test(rest)) return null; // 컬럼 줄
+    const marker=/컬럼\s*추가|add\s*col|신규|new\b|생성/i.test(l), paren=/[(（][^)）]+[)）]/.test(rest);
+    // 앞줄이 비어 있지 않으면(표 중간) 「신규/컬럼추가」 표시나, 탭 없이 쓴 「ID (이름)」 줄만 머리줄로 본다
+    if(prev&&!(marker||(paren&&l.indexOf('\t')<0))) return null;
+    let next=''; for(let k=i+1;k<lines.length;k++){ const t=String(lines[k]||'').trim(); if(t){ next=t; break; } }
+    const nc=next?mbsTiSplit(next).filter(Boolean):[];
+    if(!(marker||paren||mbsTiHeader(mbsTiSplit(next))||nc.length>=3)) return null;
+    const nm=rest.replace(/[()（）:：※|\-]/g,' ').replace(/컬럼\s*추가|신규|테이블|생성|추가/g,' ').replace(/\s+/g,' ').trim();
+    return {id:m[1].toUpperCase(),name:/[가-힣]/.test(nm)?nm:'',kind:/컬럼\s*추가|add\s*col/i.test(l)?'컬럼추가':(/신규|new\b|생성/i.test(l)?'신규':'')};
+  }
   function mbSpecTableInfoHeads(text){
-    const out=[];
-    String(text||'').replace(/\r/g,'').split('\n').forEach(function(raw){ const l=raw.trim(); if(!l) return;
-      const cells=l.split(/\t|\s{2,}/).map(function(x){ return x.trim(); }).filter(Boolean); if(cells.length>2) return;
-      const m=l.match(/([A-Za-z][A-Za-z0-9_$#]*_[A-Za-z0-9_$#]+)/); if(!m) return;
-      if(/^(n?var)?char|int\b|numeric|decimal|date|\bpk\b|not\s*null/i.test(l.replace(m[1],''))) return; // 컬럼 줄
-      const id=m[1].toUpperCase(); if(out.some(function(x){ return x.id===id; })) return;
-      const nm=l.replace(m[1],'').replace(/[()（）:：※\-]/g,' ').replace(/컬럼\s*추가|신규|테이블|생성|추가/g,'').trim();
-      out.push({id:id,name:/[가-힣]/.test(nm)?nm.replace(/\s+/g,' '):'',kind:/컬럼\s*추가|add\s*col/i.test(l)?'컬럼추가':(/신규|new\b|생성/i.test(l)?'신규':'')}); });
+    const out=[]; const lines=String(text||'').replace(/\r/g,'').split('\n');
+    lines.forEach(function(_,i){ const h=mbsTiHeadAt(lines,i); if(h&&!out.some(function(x){ return x.id===h.id; })) out.push(h); });
     return out;
   }
   // 「테이블 정보」의 컬럼 표를 읽어 5.테이블 레이아웃 행으로 바꾼다.
@@ -1343,13 +1330,13 @@
   const MBS_TI_HEAD=[
     ['id',/^(필드|컬럼|column|field|col)(id|코드|영문명?)?$|^(id|물리명|영문컬럼id|columnid|fieldid)$/],
     ['nm',/^(필드|컬럼|column|field)(명|name|한글명?)$|^(논리명|한글명|명칭|이름|name|항목명?)$/],
-    ['type',/^(데이터)?(타입|type|형식|유형)$|^(datatype|자료형)$/],
-    ['len',/^(길이|length|len|size|크기|자리수)$/],
-    ['key',/^(key|키|pk|기본키|primarykey)$/],
-    ['nn',/^(null|nullable|null허용|널|널허용|allownull)$/],
+    ['type',/^(데이터)?(타입|type|형식|유형)$|^(datatype|자료형|columntype)$/],
+    ['len',/^(길이|length|len|size|크기|자리수|charactermaximumlength|maxlength)$/],
+    ['key',/^(key|키|pk|기본키|primarykey|columnkey)$/],
+    ['nn',/^(null|nullable|null허용|널|널허용|allownull|isnullable)$/],
     ['req',/^(notnull|필수|필수여부|required|mandatory)$/],
-    ['def',/^(기본값|default|디폴트|초기값|defaultvalue)$/],
-    ['rem',/^(비고|설명|remark|remarks|comment|comments|description|코멘트|메모|note)$/]
+    ['def',/^(기본값|default|디폴트|초기값|defaultvalue|columndefault)$/],
+    ['rem',/^(비고|설명|remark|remarks|comment|comments|description|코멘트|메모|note|columncomment)$/]
   ];
   const MBS_TI_TYPE=/^(n?var)?char|^n?varchar|^(tiny|small|big|medium)?int(eger)?\b|^numeric|^number|^decimal|^float|^double|^real|^money|^date|^datetime|^timestamp|^time\b|^bit\b|^boolean|^bool\b|^n?text|^n?clob|^blob|^uniqueidentifier|^image\b|^varbinary/i;
   function mbsTiSplit(l){
@@ -1367,16 +1354,15 @@
   function mbsTiBlank(v){ v=String(v==null?'':v).trim(); return (v===''||v==='-'||v==='—')?'':v; }
   function mbsTiType(t,len){ t=mbsTiBlank(t); len=mbsTiBlank(len); const m=t.match(/^([A-Za-z][A-Za-z0-9 ]*?)\s*\(([^)]*)\)\s*$/);
     if(m) return {type:m[1].trim().toLowerCase(),len:len||m[2].replace(/\s+/g,'')}; return {type:t.toLowerCase(),len:len}; }
-  function mbsTiKey(v){ v=mbsTiBlank(v); if(!v) return ''; if(/^fk$/i.test(v)) return 'FK'; if(/pk|primary|^(y|yes|o|v|●|○|✓|✔|1|true)$/i.test(v)) return 'PK'; if(/^(n|no|x|0|false)$/i.test(v)) return ''; return v.toUpperCase(); }
+  function mbsTiKey(v){ v=mbsTiBlank(v); if(!v) return ''; if(/^fk$/i.test(v)) return 'FK'; if(/pk|primary|^pri$|^(y|yes|o|v|●|○|✓|✔|1|true)$/i.test(v)) return 'PK'; if(/^(n|no|x|0|false)$/i.test(v)) return ''; return v.toUpperCase(); }
   function mbsTiYN(v){ v=mbsTiBlank(v); if(!v) return ''; if(/^(y|yes|o|v|●|✓|✔|1|true|null|허용|가능)$/i.test(v)) return 'Y'; if(/^(n|no|x|0|false|not\s*null|불가|불허)$/i.test(v)) return 'N'; return v; }
   function mbSpecParseTableInfo(text,tableId,opts){
     const lines=String(text||'').replace(/\r/g,'').split('\n'); const T=String(tableId).toUpperCase(); const whole=!!(opts&&opts.whole);
     let on=whole, out=[], name='', hmap=null;
-    const isHead=function(l){ const c=l.split(/\t|\s{2,}|\|/).map(function(x){ return x.trim(); }).filter(Boolean); if(c.length>2) return null; const m=l.match(/([A-Za-z][A-Za-z0-9_$#]*_[A-Za-z0-9_$#]+)/); if(!m) return null;
-      if(MBS_TI_TYPE.test(l.replace(m[1],'').trim())||/\bpk\b|not\s*null/i.test(l)) return null; return m[1].toUpperCase(); };
-    for(const raw of lines){ const l=raw.trim(); if(!l){ if(on&&out.length&&!whole) break; continue; }
-      const h=isHead(l);
-      if(h&&!whole){ if(h===T){ on=true; hmap=null; const nm=l.replace(new RegExp(h,'i'),'').replace(/[()（）:：※\-]/g,' ').replace(/컬럼\s*추가|신규|테이블|생성|추가/g,'').trim(); name=/[가-힣]/.test(nm)?nm.replace(/\s+/g,' '):''; continue; } else if(on){ break; } else continue; }
+    // (머리줄 판정은 mbsTiHeadAt과 같은 기준)
+    for(let li=0;li<lines.length;li++){ const l=lines[li].trim(); if(!l){ if(on&&out.length&&!whole) break; continue; }
+      const hd=whole?null:mbsTiHeadAt(lines,li);
+      if(hd){ if(hd.id===T){ on=true; hmap=null; name=hd.name; continue; } else if(on){ break; } else continue; }
       if(!on) continue;
       const cells=mbsTiSplit(l);
       const hm=mbsTiHeader(cells); if(hm){ hmap=hm; continue; }
@@ -1408,8 +1394,10 @@
     return out.length?{name:name,cols:out}:null;
   }
 
+  // 이 런타임의 사양서 내보내기 버전 - 메인 화면 「사양서 템플릿 저장」이 최신 기능(프롬프트 정보로 채우기)인지 확인할 때 쓴다.
+  window.mbSpecExportVer=2;
   window.mbOpenSpecExport=async function(){
-    if(!mbIsThin) return; // 씬모드 화면에서만
+    if(!mbIsThin) return false; // 씬모드 화면에서만
     const badge=document.getElementById('mbBadgeS');
     const badgeOrigHtml=badge?badge.innerHTML:'';
     if(badge){ badge.style.pointerEvents='none'; badge.style.opacity='.6'; }
@@ -1453,7 +1441,6 @@
       const ruleOfItem=function(key){ return M?M.R.find(function(r){ return r.key===key; }):null; };
       const sqls={}; gridItems.forEach(function(it){ const q=mbSpecGridSQL(M,it); if(q) sqls[it.key]=q; });
       const typeOf=function(t){ return mbSpecTypeLabel(t||'text'); };
-      const actSummary=function(r){ return r?(MBS_ACT[r.action]+(r.target?' ('+r.target+')':'')+' ('+r.id+')'):''; };
 
       // 화면LO의 [조회조건 Selection]/[섹션]/[그리드] 표에 쓸 필드 그룹(사양서 프롬프트 입력이 있으면 컬럼ID·테이블·설명까지)
       const fieldGroups=[];
@@ -1468,7 +1455,7 @@
           const rows=(c.fields||[]).map(function(f,i){ if(f.type==='empty'||!mbsT(f.label)) return null; const k=M.colSpec(c,'fields',i);
             const m=k.match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like');
             const code=M.codes['c'+c.id+'.f'+i];
-            const desc=[MBS_MATCH[m]+' 검색', mbsT(k.note), code?('공통코드 : '+code):'', mbsNoteOpt(f)].filter(Boolean).join('. ');
+            const desc=[(MBS_MATCH[m]?MBS_MATCH[m]+' 검색':''), mbsT(k.note), code?('공통코드 : '+code):'', mbsNoteOpt(f)].filter(Boolean).join('. ');
             return {vals:[mbsT(f.label), mbsT(k.colId), '저장안함(조회전용)', typeOf(f.type), desc, f.required?'Y(필수)':'N(선택)', 'N', 'Y']}; }).filter(Boolean);
           rows.push({vals:['조회','-','-','버튼','조회조건으로 목록 조회'+(s.emptyAll===false?'':'. 입력하지 않은 조건은 적용하지 않음(전체 조회)')+(rr?' ('+rr.id+')':''),'N','N','Y']});
           fieldGroups.push({title:'[조회조건 Selection]  (저장 없음)', rows:rows});
@@ -1544,7 +1531,7 @@
         if(!M) desc=mbSpecDescText(spec);
         else {
           const L=[]; let n=0;
-          searchItems.forEach(function(it){ const c=M.comp(it.cid); const parts=(c.fields||[]).filter(function(f){ return f.type!=='empty'&&mbsT(f.label); }).map(function(f){ const i=(c.fields||[]).indexOf(f); const m=M.colSpec(c,'fields',i).match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like'); return '['+mbsT(f.label)+']('+({eq:'같음',like:'포함',range:'범위',in:'선택값'})[m]+')'; });
+          searchItems.forEach(function(it){ const c=M.comp(it.cid); const parts=(c.fields||[]).filter(function(f){ return f.type!=='empty'&&mbsT(f.label); }).map(function(f){ const i=(c.fields||[]).indexOf(f); const m=M.colSpec(c,'fields',i).match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like'); return '['+mbsT(f.label)+']('+(({eq:'같음',like:'포함',range:'범위',in:'선택값'})[m]||'같음')+')'; });
             L.push(mbsCircled(n++)+' 조회'); L.push('　[조회조건]을 입력하고 [조회]를 누르면'+(gridItems.length?' ['+gridItems.map(function(g){ return g.name; }).join('], [')+']에':'')+' 목록이 표시된다.'); if(parts.length) L.push('　▷ 검색 방식 : '+parts.join('·')); });
           gridItems.forEach(function(it){ const c=M.comp(it.cid), cols=M.gridCols(c), ro=c.colReadonly||[], Ls=M.srcsGet(it.key);
             L.push(mbsCircled(n++)+' ['+it.name+'] 그리드');
@@ -1695,7 +1682,7 @@
           searchItems.forEach(function(it){ const c=M.comp(it.cid), rr=ruleOfItem('q:'+it.key), id=rr?'['+rr.id+'] ':'';
             (c.fields||[]).forEach(function(f,i){ if(f.type==='empty'||!mbsT(f.label)) return; const m=M.colSpec(c,'fields',i).match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like');
               if(f.required) tc.push([id+'['+mbsT(f.label)+'] 미입력 상태로 [조회]',mbsT(f.label)+' 공란','필수 입력 안내, 조회 중단']);
-              tc.push([id+'['+mbsT(f.label)+'] 입력 후 [조회]',({like:'일부 문자열',eq:'목록 값 선택',range:'시작~종료 범위',in:'값 선택'})[m],MBS_MATCH[m]+' 조건으로 조회']); }); });
+              tc.push([id+'['+mbsT(f.label)+'] 입력 후 [조회]',({like:'일부 문자열',eq:'목록 값 선택',range:'시작~종료 범위',in:'값 선택'})[m]||'조건 값',(MBS_MATCH[m]||'입력한')+' 조건으로 조회']); }); });
           if(searchItems.length) tc.push(['조회 결과 0건 확인','존재하지 않는 조건','"조회된 데이터가 없습니다." 안내(표준 메시지)']);
           M.R.filter(function(rr){ return rr.kindTag; }).forEach(function(rr){ tc.push(['['+rr.id+'] ['+rr.item.name+'] '+(rr.kindTag==='edit'?'편집 불가 컬럼 수정 시도':'조회 결과 정렬 확인'),'-',rr.proc]); });
           gridItems.forEach(function(it){ const c=M.comp(it.cid); if(c.showToolbar!==false&&c.stdAdd===false&&c.stdDelete===false) tc.push(['['+it.name+'] 행추가/행삭제 버튼 유무 확인','-','행추가·행삭제 기능 없음']); });
@@ -1726,11 +1713,13 @@
 
       const buf=await wb.xlsx.writeBuffer();
       const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-      const suggestedName='사양서_'+(spec.title||'mockup').replace(/[\/:*?"<>|]/g,'_')+'.xlsx';
+      const suggestedName='사양서_'+(progName||spec.title||'mockup').replace(/[\/:*?"<>|]/g,'_')+'.xlsx';
       const saved=await mbSaveBlobWithPicker(blob,suggestedName,'Excel 파일','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.xlsx');
       if(saved) showMbToast('사양서 템플릿(.xlsx)이 저장되었습니다');
+      return saved; // 저장한 파일 이름, 취소하면 false (메인 화면 「사양서 템플릿 저장」이 결과를 확인한다)
     }catch(err){
       alert('사양서 템플릿을 만들지 못했습니다.\n\n'+(err&&err.message?err.message:err));
+      return false;
     } finally {
       hideCapBusy();
       if(badge){ badge.style.pointerEvents=''; badge.style.opacity=''; badge.innerHTML=badgeOrigHtml; }

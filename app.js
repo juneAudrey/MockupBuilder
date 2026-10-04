@@ -8440,13 +8440,18 @@ window.spSaveTemplate=async function(btn){
     // 상단바 런타임이 실행될 때까지 기다린다(최대 15초)
     const t0=Date.now(); while(!(w&&typeof w.mbOpenSpecExport==='function')&&Date.now()-t0<15000) await new Promise(r=>setTimeout(r,150));
     if(!(w&&typeof w.mbOpenSpecExport==='function')) throw new Error('인터넷 연결을 확인해 주세요 - 사양서 템플릿 기능을 불러오지 못했습니다.');
+    // 예전 상단바 런타임(사양서 프롬프트 정보로 채우기 이전 버전)이 캐시·배포돼 있으면 입력 내용이 빠진 파일이 나오므로 멈춘다
+    if(!(w.mbSpecExportVer>=2)) throw new Error('사양서 템플릿 기능이 최신 버전이 아닙니다. 잠시 뒤(또는 새로고침 후) 다시 시도해 주세요.');
     w.alert=function(m){ err=String(m||'').replace(/^사양서 템플릿을 만들지 못했습니다\.\s*/,''); };
     if(handle) w.showSaveFilePicker=async function(){ return handle; };
     else { try{ delete w.showSaveFilePicker; }catch(e){} w.showSaveFilePicker=undefined; }
-    await w.mbOpenSpecExport();
+    const saved=await w.mbOpenSpecExport();
     if(err) throw new Error(err);
+    if(!saved) throw new Error('파일을 저장하지 못했습니다. 다시 시도해 주세요.');
     spToast('사양서 템플릿을 저장했어요 · 입력한 내용만 담긴 기본 사양서예요');
   }catch(e){
+    // 저장 위치 창에서 고른 파일은 그 순간 빈 파일로 만들어지므로, 실패하면 지운다(지원하는 브라우저만)
+    if(handle&&typeof handle.remove==='function'){ try{ await handle.remove(); }catch(_){} }
     mbAlert('사양서 템플릿을 만들지 못했습니다.\n\n'+(e&&e.message?e.message:e));
   }finally{
     spTplBusy=false;
@@ -12390,6 +12395,8 @@ function mbCloudSharedZoomReset(){
    */
   const GPS_ASKED_KEY = 'mb_gps_asked_at';
   const GPS_REASK_MS = 30 * 24 * 60 * 60 * 1000;
+  const GPS_LAST_KEY = 'mb_gps_last';      // 직전 위치 결과(ok/denied/…) - 「이번만 허용」으로 허용이 풀린 경우 다시 묻기 위해
+  const GPS_COLS_OK_KEY = 'mb_gps_cols_ok'; // DB에 gps_* 컬럼이 있는 것이 확인되면 1
   let gpsCache = null; // { at, data } - 같은 세션의 모드 전환 로그는 10분 동안 다시 묻지 않고 재사용
   async function gpsPermState(){
     try{ if (navigator.permissions && navigator.permissions.query) return (await navigator.permissions.query({ name: 'geolocation' })).state; }catch(_){}
@@ -12413,8 +12420,9 @@ function mbCloudSharedZoomReset(){
     const st = await gpsPermState();
     if (st === 'denied') return { status: 'denied' };
     if (st !== 'granted') {
-      let asked = 0; try{ asked = +localStorage.getItem(GPS_ASKED_KEY) || 0; }catch(_){}
-      if (!allowPrompt || (asked && Date.now() - asked < GPS_REASK_MS)) return { status: 'skipped' };
+      let asked = 0, last = ''; try{ asked = +localStorage.getItem(GPS_ASKED_KEY) || 0; last = localStorage.getItem(GPS_LAST_KEY) || ''; }catch(_){}
+      // 지난번에 허용했는데 지금 권한이 없으면(「이번만 허용」이 풀렸거나, 권한 상태를 알려주지 않는 브라우저) 30일을 기다리지 않고 다시 묻는다
+      if (!allowPrompt || (last !== 'ok' && asked && Date.now() - asked < GPS_REASK_MS)) return { status: 'skipped' };
       try{ localStorage.setItem(GPS_ASKED_KEY, String(Date.now())); }catch(_){}
     }
     // 권한창에 답할 시간까지 포함해 최대 25초(이미 허용이면 12초)만 기다린다.
@@ -12427,6 +12435,7 @@ function mbCloudSharedZoomReset(){
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 5 * 60 * 1000 });
       }catch(_){ clearTimeout(t); resolve({ err: 'error' }); }
     });
+    try{ localStorage.setItem(GPS_LAST_KEY, res.p ? 'ok' : res.err); }catch(_){}
     if (!res.p) return { status: res.err };
     const lat = Math.round(res.p.coords.latitude * 1e6) / 1e6, lng = Math.round(res.p.coords.longitude * 1e6) / 1e6;
     const accuracy = Math.round(res.p.coords.accuracy || 0) || null;
@@ -12575,13 +12584,17 @@ function mbCloudSharedZoomReset(){
   }
   async function insertAccessRow(row, keepalive){
     if (SUPABASE_KEY.includes('여기에')) { writeLocalFallback(row, 'key-not-configured'); return; }
+    // 페이지를 닫는 순간 보내는 요청(keepalive)은 실패해도 다시 보낼 수 없으므로, gps_* 컬럼이 있는 게 확인되기 전에는 기존 형식으로 보낸다
+    if (keepalive && !gpsColsMissing) { let ok = false; try{ ok = localStorage.getItem(GPS_COLS_OK_KEY) === '1'; }catch(_){} if (!ok) gpsColsMissing = true; }
     const post = (body) => fetchWithTimeout(`${SUPABASE_URL}/rest/v1/mockup_access_log`, {
       method: 'POST', keepalive: !!keepalive,
       headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
       body: JSON.stringify(body)
     }, 8000);
     try{
-      let res = await post(gpsColsMissing ? toLegacyRow(row) : row);
+      const full = !gpsColsMissing;
+      let res = await post(full ? row : toLegacyRow(row));
+      if (res.ok && full) { try{ localStorage.setItem(GPS_COLS_OK_KEY, '1'); }catch(_){} }
       if (!res.ok) {
         let text = await res.text().catch(() => '');
         if (!gpsColsMissing && /gps_/.test(text)) {
