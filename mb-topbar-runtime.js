@@ -1335,19 +1335,75 @@
       out.push({id:id,name:/[가-힣]/.test(nm)?nm.replace(/\s+/g,' '):'',kind:/컬럼\s*추가|add\s*col/i.test(l)?'컬럼추가':(/신규|new\b|생성/i.test(l)?'신규':'')}); });
     return out;
   }
-  function mbSpecParseTableInfo(text,tableId){
-    const lines=String(text||'').replace(/\r/g,'').split('\n'); const T=String(tableId).toUpperCase(); let on=false, out=[], name='';
-    const isHead=function(l){ const m=l.match(/([A-Za-z][A-Za-z0-9_$#]*_[A-Za-z0-9_$#]+)/); return m?m[1].toUpperCase():null; };
-    for(const raw of lines){ const l=raw.trim(); if(!l){ if(on&&out.length) break; continue; }
-      const cells=l.split(/\t|\s{2,}/).map(function(x){ return x.trim(); }).filter(Boolean);
-      if(cells.length<=2&&isHead(l)){ const h=isHead(l); if(h===T){ on=true; const nm=l.replace(new RegExp(h,'i'),'').replace(/[()（）:：※]/g,' ').replace(/컬럼\s*추가|신규|테이블/g,'').trim(); name=/[가-힣]/.test(nm)?nm.replace(/\s+/g,' '):''; continue; } else if(on){ break; } }
+  // 「테이블 정보」의 컬럼 표를 읽어 5.테이블 레이아웃 행으로 바꾼다.
+  // - 엑셀·DB 툴에서 복사한 탭 구분 표를 기본으로, 「|」 구분·두 칸 이상 공백 구분도 읽는다(탭은 빈 칸도 자리를 지킨다).
+  // - 머리글 행(필드ID/컬럼ID · 필드명 · 타입 · 길이 · 기본값 · KEY · NULL(ABLE) · 비고…)이 있으면 그 순서대로 정확히 맞춘다.
+  //   없으면 값 모양(타입·숫자·PK·Yes/No)으로 추정한다.
+  // - 테이블 머리줄(테이블ID [이름])이 하나도 없고 대상 테이블이 하나뿐이면(opts.whole) 글 전체를 그 테이블의 컬럼으로 본다.
+  const MBS_TI_HEAD=[
+    ['id',/^(필드|컬럼|column|field|col)(id|코드|영문명?)?$|^(id|물리명|영문컬럼id|columnid|fieldid)$/],
+    ['nm',/^(필드|컬럼|column|field)(명|name|한글명?)$|^(논리명|한글명|명칭|이름|name|항목명?)$/],
+    ['type',/^(데이터)?(타입|type|형식|유형)$|^(datatype|자료형)$/],
+    ['len',/^(길이|length|len|size|크기|자리수)$/],
+    ['key',/^(key|키|pk|기본키|primarykey)$/],
+    ['nn',/^(null|nullable|null허용|널|널허용|allownull)$/],
+    ['req',/^(notnull|필수|필수여부|required|mandatory)$/],
+    ['def',/^(기본값|default|디폴트|초기값|defaultvalue)$/],
+    ['rem',/^(비고|설명|remark|remarks|comment|comments|description|코멘트|메모|note)$/]
+  ];
+  const MBS_TI_TYPE=/^(n?var)?char|^n?varchar|^(tiny|small|big|medium)?int(eger)?\b|^numeric|^number|^decimal|^float|^double|^real|^money|^date|^datetime|^timestamp|^time\b|^bit\b|^boolean|^bool\b|^n?text|^n?clob|^blob|^uniqueidentifier|^image\b|^varbinary/i;
+  function mbsTiSplit(l){
+    if(l.indexOf('\t')>=0) return l.split('\t').map(function(x){ return x.trim(); });
+    if(l.indexOf('|')>=0){ const a=l.split('|').map(function(x){ return x.trim(); }); if(a[0]==='') a.shift(); if(a.length&&a[a.length-1]==='') a.pop(); return a; }
+    const a=l.split(/\s{2,}/).map(function(x){ return x.trim(); }).filter(Boolean);
+    return a.length>1?a:l.split(/\s+/).filter(Boolean);
+  }
+  function mbsTiHeader(cells){
+    const map={}; let hit=0;
+    cells.forEach(function(c,i){ const k=String(c).toLowerCase().replace(/[\s_\-()（）.]/g,''); if(!k) return;
+      for(const h of MBS_TI_HEAD){ if(h[1].test(k)&&map[h[0]]==null){ map[h[0]]=i; hit++; break; } } });
+    return hit>=2&&map.id!=null?map:null;
+  }
+  function mbsTiBlank(v){ v=String(v==null?'':v).trim(); return (v===''||v==='-'||v==='—')?'':v; }
+  function mbsTiType(t,len){ t=mbsTiBlank(t); len=mbsTiBlank(len); const m=t.match(/^([A-Za-z][A-Za-z0-9 ]*?)\s*\(([^)]*)\)\s*$/);
+    if(m) return {type:m[1].trim().toLowerCase(),len:len||m[2].replace(/\s+/g,'')}; return {type:t.toLowerCase(),len:len}; }
+  function mbsTiKey(v){ v=mbsTiBlank(v); if(!v) return ''; if(/^fk$/i.test(v)) return 'FK'; if(/pk|primary|^(y|yes|o|v|●|○|✓|✔|1|true)$/i.test(v)) return 'PK'; if(/^(n|no|x|0|false)$/i.test(v)) return ''; return v.toUpperCase(); }
+  function mbsTiYN(v){ v=mbsTiBlank(v); if(!v) return ''; if(/^(y|yes|o|v|●|✓|✔|1|true|null|허용|가능)$/i.test(v)) return 'Y'; if(/^(n|no|x|0|false|not\s*null|불가|불허)$/i.test(v)) return 'N'; return v; }
+  function mbSpecParseTableInfo(text,tableId,opts){
+    const lines=String(text||'').replace(/\r/g,'').split('\n'); const T=String(tableId).toUpperCase(); const whole=!!(opts&&opts.whole);
+    let on=whole, out=[], name='', hmap=null;
+    const isHead=function(l){ const c=l.split(/\t|\s{2,}|\|/).map(function(x){ return x.trim(); }).filter(Boolean); if(c.length>2) return null; const m=l.match(/([A-Za-z][A-Za-z0-9_$#]*_[A-Za-z0-9_$#]+)/); if(!m) return null;
+      if(MBS_TI_TYPE.test(l.replace(m[1],'').trim())||/\bpk\b|not\s*null/i.test(l)) return null; return m[1].toUpperCase(); };
+    for(const raw of lines){ const l=raw.trim(); if(!l){ if(on&&out.length&&!whole) break; continue; }
+      const h=isHead(l);
+      if(h&&!whole){ if(h===T){ on=true; hmap=null; const nm=l.replace(new RegExp(h,'i'),'').replace(/[()（）:：※\-]/g,' ').replace(/컬럼\s*추가|신규|테이블|생성|추가/g,'').trim(); name=/[가-힣]/.test(nm)?nm.replace(/\s+/g,' '):''; continue; } else if(on){ break; } else continue; }
       if(!on) continue;
-      if(cells.length<2||!/^[A-Za-z_][A-Za-z0-9_$#]*$/.test(cells[0])) continue;
-      const typ=cells.find(function(x){ return /^(n?var)?char|^n?varchar|^(tiny|small|big)?int|^numeric|^decimal|^float|^date|^datetime|^bit|^n?text/i.test(x); })||'';
-      const m=typ.match(/^([A-Za-z]+)\s*\(([^)]*)\)/);
-      const nmv=(cells.find(function(x,i){ return i>0&&/[가-힣]/.test(x); })||(cells[1]!==typ?cells[1]:''));
-      const rem=cells.slice(1).filter(function(x){ return x!==nmv&&x!==typ&&!/^(pk|fk|not\s*null|null|y|n|key)$/i.test(x); }).join(' ');
-      out.push({rem:rem,id:cells[0].toUpperCase(),nm:nmv,type:m?m[1].toLowerCase():typ.toLowerCase(),len:m?m[2]:'',pk:cells.some(function(x){ return /^pk$/i.test(x); })?'PK':'',nn:(/not\s*null/i.test(l)||cells.some(function(x){ return /^pk$/i.test(x); }))?'N':(/\bnull\b/i.test(l)?'Y':'')});
+      const cells=mbsTiSplit(l);
+      const hm=mbsTiHeader(cells); if(hm){ hmap=hm; continue; }
+      if(hmap){
+        const g=function(k){ return hmap[k]!=null?mbsTiBlank(cells[hmap[k]]):''; };
+        const id=g('id'); if(!/^[A-Za-z_][A-Za-z0-9_$#]*$/.test(id)) continue;
+        const ty=mbsTiType(g('type'),g('len')); const pk=mbsTiKey(g('key'));
+        let nn=hmap.nn!=null?mbsTiYN(g('nn')):(hmap.req!=null?({Y:'N',N:'Y'})[mbsTiYN(g('req'))]||'':'');
+        if(pk==='PK'&&!nn) nn='N';
+        out.push({id:id.toUpperCase(),nm:g('nm'),type:ty.type,len:ty.len,pk:pk,nn:nn,def:g('def'),rem:g('rem')});
+        continue;
+      }
+      // 머리글 없음: 값 모양으로 추정
+      const c=cells.map(mbsTiBlank);
+      if(c.filter(Boolean).length<2||!/^[A-Za-z_][A-Za-z0-9_$#]*$/.test(c[0])) continue;
+      const ti=c.findIndex(function(x,i){ return i>0&&MBS_TI_TYPE.test(x); });
+      let ty={type:'',len:''}; if(ti>0){ ty=mbsTiType(c[ti],''); if(!ty.len&&/^\d+(,\d+)?$/.test(c[ti+1]||'')) ty.len=c[ti+1]; }
+      const used={0:1}; if(ti>0){ used[ti]=1; if(ty.len&&c[ti+1]===ty.len) used[ti+1]=1; }
+      const ni=c.findIndex(function(x,i){ return i>0&&!used[i]&&x&&!MBS_TI_TYPE.test(x)&&!/^(pk|fk|y|n|yes|no|null|not\s*null)$/i.test(x)&&!/^\d+$/.test(x); });
+      if(ni>0) used[ni]=1;
+      let pk='', nn='';
+      c.forEach(function(x,i){ if(used[i]||!x) return; if(/^(pk|fk)$/i.test(x)){ pk=x.toUpperCase(); used[i]=1; } });
+      if(/not\s*null/i.test(l)) nn='N';
+      c.forEach(function(x,i){ if(used[i]||!x||nn) return; if(/^(yes|no|y|n|null)$/i.test(x)){ nn=mbsTiYN(x); used[i]=1; } });
+      if(pk==='PK'&&!nn) nn='N';
+      const rem=c.filter(function(x,i){ return x&&!used[i]&&!/^not\s*null$/i.test(x); }).join(' ');
+      out.push({id:c[0].toUpperCase(),nm:ni>0?c[ni]:'',type:ty.type,len:ty.len,pk:pk,nn:nn,def:'',rem:rem});
     }
     return out.length?{name:name,cols:out}:null;
   }
@@ -1604,17 +1660,25 @@
         r=mbXlSheetTitle(ws,8,r,'5. 테이블 레이아웃  (Table Layout)');
         if(!M) r=mbXlParaBlock(ws,8,r,'저장/조회 대상 테이블·컬럼 정보는 화면 구성에 나타나지 않는다.');
         else {
-          const nt=M.tables.filter(function(t){ return t.kind==='신규'||t.kind==='컬럼추가'||(t.info&&mbSpecParseTableInfo(M.S.newCols,t.id)); });
-          const anyNew=nt.some(function(t){ return t.kind==='신규'||t.kind==='컬럼추가'; });
           const info=String(M.S.newCols||'');
+          // 테이블 머리줄 없이 컬럼 표만 붙여 넣은 경우: 대상 테이블이 하나로 정해지면 그 테이블의 컬럼으로 읽는다
+          let wholeId=null;
+          if(info.trim()&&!mbSpecTableInfoHeads(info).length){
+            const cand=M.tables.filter(function(t){ return t.kind==='신규'||t.kind==='컬럼추가'; });
+            const one=cand.length===1?cand[0]:(M.tables.length===1?M.tables[0]:null);
+            if(one&&mbSpecParseTableInfo(info,one.id,{whole:true})) wholeId=one.id;
+          }
+          const parseFor=function(id){ return mbSpecParseTableInfo(info,id,{whole:id===wholeId}); };
+          const nt=M.tables.filter(function(t){ return t.kind==='신규'||t.kind==='컬럼추가'||t.id===wholeId||(t.info&&parseFor(t.id)); });
+          const anyNew=nt.some(function(t){ return t.kind==='신규'||t.kind==='컬럼추가'; });
           if(!nt.length) r=mbXlParaBlock(ws,8,r,M.tables.length?"본 프로그램은 신규 테이블을 생성하지 않는다. 사용 테이블은 '4.기술사양' 참조.":'저장/조회 대상 테이블 정보가 입력되지 않았다.');
           else {
             r=mbXlParaBlock(ws,8,r,anyNew?'※ 테이블 디자인은 컨설턴트 협의 필요. 아래는 「테이블 정보」에 입력된 컬럼 구조 기준.':"※ 본 프로그램은 신규 테이블을 생성하지 않는다. 아래는 「테이블 정보」에 입력된 기존 테이블 구조(참고).");
-            nt.forEach(function(t){ const p=mbSpecParseTableInfo(info,t.id); const nm=t.name||(p&&p.name)||'';
+            nt.forEach(function(t){ const p=parseFor(t.id); const nm=t.name||(p&&p.name)||'';
               r=mbXlSectionBanner(ws,8,r,'Table : '+t.id+(nm?' ('+nm+')':'')+(t.kind==='컬럼추가'?' - 컬럼 추가':(t.kind==='신규'?'':(anyNew?' - 기존 테이블(참고)':''))));
-              if(p) r=mbXlDataTable2(ws,8,r,['Column ID','Column Name','Type','Length','Key','Null','Default','Remark'],p.cols.map(function(c){ return [c.id,c.nm,c.type,c.len,c.pk,c.nn,'',c.rem||'']; }));
+              if(p) r=mbXlDataTable2(ws,8,r,['Column ID','Column Name','Type','Length','Key','Null','Default','Remark'],p.cols.map(function(c){ return [c.id,c.nm,c.type,c.len,c.pk,c.nn,c.def||'',c.rem||'']; }));
               else r=mbXlDataTable2(ws,8,r,['Column ID','Column Name','Type','Length','Key','Null','Default','Remark'],[]); });
-            if(info.trim()&&!nt.some(function(t){ return mbSpecParseTableInfo(info,t.id); })){ r=mbXlSectionBanner(ws,8,r,'테이블 정보 (입력 원문)'); r=mbXlCodeBlock(ws,8,r,info.trim()); }
+            if(info.trim()&&!nt.some(function(t){ return parseFor(t.id); })){ r=mbXlSectionBanner(ws,8,r,'테이블 정보 (입력 원문)'); r=mbXlCodeBlock(ws,8,r,info.trim()); }
           }
         }
       }
