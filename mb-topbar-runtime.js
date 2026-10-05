@@ -1239,7 +1239,7 @@
     (S.rules||[]).filter(function(r){ return mbsT(r.title)||mbsT(r.proc)||mbsT(r.cond); }).forEach(function(r){ R.push({title:mbsT(r.title)||'화면 규칙',on:'화면 전체',cond:mbsT(r.cond),proc:mbsT(r.proc),checks:mbsT(r.msg)?[{cond:'',msg:mbsT(r.msg)}]:[],global:true}); });
     R.forEach(function(r,i){ r.id='R'+String(i+1).padStart(2,'0'); });
     const PR=P.rules.filter(function(r){ return mbsT(r.text); }).map(function(r,i){ return {id:'P'+String(i+1).padStart(2,'0'),tag:mbsT(r.tag)||'기타',text:mbsT(r.text)}; });
-    const procAny=!!(P.prev.length||P.next.length||mbsT(P.flowNote)||PR.length||P.roles.length||mbsT(P.raw)||P.ex.some(function(e){ return e&&mbsT(e.a); }));
+    const procAny=!!(P.prev.length||P.next.length||mbsT(P.flowNote)||PR.length||P.roles.length||P.ex.some(function(e){ return e&&mbsT(e.a); }));
     const EX=procAny?P.ex.filter(function(e){ return mbsT(e.q); }).map(function(e){ return {q:mbsT(e.q),a:mbsT(e.a)}; }):[];
     // 테이블(4.기술사양 4-1) - 빌더 「사용하는 테이블」에 저장된 행 + 화면 설명의 데이터 출처
     const usage={};
@@ -1261,7 +1261,11 @@
     comps.filter(function(c){ return c.type==='searchbar'; }).forEach(function(c){ (c.fields||[]).forEach(function(f,i){ if(f.type==='combo'||f.type==='radio') combos.push({key:'c'+c.id+'.f'+i,name:f.label||('조건'+(i+1)),where:'조회조건',colId:mbsT(colSpec(c,'fields',i).colId),type:f.type}); }); });
     comps.filter(function(c){ return c.type==='combo'||c.type==='radio'; }).forEach(function(c){ combos.push({key:'c'+c.id,name:labelOf(c),where:'입력 항목',colId:mbsT(cs(c).colId),type:c.type}); });
     const codes=(S.codes&&typeof S.codes==='object')?S.codes:{};
-    return {S:S,B:B,P:P,O:O,comps:comps,items:items,R:R,PR:PR,EX:EX,procAny:procAny,tables:tables,combos:combos,codes:codes,
+    // 단계별 「텍스트로 붙여넣기」 원문(예전 파일의 「현업 요구사항 원문」은 업무·프로세스 원문으로 본다)
+    const fr=(S.free&&typeof S.free==='object')?S.free:{}, free={};
+    ['s1','s2','s3','s4'].forEach(function(k){ free[k]=String(fr[k]==null?'':fr[k]); });
+    if(mbsT(P.raw)) free.s2=free.s2.trim()?free.s2.replace(/\s+$/,'')+'\n\n'+String(P.raw):String(P.raw); // 빌더(mbSpecNormalize)와 같은 규칙
+    return {free:free,S:S,B:B,P:P,O:O,comps:comps,items:items,R:R,PR:PR,EX:EX,procAny:procAny,tables:tables,combos:combos,codes:codes,
       comp:comp,cs:cs,colSpec:colSpec,btnSpec:btnSpec,gridCols:gridCols,labelOf:labelOf,srcsGet:srcsGet,joinGet:joinGet,writeTargets:writeTargets};
   }
 
@@ -1597,6 +1601,12 @@
           if(gr.length) secs.push(['알아두면 좋은 규칙',gr.map(function(rr){ return '· '+rr.title+' : '+(rr.cond?rr.cond+' → ':'')+rr.proc+(rr.checks.length&&rr.checks[0].msg?' ("'+rr.checks[0].msg+'")':'')+' ('+rr.id+')'; })]);
           const bl=M.items.filter(function(i){ return i.kind==='btn'; }).map(function(it){ const rr=ruleOfItem(it.key); return '· ['+it.name+']'+(it.where?'('+it.where+')':'')+(rr?' : '+MBS_ACT[rr.action]+(rr.target?' ('+rr.target+')':''):''); });
           if(bl.length) secs.push(['버튼',bl]);
+          // 붙여 넣은 텍스트: AI 없이는 항목별로 나눌 수 없으므로, 단계별 원문을 그대로 「컨설턴트 서술」 절에 싣는다
+          const FN={s1:'화면 정보',s2:'업무 · 프로세스',s3:'화면 설명',s4:'테이블 · 코드'};
+          const fl=[]; ['s1','s2','s3','s4'].forEach(function(k){ const t=String(M.free[k]||'').replace(/\r/g,'').replace(/\t/g,'    ').replace(/\s+$/,''); if(!t.trim()) return;
+            if(fl.length) fl.push(''); fl.push('['+FN[k]+']');
+            let blank=false; t.split('\n').forEach(function(l){ if(!l.trim()){ if(!blank) fl.push(''); blank=true; return; } blank=false; fl.push(l.replace(/^\s+$/,'')); }); });
+          if(fl.length) secs.push(['컨설턴트 서술 (원문)',fl]);
           secs.forEach(function(sc,i){ r=mbXlSectionBanner(ws,8,r,(i+1)+'. '+sc[0]); r=mbXlParaLines(ws,8,r,sc[1]); });
         }
         r=mbXlParaBlock(ws,8,r,"※ 본 시트는 사용자(현업) 관점의 기능 설명입니다. 사용 테이블·컬럼ID·SQL 등 기술 내용은 '4.기술사양' 시트를 참조하십시오.");

@@ -552,7 +552,7 @@
     <div class="modal-h"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" fill="currentColor" fill-opacity=".2"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>사양서 프롬프트<span class="sp-beta" title="Beta · 시범 기능" aria-label="베타(시범 기능)">Beta</span></h2><span class="sp-file" id="spFile"></span><span class="sp-prog" id="spProg"></span><span class="x" onclick="closeSpecBuilder()">×</span></div>
     <div class="sp-steps" id="spSteps"></div>
     <div class="sp-body" id="spBody"></div>
-    <div class="modal-f"><span class="sp-f-l" id="spMeta"></span>
+    <div class="modal-f"><div class="sp-f-lw"><button type="button" class="sp-free-link" id="spFreeBtn" onclick="spFreeOpen()" title="메모장 등에 정리해 둔 사양을 단계별로 그대로 붙여 넣을 수 있어요 (선택 기능)"><span class="ic">📝</span><span class="t">텍스트로 붙여넣기</span></button><span class="sp-f-l" id="spMeta"></span></div>
       <div class="sp-f-r"><button type="button" class="sp-b-prev" id="spDone" onclick="spFinish()">닫기</button><button type="button" class="sp-b-prev" id="spPrev" onclick="spNav(-1)">이전</button><button type="button" class="sp-b-main" id="spNext" onclick="spNav(1)">다음</button></div></div>
   </div>
 </div>
