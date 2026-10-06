@@ -510,6 +510,25 @@
   .ax-daterange .ax-date-part::after,.ax-daterange-x .ax-date-part::after{content:"📅";font-size:11px;}
   .ax-section{width:100%;height:100%;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--ax-navy);border-bottom:1px solid var(--ax-border);padding-bottom:4px;}
   .ax-section::before{content:"⌃";transform:rotate(180deg);color:var(--ax-green);font-weight:700;}
+  /* 헤딩(씬모드 섹션 헤더 - 컨테이너형). 왼쪽 130px 제목 칸 + 오른쪽 내용 영역(.hd-body-wrap).
+     편집 화면(.hd-edit): 바깥 테두리 + 제목 칸/내용 영역 세로 구분선. 결과물(.hd-exp): 하단 줄만. */
+  .ax-heading{position:absolute;left:0;top:0;right:0;bottom:0;box-sizing:border-box;border-bottom:1px solid #e3e6ea;}
+  .ax-heading.hd-edit{border:1px solid #c9d0d7;}
+  /* 제목 칸/내용 영역 세로 구분선(편집 화면 전용) - 좌우로 끌어 제목 칸 폭 조절. 잡기 쉽게 8px 폭 손잡이 안에 1px 선 */
+  .ax-heading .hd-divider{position:absolute;top:0;bottom:0;width:8px;z-index:5;cursor:col-resize;}
+  .ax-heading .hd-divider::before{content:"";position:absolute;left:3px;top:0;bottom:0;border-left:1px solid #c9d0d7;}
+  .ax-heading .hd-divider:hover::before{border-left:2px solid var(--sel);left:3px;}
+  .ax-heading .hd-title{position:absolute;left:0;top:8px;width:130px;height:18px;box-sizing:border-box;padding:0 8px 0 6px;
+    display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:#1f2328;line-height:18px;white-space:nowrap;overflow:hidden;}
+  .ax-heading .hd-title>span:not(.hd-arrow){overflow:hidden;text-overflow:ellipsis;}
+  .ax-heading .hd-arrow{display:inline-flex;flex:0 0 auto;color:#1f2328;transition:transform .15s;}
+  .ax-heading.hd-exp .hd-title{cursor:pointer;user-select:none;}
+  .ax-heading.collapsed .hd-arrow{transform:rotate(180deg);}
+  #canvas.reparent-drag .hd-body-wrap{overflow:visible!important;}
+  /* 드래그 중에만 헤딩 아래에 펼쳐지는 「새 줄」 칸 - 놓기 판정에 관여하지 않도록 pointer-events:none */
+  .hd-drop-zone{position:absolute;left:0;right:8px;bottom:6px;box-sizing:border-box;border:1.5px dashed rgba(38,128,235,.55);
+    border-radius:4px;background:rgba(38,128,235,.05);color:rgba(38,128,235,.85);font-size:11.5px;font-weight:600;
+    display:flex;align-items:center;justify-content:center;pointer-events:none;}
   .ax-panel-c{width:100%;height:100%;border:1px solid var(--ax-border);border-radius:5px;background:rgba(250,251,252,.5);}
   .ax-split-c{width:100%;height:100%;border:1px solid var(--ax-border);border-radius:5px;background:rgba(250,251,252,.35);}
   .split-pane{position:absolute;}
@@ -529,6 +548,8 @@
   /* Tabs container's own move/select handle - same look as the Split tag, but pinned to the
      top-right of the tab header (top-left would sit on top of the first tab's label). */
   .tabs-tag{left:auto;right:2px;}
+  /* 패널 이동/선택 태그 - 패널 안 빈 곳 드래그는 박스 선택이라, 패널 자체는 이 태그로 옮긴다(우상단). */
+  .panel-tag{left:auto;right:2px;}
   .cmp.locked{cursor:default;}
   .ax-grid{width:100%;height:100%;border:1px solid var(--ax-border);border-radius:4px;overflow:hidden;background:#fff;display:flex;flex-direction:column;}
   .ax-grid .gtoolbar{display:flex;align-items:center;gap:5px;padding:6px 8px;border-bottom:1px solid var(--ax-border);background:#fff;flex-wrap:nowrap;min-height:41px;box-sizing:border-box;}
@@ -1215,6 +1236,7 @@
   body.skin-classic .lp-btn,
   body.skin-classic .split-tag,
   body.skin-classic .tabs-tag,
+  body.skin-classic .panel-tag,
   body.skin-classic .ax-check .box,
   body.skin-classic .ax-grid .gr .gcell-check .box
   {border-radius:2px;}
