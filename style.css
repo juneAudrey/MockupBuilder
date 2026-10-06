@@ -553,6 +553,26 @@
   .cmp.locked{cursor:default;}
   .ax-grid{width:100%;height:100%;border:1px solid var(--ax-border);border-radius:4px;overflow:hidden;background:#fff;display:flex;flex-direction:column;}
   .ax-grid .gtoolbar{display:flex;align-items:center;gap:5px;padding:6px 8px;border-bottom:1px solid var(--ax-border);background:#fff;flex-wrap:nowrap;min-height:41px;box-sizing:border-box;}
+  /* 씬모드 - 제목·버튼 줄이 있는 그리드: 바깥 테두리를 없애고(툴바 줄은 테두리 없음), 표 영역만 테두리로 감싼다. */
+  .ax-grid.tb-open{border:0;border-radius:0;background:transparent;}
+  .ax-grid.tb-open>.gtoolbar{border-bottom:0;background:transparent;padding-left:0;padding-right:0;}
+  .ax-grid.tb-open>.gbody{border:1px solid var(--ax-border);border-radius:4px;background:#fff;}
+  .ax-grid.tb-open>.gbody:not(:last-child){border-bottom:0;border-radius:4px 4px 0 0;}
+  .ax-grid.tb-open>.gpagination{border:1px solid var(--ax-border);border-radius:0 0 4px 4px;}
+  /* 씬모드 그리드 제목 - 실제 AX처럼 크고 진한 제목, 오른쪽에 위쪽 겹화살표 + 전체화면 아이콘 */
+  .ax-grid.tb-open .gtoolbar .gtitle{font-size:15px;color:#1f2328;}
+  .ax-grid.tb-open .gtoolbar .gtitle::before{content:none;}
+  .ax-grid .gtoolbar .gt-up{display:inline-flex;align-items:center;flex:none;margin-left:8px;color:#1f2328;}
+  .ax-grid .gtoolbar .gt-full{display:inline-flex;align-items:center;justify-content:center;flex:none;margin-left:6px;width:18px;height:18px;color:#9aa1a9;border-radius:3px;}
+  .ax-grid .gtoolbar .gt-full[onclick]{cursor:pointer;}
+  .ax-grid .gtoolbar .gt-full[onclick]:hover{color:var(--ax-green);background:var(--ax-green-light);}
+  .ax-grid.tb-open .gtoolbar .gcount{margin-left:6px;}
+  /* 결과물/미리보기 - 그리드 전체화면 */
+  .mockup-item.mb-grid-full{position:fixed!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;
+    z-index:2000000!important;background:#fff;padding:12px 16px 16px;box-sizing:border-box;clip-path:none!important;}
+  .mockup-item.mb-grid-full .gt-full{color:var(--ax-green);}
+  html.mb-grid-full-open,html.mb-grid-full-open body{overflow:hidden!important;}
+  html.mb-grid-full-open .mb-resize-handle,html.mb-grid-full-open .mb-resize-badge{display:none!important;}
   body.skin-classic .ax-grid .gtoolbar{display:none;}
   .ax-grid .gtoolbar .gtitle{font-size:13px;font-weight:700;color:var(--ax-navy);display:flex;align-items:center;gap:4px;flex:none;white-space:nowrap;}
   .ax-grid .gtoolbar .gtitle::before{content:"⌃";transform:rotate(180deg);color:var(--ax-green);font-weight:700;}
