@@ -1309,7 +1309,13 @@ function mbShowHeadingAsk(onNo,onAdd){
   bg.classList.add('show');
   const close=()=>{ bg.classList.remove('show'); no.onclick=null; add.onclick=null; bg.onclick=null; document.removeEventListener('keydown',onKey,true); };
   const done=fn=>{ const ign=chk.checked; close(); if(ign) mbHdAskSetIgnored(true); try{ fn(); }catch(e){ console.error(e); } };
-  const onKey=e=>{ if(e.key==='Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); } };
+  // 창이 떠 있는 동안 키 입력이 뒤쪽 캔버스 단축키(Delete·Ctrl+Z·Ctrl+V 등)로 새지 않게 막는다.
+  // Enter/Space/Tab은 버튼·체크박스 조작용으로 그대로 두고, ESC는 취소(아무것도 놓지 않음).
+  const onKey=e=>{
+    if(e.key==='Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); return; }
+    if(e.key==='Enter'||e.key===' '||e.key==='Tab') return;
+    e.preventDefault(); e.stopImmediatePropagation();
+  };
   no.onclick=()=>done(onNo);
   add.onclick=()=>done(onAdd);
   bg.onclick=e=>{ if(e.target===bg) close(); };
@@ -3297,6 +3303,10 @@ function itemShortcut(action){
   return false;
 }
 document.addEventListener('keydown',e=>{
+  // 확인/알림창(mbConfirm·헤딩 추가 제안)이 떠 있으면 캔버스 단축키(Delete·Ctrl+Z·Ctrl+C/V·+/-)를 막는다 -
+  // 창 뒤쪽 선택 컴포넌트가 지워지거나 실행취소되는 일이 없게. ESC는 각 창의 자체 처리에 맡긴다.
+  { const open=id=>{ const el=document.getElementById(id); return !!(el&&el.classList.contains('show')); };
+    if((open('mbConfirmBg')||open('mbHdAskBg'))&&e.key!=='Escape') return; }
   const typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
   const mod=e.ctrlKey||e.metaKey;
   if(mod&&(e.key==='z'||e.key==='Z')&&!e.shiftKey){e.preventDefault();undo();return;}
@@ -9180,7 +9190,9 @@ async function mbSignup(username,password,note){
   await mbLogAuthEvent('signup',session.id,username);
   return session;
 }
-async function mbLogin(username,password){
+// opts.noLog=true 이면 auth_logs에 'login' 이벤트를 남기지 않는다(새로고침 시 자동로그인 등).
+// 로그인 실패(login_failed)는 항상 남긴다.
+async function mbLogin(username,password,opts){
   const password_hash=await mbHashPassword(password);
   let rows;
   try{ rows=await mbRestFetch('/rpc/mb_login',{method:'POST',body:JSON.stringify({p_username:username,p_password_hash:password_hash})}); }
@@ -9189,7 +9201,7 @@ async function mbLogin(username,password){
   if(!row){ await mbLogAuthEvent('login_failed',null,username); throw new Error('아이디 또는 비밀번호가 올바르지 않습니다.'); }
   const session={id:row.id,username:row.username};
   mbSetSession(session);
-  await mbLogAuthEvent('login',session.id,session.username);
+  if(!(opts&&opts.noLog)) await mbLogAuthEvent('login',session.id,session.username);
   mbIsAdmin=await mbCheckAdmin(session.id);
   return session;
 }
@@ -11821,12 +11833,25 @@ function mbCloudSharedZoomReset(){
 // 켜진 채로 저장된 아이디/비밀번호가 있는지 확인해서 조용히 한 번 로그인을 시도한다(실패해도
 // 그냥 로그아웃 상태로 시작할 뿐, 화면에 에러를 띄우지는 않는다 - 저장된 비밀번호가 바뀐 뒤
 // 방치된 경우 등을 사용자가 접속하자마자 에러로 마주치지 않게 하기 위함).
+// 이번 페이지 로드가 브라우저 새로고침(F5·새로고침 버튼·location.reload)인지 판별 - 접속 로그와 같은 기준.
+// Navigation Timing Level 2를 우선 쓰고, 미지원 브라우저는 구형 performance.navigation으로 폴백.
+function mbIsReloadNavigation(){
+  try{
+    const nav=performance.getEntriesByType&&performance.getEntriesByType('navigation')[0];
+    if(nav&&nav.type) return nav.type==='reload';
+    if(performance.navigation) return performance.navigation.type===1; // TYPE_RELOAD
+  }catch(_){}
+  return false;
+}
 (async function(){
+  // 새로고침으로 다시 연 경우에는 로그인 로그(auth_logs 'login')를 남기지 않는다 - 접속 로그와 같은 규칙.
+  // 로그인 상태 복원·관리자 확인·자동로그인 자체는 그대로 한다(기록만 생략).
+  const reload=mbIsReloadNavigation();
   const s=mbGetSession();
   if(!s){
     const saved=mbLoadLoginPrefs();
     if(saved.autoLogin&&saved.username&&saved.password){
-      try{ await mbLogin(saved.username,saved.password); }catch(e){ /* 조용히 무시 - 필요하면 사용자가 직접 로그인 */ }
+      try{ await mbLogin(saved.username,saved.password,{noLog:reload}); }catch(e){ /* 조용히 무시 - 필요하면 사용자가 직접 로그인 */ }
     }
   } else {
     // 이미 로그인 세션이 남아있는 경우 - mbLogin()을 안 거치므로 관리자 여부도, 로그인 이력도
@@ -11834,7 +11859,7 @@ function mbCloudSharedZoomReset(){
     // 것)도 사용자 입장에서는 "자동으로 로그인됐다"는 사실 자체는 같으므로, 수동 로그인/저장된
     // 아이디로 로그인과 똑같이 auth_logs에 남긴다 - 그동안 이 경로만 기록이 안 남고 있었다.
     mbIsAdmin=await mbCheckAdmin(s.id);
-    mbLogAuthEvent('login',s.id,s.username);
+    if(!reload) mbLogAuthEvent('login',s.id,s.username);
   }
   mbUpdateAccountUI();
 })();
@@ -13077,14 +13102,7 @@ function mbCloudSharedZoomReset(){
 
   // 이번 페이지 로드가 브라우저 새로고침(F5·새로고침 버튼·location.reload)인지 판별.
   // Navigation Timing Level 2를 우선 쓰고, 미지원 브라우저는 구형 performance.navigation으로 폴백.
-  function isReloadNavigation(){
-    try{
-      const nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
-      if (nav && nav.type) return nav.type === 'reload';
-      if (performance.navigation) return performance.navigation.type === 1; // TYPE_RELOAD
-    }catch(_){}
-    return false;
-  }
+  function isReloadNavigation(){ return (typeof mbIsReloadNavigation==='function') ? mbIsReloadNavigation() : false; }
 
   // opts.skipInsert=true 이면 국가 조회·해외 차단 판정만 하고 DB INSERT는 하지 않는다(위치 권한도 묻지 않음).
   // opts.prompt=true 이면(최초 접속) 필요할 때 위치 권한창을 띄운다. 모드 전환 로그는 띄우지 않는다.
