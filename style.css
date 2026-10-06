@@ -545,6 +545,15 @@
     font-size:10px;background:#fff;border:1px solid var(--ax-border);border-radius:3px;color:var(--ax-green-dark);
     cursor:pointer;z-index:650;user-select:none;}
   .split-tag:hover{border-color:var(--ax-green);background:var(--ax-green-light);}
+  /* 이동 커서는 실제로 끌어서 옮길 수 있는 곳에서만 보인다.
+     - 컨테이너(헤딩·패널·탭·스플릿)의 내용 영역 빈 곳은 드래그하면 박스 선택이므로 기본 화살표 커서.
+       (안에 놓인 컴포넌트는 .cmp 규칙대로 이동 커서, 헤딩 제목 칸·탭 머리줄 빈 곳은 컨테이너 이동이라 이동 커서 유지)
+     - ⧉ 태그는 끌면 컨테이너가 옮겨지므로 이동 커서, Fill 배치라 선택만 되는 태그(tag-locked)는 손가락 커서.
+     - 실제로 끄는 중에는 어디를 지나든 이동 커서를 유지한다. */
+  .split-tag{cursor:move;}
+  .split-tag.tag-locked{cursor:pointer;}
+  .hd-body-wrap,.panel-body-wrap,.tabs-body-wrap,.split-pane{cursor:default;}
+  #canvas.reparent-drag,#canvas.reparent-drag *{cursor:move!important;}
   /* Tabs container's own move/select handle - same look as the Split tag, but pinned to the
      top-right of the tab header (top-left would sit on top of the first tab's label). */
   .tabs-tag{left:auto;right:2px;}
@@ -1515,6 +1524,17 @@ body.mb-mobile .modal-bg, body.mb-tablet .modal-bg{ z-index:2200!important; }
 #mbConfirmCard .mbc-btns button{flex:1;padding:13px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;border:none;}
 #mbConfirmCard .mbc-cancel{background:#f1f4f6;color:var(--mb-ink);}
 #mbConfirmCard .mbc-ok{background:var(--mb-danger);color:#fff;}
+/* 헤딩 추가 제안 창(씬모드, 입력 컴포넌트를 컨테이너 없는 캔버스에 처음 놓을 때) - 확인창과 같은 톤 */
+#mbHdAskBg{display:none;position:fixed;inset:0;z-index:2300;background:rgba(16,24,33,.5);align-items:center;justify-content:center;padding:28px;}
+#mbHdAskBg.show{display:flex;}
+#mbHdAskBg .mb-hdask-card{background:var(--mb-surface,#fff);border-radius:18px;padding:22px 20px;max-width:340px;width:100%;box-shadow:var(--mb-shadow,0 10px 30px rgba(0,0,0,.2));}
+#mbHdAskBg h3{font-size:17px;font-weight:800;color:var(--mb-ink,#1f2328);margin-bottom:8px;}
+#mbHdAskBg p{font-size:14px;color:var(--mb-ink-soft,#4b5563);line-height:1.6;margin-bottom:12px;}
+#mbHdAskBg .mb-hdask-chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mb-ink-soft,#4b5563);margin-bottom:16px;cursor:pointer;user-select:none;}
+#mbHdAskBg .mb-hdask-btns{display:flex;gap:10px;}
+#mbHdAskBg .mb-hdask-btns button{flex:1;padding:13px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;border:none;}
+#mbHdAskBg .mb-hdask-no{background:#f1f4f6;color:var(--mb-ink,#1f2328);}
+#mbHdAskBg .mb-hdask-add{background:var(--ax-green,#1e9e6a);color:#fff;}
 /* 모달이 열려 있으면(=display:flex) 바텀시트/도크가 방해하지 않도록 살짝 낮춤은 불필요:
    modal z-index 2200 > sheet 1500 이므로 자동으로 위에 표시됨 */
 #mbSheetBg{display:none;position:fixed;inset:0;z-index:1500;background:rgba(16,24,33,.44);align-items:flex-end;}
