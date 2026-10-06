@@ -548,8 +548,9 @@
   /* Tabs container's own move/select handle - same look as the Split tag, but pinned to the
      top-right of the tab header (top-left would sit on top of the first tab's label). */
   .tabs-tag{left:auto;right:2px;}
-  /* 패널 이동/선택 태그 - 패널 안 빈 곳 드래그는 박스 선택이라, 패널 자체는 이 태그로 옮긴다(우상단). */
-  .panel-tag{left:auto;right:2px;}
+  /* 패널 이동/선택 태그 - 패널 안 빈 곳 드래그는 박스 선택이라, 패널 자체는 이 태그로 옮긴다.
+     좌상단(스플릿 태그와 같은 자리) - 우상단은 변경상태 코너 라벨(추가/변경 등) 자리라 가리지 않도록 피한다. */
+  .panel-tag{left:2px;right:auto;}
   .cmp.locked{cursor:default;}
   .ax-grid{width:100%;height:100%;border:1px solid var(--ax-border);border-radius:4px;overflow:hidden;background:#fff;display:flex;flex-direction:column;}
   .ax-grid .gtoolbar{display:flex;align-items:center;gap:5px;padding:6px 8px;border-bottom:1px solid var(--ax-border);background:#fff;flex-wrap:nowrap;min-height:41px;box-sizing:border-box;}

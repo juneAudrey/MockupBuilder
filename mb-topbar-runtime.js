@@ -816,18 +816,31 @@
 
     // 싱글(섹션): section 컴포넌트를 만날 때마다 새 묶음을 시작한다. 첫 section 이전에 나오는
     // 라벨 있는 컴포넌트는 "단일 입력항목"이라는 이름 없는 기본 묶음에 담는다.
+    // 씬모드 헤딩(section + heading:true)은 컨테이너라 소속 입력항목이 parent로 연결돼 있다 - comps 배열
+    // 순서와 무관하게 헤딩의 자식만 그 헤딩 묶음에 담고(화면 위→아래, 왼→오른 순), 순서 기반 흐름에서는 뺀다.
+    const byId={}; comps.forEach(c=>{ byId[c.id]=c; });
+    const headingOf=function(c){ let p=c.parent, g=0; while(p!=null&&g++<64){ const pc=byId[p]; if(!pc) break; if(pc.type==='section'&&pc.heading) return pc; p=pc.parent; } return null; };
+    const rowOf=function(c){
+      if(!(MB_LABELED_INPUT_TYPES.includes(c.type) && c.showLabel)) return null;
+      const label=(c.labelText||'').trim();
+      if(!label) return null;
+      return { label, type:mbSpecTypeLabel(c.type), required:!!c.required, readonly:!!c.readonly,
+        note:mbSpecNoteFor(c.type, c.options) };
+    };
     const sections=[]; let cur={title:'단일 입력항목', rows:[]};
     comps.forEach(c=>{
-      if(c.type==='section'){
+      if(c.type==='section'&&c.heading){
+        if(cur.rows.length) sections.push(cur);
+        const kids=comps.filter(k=>headingOf(k)===c).sort(function(a,b){ return ((a.y||0)-(b.y||0))||((a.x||0)-(b.x||0)); });
+        const rows=kids.map(rowOf).filter(Boolean);
+        if(rows.length) sections.push({title:(c.text||'').trim()||'단일 입력항목', rows});
+        cur={title:'단일 입력항목', rows:[]};
+      } else if(c.type==='section'){
         if(cur.rows.length) sections.push(cur);
         cur={title:(c.text||'').trim()||'단일 입력항목', rows:[]};
-      } else if(MB_LABELED_INPUT_TYPES.includes(c.type) && c.showLabel){
-        const label=(c.labelText||'').trim();
-        if(!label) return;
-        cur.rows.push({
-          label, type:mbSpecTypeLabel(c.type), required:!!c.required, readonly:!!c.readonly,
-          note:mbSpecNoteFor(c.type, c.options)
-        });
+      } else if(!headingOf(c)){
+        const r=rowOf(c);
+        if(r) cur.rows.push(r);
       }
     });
     if(cur.rows.length) sections.push(cur);
