@@ -1169,7 +1169,9 @@
   const MBS_ACT={search:'조회',save:'저장',delete:'삭제',jump:'화면 이동',popup:'팝업 열기',custom:'직접 입력'};
   const MBS_MATCH={eq:'같음',like:'포함(앞뒤 % Like)',range:'범위(From~To)',in:'선택값'};
   const MBS_KIND={reg:'등록',inq:'조회',rep:'리포트(조회/출력)'};
-  const MBS_DEV={new:'신규 개발',std:'표준 프로그램 수정',copy:'표준 복사 후 수정'};
+  const MBS_DEV={new:'신규',mod:'수정',mig:'이관'};
+  // 예전 값(std 표준 프로그램 수정 · copy 표준 복사 후 수정)은 모두 수정(mod)으로 본다.
+  function mbsDevType(v){ if(v==='std'||v==='copy') return 'mod'; return (v==='mod'||v==='mig')?v:'new'; }
   const MBS_DEV_GUIDE=['입력 콤포넌트: 입력 허용 길이를 제한하여 문자열 잘림 오류 방지 (원초적 오류 표시 방지)','필수값 누락 오류 시 명확한 메시지 표시 및 포커스 이동 (예. 품목을 입력하세요.) (사용자 인지)','그리드 행복사 후 저장 시 Key, attachId 등에 유의',"조회 조건에 '공장'이 존재하면 기본값으로 사용자 공장 입력",'조회 조건은 항상 표시 (조회 시 접히지 않음, 사용자가 직접 접기 가능)','그리드 정렬: 문자(좌측), 숫자(우측, 천단위 콤마), 날짜(가운데), 그 외(기본)','기간 콤포넌트: From 날짜가 To 날짜보다 크지 않도록 체크(표준 메시지)','데이터 수정 후 저장하지 않고 조회(또는 확정 등) 시 "변경된 데이터가 있습니다. 계속 진행하시겠습니까?" 메시지','하단 버튼은 스크롤에 영향받지 않도록 고정','고정 하단 버튼과 그리드 공존 시 메인 프로그램에 스크롤 없도록','그리드 행추가 시 필수/비필수 색상 확인 (예. 구매요청등록(비정상), 공급처지정등록(정상))','Table 컬럼 사이즈 및 샘플 데이터 사이즈에 맞게 그리드 컬럼 폭 조절','그리드 Cell 선택 및 복사 가능 (RowSelect 시 Cell 복사 불가)','조회 시 그리드 헤더 체크 해제'];
   const mbsT=function(s){ return String(s==null?'':s).trim(); };
   const mbsCircled=function(i){ return '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮'.charAt(i)||('('+(i+1)+')'); };
@@ -1181,6 +1183,7 @@
     const S=src&&src.spec; if(!S||typeof S!=='object') return null;
     const comps=src.comps||[];
     const B=Object.assign({project:'',author:'',module:'',subModule:'',name:'',date:'',kind:'',devType:'new',base:'',refs:'',purpose:'',uiType:'',blType:'',freq:''},S.basic||{});
+    B.devType=mbsDevType(B.devType);
     const P=Object.assign({aiFill:true,prev:[],next:[],flowNote:'',rules:[],ex:[],roles:[],rolesDiff:false,perms:{},raw:''},S.proc||{});
     ['prev','next','rules','ex','roles'].forEach(function(k){ if(!Array.isArray(P[k])) P[k]=[]; });
     if(!P.perms||typeof P.perms!=='object') P.perms={};
@@ -1522,13 +1525,14 @@
           const acts=[]; if(searchItems.length) acts.push('조회'); btnRules.forEach(function(rr){ const a=MBS_ACT[rr.action]; if(a&&acts.indexOf(a)<0) acts.push(a); });
           const ptype=(MBS_KIND[B.kind]||mbSpecProgramType(spec))+(acts.length?' ('+acts.join('·')+')':'');
           const etc=[]; const st=mbSpecEtcFeature(spec); if(st) etc.push(st);
-          if(B.devType&&B.devType!=='new') etc.push('▷ 개발 방식 : '+MBS_DEV[B.devType]+(mbsT(B.base)?' (기준 '+mbsT(B.base)+')':''));
+          if(B.devType==='mod') etc.push('▷ 개발 방식 : '+MBS_DEV.mod+' (표준 프로그램 복사 후 수정 개발)'+(mbsT(B.base)?' (기준 '+mbsT(B.base)+')':''));
+          else if(B.devType==='mig') etc.push('▷ 개발 방식 : '+MBS_DEV.mig+' (레거시 프로그램 이관)'+(mbsT(B.base)?' (이관 대상 '+mbsT(B.base)+')':''));
           if(mbsT(B.refs)) etc.push('▷ 참고 프로그램 : '+mbsT(B.refs));
           const jumps=btnRules.filter(function(rr){ return rr.action==='jump'&&rr.target; }).map(function(rr){ return rr.target; });
           if(jumps.length) etc.push('▷ 이동 대상 프로그램 : '+jumps.join(', '));
           if(M.P.prev.length||M.P.next.length) etc.push('▷ 업무 흐름 : '+[M.P.prev.join(', '),'['+progName+']',M.P.next.join(', ')].filter(Boolean).join(' → '));
           if(M.P.roles.length) etc.push('▷ 사용 역할 : '+M.P.roles.join(', '));
-          pairs=[['프로젝트 명',mbsT(B.project)],['모듈 / 서브모듈',modSub],['프로그램ID',pgmId],['프로세스ID','-'],['프로그램명',progName],['프로그램 개요',circled(purposeLines)],['요청자 / 요청일',' / '],['예상 개발기간 / 완료희망일',''],['개발자 / 개발완료일',' / '],['우선순위(A/B/C)',''],['난이도(H/M/L)',''],['프로그램 유형',ptype],['재사용 PGM-ID',(B.devType&&B.devType!=='new'&&mbsT(B.base))?mbsT(B.base):'-'],['수행빈도',mbsT(B.freq)]];
+          pairs=[['프로젝트 명',mbsT(B.project)],['모듈 / 서브모듈',modSub],['프로그램ID',pgmId],['프로세스ID','-'],['프로그램명',progName],['프로그램 개요',circled(purposeLines)],['요청자 / 요청일',' / '],['예상 개발기간 / 완료희망일',''],['개발자 / 개발완료일',' / '],['우선순위(A/B/C)',''],['난이도(H/M/L)',''],['프로그램 유형',ptype],['재사용 PGM-ID',(B.devType==='mod'&&mbsT(B.base))?mbsT(B.base):'-'],['수행빈도',mbsT(B.freq)]];
           if(mbsT(B.uiType)) pairs.push(['UI 유형',mbsT(B.uiType)]);
           if(mbsT(B.blType)) pairs.push(['BL 유형',mbsT(B.blType)]);
           pairs.push(['기타 특성',etc.join('\n')]);

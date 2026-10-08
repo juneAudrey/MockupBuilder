@@ -2724,6 +2724,96 @@ function startColReorder(e,compId,ci){
   drag={mode:'colreorder',c,ci,sx:e.clientX,sy:e.clientY,committed:false,pre:snapshot(),hoverCi:ci,hoverSide:'before'};
   startColReorderAutoScroll(c.id);
 }
+// ---- 속성패널 → 캔버스 방향 그리드 컬럼 선택 연동 ----
+// 캔버스에서 컬럼 헤더를 누르면(startColReorder) 속성패널의 해당 행이 파랗게 강조되는 것과
+// 반대로, 속성패널의 컬럼 행 안을 누르거나(mousedown) 그 안의 입력칸/콤보/버튼에 포커스가
+// 들어오면(focusin) 그 컬럼을 선택(selGC)해 캔버스 헤더에도 같은 파란 강조를 주고, 그리드
+// 가로 스크롤·캔버스 스크롤을 옮겨 그 컬럼이 화면에 보이게 한다.
+// 주의: 여기서 render()/renderProps()를 부르면 지금 포커스가 들어간(또는 막 클릭한) 속성패널
+// 입력칸이 통째로 다시 만들어져 포커스·커서를 잃는다. 그래서 속성패널은 강조 클래스만 직접
+// 바꾸고, 캔버스만 drawCanvas()로 다시 그린다(그리드 scrollLeft는 drawCanvas가 보존한다).
+function gcRowActivate(gi){
+  // 컬럼 헤더 드래그(순서 변경) 등 캔버스 드래그 중에는 건드리지 않는다.
+  if(drag) return;
+  const c=comps.find(x=>x.id===sel);
+  if(!c||c.type!=='grid') return;
+  gi=+gi;
+  if(!Number.isInteger(gi)||gi<0||gi>=gridColsArr(c).length) return;
+  if(!selGC||selGC.compId!==c.id||selGC.ci!==gi){
+    selGC={compId:c.id,ci:gi};
+    gcSyncPropRows();
+    drawCanvas();
+  }
+  gcEnsureVisible(c.id,gi);
+}
+// 속성패널의 컬럼 행 강조(sf-row-selected)를 현재 selGC에 맞춘다(패널을 다시 그리지 않음).
+function gcSyncPropRows(){
+  const p=document.getElementById('props'); if(!p) return;
+  p.querySelectorAll('.sfield-row[id^="gcolrow-"]').forEach(row=>{
+    const on=!!(selGC&&selGC.compId===sel&&row.id==='gcolrow-'+selGC.ci);
+    row.classList.toggle('sf-row-selected',on);
+  });
+}
+// 현재 selGC 컬럼이 화면에 보이도록 유지 - 속성패널에서 컬럼 값을 바꾼 뒤(재렌더링 후) 호출.
+function gcKeepVisible(){
+  if(selGC&&selGC.compId===sel) gcEnsureVisible(selGC.compId,selGC.ci);
+}
+// 캔버스의 그리드 컬럼 헤더 셀이 보이도록 (1) 그리드 본문(.gbody)의 가로 스크롤과 (2) 캔버스
+// 스크롤 영역(.canvas-scroll)을 필요한 만큼만(이미 보이면 그대로) 옮긴다. scrollIntoView()는
+// overflow:hidden인 탭/헤딩/스플릿 칸까지 스크롤시켜 레이아웃을 틀어지게 할 수 있어 쓰지 않는다.
+// getBoundingClientRect()는 줌(transform:scale)이 적용된 화면 px이고 .gbody.scrollLeft는
+// 줌 이전 px이라 그리드 쪽 이동량은 zoom으로 나눈다(.canvas-scroll은 줌 바깥이라 화면 px 그대로).
+function gcEnsureVisible(compId,ci){
+  try{
+    const cmpEl=canvas.querySelector('.cmp[data-cid="'+compId+'"]');
+    if(!cmpEl) return;
+    const gb=cmpEl.querySelector('.ax-grid .gbody');
+    if(!gb) return;
+    const cell=gb.querySelector('[data-ci="'+ci+'"]');
+    if(!cell) return; // 비활성 탭 안에 있는 등 지금 화면에 그려지지 않은 그리드
+    const z=zoom||1, PAD=8;
+    if(gb.scrollWidth>gb.clientWidth){
+      const g=gb.getBoundingClientRect(), r=cell.getBoundingClientRect();
+      // 왼쪽에 sticky로 고정된 Row Order/CheckBox 컬럼에 가려지는 폭만큼 보이는 영역 시작점을 민다.
+      let stickyRight=g.left;
+      const head=cell.parentElement;
+      if(head){
+        Array.prototype.forEach.call(head.children,el=>{
+          if(el!==cell&&!el.hasAttribute('data-ci')&&el.style&&el.style.position==='sticky'){
+            const er=el.getBoundingClientRect();
+            if(er.width>0&&er.right>stickyRight) stickyRight=er.right;
+          }
+        });
+      }
+      const leftB=Math.min(stickyRight,g.left+gb.clientWidth*z*0.5);
+      const rightB=g.left+gb.clientWidth*z;
+      let dx=0;
+      if(r.left<leftB) dx=(r.left-leftB)/z-PAD;
+      else if(r.right>rightB){
+        dx=(r.right-rightB)/z+PAD;
+        // 컬럼이 보이는 폭보다 넓으면 컬럼 왼쪽 끝이 보이도록 맞춘다.
+        const toLeft=(r.left-leftB)/z-PAD;
+        if(dx>toLeft) dx=Math.max(0,toLeft);
+      }
+      if(dx){
+        const max=gb.scrollWidth-gb.clientWidth;
+        gb.scrollLeft=Math.max(0,Math.min(max,gb.scrollLeft+dx));
+      }
+    }
+    const cs=document.querySelector('.canvas-scroll');
+    if(cs){
+      const s=cs.getBoundingClientRect(), r=cell.getBoundingClientRect();
+      const viewR=s.left+cs.clientWidth, viewB=s.top+cs.clientHeight, M=24;
+      let sx=0, sy=0;
+      if(r.left<s.left+M) sx=r.left-(s.left+M);
+      else if(r.right>viewR-M) sx=Math.min(r.right-(viewR-M), r.left-(s.left+M));
+      if(r.top<s.top+M) sy=r.top-(s.top+M);
+      else if(r.bottom>viewB-M) sy=Math.min(r.bottom-(viewB-M), r.top-(s.top+M));
+      if(sx) cs.scrollLeft+=sx;
+      if(sy) cs.scrollTop+=sy;
+    }
+  }catch(e){ /* 스크롤 보정 실패는 기능에 영향이 없으므로 무시 */ }
+}
 // 조회조건 필드를 캔버스에서 직접 누르면(그리드 컬럼 헤더와 동일한 방식) 그 필드를 선택해 파란
 // 선택 박스를 표시하고, 그대로 드래그하면 순서를 바꿀 수 있다. 그리드 컬럼과 달리 필드는 한 줄에
 // 여러 개가(perRow 설정에 따라) 놓이고 줄바꿈도 되므로, 마우스 아래 위치를 찾을 때 x축뿐 아니라
@@ -3667,6 +3757,7 @@ function renderProps(){
         const cro=!!(c.colReadonly&&c.colReadonly[gi]);
         const gcSelCls=(selGC&&selGC.compId===c.id&&selGC.ci===gi)?' sf-row-selected':'';
         html+=`<div class="sfield-row${gcSelCls}" id="gcolrow-${gi}"
+          onmousedown="gcRowActivate(${gi})" onfocusin="gcRowActivate(${gi})"
           ondragover="gcDragOver(event)"
           ondragleave="gcDragLeave(event)" ondrop="gcDrop(event,${gi})">
           <div class="sf-row1">
@@ -4245,6 +4336,7 @@ function updGridColLabel(i,v){
   // input 자체가 새로 만들어져 커서 위치를 잃으므로, 해당 항목의 텍스트만 직접 DOM으로 갱신한다.
   const nameEl=document.querySelector(`.total-col-name[data-total-gi="${i}"]`);
   if(nameEl) nameEl.textContent=(v||'').trim()||('컬럼'+(i+1));
+  gcRowActivate(i);
 }
 // 그리드 컬럼 폭 방식(고정/수동/자동) 라디오 버튼 핸들러. 사람이 명시적으로 고른 값이므로
 // _sizeModeManual을 켜서, 컬럼이 안 맞아 자동으로 스크롤 모드를 제안하는 로직이 이 선택을
@@ -4317,6 +4409,7 @@ function updGridColType(i,v){
     c.colDateSpec[i]='chip:today';
   }
   render();
+  gcRowActivate(i);
 }
 function updGridColOptions(i,v){
   const c=comps.find(x=>x.id===sel);if(!c)return;
@@ -4324,6 +4417,7 @@ function updGridColOptions(i,v){
   if(i>=c.colOptions.length)return;
   c.colOptions[i]=v;
   drawCanvas();
+  gcRowActivate(i);
 }
 // Sets/clears the merged-header group label for column i. Consecutive columns that share the
 // exact same (trimmed) label render as one spanning cell above their individual names - see
@@ -4334,6 +4428,7 @@ function updGridColGroup(i,v){
   if(i>=c.colGroups.length)return;
   c.colGroups[i]=v;
   drawCanvas();
+  gcRowActivate(i);
 }
 // 헤더 텍스트 정렬(left/center/right). 어느 아이콘이 눌려있는지 즉시 반영해야 하므로
 // (다른 토글 버튼들처럼) 속성 패널을 다시 그린다.
@@ -4343,6 +4438,7 @@ function updGridColAlign(i,v){
   if(i>=c.colAligns.length)return;
   c.colAligns[i]=v;
   render();
+  gcRowActivate(i);
 }
 // 컬럼별 변경상태(기본/추가/변경/삭제/이동) - "상위헤더" 입력칸과 "정렬" 버튼 사이의 콤보에서 호출.
 function updGridColStatus(i,v){
@@ -4351,6 +4447,7 @@ function updGridColStatus(i,v){
   if(i>=c.colStatus.length)return;
   c.colStatus[i]=v;
   render();
+  gcRowActivate(i);
 }
 // 필수 - 헤더 라벨 앞에 빨간 "*"를 붙이고(헤더 색은 그대로), 데이터 행 배경을 크림색으로 표시한다.
 function updGridColRequired(i,v){
@@ -4359,6 +4456,7 @@ function updGridColRequired(i,v){
   if(i>=c.colRequired.length)return;
   c.colRequired[i]=v;
   render();
+  gcRowActivate(i);
 }
 // 읽기전용 - 헤더 색은 그대로 두고, 데이터 행 배경을 회색으로 표시하며 데이터 셀 입력을 잠근다.
 function updGridColReadonly(i,v){
@@ -4367,6 +4465,7 @@ function updGridColReadonly(i,v){
   if(i>=c.colReadonly.length)return;
   c.colReadonly[i]=v;
   render();
+  gcRowActivate(i);
 }
 // 그리드 합계 행 - "합계 표시"는 컴포넌트 공통 upd('showTotal',...)로 처리되고, 이 함수는 합계컬럼
 // 목록에서 컬럼별 체크박스를 토글할 때만 쓴다(체크하면 합계 행의 그 칸에 "0"이 나타난다).
@@ -4444,6 +4543,7 @@ function gcDrop(e,i){
   const insertAt=from<i?i-1:i;
   moveGridColumn(c,from,insertAt);
   render();
+  gcKeepVisible();
 }
 function gcDragEnd(e){
   e.currentTarget.closest('.sfield-row')?.classList.remove('dragging');
@@ -4463,6 +4563,7 @@ function gcMoveTo(i,valStr){
   pushHistory();
   moveGridColumn(c,i,to);
   render();
+  gcKeepVisible();
 }
 
 // ---- Search-bar field editors ----
@@ -8195,6 +8296,8 @@ function mbSpecDefault(){
 }
 const FREE_KEYS=['s1','s2','s3','s4'];
 function mbSpecFreeAny(S){ return !!(S&&S.free&&FREE_KEYS.some(k=>String(S.free[k]||'').trim())); }
+const MB_SPEC_DEV_TYPES=['new','mod','mig'];
+function mbSpecDevType(v){ if(v==='std'||v==='copy') return 'mod'; return MB_SPEC_DEV_TYPES.includes(v)?v:'new'; }
 function mbSpecNormalize(s){
   const o=Object.assign(mbSpecDefault(),JSON.parse(JSON.stringify(s||{})));
   o.basic=Object.assign(mbSpecDefault().basic,o.basic||{});
@@ -8207,6 +8310,10 @@ function mbSpecNormalize(s){
       if(r.role==='기준'&&!o.basic.base) o.basic.base=n; else o.basic.refs=[o.basic.refs,(r.role&&r.role!=='참고'?r.role+' ':'')+n].filter(Boolean).join(', '); });
     delete o.basic.related;
   }
+  // 개발 방식: 신규(new) · 수정(mod: 표준 프로그램을 복사해 수정 개발하는 신규 화면) · 이관(mig: 레거시
+  // 시스템 프로그램과 같은 기능의 신규 프로그램). 표준 프로그램 자체를 고치는 경우는 없으므로, 예전 값
+  // 「표준 프로그램 수정」(std)·「표준 복사 후 수정」(copy)은 모두 수정(mod)으로 옮긴다.
+  o.basic.devType=mbSpecDevType(o.basic.devType);
   o.rules=o.rules.map(r=>({title:r.title||'',cond:r.cond||'',proc:r.proc||'',msg:r.msg||''}));
   // 업무·프로세스 - 예전 데이터(없음)는 기본값, 손상된 값은 안전한 형태로 고친다
   { const d=mbSpecProcDefault(), p=(o.proc&&typeof o.proc==='object')?o.proc:{};
@@ -8531,8 +8638,8 @@ function spStep1(){
    <div class="sp-q"><label>어떤 화면인가요?</label>
      <div class="sp-cards3">${KIND_CARDS.map(([k,ic,t,d])=>`<button type="button" class="sp-kcard ${b.kind===k?'on':''}" onclick="spSet('basic.kind','${k}',true)"><span class="ic">${ic}</span><b>${t}</b><small>${d}</small></button>`).join('')}</div></div>
    <div class="sp-q"><label>어떻게 만드나요?</label>
-     <div class="sp-seg">${[['new','새로 개발'],['std','표준 프로그램 수정'],['copy','표준 복사 후 수정']].map(([k,l])=>`<button type="button" class="${b.devType===k?'on':''}" onclick="spSet('basic.devType','${k}',true)">${l}</button>`).join('')}</div>
-     ${b.devType!=='new'?`<input class="sp-in" style="margin-top:8px" value="${E(b.base)}" placeholder="기준이 되는 표준 프로그램 (예: 품목정보등록 COMMBAMUI0055)" oninput="spSet('basic.base',this.value)">`:''}</div>
+     <div class="sp-seg">${[['new','신규','새로 개발하는 화면'],['mod','수정','표준 프로그램을 복사해 수정 개발하는 신규 화면'],['mig','이관','기존 다른 시스템의 프로그램과 같은 기능을 하는 신규 프로그램']].map(([k,l,t])=>`<button type="button" class="${mbSpecDevType(b.devType)===k?'on':''}" title="${t}" onclick="spSet('basic.devType','${k}',true)">${l}</button>`).join('')}</div>
+     ${mbSpecDevType(b.devType)==='mod'?`<input class="sp-in" style="margin-top:8px" value="${E(b.base)}" placeholder="복사할 기준 표준 프로그램 (예: 품목정보등록 COMMBAMUI0055)" oninput="spSet('basic.base',this.value)">`:mbSpecDevType(b.devType)==='mig'?`<input class="sp-in" style="margin-top:8px" value="${E(b.base)}" placeholder="이관 대상 레거시 프로그램 (예: 기존 시스템의 품목등록 화면)" oninput="spSet('basic.base',this.value)">`:''}</div>
    <div class="sp-q"><label>이 화면은 무엇을 하나요? <span class="opt">한 줄에 한 가지씩</span></label>
      <textarea class="sp-ta" rows="3" placeholder="예) 품목정보등록(S)에서 쌓인 변경 이력을 조회한다.&#10;비고만 수정하거나 행을 삭제할 수 있다." oninput="spSet('basic.purpose',this.value)">${H(b.purpose)}</textarea></div>
    <div class="sp-q"><label>참고할 프로그램 <span class="opt">선택</span></label><input class="sp-in" value="${E(b.refs)}" placeholder="예) 표준문서등록(PSBAMUI0007) 첨부파일 그리드" oninput="spSet('basic.refs',this.value)"></div>
@@ -8840,7 +8947,8 @@ function spChecks(){
   const S=ensure(), b=S.basic, L=[], items=spItems();
   if(!(b.name||'').trim()) L.push({t:'화면 이름이 없어요',go:[1]});
   if(!(b.purpose||'').trim()) L.push({t:'화면 목적이 비어 있어요',d:'사양서 개요의 첫 문단이 됩니다',go:[1]});
-  if(b.devType!=='new'&&!(b.base||'').trim()) L.push({t:'기준 표준 프로그램이 비어 있어요',go:[1]});
+  { const dv=mbSpecDevType(b.devType);
+    if(dv!=='new'&&!(b.base||'').trim()) L.push({t:dv==='mig'?'이관 대상 레거시 프로그램이 비어 있어요':'기준 표준 프로그램이 비어 있어요',go:[1]}); }
   const hasInfo=!!(S.newCols||'').trim();
   items.forEach(it=>{ const st=itemState(it); if(st==='todo'||st==='part'){ const src=it.kind!=='btn';
     L.push({t:`#${it.no} ${it.name} — ${!src?(st==='todo'?'하는 일을 고르지 않았어요':'동작 내용이 비어 있어요'):'데이터 출처 테이블이 없어요'}`,d:!src?'동작 카드 하나만 고르면 돼요':(hasInfo?'「테이블 정보」에서 AI가 찾아요 · 정확히 하려면 테이블 ID를 적어 주세요':'테이블 ID만 적으면 컬럼은 AI가 스키마에서 찾아요'),go:[ST_DESC,it.key],soft:src&&hasInfo}); } });
@@ -8890,7 +8998,8 @@ function spStep4(){
 window.spTab=function(v){ if(sp){ sp.tab=v; spRender(); } };
 
 /* ---------- 프롬프트 ---------- */
-const KIND={reg:'등록',inq:'조회',rep:'리포트(출력)'}, DEV={new:'신규 개발',std:'표준 프로그램 수정',copy:'표준 복사 후 수정'};
+const KIND={reg:'등록',inq:'조회',rep:'리포트(출력)'}, DEV={new:'신규',mod:'수정',mig:'이관'},
+  DEV_DESC={new:'신규 (새로 개발하는 화면)',mod:'수정 (표준 프로그램을 복사해 수정 개발하는 신규 화면)',mig:'이관 (기존 다른 시스템의 프로그램과 같은 기능을 하는 신규 프로그램)'};
 const Q='[확인필요]';
 const cv=s=>String(s==null?'':s).replace(/\|/g,'/').replace(/\n+/g,' ').trim();
 const MATCH_TXT={eq:'같음',like:'포함(앞뒤 % Like)',range:'범위(From~To)',in:'선택값'};
@@ -8978,7 +9087,7 @@ function spFallbackSpec(o,hasProc){
   P('### A-3. 시트별 구성');
   P('- **0.변경이력**: 표 `No | 변경 일자 | 변경 내용 | 담당자 | 요청자` 한 행만 — 1 | 작성일 | 최초 작성 | (공란) | (공란).');
   P('- **1.개요**: 라벨/값 표(순서 고정) — 프로젝트 명 · 모듈 / 서브모듈 · 프로그램ID(공란) · 프로세스ID(-) · 프로그램명 · 프로그램 개요(①②③) · 요청자 / 요청일 · 예상 개발기간 / 완료희망일 · 개발자 / 개발완료일 · 우선순위(A/B/C) · 난이도(H/M/L) · 프로그램 유형 · 재사용 PGM-ID · 수행빈도 · UI 유형 · BL 유형(이 두 행만 값 있을 때) · 기타 특성(①②③ 또는 ▷ 줄, 항상).');
-  P('  - 1절 대응: 화면 종류 → 프로그램 유형(등록 / 조회 / 리포트(조회/출력) 중 하나 + 괄호에 실제 동작, 예: "조회 (조회 + 비고 수정·행 삭제)") · 개발 방식이 표준 수정·복사면 기준 프로그램 → 재사용 PGM-ID(신규 개발이면 "-") · 개발 방식, 참고·이동 대상 프로그램, 앞·뒤 업무와 사용 역할 → 기타 특성 · 작성자/작성일 → 요청자는 공란, 작성자 정보는 2·3·4 시트 헤더에 쓴다.');
+  P('  - 1절 대응: 화면 종류 → 프로그램 유형(등록 / 조회 / 리포트(조회/출력) 중 하나 + 괄호에 실제 동작, 예: "조회 (조회 + 비고 수정·행 삭제)") · 개발 방식이 수정이면 기준 표준 프로그램 → 재사용 PGM-ID(신규·이관이면 "-") · 개발 방식(이관이면 이관 대상 레거시 프로그램 포함), 참고·이동 대상 프로그램, 앞·뒤 업무와 사용 역할 → 기타 특성 · 작성자/작성일 → 요청자는 공란, 작성자 정보는 2·3·4 시트 헤더에 쓴다.');
   P('- **2.화면LO**: 공통 헤더 → `■ 화면설명`(①②③ 문단) → `■ 화면 Mock-up`(첨부 목업 html의 화면 영역 `.mockup`만 캡처 → 배너 다음 행 A열에 폭 900px로 비율 유지해 삽입 → 이미지 높이(px) ÷ 20 + 2 만큼 행을 비워 다음 표와 겹치지 않게 한다. 캡처할 수 없으면 목업 파일명만 한 줄) → 필드 표들.');
   P('  - 표 배너: `[조회조건 Selection]  (저장 없음)` → `[Form / Display]`(입력 항목) → 그리드마다 `[Grid / 그리드명]`. 행 순서는 2절 번호 순서(번호 열은 만들지 않는다).');
   P('  - 표 헤더: `한글명 | 영문컬럼ID | 저장/조회 테이블 | 표시타입 | 기본값·설명(관련정보) | 입력필수 | Read Only | Display`. 값 형식: 입력필수 = "Y(필수)" 또는 "N", Read Only = "Y"/"N"(조건부면 문장, 예: "신규만 수정가능"), Display = "Y" 또는 "N(Hidden)".');
@@ -9043,7 +9152,9 @@ function spBuildPrompt(){
   }
   P('- 규칙 ID(R01…)를 사양서 전체에서 유지한다. 같은 규칙은 모든 시트에서 같은 내용으로 쓰고, 상세 서술은 3.기능사양에 둔다.');
   P('- 작성 후 SQL·Display 컬럼 매핑·메시지 표·단위테스트가 규칙·테이블·공통코드와 일치하는지 대조한다. (정렬 조건, 삭제 시 연쇄 처리, 코드값 누락 주의)');
-  if(b.devType!=='new') P('- 명시된 추가·변경·삭제 외의 기능은 "표준을 따른다"로 쓴다.');
+  { const dv=mbSpecDevType(b.devType);
+    if(dv==='mod'){ P('- 표준 프로그램 자체는 수정하지 않는다. 기준 표준 프로그램을 복사해 만드는 신규 화면으로 쓴다.'); P('- 명시된 추가·변경·삭제 외의 기능은 "표준을 따른다"로 쓴다.'); }
+    else if(dv==='mig') P('- 이관 대상 레거시 프로그램과 같은 기능을 하는 신규 프로그램으로 쓴다. 레거시 프로그램의 기능이 빠짐없이 대응되도록 한다.'); }
   P('- 기준·참고·이동 대상 프로그램은 사양서에 반드시 명시한다.');
   P('- 3.기능사양의 절 본문은 "1) 2) 3)" 단계식 사용자 매뉴얼 문체로 쓰고(화면 개요 같은 개요 문단은 ①②③ 형식), 한 문장에는 한 가지 사실만 쓴다.');
   P('- 단위테스트는 규칙마다 정상 1건과 예외 1건 이상을 작성한다. (막아야 하는 경우는 각각 예외 테스트로)');
@@ -9058,7 +9169,8 @@ function spBuildPrompt(){
   P(`- 프로그램명: ${b.name||Q1} / 프로그램ID: ${b.pgmId||Q1}`);
   P(`- 작성자: ${b.author||Q1} / 작성일: ${b.date||''}`);
   P(`- 화면 종류: ${KIND[b.kind]||Q1}${b.uiType?' / UI 유형: '+b.uiType:''}${b.blType?' / BL 유형: '+b.blType:''}${b.freq?' / 수행빈도: '+b.freq:''}`);
-  P(`- 개발 방식: ${DEV[b.devType]||DEV.new}${b.devType!=='new'?' / 기준 프로그램: '+(b.base||Q1):''}`);
+  { const dv=mbSpecDevType(b.devType);
+    P(`- 개발 방식: ${DEV_DESC[dv]}${dv==='mod'?' / 기준 표준 프로그램: '+(b.base||Q1):dv==='mig'?' / 이관 대상 레거시 프로그램: '+(b.base||Q1):''}`); }
   const jumps=items.filter(i=>i.kind==='btn').map(i=>btnSpec(i,false)).filter(s=>s.action==='jump'&&(s.target||'').trim()).map(s=>s.target.trim());
   if((b.refs||'').trim()||jumps.length) P(`- 연관 프로그램: ${[(b.refs||'').trim()?'참고 '+b.refs.trim():'',...jumps.map(j=>'이동 대상 '+j)].filter(Boolean).join(', ')}`);
   P(`- 목적:${(b.purpose||'').trim()?'':' '+Q1}`); String(b.purpose||'').split('\n').filter(s=>s.trim()).forEach(s=>P('  - '+s.trim()));
@@ -9128,7 +9240,7 @@ function spBuildSummary(){
   const S=ensure(), b=S.basic, rules=spDerivedRules(), items=spItems();
   const li=rules.map(r=>`<li><b>${H(r.title)}</b> <span class="sp-rid">${r.id}</span><div>${(r.cond||'').trim()?H(r.cond)+' → ':''}${H(r.proc)}</div>${r.checks.map(k=>`<div class="stop">⛔ ${(k.cond||'').trim()?H(k.cond)+' → ':''}${(k.msg||'').trim()?'"'+H(k.msg)+'"':'중단'}</div>`).join('')}</li>`).join('');
   const parts=items.filter(i=>i.kind!=='global').map(i=>H(i.name)).join(', ');
-  return `<h3>${H(b.name||screenTitle()||'제목 없는 화면')}</h3><div class="meta">${H([[b.module,b.subModule].filter(Boolean).join(' › '),KIND[b.kind],DEV[b.devType],b.author].filter(Boolean).join(' · '))}</div>
+  return `<h3>${H(b.name||screenTitle()||'제목 없는 화면')}</h3><div class="meta">${H([[b.module,b.subModule].filter(Boolean).join(' › '),KIND[b.kind],DEV[mbSpecDevType(b.devType)],b.author].filter(Boolean).join(' · '))}</div>
    <h4>무엇을 하는 화면인가</h4>${(b.purpose||'').trim()?H(b.purpose).replace(/\n/g,'<br>'):'<span class="q">목적이 비어 있어요</span>'}
 ${spProcSummary()}
    <h4>화면 구성</h4>${parts||'<span class="q">항목 없음</span>'}
