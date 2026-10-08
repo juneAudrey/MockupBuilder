@@ -48,7 +48,6 @@ window.WaveFlow = (function () {
   const DEFAULT_COLOR = '#94a3b8';
 
   function slug(t) { return String(t || 'unknown').replace(/[^a-zA-Z0-9]/g, '').toLowerCase(); }
-  function esc(s) { return String(s == null ? '' : s); }
   function truncate(s, n) {
     s = String(s == null ? '' : s).trim().replace(/\s+/g, ' ');
     return s.length > n ? s.slice(0, n - 1) + '…' : s;

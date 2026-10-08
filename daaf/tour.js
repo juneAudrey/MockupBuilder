@@ -97,7 +97,7 @@
     let left, top;
 
     const spaceRight = vw - r.right, spaceLeft = r.left,
-          spaceBottom = vh - r.bottom, spaceTop = r.top;
+          spaceBottom = vh - r.bottom;
 
     if (spaceRight >= pw + 20) {            // 오른쪽
       left = r.right + 16; top = clamp(r.top, 12, vh - ph - 12);

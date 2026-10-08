@@ -18,10 +18,10 @@ window.WaveOffline = (function () {
   const ALL_TABLES = ['menu', 'ui_deploy', 'wf_deploy', 'rp_deploy', 'mo_deploy', 'dd', 'dd_lang', 'report_link', 'report_link_tenant', 'config_ref', 'grid_columns', 'grid_columns_tenant', 'grid_options', 'grid_options_tenant'];
 
   const state = { filePath: '', manifest: null, active: false, busy: false };
-  let getCfg = null, getProductCd = null, getLang = null, onModeChange = null, onDataChange = null, setStatus = null;
+  let getProductCd = null, getLang = null, onModeChange = null, onDataChange = null, setStatus = null;
 
   function init(opts) {
-    getCfg = opts.getCfg; getProductCd = opts.getProductCd; getLang = opts.getLang;
+    getProductCd = opts.getProductCd; getLang = opts.getLang;
     onModeChange = opts.onModeChange; onDataChange = opts.onDataChange; setStatus = opts.setStatus;
     bind();
     window.api.onOfflineProgress(handleProgress);
@@ -210,13 +210,11 @@ window.WaveOffline = (function () {
 
   /* ---------- 다운로드용 DB 접속정보 선택 다이얼로그 ---------- */
   let _dlProfiles = [];     // 저장된 접속정보 목록
-  let _dlChosenCfg = null;  // 접속·DB조회로 확정된 cfg
   let _dlOnConfirm = null;  // 확인 시 실행할 콜백
   let _dlBase = null;       // 접속 성공한 접속정보(기본 cfg, database 제외)
 
   async function openConnPicker(onConfirm) {
     _dlOnConfirm = onConfirm;
-    _dlChosenCfg = null;
     dlMsg('');
     const sel = el('dlConnProfiles');
     const dbSel = el('dlConnDb');

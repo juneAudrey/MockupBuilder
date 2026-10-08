@@ -1005,6 +1005,7 @@
       const title = withExtra(navKey, idPart, 'WF 연결: ' + idPart + ' (더블클릭: 그래프 이동)');
       return { navKey, cls: 'lk-wf', badge: 'WF', title };
     }
+    let scriptFnIndex = null; // compLink 4-a 에서 처음 필요할 때 생성(getScriptIndex)
     function compLink(node, pv, o) {
       // 0) eventType 이 명시된 경우: 그 eventType 에 해당하는 링크(팝업/리포트)를 최우선으로 찾는다.
       if (pv.eventType === 'BTN_OPEN_POPUP' || pv.eventType === 'BTN_REPORT_PREVIEW') {
@@ -1061,17 +1062,20 @@
         //      extractStructuralButtonTriggers()(파도타기 그래프 확장)와 동일한 규칙을 여기
         //      (디자인 미리보기 배지)에도 적용해, "그래프엔 연결되는데 배지는 안 보임" 같은
         //      불일치가 생기지 않게 한다.
-        const pgmM = pv.usrEventFn.match(/calleePgmId\s*=\s*['"]([^'"]+)['"]/)
-          || pv.usrEventFn.match(/\bprogramId\s*[:=]\s*['"]([^'"]+)['"]/);
-        if (pgmM && pgmM[1]) {
-          const pgmId2 = pgmM[1];
+        //      $pageObjects["헬퍼"]() 를 거치거나 대상 ID 를 헬퍼 인자로 넘기는 경우도 함께 추적한다.
+        //      배지는 1개만 표시하므로 첫 번째 대상을 대표로 쓰고, 여러 건이면 툴팁에 "외 N건"을 붙인다.
+        if (!scriptFnIndex) scriptFnIndex = getScriptIndex(resourceJson, resourceJsText);
+        const popTargets = resolveScriptPopupTargets(pv.usrEventFn, scriptFnIndex, true);
+        if (popTargets.length) {
+          const pgmId2 = popTargets[0];
+          const extraPop = popTargets.length > 1 ? (' 외 ' + (popTargets.length - 1) + '건') : '';
           if (looksLikeReportId(pgmId2)) {
             const navKey = 'Rp:' + pgmId2;
-            const title = withExtra(navKey, pgmId2, '리포트 연결: ' + pgmId2 + ' · 직접호출(스크립트) (더블클릭: 그래프 이동)');
+            const title = withExtra(navKey, pgmId2, '리포트 연결: ' + pgmId2 + extraPop + ' · 직접호출(스크립트) (더블클릭: 그래프 이동)');
             return { navKey, cls: 'lk-rp', badge: 'Rp', title };
           }
           const navKey = 'UI:' + pgmId2;
-          const title = withExtra(navKey, pgmId2, '팝업 UI 연결: ' + pgmId2 + ' · 직접호출(스크립트) (더블클릭: 그래프 이동)');
+          const title = withExtra(navKey, pgmId2, '팝업 UI 연결: ' + pgmId2 + extraPop + ' · 직접호출(스크립트) (더블클릭: 그래프 이동)');
           return { navKey, cls: 'lk-ui', badge: 'UI', title };
         }
         // 4-b) ajax.postJson(... '/wf/{uid}/execute...' ...) 형태로 WF 를 직접 호출하는 경우
@@ -1207,6 +1211,249 @@
     return out;
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // 스크립트 간접호출 팝업 추적
+  // ---------------------------------------------------------------------------------------------
+  // 실무 화면은 팝업을 선언적 BTN_OPEN_POPUP(form[].programId)이 아니라 스크립트로 여는 경우가 많다.
+  //   (1) 이벤트 본문에서 바로 여는 경우:   var calleePgmId = 'XXX'; popup.show(page, $url, ...)
+  //   (2) 헬퍼 함수를 거쳐 여는 경우:       usrEventFn = $pageObjects["fncOpenItemDocNoPopup"]();
+  //       → onLoad 에 정의된 그 함수 안에서 calleePgmId = 'PPISPUI0003'; popup.open(page, calleePgmId, ...)
+  //   (3) 대상 ID 를 인자로 넘기는 경우:    $pageObjects["fncOpenRefPopup"]('PPISPUI0005', '...', 'I');
+  //       → function(popId, ...) { ... popup.open(page, popId, ...) }
+  // 예전 규칙은 (1)만 이벤트 본문 안에서 찾았기 때문에 (2)(3)으로 열리는 팝업은 파도타기 그래프와
+  // 디자인 배지에서 통째로 빠졌다. 아래 함수들은 RESOURCE_JS + RESOURCE_JSON 안의 스크립트에서
+  // $pageObjects["이름"] = function(...){...} / function 이름(...){...} 정의를 모아 색인하고,
+  // 호출을 따라가(최대 SCRIPT_RESOLVE_MAX_DEPTH 단계) 실제로 열리는 팝업 프로그램 ID 를 찾는다.
+  // 실행하지 않는 정적 분석이므로 문자열 리터럴로 확정되는 대상만 잡는다(변수 계산값은 추적하지 않음).
+  const SCRIPT_RESOLVE_MAX_DEPTH = 4;
+  const PGM_ID_PAT = '[A-Za-z][A-Za-z0-9_]{2,}';
+
+  // text[openIdx] 의 여는 괄호에 짝이 맞는 닫는 괄호까지 잘라낸다. sliceBalanced 와 달리
+  // 문자열('', "", ``)과 주석(//, /* */) 안의 괄호는 세지 않는다 — 스크립트 안의 "{" 같은
+  // 문자열 때문에 함수 본문을 잘못 자르는 일을 막는다. 짝을 못 찾으면 null.
+  function sliceJsBlock(text, openIdx, openCh, closeCh) {
+    if (!text || text[openIdx] !== openCh) return null;
+    let depth = 0;
+    for (let i = openIdx; i < text.length; i++) {
+      const c = text[i];
+      if (c === '"' || c === "'" || c === '`') {
+        for (i++; i < text.length && text[i] !== c; i++) { if (text[i] === '\\') i++; }
+        continue;
+      }
+      if (c === '/' && text[i + 1] === '/') { const nl = text.indexOf('\n', i); if (nl < 0) return null; i = nl; continue; }
+      if (c === '/' && text[i + 1] === '*') { const ce = text.indexOf('*/', i + 2); if (ce < 0) return null; i = ce + 1; continue; }
+      if (c === openCh) depth++;
+      else if (c === closeCh) { depth--; if (depth === 0) return text.slice(openIdx, i + 1); }
+    }
+    return null;
+  }
+
+  // "a, 'b,c', fn(x, y)" → ["a", "'b,c'", "fn(x, y)"] (최상위 콤마로만 분리, 문자열/괄호 안의 콤마는 무시)
+  function splitTopLevelArgs(argText) {
+    const out = [];
+    let depth = 0, cur = '';
+    for (let i = 0; i < argText.length; i++) {
+      const c = argText[i];
+      if (c === '"' || c === "'" || c === '`') {
+        let j = i + 1;
+        for (; j < argText.length && argText[j] !== c; j++) { if (argText[j] === '\\') j++; }
+        cur += argText.slice(i, j + 1); i = j; continue;
+      }
+      if (c === '(' || c === '[' || c === '{') depth++;
+      else if (c === ')' || c === ']' || c === '}') depth--;
+      if (c === ',' && depth === 0) { out.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  }
+
+  function stringLiteralValue(argText) {
+    const m = String(argText || '').trim().match(/^(['"`])([^'"`$\\]*)\1$/);
+    return m ? m[2] : null;
+  }
+
+  // 코드 조각 안에서 "문자열 리터럴로 확정되는" 팝업 대상 프로그램 ID 를 찾는다.
+  //   - calleePgmId = 'XXX'                         (DaaF 팝업 스니펫 표준 변수)
+  //   - popup.open(page, 'XXX', ...)                (open 은 두 번째 인자가 프로그램 ID)
+  //   - '/common/builder/ui/p/XXX/view.do'          (popup.show 에 넘기는 URL 리터럴)
+  //   - programId: 'XXX' / programId = 'XXX'        (allowProgramIdKey 일 때만 — 버튼 이벤트 본문 한정.
+  //     페이지 전체 스크립트에서는 다른 용도의 programId 대입과 구분이 안 돼 오탐 위험이 있다)
+  function findDirectPopupTargets(code, allowProgramIdKey) {
+    const out = [];
+    if (!code) return out;
+    const pats = [
+      new RegExp('calleePgmId\\s*=\\s*[\'"](' + PGM_ID_PAT + ')[\'"]', 'g'),
+      new RegExp('popup\\.open\\s*\\(\\s*[^,()]+,\\s*[\'"](' + PGM_ID_PAT + ')[\'"]', 'g'),
+      new RegExp('/ui/p/(' + PGM_ID_PAT + ')/view', 'g')
+    ];
+    if (allowProgramIdKey) pats.push(new RegExp('\\bprogramId\\s*[:=]\\s*[\'"](' + PGM_ID_PAT + ')[\'"]', 'g'));
+    pats.forEach(re => {
+      let m;
+      while ((m = re.exec(code)) !== null) if (!out.includes(m[1])) out.push(m[1]);
+    });
+    return out;
+  }
+
+  // 함수 정의에서 "팝업 대상 ID 로 쓰이는 매개변수"의 위치(index) 목록을 찾는다.
+  //   function(popId, title) { popup.open(page, popId, ...) }      → [0]
+  //   function(pgm) { var calleePgmId = pgm; ... }                  → [0]
+  //   function(pgm) { $url = '.../ui/p/' + pgm + '/view.do'; ... }  → [0]
+  function findPopupParamIndexes(params, body) {
+    const idx = [];
+    params.forEach((p, i) => {
+      if (!p || !/^[A-Za-z_$][\w$]*$/.test(p)) return;
+      const ep = p.replace(/\$/g, '\\$');
+      const res = [
+        new RegExp('popup\\.open\\s*\\(\\s*[^,()]+,\\s*' + ep + '\\s*[,)]'),
+        new RegExp('calleePgmId\\s*=\\s*' + ep + '\\s*[;,\\n)]'),
+        new RegExp('/ui/p/[\'"`]?\\s*\\+\\s*' + ep + '\\b')
+      ];
+      if (res.some(re => re.test(body))) idx.push(i);
+    });
+    return idx;
+  }
+
+  // 스크립트 함수 색인: 이름 → [{ params, body, popupParamIdx }]
+  // 같은 이름이 여러 번 정의돼도(RESOURCE_JS 와 RESOURCE_JSON onLoad 에 같은 코드가 중복 저장됨) 모두 보관.
+  function indexScriptFunctions(texts) {
+    const index = {};
+    const add = (name, paramText, text, braceIdx) => {
+      let body = sliceJsBlock(text, braceIdx, '{', '}');
+      if (body == null) body = text.slice(braceIdx, braceIdx + 6000); // 짝을 못 찾으면 앞부분만이라도
+      const params = String(paramText || '').split(',').map(s => s.trim().replace(/\s*=.*$/, ''));
+      const list = index[name] || (index[name] = []);
+      if (list.some(d => d.body === body)) return;
+      list.push({ params, body, popupParamIdx: findPopupParamIndexes(params, body) });
+    };
+    const defRes = [
+      // $pageObjects["name"] = function(a, b) {   /   = async function(...) {
+      /\$pageObjects\s*\[\s*(['"])([A-Za-z_$][\w$]*)\1\s*\]\s*=\s*(?:async\s+)?function\s*[A-Za-z_$\w]*\s*\(([^)]*)\)\s*\{/g,
+      // $pageObjects["name"] = (a, b) => {
+      /\$pageObjects\s*\[\s*(['"])([A-Za-z_$][\w$]*)\1\s*\]\s*=\s*(?:async\s*)?\(([^)]*)\)\s*=>\s*\{/g,
+      // $pageObjects.name = function(...) {
+      /\$pageObjects\s*\.\s*()([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\s*[A-Za-z_$\w]*\s*\(([^)]*)\)\s*\{/g,
+      // function name(...) {   (스크립트 안의 일반 함수 선언)
+      /(?:^|[^\w$.])function\s+()([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{/g
+    ];
+    (texts || []).forEach(text => {
+      if (!text || typeof text !== 'string') return;
+      defRes.forEach(re => {
+        re.lastIndex = 0;
+        let m;
+        while ((m = re.exec(text)) !== null) add(m[2], m[3], text, m.index + m[0].length - 1);
+      });
+    });
+    return index;
+  }
+
+  // RESOURCE_JSON 안의 모든 문자열 값 중 스크립트로 보이는 것(onLoad, usrEventFn, afterSubmit 등)을 모은다.
+  function collectJsonScriptStrings(resourceJsonText) {
+    const out = [];
+    let obj;
+    try { obj = JSON.parse(resourceJsonText); } catch (e) { return out; }
+    (function walk(o) {
+      if (typeof o === 'string') {
+        if (/\$pageObjects|popup\.|calleePgmId|\/ui\/p\/|function\s*[\w$]*\s*\(/.test(o)) out.push(o);
+        return;
+      }
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) { o.forEach(walk); return; }
+      Object.keys(o).forEach(k => walk(o[k]));
+    })(obj);
+    return out;
+  }
+
+  // 같은 리소스를 여러 번(그래프 확장 / 상세 패널 / 디자인 미리보기) 파싱하므로 직전 결과를 재사용한다.
+  let _scriptIndexCache = { json: null, js: null, index: null };
+  function getScriptIndex(resourceJsonText, resourceJsText) {
+    const json = resourceJsonText || '', js = resourceJsText || '';
+    if (_scriptIndexCache.index && _scriptIndexCache.json === json && _scriptIndexCache.js === js) return _scriptIndexCache.index;
+    const index = indexScriptFunctions([js].concat(collectJsonScriptStrings(json)));
+    _scriptIndexCache = { json, js, index };
+    return index;
+  }
+
+  // 코드 조각(이벤트 본문 등)이 실제로 여는 팝업 프로그램 ID 목록(중복 제거, 발견 순).
+  // fnIndex: indexScriptFunctions() 결과. allowProgramIdKey: findDirectPopupTargets 참고.
+  function resolveScriptPopupTargets(code, fnIndex, allowProgramIdKey) {
+    const out = [];
+    const push = (id) => { if (id && !out.includes(id)) out.push(id); };
+    const visited = new Set();
+    (function walk(src, depth, allowKey) {
+      if (!src || depth > SCRIPT_RESOLVE_MAX_DEPTH) return;
+      findDirectPopupTargets(src, allowKey).forEach(push);
+      if (!fnIndex) return;
+      // $pageObjects["name"](args)  /  $pageObjects.name(args)  /  name(args) (색인에 있는 일반 함수만)
+      const callRe = /\$pageObjects\s*(?:\[\s*(['"])([A-Za-z_$][\w$]*)\1\s*\]|\.\s*([A-Za-z_$][\w$]*))\s*\(|(?:^|[^\w$.])([A-Za-z_$][\w$]*)\s*\(/g;
+      let m;
+      while ((m = callRe.exec(src)) !== null) {
+        const name = m[2] || m[3] || m[4];
+        const defs = fnIndex[name];
+        if (!defs || !defs.length) continue;
+        // 일반 함수 호출 매치의 경우 "function name(" 정의 자체를 호출로 오인하지 않게 거른다.
+        if (m[4] && /function\s*$/.test(src.slice(Math.max(0, m.index - 12), m.index + 1))) continue;
+        const parenIdx = m.index + m[0].length - 1;
+        const argBlock = sliceJsBlock(src, parenIdx, '(', ')');
+        const args = argBlock ? splitTopLevelArgs(argBlock.slice(1, -1)) : [];
+        defs.forEach(def => {
+          // (3) 대상 ID 를 인자로 넘기는 헬퍼: 호출부의 문자열 리터럴 인자를 대상으로 채택
+          def.popupParamIdx.forEach(i => push(stringLiteralValue(args[i])));
+          // (2) 헬퍼 본문 안에서 직접 여는 팝업 — 같은 본문은 한 번만 따라간다(순환 호출 방지)
+          if (visited.has(def.body)) return;
+          visited.add(def.body);
+          walk(def.body, depth + 1, false);
+        });
+      }
+    })(code, 0, !!allowProgramIdKey);
+    return out;
+  }
+
+  // 컴포넌트 트리 전체에서 "스크립트로 여는 팝업"을 BTN_OPEN_POPUP 트리거로 뽑는다.
+  // 버튼의 usrEventFn 은 extractStructuralButtonTriggers 가 라벨과 함께 이미 처리하므로, 여기서는
+  // 그 밖의 스크립트(입력창 blur/change 이벤트, 그리드 이벤트, beforeSubmit/afterSubmit, 페이지 onLoad 등)를
+  // 대상으로 한다. parseUi() 에서 가장 마지막에 합쳐지므로(같은 대상은 앞선 트리거가 우선) 라벨 품질이
+  // 더 좋은 버튼 트리거를 덮어쓰지 않는다. 마지막으로 RESOURCE_JS 전체도 한 번 훑어, JSON 에는 없고
+  // 컴파일 결과(RESOURCE_JS)에만 남아있는 팝업 호출까지 놓치지 않게 한다.
+  function extractScriptPopupTriggers(resourceJsonText, resourceJsText, selfProgramId) {
+    const out = [];
+    const fnIndex = getScriptIndex(resourceJsonText, resourceJsText);
+    const seen = new Set();
+    const add = (programId, label) => {
+      if (!programId || programId === selfProgramId || seen.has(programId)) return;
+      seen.add(programId);
+      out.push({ event: 'BTN_OPEN_POPUP', programId, label: label || '', script: true });
+    };
+    let obj = null;
+    try { obj = JSON.parse(resourceJsonText); } catch (e) { obj = null; }
+    if (obj) {
+      (function scan(o, groupLabel, key) {
+        if (typeof o === 'string') {
+          if (key === 'usrEventFn') return; // 버튼 이벤트는 extractStructuralButtonTriggers 담당
+          if (!/\$pageObjects|popup\.|calleePgmId|\/ui\/p\/|\(/.test(o)) return;
+          const targets = resolveScriptPopupTargets(o, fnIndex, false);
+          targets.forEach(id => add(id, groupLabel ? (groupLabel + (key ? ' [' + key + ']' : '')) : (key ? '[' + key + ']' : '')));
+          return;
+        }
+        if (!o || typeof o !== 'object') return;
+        if (Array.isArray(o)) { o.forEach(x => scan(x, groupLabel, key)); return; }
+        const pv = o.propertyValue || {};
+        // 라벨 우선순위: 자기 라벨(label/formLabel/title) → 상위 그룹 라벨(예: InputGroup 의 formLabel
+        // "수불번호") → 컴포넌트 id. id 는 하위로 물려주지 않는다(그룹 라벨이 더 사람이 읽기 좋음).
+        const own = pv.label || pv.formLabel || pv.title || null;
+        const inherit = own || groupLabel || null;
+        const lbl = inherit || (o.type === 'component' ? (pv.id || null) : null);
+        Object.keys(o).forEach(k => {
+          const v = o[k];
+          if (typeof v === 'string') scan(v, lbl, k);
+          else scan(v, inherit, key);
+        });
+      })(obj, null, null);
+    }
+    if (resourceJsText) resolveScriptPopupTargets(resourceJsText, fnIndex, false).forEach(id => add(id, '(스크립트)'));
+    return out;
+  }
+
   // 그리드 액션 컬럼 버튼(Tracking No 팝업, 품목 팝업 등) → BTN_OPEN_POPUP 트리거로 변환.
   // 일반 팝업 버튼은 컴포넌트의 propertyValue.form[].programId 로 선언되지만(→ extractTriggers 가 처리),
   // 그리드 컬럼의 액션 버튼(dataType:"button" + cellTemplate)은 정적 HTML 조각과 RESOURCE_JS 의
@@ -1267,14 +1514,15 @@
   // 스크립트 길이에 영향받지 않음)로 만들어지므로 "배지는 있는데 눌러보면 연결 안 됨"이라는
   // 불일치가 생긴다. computeLinkMap() 과 동일한 구조적 순회를 여기서도 적용해 두 경로를
   // 항상 일치시킨다(정규식 스캔은 그대로 남겨 RESOURCE_JS/HTML 등 JSON 트리 밖의 케이스도 계속 잡는다).
-  function extractStructuralButtonTriggers(resourceJsonText) {
+  function extractStructuralButtonTriggers(resourceJsonText, resourceJsText) {
     const out = [];
     if (!resourceJsonText) return out;
     let obj;
     try { obj = JSON.parse(resourceJsonText); } catch (e) { return out; }
-    (function scan(o) {
+    let fnIndex = null; // BTN_USR_EVENT 버튼을 만났을 때만 지연 생성
+    (function scan(o, groupLabel) {
       if (!o || typeof o !== 'object') return;
-      if (Array.isArray(o)) { o.forEach(scan); return; }
+      if (Array.isArray(o)) { o.forEach(x => scan(x, groupLabel)); return; }
       const pv = o.propertyValue || {};
       if (pv.eventType === 'BTN_WORKFLOW') {
         const serviceId = pv.serviceId || null;
@@ -1296,12 +1544,18 @@
         // 파도타기 그래프 확장에서 이 팝업이 통째로 빠진다. extractGridButtonTriggers() 가 그리드
         // 컬럼 버튼의 같은 패턴을 RESOURCE_JS 안에서 calleePgmId 로 찾는 것과 동일한 규칙을,
         // 여기서는 그리드 밖(검색조건 등) 버튼의 usrEventFn 본문에 바로 적용한다.
-        const pm = pv.usrEventFn.match(/calleePgmId\s*=\s*['"]([^'"]+)['"]/)
-          || pv.usrEventFn.match(/\bprogramId\s*[:=]\s*['"]([^'"]+)['"]/);
-        if (pm && pm[1]) out.push({ event: 'BTN_OPEN_POPUP', programId: pm[1], label: pv.label || pv.id || '' });
+        //
+        // 본문에서 바로 여는 경우뿐 아니라, $pageObjects["헬퍼"]() 를 거쳐 여는 경우(헬퍼는 보통
+        // onLoad 에 정의됨)와 대상 ID 를 헬퍼 인자로 넘기는 경우까지 resolveScriptPopupTargets 로 추적한다.
+        // 아이콘만 있는 돋보기 버튼은 label 이 없으므로 상위 그룹(InputGroup)의 formLabel 을 라벨로 쓴다.
+        if (!fnIndex) fnIndex = getScriptIndex(resourceJsonText, resourceJsText);
+        const label = pv.label || (groupLabel ? groupLabel + ' 코드도움' : '') || pv.id || '';
+        resolveScriptPopupTargets(pv.usrEventFn, fnIndex, true)
+          .forEach(programId => out.push({ event: 'BTN_OPEN_POPUP', programId, label, script: true }));
       }
-      Object.keys(o).forEach(k => scan(o[k]));
-    })(obj);
+      const nextGroup = pv.formLabel || pv.label || groupLabel || null;
+      Object.keys(o).forEach(k => scan(o[k], nextGroup));
+    })(obj, null);
     return out;
   }
 
@@ -1311,9 +1565,12 @@
     const seen = new Set();
     const triggerKey = (t) => t.event + '|' + (t.event === 'BTN_OPEN_POPUP' ? t.programId : (t.serviceUid ? 'u' + t.serviceUid : 's' + t.serviceId));
     const triggers = [];
+    // 순서 = 우선순위(같은 대상이면 먼저 나온 트리거의 라벨을 쓴다): 선언적 → 그리드 컬럼 버튼 →
+    // 구조 순회(버튼 usrEventFn 간접호출 포함) → 그 밖의 스크립트(blur/그리드 이벤트/onLoad 등).
     extractTriggers(text)
       .concat(extractGridButtonTriggers(row && row.RESOURCE_JSON, row && row.RESOURCE_JS))
-      .concat(extractStructuralButtonTriggers(row && row.RESOURCE_JSON))
+      .concat(extractStructuralButtonTriggers(row && row.RESOURCE_JSON, row && row.RESOURCE_JS))
+      .concat(extractScriptPopupTriggers(row && row.RESOURCE_JSON, row && row.RESOURCE_JS, row && row.PROGRAM_ID))
       .forEach(t => {
         const k = triggerKey(t);
         if (seen.has(k)) return;
@@ -1473,6 +1730,16 @@
             addLink(compKey, { navKey: 'WF:u' + uid, label: 'uid=' + uid, kind: 'wf', custom: true });
           }
         }
+        // (a-3) BTN_USR_EVENT 버튼이 스크립트로 여는 팝업(본문 직접 / $pageObjects 헬퍼 경유 / 헬퍼 인자).
+        //    json 모드(buildDesignHtml compLink 4-a)와 파도타기 그래프(extractStructuralButtonTriggers)는
+        //    이미 이 연결을 잡는데 html 모드(이 맵)만 빠져 있어, 같은 화면이 모드에 따라 배지 유무가
+        //    갈렸다 — 세 경로가 같은 resolveScriptPopupTargets 규칙을 쓰도록 맞춘다.
+        if (compKey && typeof pv.usrEventFn === 'string') {
+          resolveScriptPopupTargets(pv.usrEventFn, getScriptIndex(resourceJson, resourceJsText), true).forEach(pid => {
+            if (looksLikeReportId(pid)) addLink(compKey, { navKey: 'Rp:' + pid, label: pid, kind: 'rp', custom: true });
+            else addLink(compKey, { navKey: 'UI:' + pid, label: pid, kind: 'ui', custom: true });
+          });
+        }
         // (d) 팝업 UI 연결 — 대부분 최상위 pv.programId 가 아니라 BTN_OPEN_POPUP 패턴의
         //    pv.form[].programId 에 들어있다(예: btnOpenPop → form:[{programId:"SDSOPUI0001"}]).
         const formPgmId = Array.isArray(pv.form) ? (pv.form.find(f => f && f.programId) || {}).programId : null;
@@ -1493,42 +1760,6 @@
       Object.keys(o).forEach(k => scan(o[k]));
     })(obj);
     return map;
-  }
-
-  // ---- 리포트 헤더/데이터 공급 WF 안의 실제 라벨(header1~N) 추출 ----
-  // 리포트 디자인(REPORT_JSON)에는 실제 값이 없고, b_report_file(_tenant)에 연결된 WF가 실행 시점에
-  // headerN 자리를 실제 문자열로 채운다. 이 WF(RESOURCE_WF)를 스캔해서 그 하드코딩된 값을 찾는다.
-  // 1) EntityDefinition/설정성 스텝의 JSON 구조: {"fieldId":"header3", ..., "value":"발주번호"}
-  // 2) 단순조회형 WF의 SQL 리터럴: 'header3' AS header3 → '발주번호' AS header3
-  // 둘 다 "추정"이며, WF 구조가 다르면 못 찾을 수 있다(그런 header는 그냥 {{headerN}} 그대로 남는다).
-  function extractHeaderLabels(resourceWfText) {
-    const labels = {};
-    if (!resourceWfText) return labels;
-    const HDR_RE = /^header\d+$/i;
-    let rwf;
-    try { rwf = JSON.parse(resourceWfText); } catch (e) { rwf = null; }
-    if (rwf) {
-      (function walk(o) {
-        if (!o || typeof o !== 'object') return;
-        if (Array.isArray(o)) { o.forEach(walk); return; }
-        const key = o.fieldId || o.columnNm || o.name || o.Name;
-        if (typeof key === 'string' && HDR_RE.test(key)) {
-          const val = o.value != null ? o.value : o.Value;
-          if (typeof val === 'string' && val && !val.startsWith('=') && val.toLowerCase() !== key.toLowerCase()) {
-            labels[key.toLowerCase()] = val;
-          }
-        }
-        Object.keys(o).forEach((k) => walk(o[k]));
-      })(rwf);
-    }
-    // 보강: SQL 문자열 리터럴 'xxx' AS headerN 패턴(단순조회형 WF 대응) — JSON 파싱 결과에 없는 것만 채운다.
-    const sqlRe = /['"]([^'"]*)['"]\s*AS\s*["']?(header\d+)["']?/gi;
-    let m;
-    while ((m = sqlRe.exec(resourceWfText)) !== null) {
-      const lit = m[1], hdr = m[2].toLowerCase();
-      if (lit && lit.toLowerCase() !== hdr && !(hdr in labels)) labels[hdr] = lit;
-    }
-    return labels;
   }
 
   // ---- ActiveReportsJS(RDLX-JSON) 리포트 "레이아웃 추정 미리보기" ----
@@ -1902,5 +2133,5 @@
     return out;
   }
 
-  return { extractServiceRefs, extractTables, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, extractHeaderLabels, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeGridServiceMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
+  return { extractServiceRefs, extractTables, extractScriptPopupTriggers, extractStructuralButtonTriggers, resolveScriptPopupTargets, indexScriptFunctions, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeGridServiceMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
 });

@@ -37,7 +37,6 @@
   // 되짚어 나올 수 있다.
   let currentFlowScope = null;
   let currentFlowRaw = null;   // 지금 열린 WF 의 RESOURCE_WF 원본(스코프를 최상위로 되돌아갈 때 재사용)
-  const MAX_DEPTH_DEFAULT = 4;
   // 폴더(메뉴 트리) 조회가 진행 중인 동안에는 "데이터 없음" 안내 문구를 잠깐 보여줬다 바로
   // 숨기는 깜빡임이 생겼다(비동기 조회가 끝나기 전에 먼저 "없음"으로 그렸다가, 끝나면 다시 채움).
   // 조회 중에는 그 안내를 아예 띄우지 않도록 상태를 추적한다.
@@ -649,11 +648,6 @@
       el('offLiveFolder').textContent = f ? f : '파일 미선택';
       if (ol) ol.classList.toggle('has-data', !!has);
     }
-  }
-  function shortPath(p) {
-    if (!p) return '';
-    if (p.length <= 34) return p;
-    return p.slice(0, 12) + '…' + p.slice(-20);
   }
 
   /* ---------- DB 접속 → DB 목록 콤보 채우기 ---------- */
@@ -1428,8 +1422,6 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
   }
 
   /* ---------- .erp 파일 불러오기 (저장된 결과를 재조회 없이 그대로 복원) ---------- */
-  const ERP_TABLE_TO_TYPE = { z_ui_deploy_info: 'UI', z_wf_deploy_info: 'WF', z_mo_deploy_info: 'Mo', z_rp_deploy_info: 'Rp' };
-
   // .erp 의 data(JSON) 를 store 에 그대로 주입한다. 이미 완성된 그래프이므로
   // DB/오프라인을 다시 조회하지 않고, 저장 시 뽑아낸 nodes/edges 를 되돌려 넣기만 한다.
   // 주의: buildJson()은 저장할 때 노드의 raw(원본 테이블 행)를 record 라는 이름으로 내보낸다.
@@ -1443,7 +1435,40 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       if (node.record && !node.raw) node.raw = node.record;
       store.addNode(node);
     });
-    (data.edges || []).forEach(e => store.addEdge(e.from, e.to, e.relType));
+    // 엣지도 relType 만이 아니라 trigger(버튼→이벤트 라벨)와 cycle(순환 표시) 정보까지 되살린다.
+    // 예전엔 relType 만 복원해, 불러온 그래프에서 엣지 라벨과 "WF 를 실행하는 화면/버튼"(역방향)
+    // 목록이 비고, 순환 엣지가 일반 엣지로 그려지며 [순환 표시] 필터도 엣지에는 듣지 않았다.
+    (data.edges || []).forEach(e => {
+      const edge = store.addEdge(e.from, e.to, e.relType);
+      if (edge && e.trigger && !edge.trigger) edge.trigger = e.trigger;
+      if (edge && e.cycle) edge.cycle = true;
+    });
+    return relinkScriptPopups();
+  }
+
+  // 예전 버전으로 저장한 .erp 는 스크립트로 여는 팝업($pageObjects 헬퍼 경유 등)이 그래프에서 빠진 채
+  // 저장돼 있다. 화면 레코드(raw)는 파일 안에 그대로 있으므로, 불러올 때 현재 파서로 트리거를 다시
+  // 뽑아 빠진 "opens" 연결만 보강한다. 대상 화면의 레코드는 그 파일에 없으므로 노드만 만들고(조회 전
+  // 상태로 표시됨), 내용까지 보려면 DB/오프라인에서 다시 파도타기하면 된다. 반환: 보강한 연결 수.
+  function relinkScriptPopups() {
+    let added = 0;
+    [...store.nodes.values()].forEach(n => {
+      if ((n.type !== 'UI' && n.type !== 'Mo') || !n.raw) return;
+      let triggers = [];
+      try { triggers = P.parseUi(n.raw).triggers || []; } catch (e) { return; }
+      triggers.forEach(t => {
+        if (t.event !== 'BTN_OPEN_POPUP' || !t.programId || t.programId === n.id) return;
+        const type = P.looksLikeReportId(t.programId) ? 'Rp' : 'UI';
+        const toKey = store.nodeKey(type, t.programId, null);
+        if (store.edges.has(n.key + '->' + toKey)) return;
+        const target = store.addNode({ type, id: t.programId, name: t.programId,
+          depth: (n.depth != null ? n.depth : 0) + 1 });
+        const edge = store.addEdge(n.key, target.key, 'opens');
+        if (edge && !edge.trigger) edge.trigger = { label: t.label, event: 'BTN_OPEN_POPUP' };
+        added++;
+      });
+    });
+    return added;
   }
 
   // store 에 담긴 프로그램(UI/WF/Mo/Rp) 노드를 좌측 검색 결과 목록(renderMenu) 형식으로 변환.
@@ -1498,7 +1523,7 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
 
   // 생성 정보 카드에서 [확인]을 누른 뒤: 좌측 목록에 전체 반영 + 첫 행을 더블클릭한 것처럼 그래프로 표시.
   function applyLoadedErp(data) {
-    loadErpDataIntoStore(data);
+    const relinked = loadErpDataIntoStore(data);
     // 이전(불러오기 전) 그래프에서 쌓인 흐름도 상태를 들고 오면 안 된다 —
     // flowNavStack 의 key 가 새 store 에 없을 수 있어 [◀ 뒤로] 클릭 시 엉뚱하게 동작할 수 있음.
     flowNavStack = [];
@@ -1523,7 +1548,8 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     renderTable();
     refreshBasket();
     showDetail(rootKey);
-    setStatus('불러오기 완료 · ' + rows.length + '개 프로그램 · ' + _lastErpPath);
+    setStatus('불러오기 완료 · ' + rows.length + '개 프로그램 · ' + _lastErpPath
+      + (relinked ? (' · 저장 당시 누락된 팝업 연결 ' + relinked + '건 보강(내용은 재조회 필요)') : ''));
   }
 
   // erpNodesToMenuRows 로 만든 row 는 UI/Mo/Rp 를 구분 못 하므로(모두 화면계열로 뭉뚱그려짐),
@@ -1688,7 +1714,6 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     const triggers = parsed.triggers || [];
     (parsed.refs || []).forEach(ref => {
       if (ref.uid == null && ref.id == null) return;
-      const wfKey = store.nodeKey('WF', ref.id, ref.uid);
       const wfNode = store.addNode({ type: 'WF', id: ref.id, uid: ref.uid, name: ref.id, depth });
       store.addEdge(fromNode.key, wfNode.key, 'calls');
       // 이 WF 를 실행하는 트리거(버튼/이벤트) 찾기
@@ -2166,7 +2191,7 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     const keys = new Set();
     store.nodes.forEach(n => { if (match(n)) keys.add(n.key); });
     // 그래프 강조
-    const hits = G.highlight(keys);
+    G.highlight(keys);
     // 테이블 행 강조/흐림
     if (tb) {
       [...tb.children].forEach(tr => {
@@ -2393,10 +2418,13 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
               + ' <span class="arw">→</span> ' + esc(t.serviceId || ('uid=' + t.serviceUid))
               + (t.serviceName ? ' <span class="muted">(' + esc(t.serviceName) + ')</span>' : '') + '</div>';
           } else {
-            const tk = store.nodeKey('UI', t.programId, null);
+            // 팝업 대상이 리포트 명명규칙이면 그래프에는 Rp 노드로 연결되므로(linkRefs) 이동 키도 Rp 로 맞춘다.
+            const isRp = P.looksLikeReportId(t.programId);
+            const tk = store.nodeKey(isRp ? 'Rp' : 'UI', t.programId, null);
             body += '<div class="trig nav" data-nav="' + esc(tk) + '" title="더블클릭: 그래프에서 이동">'
-              + '<span class="ev ev-pop">UI호출</span> ' + btn
-              + ' <span class="arw">→</span> ' + esc(t.programId) + ' 화면</div>';
+              + '<span class="ev ev-pop">' + (isRp ? '리포트' : 'UI호출') + '</span> ' + btn
+              + ' <span class="arw">→</span> ' + esc(t.programId) + (isRp ? ' 리포트' : ' 화면')
+              + (t.script ? ' <span class="muted">(스크립트)</span>' : '') + '</div>';
           }
         });
         body += '</div>';
@@ -2696,9 +2724,9 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
   }
 
   // 리포트(Rp)의 실제 데이터를 채우는 WF 전체 스텝 목록을 가져온다("SQL 보기" 패널용).
-  // 위 resolveReportHeaderLabels() 와 같은 경로(b_report_file(_tenant) → SERVICE_UID)로 WF를
-  // 찾지만, 이번엔 라벨 하나만 뽑는 게 아니라 그 WF 안의 모든 스텝(반복문/분기 내부 포함)을
-  // 통째로 돌려준다. 온라인 DB 접속과 오프라인(report_link/report_link_tenant 를 [데이터 관리]에서
+  // b_report_file(_tenant) → SERVICE_UID 경로로 리포트 데이터 공급 WF를 찾아, 그 WF 안의 모든
+  // 스텝(반복문/분기 내부 포함)을 통째로 돌려준다. (헤더 라벨은 이 경로가 아니라 z_dd_lang 으로
+  // 조회한다 — resolveReportHeaderLabels() 참고.) 온라인 DB 접속과 오프라인(report_link/report_link_tenant 를 [데이터 관리]에서
   // 미리 받아둔 경우) 모두 지원 — fetchWave() 처럼 offlineActive 여부로 두 경로를 나눈다.
   async function resolveReportQuerySteps(raw) {
     // 주의: demoMode 는 "라이브 DB에 붙어있지 않다"는 뜻으로도 쓰여 오프라인 모드에서도 true다
@@ -4705,7 +4733,7 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       let nl = startLeft + (e.clientX - sx);
       let nt = startTop + (e.clientY - sy);
       // 화면 밖으로 완전히 벗어나지 않도록 약간의 여유를 두고 클램프
-      const w = boxEl.offsetWidth, h = boxEl.offsetHeight;
+      const w = boxEl.offsetWidth;
       const minX = 40 - w, maxX = window.innerWidth - 40;
       const minY = 0, maxY = window.innerHeight - 36;
       nl = Math.max(minX, Math.min(maxX, nl));
