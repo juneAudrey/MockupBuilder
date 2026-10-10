@@ -409,6 +409,13 @@
     font-size:12px;font-weight:600;color:var(--ax-green-dark);overflow:hidden;padding:0 8px;}
   #dropGhost.on{display:flex;}
   #dropGhost .dg-ic{font-weight:700;}
+  /* 그리드 컬럼·조회조건 필드 순서 변경 드래그 미리보기 - #dropGhost와 같은 모양, 캔버스 밖(body)에 고정 */
+  #reorderGhost{position:fixed;z-index:9000;pointer-events:none;display:none;box-sizing:border-box;
+    border:1.5px dashed var(--ax-green);border-radius:5px;background:rgba(30,158,106,.10);
+    align-items:center;justify-content:center;
+    font-size:12px;font-weight:600;color:var(--ax-green-dark);overflow:hidden;padding:0 8px;}
+  #reorderGhost.on{display:flex;}
+  #reorderGhost span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
   /* Component base */
   .cmp{position:absolute;cursor:move;user-select:none;}
@@ -449,8 +456,10 @@
   /* 팝업: 라벨+텍스트박스(코드)+아이콘+텍스트박스(명칭, 항상 읽기전용) */
   .ax-popup{width:100%;height:100%;display:flex;align-items:center;gap:4px;}
   .ax-popup>.ax-input,.ax-popup>.ax-input-x{flex:1 1 0;width:auto;min-width:0;}
-  .ax-popup-ic{flex:none;width:22px;height:22px;box-sizing:border-box;border:1px solid var(--ax-border);border-radius:2px;
-    background:var(--ax-green-light);color:var(--ax-green);display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1;}
+  .ax-popup-ic{flex:none;width:17px;height:17px;box-sizing:border-box;border:1px solid #5b7fae;background:#fff;position:relative;}
+  /* 팝업 아이콘(UNIERP 2.7): 위쪽 굵은 파란 막대 + 아래 가는 선 1개 - 조회조건 패널 팝업(.fpop-ic)과 같은 그림 */
+  .ax-popup-ic::before{content:'';position:absolute;left:2px;right:2px;top:2px;height:4px;background:#2f6fb0;}
+  .ax-popup-ic::after{content:'';position:absolute;left:2px;right:2px;bottom:3px;height:1.5px;background:#2f6fb0;}
   .ax-popup-name{flex:1.6 1 0;height:100%;min-width:0;box-sizing:border-box;border:1px solid var(--ax-border);border-radius:2px;background:var(--ax-readonly-bg);}
   /* Thin Mode 전용 - 팝업(검색형)·첨부파일: 조회조건 패널의 '검색' 필드와 같은 모양(텍스트박스 +
      우측 아이콘). 아이콘만 다르다(팝업=돋보기 .sctl-search-ic 재사용, 첨부파일=업로드 아이콘). */
@@ -532,6 +541,11 @@
     border-radius:4px;background:rgba(38,128,235,.05);color:rgba(38,128,235,.85);font-size:11.5px;font-weight:600;
     display:flex;align-items:center;justify-content:center;pointer-events:none;}
   .ax-panel-c{width:100%;height:100%;border:1px solid var(--ax-border);border-radius:5px;background:rgba(250,251,252,.5);}
+  /* 팻모드 그룹박스(타이틀 있는 패널): 왼쪽 위 타이틀 줄 + 그 아래 테두리 박스. top 20px = app.js GBOX_TITLE_H */
+  .ax-gbox{position:relative;width:100%;height:100%;}
+  .ax-gbox-title{position:absolute;left:2px;top:0;max-width:calc(100% - 4px);height:20px;line-height:20px;
+    font-size:12px;font-weight:700;color:var(--ax-label-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ax-panel-c.ax-gbox-box{position:absolute;left:0;right:0;top:20px;bottom:0;width:auto;height:auto;}
   .ax-split-c{width:100%;height:100%;border:1px solid var(--ax-border);border-radius:5px;background:rgba(250,251,252,.35);}
   .split-pane{position:absolute;}
   .split-pane-hint{outline:1px dashed rgba(38,128,235,.2);outline-offset:-1px;}
@@ -793,6 +807,13 @@
   .ax-search .sctl.combo::after{content:"▾";color:var(--ax-gray);font-size:11px;}
   .ax-search .sctl.date::after,.ax-search .sctl.daterange::after{content:"📅";font-size:12px;}
   .ax-search .sctl.search{justify-content:flex-end;gap:8px;}
+  /* 조회조건 「체크박스」 필드(.sctl.schk): 테두리 없는 칸 안에 체크박스 하나. 필수·읽기전용 배경은 칸이 아니라 상자에만 */
+  .ax-search .sctl.schk{border:0;background:transparent!important;padding:0;width:auto;}
+  .ax-search .sctl.schk .box{width:14px;height:14px;flex:none;box-sizing:border-box;border:1.5px solid var(--ax-border);border-radius:3px;background:#fff;position:relative;}
+  .ax-search .sctl.schk.ro .box{background:#f6f7f8;}
+  .ax-search .sctl.schk.interactive:not(.ro){cursor:pointer;}
+  .ax-search .sctl.schk .box.on{background:var(--ax-green);border-color:var(--ax-green);}
+  .ax-search .sctl.schk .box.on::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;line-height:1;}
   .sctl-search-ic{width:14px;height:14px;flex:none;background-color:#6b7280;
     -webkit-mask:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
     mask:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");}
@@ -2442,7 +2463,6 @@ input.sp-prole.add:focus::placeholder{color:#b3bcc5;}
  * - '검색' 유형 = 팝업(코드칸 + ☰ 버튼 + 명칭칸) / 필수 = 노란 배경 / 읽기전용 = 연보라
  * 파일 끝에 두어 위쪽의 공통·내보내기 규칙보다 뒤에 적용되게 한다. */
 body.skin-classic .ax-search{padding:6px 10px;border-radius:2px;background:#ebf3fb;border:1px solid #c8d6e8;box-shadow:none;gap:0;}
-body.skin-classic .ax-search .sactions{display:none;}
 body.skin-classic .ax-search .sfields{gap:3px 20px;}
 body.skin-classic .ax-search .sfield{flex-direction:row;align-items:center;gap:0;min-height:21px;}
 body.skin-classic .ax-search .sfield-halfslot{gap:8px;}
@@ -2462,8 +2482,8 @@ body.skin-classic .ax-search .sctl.fpop{width:230px;flex-basis:230px;border:0;ba
 body.skin-classic .ax-search .sctl.fpop .fpop-code{flex:0 1 90px;width:auto;min-width:24px;height:21px;border:1px solid #7f9db9;background:#fff;}
 body.skin-classic .ax-search .sctl.fpop .fpop-nm{flex:0 1 134px;min-width:0;height:21px;border:1px solid #8a94b8;background:#e4e7f9;}
 body.skin-classic .ax-search .sctl.fpop .fpop-ic{flex:none;width:16px;height:16px;border:1px solid #5b7fae;background:#fff;position:relative;box-sizing:border-box;}
-body.skin-classic .ax-search .sctl.fpop .fpop-ic::before{content:'';position:absolute;left:2px;right:2px;top:2px;height:3px;background:#5b7fae;}
-body.skin-classic .ax-search .sctl.fpop .fpop-ic::after{content:'';position:absolute;left:2px;right:2px;top:8px;height:1.5px;background:#5b7fae;box-shadow:0 3px 0 #5b7fae;}
+body.skin-classic .ax-search .sctl.fpop .fpop-ic::before{content:'';position:absolute;left:2px;right:2px;top:2px;height:4px;background:#2f6fb0;}
+body.skin-classic .ax-search .sctl.fpop .fpop-ic::after{content:'';position:absolute;left:2px;right:2px;bottom:3px;height:1.5px;background:#2f6fb0;}
 /* 라디오 */
 body.skin-classic .ax-search .sradio{height:21px;gap:10px;flex-wrap:nowrap;overflow:hidden;}
 body.skin-classic .ax-search .sradio .opt{white-space:nowrap;}
@@ -2475,3 +2495,81 @@ body.skin-classic .ax-search .sfield.sf-req > .sctl.fpop .fpop-code{background:#
 body.skin-classic .ax-search .sfield > .sctl.ro{background:#e4e7f9;border-color:#8a94b8;color:#555;}
 body.skin-classic .ax-search .sfield > .sctl.fpop.ro{background:transparent;}
 body.skin-classic .ax-search .sfield > .sctl.fpop.ro .fpop-code{background:#e4e7f9;border-color:#8a94b8;}
+
+/* ===== 팻모드 탭 (UNIERP 2.7 화면 기준) =====
+ * 왼쪽이 비스듬하고 오른쪽 위가 둥근 탭 버튼. 선택된 탭 = 파란 바탕·흰 글자, 나머지 = 연한 하늘색. 탭 줄 아래 진한 파란 선. */
+body.skin-classic .ax-tabs-wrap .ax-tabs-head{gap:0;padding:0 0 0 4px;border-bottom:2px solid #215ea3;}
+body.skin-classic .ax-tabs-wrap .axtab-item{position:relative;height:24px;line-height:23px;padding:0 20px 0 24px;margin-right:-8px;font-size:12.5px;color:#1c3f66;
+  background:linear-gradient(#eef5fd,#d3e5f8);border:1px solid #8fb0cf;border-bottom:none;border-radius:0 7px 0 0;clip-path:polygon(13px 0,100% 0,100% 100%,0 100%);}
+body.skin-classic .ax-tabs-wrap .axtab-item.on{z-index:1;color:#fff;font-weight:700;background:linear-gradient(#3f78b9,#215ea3);border-color:#215ea3;}
+body.skin-classic .ax-tabs-wrap .axtab-item:hover{color:#215ea3;}
+body.skin-classic .ax-tabs-wrap .axtab-item.on:hover{color:#fff;}
+
+/* ===== 팻모드 그리드 맨 앞 고정 컬럼(문서 아이콘) ===== */
+body.skin-classic .ax-grid .gh span.gfat-sel-h{background:#c9dbf3;padding:0;border-right:1px solid #9fb8d8;}
+body.skin-classic .ax-grid .gfat-sel-ic{width:100%;height:100%;display:flex;align-items:center;justify-content:center;line-height:0;}
+body.skin-classic .ax-grid .gfat-sel-ic svg{width:15px;height:15px;display:block;}
+body.skin-classic .ax-grid .gr span.gfat-sel{background:#eef3fa;justify-content:flex-end;padding:0 6px 0 2px;color:var(--ax-label-fg);}
+
+/* ===== 팻모드 UNIERP 2.7 컴포넌트 모양 보정 (2026-10-10) =====
+ * 모두 body.skin-classic(팻모드) 안에서만 적용된다 - 씬·모바일모드는 영향 없음.
+ * C1 입력 색·테두리 / D1 콤보 화살표 / E1 날짜 스핀 버튼 / E3 기간 한 줄 / G1 팝업 명칭 텍스트
+ * I1 탭 내용 테두리 / J1·J2 버튼 / K1·K2 조회조건 / L4~L7 그리드 */
+/* C1: 필수 #fee2a2 · 읽기전용 #e4e7f9(조회조건 패널과 같은 색), 그리드 셀 색(L5)도 같은 값 */
+body.skin-classic{--ax-readonly-bg:#e4e7f9;--ax-required-bg:#fee2a2;--ax-ro-fill:#e4e7f9;--ax-req-fill:#fee2a2;--fat-fld-bd:#8a949c;}
+body.skin-classic .ax-input,body.skin-classic .ax-combo,body.skin-classic .ax-date,body.skin-classic .ax-popup-name,
+body.skin-classic .ax-input-el:not(:hover):not(:focus),body.skin-classic .ax-daterange .ax-date-part{border-color:var(--fat-fld-bd);}
+/* D1: 콤보 화살표 - 오른쪽 하늘색 칸 + 파란 ▼ (내보내기에서 펼칠 때 칸이 뒤집히지 않게 회전 없음) */
+body.skin-classic .ax-combo{padding-right:0;}
+body.skin-classic .ax-combo::after{content:"\25BC";flex:none;width:15px;align-self:stretch;display:flex;align-items:center;justify-content:center;
+  font-size:7px;color:#2f5f9e;background:#dbe9f6;border-left:1px solid #c5d6e8;}
+body.skin-classic .ax-combo.interactive.open::after{transform:none;}
+body.skin-classic .ax-combo.readonly::after,body.skin-classic .ax-combo.ro::after{opacity:.6;}
+body.skin-classic .ax-search .sctl.combo{padding-right:0;}
+body.skin-classic .ax-search .sctl.combo::after{content:"\25BC";flex:none;width:15px;align-self:stretch;display:flex;align-items:center;justify-content:center;
+  font-size:7px;color:#2f5f9e;background:#dbe9f6;border-left:1px solid #c5d6e8;}
+/* E1: 날짜·기간 - 달력 아이콘 대신 오른쪽 상하 스핀 버튼 */
+body.skin-classic .ax-date,body.skin-classic .ax-daterange .ax-date-part{padding-right:2px;}
+body.skin-classic .ax-date::after,body.skin-classic .ax-daterange .ax-date-part::after,
+body.skin-classic .ax-search .sctl.date::after,body.skin-classic .ax-search .sctl.daterange::after{
+  content:"";flex:none;width:13px;height:17px;max-height:calc(100% - 2px);
+  /* 위·아래 두 칸으로 나뉜 스핀 버튼, 칸마다 검정 ▲/▼ (UNIERP 2.7 날짜칸과 같은 모양) */
+  background:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='13' height='17' viewBox='0 0 13 17'><rect x='.5' y='.5' width='12' height='7.5' rx='2' fill='%23cfe0f6' stroke='%234a6890'/><rect x='.5' y='9' width='12' height='7.5' rx='2' fill='%23cfe0f6' stroke='%234a6890'/><path d='M4.5 5.6h4l-2-2.6z' fill='%23000'/><path d='M4.5 11.4h4l-2 2.6z' fill='%23000'/></svg>") center/100% 100% no-repeat;}
+body.skin-classic .ax-search .sctl.date,body.skin-classic .ax-search .sctl.daterange{padding-right:2px;}
+body.skin-classic .ax-date.readonly::after,body.skin-classic .ax-date-part.ro::after{opacity:.55;}
+/* E3: 기간 날짜칸은 줄바꿈하지 않는다(좁으면 잘림) */
+body.skin-classic .ax-daterange .ax-date-part{white-space:nowrap;overflow:hidden;}
+/* G1: 팝업 명칭칸 글자 */
+body.skin-classic .ax-popup-name{display:flex;align-items:center;padding:0 5px;font-size:12px;color:#555;overflow:hidden;}
+body.skin-classic .ax-popup-name>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* I1: 탭 내용 영역 전체 테두리(탭 줄 아래 40px부터 = TAB_HEADER_H) */
+body.skin-classic .ax-tabs-wrap::after{content:"";position:absolute;left:0;right:0;top:40px;bottom:0;border:1px solid #6f8aa6;border-top:none;pointer-events:none;}
+/* J1: 버튼 - 하늘색 입체, 남색 11px 글씨 / J2: 비활성 = 흐린 글씨, 누를 수 없음 */
+body.skin-classic .ax-btn{background:linear-gradient(#d3e3fb,#bdd5f9);border-color:#e3efff #7d97b9 #7d97b9 #e3efff;
+  color:#173f73;font-size:11px;border-radius:1px;}
+body.skin-classic .ax-btn.outline{background:#fff;}
+body.skin-classic .ax-btn:hover{background:linear-gradient(#e2edfc,#c9ddfa);}
+body.skin-classic .ax-btn.outline:hover{background:#f3f8fe;}
+body.skin-classic .ax-btn:active{transform:none;border-color:#7d97b9 #e3efff #e3efff #7d97b9;}
+body.skin-classic .ax-btn.off{color:#8fa3bd;cursor:default;pointer-events:none;}
+/* K1: 조회조건 팝업 「코드」 모양 - 명칭칸 없이 코드칸을 조금 넓게 */
+body.skin-classic .ax-search .sctl.fpop.fpop-codeonly .fpop-code{flex:0 1 120px;}
+/* K2: 조회조건 체크박스 필드 - 팻모드 조회조건 칸 공통 테두리·여백(.sctl)을 쓰지 않는다 */
+body.skin-classic .ax-search .sctl.schk{border:0;padding:0;}
+body.skin-classic .ax-search .sctl.schk .box{width:12px;height:12px;border:1px solid var(--fat-fld-bd);border-radius:0;}
+body.skin-classic .ax-search .sfield.sf-req > .sctl.schk .box{background:#fee2a2;}
+body.skin-classic .ax-search .sfield > .sctl.schk.ro .box{background:#e4e7f9;}
+/* L4: 그리드 - 행이 없는 빈 영역 배경. 데이터 행 묶음(.grows)만 흰 바탕(합계 행·내보내기 행 강조는 그대로) */
+body.skin-classic .ax-grid{background:#e2edf8;}
+body.skin-classic .ax-grid .grows{background:#fff;}
+/* 합계 행이 빈 영역 배경과 비슷한 색이라 아래 구분선을 둔다 */
+body.skin-classic .ax-grid .gr.gr-total{box-shadow:inset 0 -1px 0 #9fb3c8;}
+/* L6: 그리드 검색 셀 - 돋보기 대신 오른쪽 작은 회색 버튼 */
+body.skin-classic .ax-grid .gr .gcell-search{padding:0 2px 0 6px;}
+body.skin-classic .ax-grid .gr .gcell-search .sctl-search-ic{display:none;}
+body.skin-classic .ax-grid .gr .gcell-search::after{content:"";flex:none;width:13px;height:15px;max-height:calc(100% - 2px);box-sizing:border-box;
+  border:1px solid #6d7f95;border-radius:2px;background:linear-gradient(#f1f5fb,#cdd8e6);}
+body.skin-classic .ax-grid .gr span.col-readonly .gcell-search::after{opacity:.5;}
+/* L7: 그리드 콤보 셀 - 테두리 상자 없이 글자 + 파란 ▼ */
+body.skin-classic .ax-grid .gr .ax-combo{border:none;background:transparent;padding:0 0 0 2px;}
+body.skin-classic .ax-grid .gr .ax-combo::after{background:transparent;border-left:none;}
