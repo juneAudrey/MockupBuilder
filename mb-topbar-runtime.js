@@ -1184,6 +1184,7 @@
     const comps=src.comps||[];
     const B=Object.assign({project:'',author:'',module:'',subModule:'',name:'',date:'',kind:'',devType:'new',base:'',refs:'',purpose:'',uiType:'',blType:'',freq:''},S.basic||{});
     B.devType=mbsDevType(B.devType);
+    if(B.kind==='rep') B.kind='inq'; // 화면 종류 「출력 화면」은 없앴다 - 예전 값은 조회로 본다
     const P=Object.assign({aiFill:true,prev:[],next:[],flowNote:'',rules:[],ex:[],roles:[],rolesDiff:false,perms:{},raw:''},S.proc||{});
     ['prev','next','rules','ex','roles'].forEach(function(k){ if(!Array.isArray(P[k])) P[k]=[]; });
     if(!P.perms||typeof P.perms!=='object') P.perms={};
@@ -1305,10 +1306,17 @@
         const al=t?alias[t]:(map.find(function(m){ return m.colId===ids[0]; })||map[0]).alias;
         const m=k.match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like');
         const b=':'+mbsCamel(ids[0]); let cond;
-        if(m==='range'){ cond=al+'.'+ids[0].toLowerCase()+' BETWEEN '+b+'From AND '+b+'To'; binds.push(b+'From',b+'To'); }
-        else if(m==='like'){ cond=ids.map(function(id){ return al+'.'+id.toLowerCase()+" LIKE CONCAT('%', "+b+", '%')"; }).join(' OR '); if(ids.length>1) cond='('+cond+')'; binds.push(b); }
-        else if(m==='in'){ cond=al+'.'+ids[0].toLowerCase()+' IN ('+b+')'; binds.push(b); }
-        else { cond=al+'.'+ids[0].toLowerCase()+' = '+b; binds.push(b); }
+        // 필수가 아닌 조건(「조건을 비우면 전체 조회」가 켜진 경우): 값이 비면(NULL 또는 '') 그 조건을 적용하지 않는다 - ANSI(COALESCE·NULLIF)
+        const opt=!f.required&&!(sc.spec&&sc.spec.emptyAll===false);
+        const isDate=f.type==='daterange'||f.type==='date';
+        const col=al+'.'+ids[0].toLowerCase();
+        if(m==='range'){ binds.push(b+'From',b+'To');
+          if(!opt) cond=col+' BETWEEN '+b+'From AND '+b+'To';
+          else if(isDate) cond=col+" BETWEEN COALESCE(NULLIF("+b+"From, ''), '1900-01-01') AND COALESCE(NULLIF("+b+"To, ''), '2999-12-31')";
+          else cond="(COALESCE("+b+"From, '') = '' OR "+col+' >= '+b+"From)\n  AND (COALESCE("+b+"To, '') = '' OR "+col+' <= '+b+'To)'; }
+        else if(m==='like'){ cond=ids.map(function(id){ return al+'.'+id.toLowerCase()+" LIKE CONCAT('%', "+b+", '%')"; }).join(' OR '); if(ids.length>1||opt) cond='('+(opt?"COALESCE("+b+", '') = '' OR ":'')+cond+')'; binds.push(b); }
+        else if(m==='in'){ cond=col+' IN ('+b+')'; if(opt) cond="(COALESCE("+b+", '') = '' OR "+cond+')'; binds.push(b); }
+        else { cond=col+' = '+b; if(opt) cond="(COALESCE("+b+", '') = '' OR "+cond+')'; binds.push(b); }
         where.push('  AND '+cond+'   -- '+(f.label||'조건'+(i+1))); }); });
     const lines=['SELECT '+map.map(function(m,i){ return (i?'     , ':'')+m.expr; }).join('\n')];
     lines.push('  FROM '+L[0].toLowerCase()+' '+alias[L[0]]+' ${nolock}');
@@ -1415,7 +1423,7 @@
   }
 
   // 이 런타임의 사양서 내보내기 버전 - 메인 화면 「사양서 템플릿 저장」이 최신 기능(프롬프트 정보로 채우기)인지 확인할 때 쓴다.
-  window.mbSpecExportVer=2;
+  window.mbSpecExportVer=3; // 3: 개발지침을 4.기술사양 「기타」로 옮김(99.개발지침 시트 없음) · 선택 조회조건 SQL · 수정 개발 화면설명 문구
   window.mbOpenSpecExport=async function(){
     if(!mbIsThin) return false; // 씬모드 화면에서만
     const badge=document.getElementById('mbBadgeS');
@@ -1564,6 +1572,8 @@
           const scrBtns=btnRules.filter(function(rr){ return rr.item&&rr.item.ub==null; });
           if(scrBtns.length){ L.push(mbsCircled(n++)+' 버튼'); scrBtns.forEach(function(rr){ L.push('　▷ ['+rr.item.name+'] : '+MBS_ACT[rr.action]+(rr.target?' ('+rr.target+')':'')); }); }
           desc=L.length?L.join('\n'):mbSpecDescText(spec);
+          // 수정(표준 복사) 개발: 화면설명 마지막 줄에 변경되지 않은 부분은 표준을 따른다는 문구
+          if(B.devType==='mod') desc=String(desc||'').replace(/\s+$/,'')+'\n※ 변경되지 않은 부분은 표준 프로그램'+(mbsT(B.base)?'('+mbsT(B.base)+')':'')+'을 따른다.';
         }
         r=mbXlParaBlock(ws,8,r,desc);
 
@@ -1663,6 +1673,8 @@
           if(ucc.length){ sec('사용자 종합코드'); r=mbXlDataTable2(ws,6,r,['TENANT_ID','CO_CD','MAJOR_CD','MINOR_CD','MINOR_NM'],ucc); }
           const etc=[]; if(Object.keys(sqls).length) etc.push('· ${nolock} : DBMS 힌트 플레이스홀더(배포 시 실제 DBMS에 맞게 대체)');
           String(M.S.policyExtra||'').split('\n').map(mbsT).filter(Boolean).forEach(function(l){ etc.push('· '+l.replace(/^[-·•]\s*/,'')); });
+          // 개발지침(사양서 프롬프트의 「개발지침 넣기」 옵션): 별도 시트 대신 이 「기타」 절에 넣는다
+          if(M.O.guide!==false){ if(etc.length) etc.push(''); etc.push('[개발지침] 사양서에 별도 기술하지 않은 사항은 하기 지침을 따른다.'); MBS_DEV_GUIDE.forEach(function(g,i){ etc.push('　'+(i+1)+'. '+g); }); }
           if(etc.length){ sec('기타'); r=mbXlParaLines(ws,6,r,etc); } }
       }
 
@@ -1723,19 +1735,6 @@
         r=mbXlSectionBanner(ws,8,r,'■ 공통 체크리스트');
         const cl=MB_SPEC_CHECKLIST.slice(); if(M&&M.B.kind==='rep') cl[5]='· 리포트 : 출력물 vs 미리보기 일치 확인';
         cl.forEach(function(line){ r=mbXlParaBlock(ws,8,r,line); });
-      }
-
-      // ── 99.개발지침 (사양서 프롬프트에서 개발지침 옵션을 켠 경우) ─────────────────
-      if(M&&M.O.guide!==false){
-        const ws=wb.addWorksheet('99.개발지침',{views:[{showGridLines:false}]});
-        [6,15,15,15,15,15,15,15].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
-        let r=1;
-        r=mbXlSheetTitle(ws,8,r,'99. 개발지침  (Development Guidelines)');
-        r=mbXlParaBlock(ws,8,r,'사양서에 별도 기술하지 않은 사항은 하기 지침을 따른다.'); r++;
-        r=mbXlSectionBanner(ws,8,r,'■ 공통 개발지침');
-        const top=r+1;
-        r=mbXlDataTable2(ws,8,r,['No','지침'],MBS_DEV_GUIDE.map(function(g,i){ return [i+1,g]; }));
-        for(let k=top;k<r;k++) ws.getCell(k,1).alignment={horizontal:'center',vertical:'top',wrapText:true};
       }
 
       const buf=await wb.xlsx.writeBuffer();

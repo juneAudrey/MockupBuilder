@@ -8599,6 +8599,8 @@ function mbSpecNormalize(s){
   // 시스템 프로그램과 같은 기능의 신규 프로그램). 표준 프로그램 자체를 고치는 경우는 없으므로, 예전 값
   // 「표준 프로그램 수정」(std)·「표준 복사 후 수정」(copy)은 모두 수정(mod)으로 옮긴다.
   o.basic.devType=mbSpecDevType(o.basic.devType);
+  // 화면 종류 「출력 화면」(rep)은 없앴다 - 예전 파일의 rep 값은 조회(inq)로 옮긴다
+  if(o.basic.kind==='rep') o.basic.kind='inq';
   o.rules=o.rules.map(r=>({title:r.title||'',cond:r.cond||'',proc:r.proc||'',msg:r.msg||''}));
   // 업무·프로세스 - 예전 데이터(없음)는 기본값, 손상된 값은 안전한 형태로 고친다
   { const d=mbSpecProcDefault(), p=(o.proc&&typeof o.proc==='object')?o.proc:{};
@@ -8697,6 +8699,8 @@ function spItems(){
   L.forEach((it,i)=>{ it.no=i+1; });
   return L;
 }
+// 항목 종류 이름 - 화면 설명 단계에서 버튼과 화면 영역(조회조건·입력 항목·그리드·규칙)을 한눈에 구분하도록 쓴다
+function spKindLabel(it){ return it.kind==='btn'?(it.ub!=null?'그리드 버튼':'화면 버튼'):({search:'조회조건 영역',inputs:'입력 항목 영역',grid:'그리드 영역',global:'화면 전체 규칙'})[it.kind]||''; }
 function btnSpec(it,create){
   const c=comp(it.cid); if(!c) return {};
   if(it.ub==null) return cspec(c,create);
@@ -8841,7 +8845,8 @@ function spRefreshMeta(){
 const opt=(list,val,ph)=>(ph!=null?`<option value="">${ph}</option>`:'')+list.map(v=>Array.isArray(v)?`<option value="${E(v[0])}"${v[0]===val?' selected':''}>${H(v[1])}</option>`:`<option${v===val?' selected':''}>${H(v)}</option>`).join('');
 
 /* 1. 화면 정보 */
-const KIND_CARDS=[['reg','📝','등록 화면','입력하고 저장해요'],['inq','🔎','조회 화면','조회해서 보여줘요'],['rep','🖨','출력 화면','양식으로 인쇄해요']];
+// 화면 종류는 등록·조회 두 가지(예전 「출력 화면」(rep)은 없앰 - 저장된 rep 값은 mbSpecNormalize에서 조회(inq)로 옮긴다)
+const KIND_CARDS=[['reg','📝','등록 화면','입력하고 저장해요'],['inq','🔎','조회 화면','조회해서 보여줘요']];
 /* ---------- 단계별 「텍스트로 붙여넣기」 ----------
  * 메모장 등에 서술형으로 정리한 사양 내용을 단계마다 그대로 붙여 넣는 칸. 항목으로 나누지 않고 원문을 저장했다가,
  * 최종 프롬프트의 해당 단계 절 끝에 「컨설턴트 서술 원문」으로 넣는다 → 항목을 일일이 입력한 것과 같은 결과를 AI가 만든다.
@@ -8920,9 +8925,9 @@ function spStep1(){
     <div class="sp-q"><label>프로그램 ID <span class="opt">모르면 비워 두세요</span></label><input class="sp-in" value="${E(b.pgmId)}" placeholder="예) BA003" oninput="spSet('basic.pgmId',this.value)"></div>
     <div class="sp-q"><label>메뉴 위치</label><div class="sp-row"><input class="sp-in" style="width:84px" value="${E(b.module)}" placeholder="모듈" oninput="spSet('basic.module',this.value)"><input class="sp-in" style="flex:1" value="${E(b.subModule)}" placeholder="예) 기준정보 › 품목기준정보" oninput="spSet('basic.subModule',this.value)"></div></div>
    </div>
-   <div class="sp-q"><label>어떤 화면인가요?</label>
-     <div class="sp-cards3">${KIND_CARDS.map(([k,ic,t,d])=>`<button type="button" class="sp-kcard ${b.kind===k?'on':''}" onclick="spSet('basic.kind','${k}',true)"><span class="ic">${ic}</span><b>${t}</b><small>${d}</small></button>`).join('')}</div></div>
-   <div class="sp-q"><label>어떻게 만드나요?</label>
+   <div class="sp-q"><label>어떤 화면인가요? <span class="opt">하나를 고르세요</span></label>
+     <div class="sp-cards3 c2 sp-choice">${KIND_CARDS.map(([k,ic,t,d])=>`<button type="button" class="sp-kcard ${b.kind===k?'on':''}" onclick="spSet('basic.kind','${k}',true)"><span class="ic">${ic}</span><b>${t}</b><small>${d}</small></button>`).join('')}</div></div>
+   <div class="sp-q"><label>어떻게 만드나요? <span class="opt">하나를 고르세요</span></label>
      <div class="sp-seg">${[['new','신규','새로 개발하는 화면'],['mod','수정','표준 프로그램을 복사해 수정 개발하는 신규 화면'],['mig','이관','기존 다른 시스템의 프로그램과 같은 기능을 하는 신규 프로그램']].map(([k,l,t])=>`<button type="button" class="${mbSpecDevType(b.devType)===k?'on':''}" title="${t}" onclick="spSet('basic.devType','${k}',true)">${l}</button>`).join('')}</div>
      ${mbSpecDevType(b.devType)==='mod'?`<input class="sp-in" style="margin-top:8px" value="${E(b.base)}" placeholder="복사할 기준 표준 프로그램 (예: 품목정보등록 COMMBAMUI0055)" oninput="spSet('basic.base',this.value)">`:mbSpecDevType(b.devType)==='mig'?`<input class="sp-in" style="margin-top:8px" value="${E(b.base)}" placeholder="이관 대상 레거시 프로그램 (예: 기존 시스템의 품목등록 화면)" oninput="spSet('basic.base',this.value)">`:''}</div>
    <div class="sp-q"><label>이 화면은 무엇을 하나요? <span class="opt">한 줄에 한 가지씩</span></label>
@@ -8944,9 +8949,10 @@ function spStep2(){
   const items=spItems(), it=items.find(i=>i.key===sp.item)||items[0]; sp.item=it.key;
   return `<div class="sp-desc">
    <div class="sp-shotpane">
-    <div class="sp-hint">화면에서 설명할 부분을 눌러 주세요</div>
+    <div class="sp-hint">화면에서 설명할 부분을 눌러 주세요<span class="sp-legend"><span class="lg a"><i></i>화면 영역</span><span class="lg b"><i></i>버튼</span></span></div>
     <div class="sp-shot" id="spShot" onclick="spShotClick(event)"></div>
-    <div class="sp-chiplist">${items.map(i=>`<button type="button" class="sp-ichip ${i.key===it.key?'on':''}" data-ik="${i.key}" onclick="spPick('${i.key}')"><span class="no">${i.kind==='global'?'＋':i.no}</span>${H(i.name)}<i class="st"></i></button>`).join('')}</div>
+    <div class="sp-chipgrp">${[['area','화면 영역','조회조건 · 입력 항목 · 그리드 · 화면 전체 규칙',items.filter(i=>i.kind!=='btn')],['btn','버튼','목업에서 누르는 버튼',items.filter(i=>i.kind==='btn')]].filter(g=>g[3].length).map(([g,t,d,list])=>`<div class="sp-chiprow ${g}"><div class="sp-chiph"><b>${t}</b><small>${d}</small></div>
+     <div class="sp-chiplist">${list.map(i=>`<button type="button" class="sp-ichip ${i.kind==='btn'?'btn':'area'} ${i.key===it.key?'on':''}" data-ik="${i.key}" onclick="spPick('${i.key}')"><span class="no">${i.kind==='global'?'＋':i.no}</span>${i.kind==='btn'?`<span class="bt">${H(i.name)}</span>`:H(i.name)}${i.kind==='btn'?`<i class="kd">${H(spKindLabel(i))}</i>`:''}<i class="st"></i></button>`).join('')}</div></div>`).join('')}</div>
    </div>
    <div class="sp-editor">${spEditor(it)}</div></div>`;
 }
@@ -8955,7 +8961,7 @@ window.spPick=function(k){ if(!sp) return; sp.item=k; spRender(); };
 function spDrawShot(){
   const host=document.getElementById('spShot'), cv=document.getElementById('canvas'); if(!host||!cv) return;
   const pane=host.parentNode, cw=parseInt(document.getElementById('cw').value)||1100, ch=parseInt(document.getElementById('ch').value)||700;
-  const availW=pane.clientWidth-2, availH=Math.max(200,pane.clientHeight-host.offsetTop-(pane.querySelector('.sp-chiplist').offsetHeight)-24);
+  const availW=pane.clientWidth-2, availH=Math.max(200,pane.clientHeight-host.offsetTop-((pane.querySelector('.sp-chipgrp')||{offsetHeight:0}).offsetHeight)-24);
   const k=Math.min(availW/cw,availH/ch,1);
   host.innerHTML=''; host.style.width=Math.round(cw*k)+'px'; host.style.height=Math.round(ch*k)+'px';
   const cl=cv.cloneNode(true); cl.removeAttribute('id'); cl.querySelectorAll('[id]').forEach(e=>e.removeAttribute('id'));
@@ -8972,10 +8978,10 @@ function spDrawShot(){
       const r=el.getBoundingClientRect(); if(!r.width&&!r.height) return;
       const b={l:r.left-hr.left,t:r.top-hr.top,r:r.right-hr.left,b:r.bottom-hr.top};
       box=box?{l:Math.min(box.l,b.l),t:Math.min(box.t,b.t),r:Math.max(box.r,b.r),b:Math.max(box.b,b.b)}:b; });
-    if(box) rects.push({key:it.key,no:it.no,box});
+    if(box) rects.push({key:it.key,no:it.no,box,btn:it.kind==='btn'});
   });
   host._rects=rects;
-  host.insertAdjacentHTML('beforeend',rects.map(x=>`<span class="sp-area ${x.key===sp.item?'on':''}" data-ik="${x.key}" style="left:${x.box.l}px;top:${x.box.t}px;width:${x.box.r-x.box.l}px;height:${x.box.b-x.box.t}px"></span><span class="sp-bd ${x.key===sp.item?'on':''}" data-ik="${x.key}" style="left:${x.box.l}px;top:${x.box.t}px">${x.no}</span>`).join(''));
+  host.insertAdjacentHTML('beforeend',rects.map(x=>`<span class="sp-area ${x.btn?'btn':''} ${x.key===sp.item?'on':''}" data-ik="${x.key}" style="left:${x.box.l}px;top:${x.box.t}px;width:${x.box.r-x.box.l}px;height:${x.box.b-x.box.t}px"></span><span class="sp-bd ${x.btn?'btn':''} ${x.key===sp.item?'on':''}" data-ik="${x.key}" style="left:${x.box.l}px;top:${x.box.t}px" title="${x.btn?'버튼':'화면 영역'}">${x.no}</span>`).join(''));
   spRefreshMeta();
 }
 window.spShotClick=function(ev){
@@ -8986,7 +8992,8 @@ window.spShotClick=function(ev){
 };
 function stTag(it){ const s=itemState(it); return `<span class="sp-state ${s}" data-ik="${it.key}">${{done:'완료',part:'작성 중',todo:'미작성',opt:'선택'}[s]}</span>`; }
 function spEditor(it){
-  const head=(q,sub)=>`<div class="sp-ed-h"><span class="no">${it.kind==='global'?'＋':it.no}</span><div><b>${H(it.name)}</b>${sub?`<small>${sub}</small>`:''}</div>${stTag(it)}</div><div class="sp-ed-q">${q}</div>`;
+  const isB=it.kind==='btn';
+  const head=(q,sub)=>`<div class="sp-ed-h ${isB?'btn':'area'}"><span class="no">${it.kind==='global'?'＋':it.no}</span><div><i class="sp-kd ${isB?'b':'a'}">${isB?'▭ ':''}${H(spKindLabel(it))}</i><b>${isB?`<span class="sp-btnface">${H(it.name)}</span>`:H(it.name)}</b>${sub?`<small>${sub}</small>`:''}</div>${stTag(it)}</div><div class="sp-ed-q">${q}</div>`;
   const idTip='<span class="opt">컬럼ID는 비워도 돼요 · AI가 DB 스키마에서 찾아요</span>';
   if(it.kind==='grid'){
     const c=comp(it.cid), s=cspec(c,false), cols=gridCols(c), ro=c.colReadonly||[], req=c.colRequired||[], L=srcsGet(it.key), multi=L.length>1;
@@ -9003,7 +9010,7 @@ function spEditor(it){
      <div class="sp-q"><label>정렬 <span class="opt">선택</span></label><div class="sp-row">
       <select class="sp-in" style="flex:1" onchange="spGridSet(${c.id},'sortCol',this.value,true)">${opt(cols.map((n,i)=>[String(i),n||'컬럼'+(i+1)]),s.sortCol==null?'':String(s.sortCol),'정렬 없음(기본)')}</select>
       ${s.sortCol!=null&&s.sortCol!==''?`<div class="sp-seg sm">${[['asc','오름차순'],['desc','내림차순']].map(([k,l])=>`<button type="button" class="${(s.sortDir||'asc')===k?'on':''}" onclick="spGridSet(${c.id},'sortDir','${k}',true)">${l}</button>`).join('')}</div>`:''}</div></div>
-     ${stdB.length?`<div class="sp-q"><label>그리드 표준 버튼</label><div class="sp-tags">${stdB.map(x=>`<span>${x}</span>`).join('')}</div><div class="sp-note s">표준 기능으로 처리돼요. 막아야 할 조건이 있으면 아래에 적어 주세요.</div></div>`:''}
+     ${stdB.length?`<div class="sp-q"><label>그리드 표준 버튼 <span class="opt">목업 그리드에 있는 버튼 · 여기서는 누르는 곳이 아니에요</span></label><div class="sp-tags btns">${stdB.map(x=>`<span title="목업의 그리드 버튼 (표준 기능 · 따로 설정하지 않음)">▭ ${x}</span>`).join('')}</div><div class="sp-note s">표준 기능으로 처리돼요. 막아야 할 조건이 있으면 아래 「이 목록의 규칙」에 적어 주세요.</div></div>`:''}
      <div class="sp-q"><label>이 목록의 규칙 <span class="opt">선택</span></label><textarea class="sp-ta" rows="2" placeholder="예) 비고 외 컬럼은 읽기전용. 품목을 삭제하면 이력도 함께 삭제." oninput="spGridSet(${c.id},'note',this.value)">${H(s.note||'')}</textarea></div>`;
   }
   if(it.kind==='search'){
@@ -9050,8 +9057,9 @@ function spEditor(it){
       <div class="sp-q"><label>이런 경우엔 막아 주세요 <span class="opt">선택</span></label>
        <div class="sp-checks">${checks.map((k,i)=>`<div class="rw"><span class="if">만약</span><input class="sp-in sm" value="${E(k.cond||'')}" placeholder="조건 (예: 선택한 행이 없으면)" oninput="spCheckSet('${it.key}',${i},'cond',this.value)"><span class="arr">→ 메시지</span><input class="sp-in sm" value="${E(k.msg||'')}" placeholder="사용자에게 보여줄 문구" oninput="spCheckSet('${it.key}',${i},'msg',this.value)"><span class="sp-x" onclick="spCheckDel('${it.key}',${i})" title="삭제">×</span></div>`).join('')}</div>
        <div class="sp-quick">${CHECK_PRESETS.map((p,i)=>`<button type="button" onclick="spCheckAdd('${it.key}',${i})">＋ ${p[0]}</button>`).join('')}<button type="button" class="blank" onclick="spCheckAdd('${it.key}',-1)">＋ 직접 추가</button></div></div>`;
-    return head(`「${H(it.name)}」 버튼을 누르면 무엇을 하나요?`,it.where||'화면 버튼')+`
-      <div class="sp-acts">${ACTIONS.map(([k,ic,t,d])=>`<button type="button" class="sp-act ${a===k?'on':''}" onclick="spBtnSet('${it.key}','action','${k}',true)"><span class="ic">${ic}</span><b>${t}</b><small>${d}</small></button>`).join('')}</div>${detail}`;
+    return head(`「${H(it.name)}」 버튼을 누르면 무엇을 하나요?`,it.where?it.where+' · 목업의 버튼':'목업 화면의 버튼')+`
+      <div class="sp-q" style="margin-bottom:6px"><label>버튼을 누르면 하는 일 <span class="opt">아래에서 하나를 고르세요 (고르는 칸이에요)</span></label></div>
+      <div class="sp-acts sp-choice">${ACTIONS.map(([k,ic,t,d])=>`<button type="button" class="sp-act ${a===k?'on':''}" onclick="spBtnSet('${it.key}','action','${k}',true)"><span class="ic">${ic}</span><b>${t}</b><small>${d}</small></button>`).join('')}</div>${detail}`;
   }
   // 화면 전체 규칙
   const R=ensure().rules;
@@ -9240,7 +9248,7 @@ function spChecks(){
     if(dv!=='new'&&!(b.base||'').trim()) L.push({t:dv==='mig'?'이관 대상 레거시 프로그램이 비어 있어요':'기준 표준 프로그램이 비어 있어요',go:[1]}); }
   const hasInfo=!!(S.newCols||'').trim();
   items.forEach(it=>{ const st=itemState(it); if(st==='todo'||st==='part'){ const src=it.kind!=='btn';
-    L.push({t:`#${it.no} ${it.name} — ${!src?(st==='todo'?'하는 일을 고르지 않았어요':'동작 내용이 비어 있어요'):'데이터 출처 테이블이 없어요'}`,d:!src?'동작 카드 하나만 고르면 돼요':(hasInfo?'「테이블 정보」에서 AI가 찾아요 · 정확히 하려면 테이블 ID를 적어 주세요':'테이블 ID만 적으면 컬럼은 AI가 스키마에서 찾아요'),go:[ST_DESC,it.key],soft:src&&hasInfo}); } });
+    L.push({t:`#${it.no} ${!src?'['+it.name+'] 버튼':it.name} — ${!src?(st==='todo'?'하는 일을 고르지 않았어요':'동작 내용이 비어 있어요'):'데이터 출처 테이블이 없어요'}`,d:!src?'동작 카드 하나만 고르면 돼요':(hasInfo?'「테이블 정보」에서 AI가 찾아요 · 정확히 하려면 테이블 ID를 적어 주세요':'테이블 ID만 적으면 컬럼은 AI가 스키마에서 찾아요'),go:[ST_DESC,it.key],soft:src&&hasInfo}); } });
   const ph=[]; items.filter(i=>i.kind==='btn').forEach(it=>{ (btnSpec(it,false).checks||[]).forEach(k=>{ if(/\(항목명\)/.test(k.msg||'')) ph.push(it.name); }); });
   if(ph.length) L.push({t:'메시지에 「(항목명)」이 남아 있어요',d:ph.join(', ')+' 버튼',go:[ST_DESC,items.find(i=>i.name===ph[0]).key],noFree:true}); // 붙여 넣은 텍스트로는 해결되지 않는 항목
   if(!S.tables.filter(t=>t.id).length&&!spUsage().size&&!hasInfo) L.push({t:'테이블 정보가 없어요',d:'사용하는 테이블을 고르거나 「테이블 정보」에 붙여 넣어 주세요 · 없으면 AI가 스키마에서 찾아요',go:[ST_TBL],soft:true});
@@ -9268,7 +9276,7 @@ function spStep4(){
    <div class="sp-fin-l">
     <div id="spChecks">${spChecksHTML()}</div>
     <div class="sp-fold-h" onclick="spToggle('opts')"><span>출력 옵션</span><b>${[o.guide?'개발지침':'',o.trace?'규칙 반영표':'',o.askFirst?'질문 먼저':'',o.summary?'요약 시트':'',o.mockup?'html 목업':'',o.ppt?'PPT':'',S.proc.aiFill?'AI 보완(제안)':'',o.fallback&&!o.ppt?'스킬 없을 때 대비':'',mbSpecFreeAny(S)?(FREE_PRI.find(x=>x[0]===S.freePri)||FREE_PRI[0])[1].replace(/^\S+\s/,''):''].filter(Boolean).join(' · ')}</b><u>${sp.opts?'접기':'펼치기'}</u></div>
-    ${sp.opts?`<div class="sp-opts">${T('guide','99.개발지침 시트 넣기','사양서 맨 마지막 시트에 공통 개발지침')}${T('trace','규칙 반영표 받기','규칙이 사양서 어디에 들어갔는지 표로 확인')}${T('askFirst','질문 먼저 받기','[확인필요]를 먼저 묻고 답한 뒤 파일 생성')}${T('summary','요약 시트 넣기 (7.요약사양)','')}${T('mockup','html 목업도 만들기','')}${T('ppt','구사양서(PPT)로 만들기','xlsx 대신 pptx')}${T('fallback','스킬 없을 때 작성 기준 넣기','사양서 스킬이 없는 AI도 같은 양식·품질의 xlsx를 만들도록 시트 구성·서식·작성 규칙을 프롬프트 끝(부록 A)에 붙여요'+(o.ppt?' · PPT 모드에서는 넣지 않아요':''))}<label class="sp-opt"><input type="checkbox" ${S.proc.aiFill?'checked':''} onchange="spSet('proc.aiFill',this.checked,true)"><span><b>AI 보완 (제안)</b><small>부족한 업무 처리를 모듈 가이드로 채우고 「(제안)」으로 표시</small></span></label>
+    ${sp.opts?`<div class="sp-opts">${T('guide','개발지침 넣기','공통 개발지침을 4.기술사양 시트 「기타」에 넣어요 (별도 시트 없음)')}${T('trace','규칙 반영표 받기','규칙이 사양서 어디에 들어갔는지 표로 확인')}${T('askFirst','질문 먼저 받기','[확인필요]를 먼저 묻고 답한 뒤 파일 생성')}${T('summary','요약 시트 넣기 (7.요약사양)','')}${T('mockup','html 목업도 만들기','')}${T('ppt','구사양서(PPT)로 만들기','xlsx 대신 pptx')}${T('fallback','스킬 없을 때 작성 기준 넣기','사양서 스킬이 없는 AI도 같은 양식·품질의 xlsx를 만들도록 시트 구성·서식·작성 규칙을 프롬프트 끝(부록 A)에 붙여요'+(o.ppt?' · PPT 모드에서는 넣지 않아요':''))}<label class="sp-opt"><input type="checkbox" ${S.proc.aiFill?'checked':''} onchange="spSet('proc.aiFill',this.checked,true)"><span><b>AI 보완 (제안)</b><small>부족한 업무 처리를 모듈 가이드로 채우고 「(제안)」으로 표시</small></span></label>
       ${mbSpecFreeAny(S)?`<div class="sp-opt sp-opt-pri"><span><b>항목 입력과 붙여 넣은 텍스트가 다를 때</b><small>${H((FREE_PRI.find(x=>x[0]===S.freePri)||FREE_PRI[0])[2])}</small></span><span class="sp-free-pri">${FREE_PRI.map(([x,l])=>`<button type="button" class="${S.freePri===x?'on':''}" onclick="spSet('freePri','${x}',true)">${l}</button>`).join('')}</span></div>`:''}
       <textarea class="sp-ta" rows="2" placeholder="(선택) 이 화면에만 적용할 추가 지침" oninput="spSet('policyExtra',this.value)">${H(S.policyExtra)}</textarea></div>`:''}
    </div>
@@ -9344,7 +9352,8 @@ function colTbl(L,t){ return t||(L.length===1?L[0].t:(L.length?'(자동)':'')); 
 const DEV_GUIDE=['입력 콤포넌트: 입력 허용 길이를 제한하여 문자열 잘림 오류 방지 (원초적 오류 표시 방지)','필수값 누락 오류 시 명확한 메시지 표시 및 포커스 이동 (예. 품목을 입력하세요.) (사용자 인지)','그리드 행복사 후 저장 시 Key, attachId 등에 유의',"조회 조건에 '공장'이 존재하면 기본값으로 사용자 공장 입력",'조회 조건은 항상 표시 (조회 시 접히지 않음, 사용자가 직접 접기 가능)','그리드 정렬: 문자(좌측), 숫자(우측, 천단위 콤마), 날짜(가운데), 그 외(기본)','기간 콤포넌트: From 날짜가 To 날짜보다 크지 않도록 체크(표준 메시지)','데이터 수정 후 저장하지 않고 조회(또는 확정 등) 시 "변경된 데이터가 있습니다. 계속 진행하시겠습니까?" 메시지','하단 버튼은 스크롤에 영향받지 않도록 고정','고정 하단 버튼과 그리드 공존 시 메인 프로그램에 스크롤 없도록','그리드 행추가 시 필수/비필수 색상 확인 (예. 구매요청등록(비정상), 공급처지정등록(정상))','Table 컬럼 사이즈 및 샘플 데이터 사이즈에 맞게 그리드 컬럼 폭 조절','그리드 Cell 선택 및 복사 가능 (RowSelect 시 Cell 복사 불가)','조회 시 그리드 헤더 체크 해제'];
 function spFallbackSpec(o,hasProc){
   const L=[], P=s=>L.push(s);
-  const sheets=['0.변경이력','1.개요','2.화면LO','3.기능사양','4.기술사양','5.테이블 레이아웃','6.단위테스트'].concat(o.summary?['7.요약사양']:[],o.guide?['99.개발지침']:[]);
+  const sheets=['0.변경이력','1.개요','2.화면LO','3.기능사양','4.기술사양','5.테이블 레이아웃','6.단위테스트'].concat(o.summary?['7.요약사양']:[]);
+  const isMod=mbSpecDevType((ensure().basic||{}).devType)==='mod';
   P('## 부록 A. 사양서 스킬이 없을 때의 작성 기준');
   P('사양서 작성 스킬을 쓸 수 있으면 스킬 규칙을 따르고 이 부록은 무시한다. 스킬을 쓸 수 없으면 아래 기준으로 Python(openpyxl)으로 xlsx 파일을 직접 만든다. 표를 채팅에만 출력하고 끝내지 않는다. 이 부록과 위 본문이 다르면 시트 작성에 관해서는 이 부록을 따른다.');
   P('');
@@ -9352,6 +9361,7 @@ function spFallbackSpec(o,hasProc){
   P('- 파일명: {프로그램명}.xlsx — 프로그램ID는 파일명·셀·헤더 어디에도 쓰지 않는다(프로그램ID 칸은 공란).');
   P(`- 시트(순서·개수 고정): ${sheets.join(' / ')}`);
   P('- 모든 시트를 실제 내용으로 채운다. 「별도 파일 참조」 같은 위임·빈 틀 금지.');
+  if(isMod) P('- 개발 방식이 수정(표준 복사)이므로 위 「작성 원칙」의 「변경분만 기술」이 이 부록의 「전부·모두·항목마다」 규칙보다 우선한다(화면 항목 표·Display 매핑·SQL·메시지·단위테스트 모두 변경분만).');
   P('- 빈 값 규칙(본문의 [확인필요]보다 우선): ① 값을 모르는 셀 → 공란(셀에 [확인필요]를 쓰지 않는다), 응답 끝 "확인 필요 항목"에 모은다. ② 절·표 전체에 해당 내용이 아예 없을 때만 "없음"/"해당없음"을 쓴다(행은 있는데 값만 모르면 ①).');
   P('- SQL·바인드 변수 안에서 모르는 테이블·컬럼은 지어내지 말고 한글명 주석 자리표시로 쓴다. 예) `SELECT A./*순번*/ FROM /*이력테이블*/ A ${nolock}`, `:/*품목코드*/`. 입력에 없지만 필요한 컬럼(버전·작업자 등)도 같은 자리표시 + 문장 끝 (제안).');
   P('- 문장 안의 모르는 부분: 그 부분을 빼고 쓰고, 빼면 문장이 성립하지 않으면 그 문장을 쓰지 않고 "확인 필요 항목"에 적는다. "A / B" 형식 값은 아는 쪽만 쓴다(예: "홍길동 / ").');
@@ -9363,21 +9373,22 @@ function spFallbackSpec(o,hasProc){
   P('');
   P('### A-2. 서식 (모든 시트 공통 · 변경 금지)');
   P('- 글꼴 맑은 고딕(코드는 Consolas), 눈금선 숨김(showGridLines=False). 1행 = 제목바, 2행 = 공백, 3행부터 내용. 로고는 넣지 않는다.');
-  P('- 제목바: 시트 폭 전체 병합, 배경 #203864, 흰색 굵게 14pt, 가운데, 행높이 30, 테두리 없음. 제목: "0. 변경이력  (Change History)" / "1. 개요  (Overview)" / "2. 화면 LAYOUT  (Screen Layout)" / "3. 기능사양  (Functional Specification / 사용자 매뉴얼)" / "4. 기술사양  (Technical Specification)" / "5. 테이블 레이아웃  (Table Layout)" / "6. 단위테스트  (Unit Test)"'+(o.summary?' / "7. 요약사양  (Developer Summary)"':'')+(o.guide?' / "99. 개발지침  (Development Guidelines)"':''));
+  P('- 제목바: 시트 폭 전체 병합, 배경 #203864, 흰색 굵게 14pt, 가운데, 행높이 30, 테두리 없음. 제목: "0. 변경이력  (Change History)" / "1. 개요  (Overview)" / "2. 화면 LAYOUT  (Screen Layout)" / "3. 기능사양  (Functional Specification / 사용자 매뉴얼)" / "4. 기술사양  (Technical Specification)" / "5. 테이블 레이아웃  (Table Layout)" / "6. 단위테스트  (Unit Test)"'+(o.summary?' / "7. 요약사양  (Developer Summary)"':''));
   P('- 섹션 배너(■ … / 4-1. … / [조회조건 Selection] 등): 시트 폭 전체 병합, 배경 #4472C4, 흰색 굵게 11pt, 좌측, 행높이 20, 테두리 없음.');
   P('- 표 헤더: 배경 #D9E1F2, 글자 #1F3864 굵게 9pt, 가운데, 행높이 26, 얇은 실선. 표 본문: 9pt 검정, 좌측·상단 정렬, 줄바꿈, 얇은 실선. 표의 열 수가 시트 폭보다 적으면 마지막 열을 시트 폭 끝까지 병합해 오른쪽 선을 맞춘다.');
   P('- 라벨/값 표: 라벨 배경 #F2F2F2 굵게 9pt 좌측·가운데, 값 9pt(값 칸은 오른쪽 끝까지 병합), 얇은 실선. 여러 줄 값(①②③ 문단 등)은 한 셀 안에 줄바꿈으로 넣는다.');
   P('- 본문 문단(■ 화면설명, 3.기능사양 절 본문 등): 한 줄 = 한 행, 각 행을 시트 폭으로 병합, 9pt, 좌측·가운데, 테두리 없음. SQL·코드 블록: 한 셀(시트 폭 병합)에 원문 그대로, Consolas 9pt, 배경 #FBF8E7, 좌측·상단.');
   P('- 행높이: 줄바꿈 셀마다 「줄 수 × 13 + 5」pt(최소 18, 최대 409). 줄 수 = 각 줄의 표시폭 ÷ 병합된 열 너비 합(올림)의 합계, 표시폭은 한글·전각 2, 그 밖 1로 센다. 라벨 칸이 좁아 줄바꿈되면 라벨 줄 수도 함께 비교해 큰 값을 쓴다.');
   P('- 굵게(**…**): 셀 일부만 굵게 해야 하면 openpyxl CellRichText로 처리하고, 어려우면 굵게 없이 쓴다(** 기호는 남기지 않는다).');
-  P('- 열 너비: 0.변경이력 A5/B14/C70/D20/E12 · 1.개요 A26/B45/C25/D25 · 2.화면LO A16/B18/C22/D22/E40/F12/G16/H12 · 3.기능사양 A22/B~H16 · 4.기술사양 A14/B46/C14/D30/E8/F8 · 5.테이블 레이아웃 A20/B18/C12/D8/E6/F6/G8/H22 · 6.단위테스트 A6/B34/C20/D34/E8/F14/G12/H14'+(o.summary?' · 7.요약사양 A12/B26/C16/D18/E10/F9/G9/H24':'')+(o.guide?' · 99.개발지침 A6/B~H15':''));
+  P('- 열 너비: 0.변경이력 A5/B14/C70/D20/E12 · 1.개요 A26/B45/C25/D25 · 2.화면LO A16/B18/C22/D22/E40/F12/G16/H12 · 3.기능사양 A22/B~H16 · 4.기술사양 A14/B46/C14/D30/E8/F8 · 5.테이블 레이아웃 A20/B18/C12/D8/E6/F6/G8/H22 · 6.단위테스트 A6/B34/C20/D34/E8/F14/G12/H14'+(o.summary?' · 7.요약사양 A12/B26/C16/D18/E10/F9/G9/H24':''));
   P('- 2·3·4 시트 상단 공통 헤더(라벨/값 표, 라벨은 A열·값은 B열부터 끝까지): 「모듈 / 서브모듈」 · 「프로그램ID / 프로그램명」(값은 " / 프로그램명") · 「작성자 / 작성일」, 3.기능사양은 「프로그램 목적」 행을 더한다. 모듈·서브모듈은 1절 「메뉴 위치」에서 첫 단계 = 모듈, 나머지 단계 = 서브모듈(단계 사이는 " > ")로 쓰고 괄호 속 약어는 뺀다(예: 메뉴 위치 "BC › 기준정보 › 품목기준정보" → "BC / 기준정보 > 품목기준정보"). 메뉴 위치가 없으면 공란.');
   P('');
   P('### A-3. 시트별 구성');
   P('- **0.변경이력**: 표 `No | 변경 일자 | 변경 내용 | 담당자 | 요청자` 한 행만 — 1 | 작성일 | 최초 작성 | (공란) | (공란).');
+  if(isMod) P('- **1.개요**에는 「표준 프로그램 자체는 수정하지 않는다」 같은 문구를 쓰지 않는다.');
   P('- **1.개요**: 라벨/값 표(순서 고정) — 프로젝트 명 · 모듈 / 서브모듈 · 프로그램ID(공란) · 프로세스ID(-) · 프로그램명 · 프로그램 개요(①②③) · 요청자 / 요청일 · 예상 개발기간 / 완료희망일 · 개발자 / 개발완료일 · 우선순위(A/B/C) · 난이도(H/M/L) · 프로그램 유형 · 재사용 PGM-ID · 수행빈도 · UI 유형 · BL 유형(이 두 행만 값 있을 때) · 기타 특성(①②③ 또는 ▷ 줄, 항상).');
-  P('  - 1절 대응: 화면 종류 → 프로그램 유형(등록 / 조회 / 리포트(조회/출력) 중 하나 + 괄호에 실제 동작, 예: "조회 (조회 + 비고 수정·행 삭제)") · 개발 방식이 수정이면 기준 표준 프로그램 → 재사용 PGM-ID(신규·이관이면 "-") · 개발 방식(이관이면 이관 대상 레거시 프로그램 포함), 참고·이동 대상 프로그램, 앞·뒤 업무와 사용 역할 → 기타 특성 · 작성자/작성일 → 요청자는 공란, 작성자 정보는 2·3·4 시트 헤더에 쓴다.');
-  P('- **2.화면LO**: 공통 헤더 → `■ 화면설명`(①②③ 문단) → `■ 화면 Mock-up`(첨부 목업 html의 화면 영역 `.mockup`만 캡처 → 배너 다음 행 A열에 폭 900px로 비율 유지해 삽입 → 이미지 높이(px) ÷ 20 + 2 만큼 행을 비워 다음 표와 겹치지 않게 한다. 캡처할 수 없으면 목업 파일명만 한 줄) → 필드 표들.');
+  P('  - 1절 대응: 화면 종류 → 프로그램 유형(등록 / 조회 중 하나 + 괄호에 실제 동작, 예: "조회 (조회 + 비고 수정·행 삭제)") · 개발 방식이 수정이면 기준 표준 프로그램 → 재사용 PGM-ID(신규·이관이면 "-") · 개발 방식(이관이면 이관 대상 레거시 프로그램 포함), 참고·이동 대상 프로그램, 앞·뒤 업무와 사용 역할 → 기타 특성 · 작성자/작성일 → 요청자는 공란, 작성자 정보는 2·3·4 시트 헤더에 쓴다.');
+  P('- **2.화면LO**: 공통 헤더 → `■ 화면설명`(①②③ 문단'+(isMod?' · 마지막 줄에 "※ 변경되지 않은 부분은 표준 프로그램(기준 표준 프로그램명)을 따른다."':'')+') → `■ 화면 Mock-up`(첨부 목업 html의 화면 영역 `.mockup`만 캡처 → 배너 다음 행 A열에 폭 900px로 비율 유지해 삽입 → 이미지 높이(px) ÷ 20 + 2 만큼 행을 비워 다음 표와 겹치지 않게 한다. 캡처할 수 없으면 목업 파일명만 한 줄) → 필드 표들.');
   P('  - 표 배너: `[조회조건 Selection]  (저장 없음)` → `[Form / Display]`(입력 항목) → 그리드마다 `[Grid / 그리드명]`. 행 순서는 2절 번호 순서(번호 열은 만들지 않는다).');
   P('  - 표 헤더: `한글명 | 영문컬럼ID | 저장/조회 테이블 | 표시타입 | 기본값·설명(관련정보) | 입력필수 | Read Only | Display`. 값 형식: 입력필수 = "Y(필수)" 또는 "N", Read Only = "Y"/"N"(조건부면 문장, 예: "신규만 수정가능"), Display = "Y" 또는 "N(Hidden)".');
   P('  - 저장/조회 테이블 칸: 조회조건 표 = 검색 대상 테이블ID(모르면 공란) · Form/Grid 표 = 저장 테이블ID, 조회만 하는 필드는 "조회전용(저장안함)". 한 조건이 컬럼 두 개를 검색하면 영문컬럼ID에 "A, B"로 쓰고 설명 칸에 검색 방식을 적는다.');
@@ -9387,14 +9398,13 @@ function spFallbackSpec(o,hasProc){
   P('- **4.기술사양**(개발자 관점 · 평서체 "~한다"): 공통 헤더 → 내용 있는 절만 `4-1.`부터 번호를 이어 붙인다.');
   P('  - 테이블 정보 `Table명 | Table ID | CRUD | 비고`(ID를 모르면 그 셀만 공란) · 콤보/조회 Service UID  (Data searchType : Workflow) `항목(한글) | 영문컬럼ID | 표시타입 | Service UID | 비고`(콤보가 있을 때).');
   P('  - SQL마다 한 절: 제목 배너(예: "4-3. 조회 SQL (ANSI JOIN)") → 바인드·정렬·분기 설명 문단 한 줄 → 코드 블록. 조회 SQL, 저장(INSERT/UPDATE) SQL, 삭제 SQL을 각각 쓴다.');
-  P('  - Display 컬럼 매핑 `한글명 | 영문컬럼ID | 원천 테이블(별칭) | SQL 표현식 / 산출 | 표시타입 | 비고` — 그리드가 있으면 그리드 컬럼 순서대로 전부(필수).');
+  P('  - Display 컬럼 매핑 `한글명 | 영문컬럼ID | 원천 테이블(별칭) | SQL 표현식 / 산출 | 표시타입 | 비고` — '+(isMod?'그리드에서 추가·변경·삭제된 컬럼만 그리드 순서대로(변경 컬럼이 없으면 이 절을 만들지 않는다).':'그리드가 있으면 그리드 컬럼 순서대로 전부(필수).'));
   P('  - 처리 로직 & 저장 전 체크로직 (메시지코드) `구분 | 조건 / 로직 | 메시지코드 | 메시지 문구` — 메시지코드를 모르면 공란. 문구가 입력에 있으면 그대로, 없으면 AI 보완일 때만 문구 끝에 (제안), 아니면 공란.');
-  P('  - 바인드 변수 (Bind Variables): SQL에 쓴 :변수 전체를 쉼표로 이은 문단 한 줄 · 기타: 개발에 필요한 기술 메모만(`${nolock}` = DBMS 힌트 플레이스홀더, 특수 저장 규칙 등 — 근거·추정·정정 설명은 쓰지 않는다) · 사용자 종합코드 `TENANT_ID | CO_CD | MAJOR_CD | MINOR_CD | MINOR_NM`(공통코드가 있을 때).');
-  P('- SQL 규칙: ANSI 표준으로 한 벌만 작성(ANSI JOIN, coalesce 등). 모든 WHERE의 첫 조건은 TENANT_ID, 둘째는 CO_CD(바인드 :tenantId, :coCd). 테이블 뒤 `${nolock}` 힌트 플레이스홀더. 바인드 변수는 컬럼ID의 camelCase(:itemCd). 포함 검색은 `LIKE CONCAT('%', :itemNm, '%')`. 정렬이 입력에 없으면 키 컬럼 순으로 쓰고 비고에 (제안). 두 DBMS 함수가 꼭 달라야 할 때만 `-- [기본/정본 : MySQL]` / `-- [병기 : MS SQL]` 두 블록으로 쓴다.');
+  P('  - 바인드 변수 (Bind Variables): SQL에 쓴 :변수 전체를 쉼표로 이은 문단 한 줄 · 기타: 개발에 필요한 기술 메모만(`${nolock}` = DBMS 힌트 플레이스홀더, 특수 저장 규칙 등 — 근거·추정·정정 설명은 쓰지 않는다)'+(o.guide?', 이어서 개발지침(본문 「개발지침」 절의 문단 + 14개 지침, 한 줄에 하나)':'')+' · 사용자 종합코드 `TENANT_ID | CO_CD | MAJOR_CD | MINOR_CD | MINOR_NM`(공통코드가 있을 때).');
+  P('- SQL 규칙: ANSI 표준으로 한 벌만 작성(ANSI JOIN, coalesce 등). 모든 WHERE의 첫 조건은 TENANT_ID, 둘째는 CO_CD(바인드 :tenantId, :coCd). 테이블 뒤 `${nolock}` 힌트 플레이스홀더. 바인드 변수는 컬럼ID의 camelCase(:itemCd). 포함 검색은 `LIKE CONCAT(\'%\', :itemNm, \'%\')`. 필수가 아닌 조회조건은 값이 비면 조건을 적용하지 않도록 쓴다(본문 「조회조건 SQL」 원칙). 정렬이 입력에 없으면 키 컬럼 순으로 쓰고 비고에 (제안). 두 DBMS 함수가 꼭 달라야 할 때만 `-- [기본/정본 : MySQL]` / `-- [병기 : MS SQL]` 두 블록으로 쓴다.');
   P('- **5.테이블 레이아웃**: 신규·변경 테이블이 있으면 테이블마다 설명 문단(①②③) → 배너 `Table : 테이블ID (테이블명)` → 표 `Column ID | Column Name | Type | Length | Key | Null | Default | Remark`(Key = PK/FK/공란, Null = Y/N). 신규·변경 여부는 4절 「구분」(신규 테이블·컬럼 추가)과 「테이블 정보」 글로 판단하고, 컬럼 표는 「테이블 정보」에 적힌 정의로 채우며, 둘 다 없으면 문단 하나: "본 프로그램은 신규 테이블을 생성하지 않는다. 사용 테이블은 \'4.기술사양\' 참조."');
   P('- **6.단위테스트**: `■ 테스트 케이스` 표 `순번 | 테스트 절차 | 테스트 데이터 | 예상결과 | 결과 | 오류내역 | 조치예정일 | 조치내역`(뒤 4칸은 빈칸) — 규칙마다 정상 1건 + 예외 1건 이상, 필수값 누락·조회 0건·상태별 제어 포함. 이어서 `■ 공통 체크리스트`(한 줄에 하나): · 메시지 : 누락/유형/사양서 일치 여부 / · 컨트롤 : 보안필드·GUI Status 확인 / · 커서 복귀 : 저장/조회 후 커서·포커스 위치 확인 / · 화면세팅 : Default값·자동세팅 로직 확인 / · 타이틀/오타/잘림 확인 / · 조회 0건 메시지 확인 / · 컨텐츠 검토 : Test Case·주요 로직 단위테스트 기술 여부');
   if(o.summary) P('- **7.요약사양**(가로 인쇄, 한 페이지 폭): 0~6 시트 내용을 개발자용으로 압축 — 1.기본정보(라벨/값) · 2.화면구성 `구분 | 한글명 | 컬럼ID | 테이블 | 표시타입 | 필수/수정 | 비고` · 3.관련 테이블 · 4.주요 테이블 레이아웃(신규·변경 시) · 5.Service UID · 6.핵심 SQL(원문 그대로) · 7.검증로직 · 8.바인드변수 · 9.특이사항(⚠ 확인 필요·상충). 명사형으로 압축하고 번호만 다른 반복 필드는 한 행(예: ALT_ITEM_CD1~4)으로, 표준 대비 추가·변경 행은 빨간 글자(#C00000). 기능 설명 문장·단위테스트는 옮기지 않는다.');
-  if(o.guide){ P('- **99.개발지침**(맨 마지막 시트): 문단 "사양서에 별도 기술하지 않은 사항은 하기 지침을 따른다." → 빈 행 → `■ 공통 개발지침` 배너 → 표 `No | 지침`(No 가운데 정렬). 아래 14개 문구를 그대로 쓴다(바꾸지 않는다):'); DEV_GUIDE.forEach((g,i)=>P(`  ${i+1}. ${g}`)); }
   P('');
   P('### A-4. 문체');
   P('- ①②③ 문단(1.개요 프로그램 개요·기타 특성, 2.화면LO 화면설명, 3.기능사양 「1. 화면 개요」, 5.테이블 설명): 주요 기능을 ①②③으로 나누고 「기능명 → 짧은 설명 → ▷ 세부사항」 순서. ▷ 줄은 전각 공백(　) 1개, 그 하위 내용은 2개 들여쓴다. 문장은 짧게, 버튼·화면·컬럼명은 [ ], 표는 쓰지 않는다. 기능이 하나면 ①만. 예)');
@@ -9442,13 +9452,27 @@ function spBuildPrompt(){
   P('- 규칙 ID(R01…)를 사양서 전체에서 유지한다. 같은 규칙은 모든 시트에서 같은 내용으로 쓰고, 상세 서술은 3.기능사양에 둔다.');
   P('- 작성 후 SQL·Display 컬럼 매핑·메시지 표·단위테스트가 규칙·테이블·공통코드와 일치하는지 대조한다. (정렬 조건, 삭제 시 연쇄 처리, 코드값 누락 주의)');
   { const dv=mbSpecDevType(b.devType);
-    if(dv==='mod'){ P('- 표준 프로그램 자체는 수정하지 않는다. 기준 표준 프로그램을 복사해 만드는 신규 화면으로 쓴다.'); P('- 명시된 추가·변경·삭제 외의 기능은 "표준을 따른다"로 쓴다.'); }
+    if(dv==='mod'){
+      const bs=(b.base||'').trim();
+      P(`- 이 화면은 기준 표준 프로그램${bs?'('+bs+')':''}을 복사해 만드는 화면이다. 사양서 전체(모든 시트)에는 표준 대비 추가·수정·삭제된 내용만 쓴다. 손대지 않은 부분(테이블·컬럼·SQL문·화면 항목·버튼·메시지·처리 로직 등 표준 정보)은 표준을 따르므로 기술하지 않는다.`);
+      P('  - 아래 2절 「화면 항목」은 목업 전체(표준 항목 포함)다. 시트에는 그중 추가·수정·삭제된 항목만 넣는다. 무엇이 바뀌었는지는 이 프롬프트의 규칙·메모·서술 원문·테이블 구분(신규 테이블·컬럼 추가)과 기준 표준 프로그램(모듈 업무 가이드 스킬)을 비교해 판단하고, 판단할 수 없는 항목은 응답 끝 "확인 필요 항목"에 적는다.');
+      P('  - 2.화면LO 필드 표·4.기술사양 테이블 정보·Display 컬럼 매핑·메시지 표·3.기능사양 절·6.단위테스트에는 변경된 항목만 넣고, 각 행의 설명(관련정보)·비고 칸 맨 앞에 (추가)/(수정)/(삭제)를 붙인다.');
+      P('  - SQL: 새로 만들거나 바뀐 SQL문만 쓴다. 바뀐 SQL문은 문장 전체를 쓰고 바뀐 줄 끝에 `-- (추가)` / `-- (수정)` 주석을 단다. 손대지 않은 표준 SQL은 쓰지 않는다. 5.테이블 레이아웃도 신규 테이블·추가 컬럼만 쓴다.');
+      P('  - 변경 내용이 없는 절·표는 행을 나열하지 않고 "변경 없음 (표준을 따른다)" 한 줄로 쓴다.');
+      P(`  - 2.화면LO 「■ 화면설명」의 마지막 줄에 "※ 변경되지 않은 부분은 표준 프로그램${bs?'('+bs+')':''}을 따른다."를 넣는다.`);
+      P('  - 1.개요에는 「표준 프로그램 자체는 수정하지 않는다」 같은 문구를 쓰지 않는다. 기준 표준 프로그램은 재사용 PGM-ID와 기타 특성에 적는다.'); }
     else if(dv==='mig') P('- 이관 대상 레거시 프로그램과 같은 기능을 하는 신규 프로그램으로 쓴다. 레거시 프로그램의 기능이 빠짐없이 대응되도록 한다.'); }
   P('- 기준·참고·이동 대상 프로그램은 사양서에 반드시 명시한다.');
   P('- 3.기능사양의 절 본문은 "1) 2) 3)" 단계식 사용자 매뉴얼 문체로 쓰고(화면 개요 같은 개요 문단은 ①②③ 형식), 한 문장에는 한 가지 사실만 쓴다.');
   P('- 단위테스트는 규칙마다 정상 1건과 예외 1건 이상을 작성한다. (막아야 하는 경우는 각각 예외 테스트로)');
   P('- 근거·정정·추정 메모는 응답 본문에만 쓰고 시트에는 넣지 않는다.');
-  if(o.guide) P('- 사양서 맨 마지막 시트로 99.개발지침 시트를 추가한다.');
+  { const noAll=comps.some(c=>c.type==='searchbar'&&(c.spec||{}).emptyAll===false);
+    P('- 조회조건 SQL: 필수가 아닌 조회조건은 값이 비어 있으면(NULL 또는 \'\') 그 조건을 적용하지 않도록 작성한다(가급적 ANSI, 더 좋은 방법이 있으면 그 방법을 쓴다).'+(noAll?' 단, 「입력하지 않은 조건은 적용하지 않는다」 규칙이 없는 조회조건은 예외다.':''));
+    P("  - 같음: `AND (COALESCE(:itemCd, '') = '' OR a.item_cd = :itemCd)` · 포함: `AND (COALESCE(:itemNm, '') = '' OR a.item_nm LIKE CONCAT('%', :itemNm, '%'))`");
+    P("  - 기간(From·To 중 하나만 입력할 수 있음): `AND a.update_dt BETWEEN COALESCE(NULLIF(:updateDtFrom, ''), '1900-01-01') AND COALESCE(NULLIF(:updateDtTo, ''), '2999-12-31')` — 날짜시간(datetime) 컬럼이면 To 날짜의 하루 끝까지 포함되도록 처리한다.");
+    P('  - 필수 조회조건은 `AND a.plant_cd = :plantCd`처럼 그대로 쓴다.'); }
+  if(o.guide){ P('- 개발지침: 별도 시트(99.개발지침)를 만들지 않는다. 4.기술사양 「기타」 절의 기술 메모 뒤에 아래 문단과 지침 14개를 한 줄에 하나씩 그대로 넣는다(문구를 바꾸지 않는다).');
+    P('  - 문단: "사양서에 별도 기술하지 않은 사항은 하기 지침을 따른다."'); DEV_GUIDE.forEach((g,i)=>P(`  ${i+1}. ${g}`)); }
   if(o.trace) P(`- 응답 끝에 규칙 반영표(규칙 ID | 반영된 시트·절 | 단위테스트 번호)를 표로 붙인다.${prRules.length&&prAny?' (R… 규칙과 P… 업무 규칙 모두)':''}`);
   P('');
   const Q1=String(S.free.s1||'').trim()?'(서술 원문 참고)':Q;
@@ -9586,7 +9610,7 @@ window.spSaveTemplate=async function(btn){
     const t0=Date.now(); while(!(w&&typeof w.mbOpenSpecExport==='function')&&Date.now()-t0<15000) await new Promise(r=>setTimeout(r,150));
     if(!(w&&typeof w.mbOpenSpecExport==='function')) throw new Error('인터넷 연결을 확인해 주세요 - 사양서 템플릿 기능을 불러오지 못했습니다.');
     // 예전 상단바 런타임(사양서 프롬프트 정보로 채우기 이전 버전)이 캐시·배포돼 있으면 입력 내용이 빠진 파일이 나오므로 멈춘다
-    if(!(w.mbSpecExportVer>=2)) throw new Error('사양서 템플릿 기능이 최신 버전이 아닙니다. 잠시 뒤(또는 새로고침 후) 다시 시도해 주세요.');
+    if(!(w.mbSpecExportVer>=3)) throw new Error('사양서 템플릿 기능이 최신 버전이 아닙니다. 잠시 뒤(또는 새로고침 후) 다시 시도해 주세요.');
     w.alert=function(m){ err=String(m||'').replace(/^사양서 템플릿을 만들지 못했습니다\.\s*/,''); };
     if(handle) w.showSaveFilePicker=async function(){ return handle; };
     else { try{ delete w.showSaveFilePicker; }catch(e){} w.showSaveFilePicker=undefined; }
