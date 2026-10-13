@@ -553,7 +553,7 @@ function pasteClipboard(){
 
 // ---- Undo / Redo history ----
 let undoStack=[]; let redoStack=[]; const HIST_MAX=60;
-function snapshot(){return JSON.parse(JSON.stringify({comps,uid,originId:mbCloud.originId||null}));}
+function snapshot(){specEnsureFieldSids(comps);return JSON.parse(JSON.stringify({comps,uid,originId:mbCloud.originId||null}));}
 function pushHistory(){
   undoStack.push(snapshot());
   if(undoStack.length>HIST_MAX)undoStack.shift();
@@ -563,15 +563,19 @@ function pushHistory(){
 function undo(){
   if(!undoStack.length)return;
   redoStack.push(snapshot());
+  const fcm=specFieldCodeMap();
   const s=undoStack.pop();
   comps=s.comps; uid=s.uid; mbCloud.originId=s.originId||null; selectSingle(null);
+  specFieldCodeRemap(fcm);
   render(); updateHistBtns();
 }
 function redo(){
   if(!redoStack.length)return;
   undoStack.push(snapshot());
+  const fcm=specFieldCodeMap();
   const s=redoStack.pop();
   comps=s.comps; uid=s.uid; mbCloud.originId=s.originId||null; selectSingle(null);
+  specFieldCodeRemap(fcm);
   render(); updateHistBtns();
 }
 // Undo/redo are keyboard-only (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z); the toolbar buttons were
@@ -2896,6 +2900,7 @@ function moveSearchField(c,from,to){
   if(to===from||from<0||from>=len)return false;
   const [item]=c.fields.splice(from,1);
   c.fields.splice(to,0,item);
+  specArrMove(c,'fields',from,to); specFieldCodesMove(c,from,to); // 사양서 프롬프트 필드별 입력값·공통코드도 함께
   fitSearchbar(c);
   // sfDrop/sfMoveTo와 같은 규칙 - 옮긴 필드 자신뿐 아니라 그 사이에서 함께 밀린 다른 필드를
   // 가리키던 강조 표시·서식 팝업도 같이 보정한다(lf는 idx 프로퍼티를 쓰므로 lf.fi가 아니라
@@ -4283,6 +4288,7 @@ function delUserBtn(i){
   const c=comps.find(x=>x.id===sel);if(!c)return;
   pushHistory();
   normUserBtns(c).splice(i,1);
+  specBtnDel(c,i); // 사양서 프롬프트에서 입력한 버튼별 동작도 같이 당긴다
   render();
 }
 
@@ -4467,6 +4473,7 @@ function delGridCol(i){
   c.colLabelColor.splice(i,1);
   c.colLabelBg.splice(i,1);
   c.colLabelSize.splice(i,1);
+  specArrDel(c,'cols',i); specGridSortDel(c,i); // 사양서 프롬프트 컬럼별 입력값도 같이 지운다
   // 삭제된 컬럼을 가리키고 있던 강조 표시(selGC)·서식 팝업(lf)은 지우고, 그 뒤쪽 컬럼을
   // 가리키고 있던 것은 한 칸씩 당겨준다 - 그러지 않으면 삭제 후 인덱스가 하나씩 밀리면서
   // 엉뚱한(바로 뒤) 컬럼이 계속 선택된 것처럼 보이거나 서식 팝업이 다른 컬럼에 적용된다.
@@ -4584,6 +4591,75 @@ function gcDragLeave(e){
 // 함께 갱신해야, 옮긴 컬럼/필드가 아니라 그 사이에 있던 다른 컬럼/필드가 엉뚱하게 강조되거나
 // 서식 팝업이 다른 대상을 가리키는 문제가 생기지 않는다. idx가 옮겨진 항목 자신이면 새 위치(to)를,
 // 그 사이에서 밀린 항목이면 밀린 방향으로 ±1을, 그 외에는 그대로 돌려준다.
+// ---- 사양서 프롬프트 입력값(컬럼·필드 위치 번호로 저장된 값)을 목업 편집과 함께 옮기기 ----
+// 사양서 프롬프트 3.화면설명에서 입력한 그리드 컬럼별 값(c.spec.cols[i]: 컬럼ID·테이블·메모), 조회조건 필드별 값
+// (c.spec.fields[i]: 컬럼ID·검색방식·테이블·메모), 그리드 정렬순서(c.spec.sortCol), 그리드 사용자 버튼별 값
+// (c.spec.btns['b'+i]), 조회조건 콤보 공통코드(mbSpec.codes['c{id}.f{i}'])는 모두 "위치 번호"로 저장된다.
+// 목업에서 컬럼·필드·버튼의 순서를 바꾸거나 지울 때 이 값들도 같이 옮기지 않으면 다른 컬럼의 값처럼 틀어진다.
+function specArrMove(c,bag,from,to){
+  const s=c&&c.spec; if(!s||!Array.isArray(s[bag])) return;
+  const a=s[bag]; while(a.length<=Math.max(from,to)) a.push(null);
+  const [x]=a.splice(from,1); a.splice(to,0,x);
+}
+function specArrDel(c,bag,i){
+  const s=c&&c.spec; if(!s||!Array.isArray(s[bag])) return;
+  if(i<s[bag].length) s[bag].splice(i,1);
+}
+function specGridSortMove(c,from,to){
+  const s=c&&c.spec; if(!s||s.sortCol==null||s.sortCol==='') return;
+  s.sortCol=String(shiftIndexForMove(+s.sortCol,from,to));
+}
+function specGridSortDel(c,i){
+  const s=c&&c.spec; if(!s||s.sortCol==null||s.sortCol==='') return;
+  const v=+s.sortCol; if(v===i){ delete s.sortCol; delete s.sortDir; } else if(v>i) s.sortCol=String(v-1);
+}
+function specBtnDel(c,i){
+  const s=c&&c.spec; if(!s||!s.btns||typeof s.btns!=='object') return;
+  const n=Math.max(i+1,...Object.keys(s.btns).map(k=>+String(k).slice(1)+1).filter(Number.isFinite));
+  for(let j=i;j<n;j++){ const nx=s.btns['b'+(j+1)]; if(nx!==undefined) s.btns['b'+j]=nx; else delete s.btns['b'+j]; }
+}
+// 조회조건 콤보 공통코드는 컴포넌트 밖(mbSpec.codes)에 있어 되돌리기(Undo) 스냅샷에 들어가지 않는다 - 그래서 필드마다
+// 숨은 식별자(f._sid)를 붙여 두고, 되돌리기·다시실행 때 식별자로 코드를 다시 제자리에 맞춘다. 지운 필드의 코드는
+// 되돌리기로 필드가 돌아올 때를 위해 따로 보관한다(specFieldCodeArchive).
+const specFieldCodeArchive={};
+function specFieldCodeKey(c,i){ return 'c'+c.id+'.f'+i; }
+function specFieldCodesMove(c,from,to){
+  if(!mbSpec||!mbSpec.codes||!c||!c.fields) return;
+  const n=Math.max(c.fields.length,from+1,to+1), v=[];
+  for(let i=0;i<n;i++) v.push(mbSpec.codes[specFieldCodeKey(c,i)]);
+  const [x]=v.splice(from,1); v.splice(to,0,x);
+  v.forEach((val,i)=>{ const k=specFieldCodeKey(c,i); if(val) mbSpec.codes[k]=val; else delete mbSpec.codes[k]; });
+}
+function specFieldCodesDel(c,i,delField){ // c.fields에서 지우기 직전에 호출(delField = 지울 필드 객체)
+  if(!mbSpec||!mbSpec.codes||!c||!c.fields) return;
+  const n=c.fields.length, v=[];
+  for(let j=0;j<n;j++) v.push(mbSpec.codes[specFieldCodeKey(c,j)]);
+  if(delField&&delField._sid&&v[i]) specFieldCodeArchive[c.id+':'+delField._sid]=v[i];
+  v.splice(i,1);
+  for(let j=0;j<n;j++){ const k=specFieldCodeKey(c,j), val=v[j]; if(val) mbSpec.codes[k]=val; else delete mbSpec.codes[k]; }
+}
+function specEnsureFieldSids(list){
+  (list||[]).forEach(c=>{ if(c&&c.type==='searchbar'&&Array.isArray(c.fields)) c.fields.forEach(f=>{ if(f&&typeof f==='object'&&!f._sid) f._sid='s'+Math.random().toString(36).slice(2,10); }); });
+}
+function specFieldCodeMap(){
+  if(!mbSpec||!mbSpec.codes) return null;
+  const m={};
+  comps.forEach(c=>{ if(c.type==='searchbar'&&Array.isArray(c.fields)) c.fields.forEach((f,i)=>{ if(f&&f._sid) m[c.id+':'+f._sid]=mbSpec.codes[specFieldCodeKey(c,i)]||''; }); });
+  return m;
+}
+function specFieldCodeRemap(m){
+  if(!m||!mbSpec||!mbSpec.codes) return;
+  comps.forEach(c=>{ if(c.type!=='searchbar'||!Array.isArray(c.fields)) return;
+    let known=c.fields.length>0;
+    c.fields.forEach((f,i)=>{ const mk=f&&f._sid?c.id+':'+f._sid:null;
+      const has=mk&&Object.prototype.hasOwnProperty.call(m,mk), arch=mk&&specFieldCodeArchive[mk];
+      if(!has&&!arch){ known=false; return; } // 모르는 필드(다른 파일을 불러온 경우 등)는 손대지 않는다
+      const val=has?(m[mk]||arch||''):arch; const k=specFieldCodeKey(c,i);
+      if(val) mbSpec.codes[k]=val; else delete mbSpec.codes[k]; });
+    // 같은 조회조건의 필드를 모두 알아본 경우에만, 필드 수보다 뒤에 남은 코드(되돌린 필드 추가분)를 지운다
+    if(known) Object.keys(mbSpec.codes).forEach(k=>{ const mm=/^c(\d+)\.f(\d+)$/.exec(k); if(mm&&+mm[1]===c.id&&+mm[2]>=c.fields.length) delete mbSpec.codes[k]; });
+  });
+}
 function shiftIndexForMove(idx,from,to){
   if(idx==null)return idx;
   if(idx===from)return to;
@@ -4609,6 +4685,8 @@ function moveGridColumn(c,from,to){
   move(c.colTypes);move(c.colOptions);move(c.colGroups);move(c.colAligns);move(c.colRequired);move(c.colReadonly);
   move(c.colWidths);move(c.colDateVals);move(c.colDateBlank);move(c.colDateSpec);move(c.colStatus);move(c.colDateFmt);move(c.totalCols);
   move(c.colLabelBold);move(c.colLabelItalic);move(c.colLabelUnderline);move(c.colLabelColor);move(c.colLabelBg);move(c.colLabelSize);
+  // 사양서 프롬프트 3.화면설명에서 입력한 컬럼별 값(컬럼ID·테이블·메모)과 정렬순서 컬럼도 함께 옮긴다.
+  specArrMove(c,'cols',from,to); specGridSortMove(c,from,to);
   // 옮긴 컬럼 자신뿐 아니라, 그 사이에서 함께 밀린 다른 컬럼을 가리키고 있었을 수도 있는 상태도
   // 같이 보정한다(그렇지 않으면 예: 4번째 컬럼을 맨 앞으로 옮겼을 때 강조 표시가 원래 선택했던
   // 컬럼이 아니라 밀려난 자리의 다른 컬럼으로 옮겨가 버린다).
@@ -5298,6 +5376,7 @@ function lfPosition(el){
 function delSearchField(i){
   const c=comps.find(x=>x.id===sel);if(!c||!c.fields)return;
   pushHistory();
+  specFieldCodesDel(c,i,c.fields[i]); specArrDel(c,'fields',i); // 사양서 프롬프트 필드별 입력값·공통코드도 같이 지운다
   c.fields.splice(i,1);
   fitSearchbar(c);
   // 삭제된 필드를 가리키던 강조 표시(selSF)·서식 팝업(lf)은 지우고, 뒤쪽 필드를 가리키던 것은
@@ -5343,6 +5422,7 @@ function sfDrop(e,i){
   const [item]=c.fields.splice(from,1);
   const insertAt=from<i?i-1:i;
   c.fields.splice(insertAt,0,item);
+  specArrMove(c,'fields',from,insertAt); specFieldCodesMove(c,from,insertAt);
   // 옮긴 필드 자신뿐 아니라 그 사이에서 함께 밀린 다른 필드를 가리키던 강조 표시·서식 팝업도
   // 같이 보정한다 - moveGridColumn과 같은 규칙(shiftIndexForMove).
   if(selSF&&selSF.compId===c.id) selSF.fi=shiftIndexForMove(selSF.fi,from,insertAt);
@@ -5367,6 +5447,7 @@ function sfMoveTo(i,valStr){
   pushHistory();
   const [item]=c.fields.splice(i,1);
   c.fields.splice(to,0,item);
+  specArrMove(c,'fields',i,to); specFieldCodesMove(c,i,to);
   if(selSF&&selSF.compId===c.id) selSF.fi=shiftIndexForMove(selSF.fi,i,to);
   if(lf&&lf.kind==='field'&&lf.compId===c.id) lf.idx=shiftIndexForMove(lf.idx,i,to);
   fitSearchbar(c);
