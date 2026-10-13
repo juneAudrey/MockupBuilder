@@ -486,7 +486,10 @@
   .ax-btn>.tx-al{padding:0 8px;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .ax-combo>.tx-al{padding-right:4px;}
   .ax-combo.readonly{background:var(--ax-readonly-bg);color:#555;}
-  .ax-combo::after{content:"▾";color:var(--ax-gray);font-size:11px;}
+  /* 아이콘은 이모지·특수문자(달력·삼각형·체크·꺾쇠·돋보기 글자) 대신 SVG 배경 이미지로 그린다 - 글자 아이콘은
+     OS 글꼴마다 모양이 달라(Windows Segoe 이모지 vs 리눅스 Noto 이모지 등) 사양서 스킬의 자동 캡처·Alt+P 캡처·
+     실제 화면이 서로 달라 보였다. SVG는 어느 브라우저·OS·html2canvas에서도 똑같이 그려진다(모양은 기존 Windows 화면에 맞춤). */
+  .ax-combo::after{content:"";flex:none;width:8px;height:12px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0h8L4 5z' fill='%236b7280'/%3E%3C/svg%3E") center/5px 3px no-repeat;}
   .ax-btn{width:100%;height:100%;border-radius:4px;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;border:1px solid var(--ax-green);background:var(--ax-green);color:#fff;}
   .ax-btn.outline{background:#fff;color:var(--ax-green);}
   .ax-check{display:flex;align-items:center;gap:5px;font-size:12px;height:100%;}
@@ -508,7 +511,7 @@
      아이콘" 한 쌍이어야 할 배치가 아이템 개수만큼 사이사이에 큰 여백이 생기며 흐트러진다. 하나로
      묶으면 다시 원래 그 한 쌍(글자뭉치, 아이콘)만 남아 디자인 캔버스와 같은 간격으로 보인다. */
   .dr-combo{display:inline-flex;align-items:center;min-width:0;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
-  .ax-date::after{content:"📅";font-size:11px;}
+  .ax-date::after{content:"";flex:none;width:14px;height:14px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Crect x='1' y='2' width='12' height='11' rx='1.6' fill='%23e6e0f4'/%3E%3Crect x='1' y='11.2' width='12' height='1.8' rx='.9' fill='%23cdbff0'/%3E%3Cpath d='M2.6 2h8.8A1.6 1.6 0 0 1 13 3.6V5H1V3.6A1.6 1.6 0 0 1 2.6 2z' fill='%232f80ed'/%3E%3Crect x='3' y='6.3' width='2' height='1.6' fill='%238c8a99'/%3E%3Crect x='6' y='6.3' width='2' height='1.6' fill='%238c8a99'/%3E%3Crect x='9' y='6.3' width='2' height='1.6' fill='%232f80ed'/%3E%3Crect x='3' y='8.8' width='2' height='1.6' fill='%238c8a99'/%3E%3Crect x='6' y='8.8' width='2' height='1.6' fill='%238c8a99'/%3E%3Crect x='9' y='8.8' width='2' height='1.6' fill='%238c8a99'/%3E%3C/svg%3E") center/13px 13px no-repeat;}
   /* 팻모드 전용: 기간(daterange) 편집 화면도 내보내기처럼 날짜 두 칸+물결(~)로 보여준다.
      .ax-date 하나로 합쳐 보여주던 기존(씬모드) 표현과 달리, 실제 사용 화면과 똑같은 모양이 된다. */
   .ax-daterange{width:100%;height:100%;display:flex;align-items:center;gap:5px;}
@@ -518,9 +521,9 @@
   /* 날짜1/날짜2 개별 필수·읽기전용 */
   .ax-daterange .ax-date-part.ro,.ax-daterange-x .ax-date-part.ro{background:var(--ax-readonly-bg);color:#555;}
   .ax-daterange .ax-date-part.is-req,.ax-daterange-x .ax-date-part.is-req{background:var(--ax-required-bg);}
-  .ax-daterange .ax-date-part::after,.ax-daterange-x .ax-date-part::after{content:"📅";font-size:11px;}
+  .ax-daterange .ax-date-part::after,.ax-daterange-x .ax-date-part::after{content:"";flex:none;width:14px;height:14px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Crect x='1' y='2' width='12' height='11' rx='1.6' fill='%23e6e0f4'/%3E%3Crect x='1' y='11.2' width='12' height='1.8' rx='.9' fill='%23cdbff0'/%3E%3Cpath d='M2.6 2h8.8A1.6 1.6 0 0 1 13 3.6V5H1V3.6A1.6 1.6 0 0 1 2.6 2z' fill='%232f80ed'/%3E%3Crect x='3' y='6.3' width='2' height='1.6' fill='%238c8a99'/%3E%3Crect x='6' y='6.3' width='2' height='1.6' fill='%238c8a99'/%3E%3Crect x='9' y='6.3' width='2' height='1.6' fill='%232f80ed'/%3E%3Crect x='3' y='8.8' width='2' height='1.6' fill='%238c8a99'/%3E%3Crect x='6' y='8.8' width='2' height='1.6' fill='%238c8a99'/%3E%3Crect x='9' y='8.8' width='2' height='1.6' fill='%238c8a99'/%3E%3C/svg%3E") center/13px 13px no-repeat;}
   .ax-section{width:100%;height:100%;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--ax-navy);border-bottom:1px solid var(--ax-border);padding-bottom:4px;}
-  .ax-section::before{content:"⌃";transform:rotate(180deg);color:var(--ax-green);font-weight:700;}
+  .ax-section::before{content:"";flex:none;width:10px;height:10px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5l3 3 3-3' fill='none' stroke='%231e9e6a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/10px 10px no-repeat;}
   /* 헤딩(씬모드 섹션 헤더 - 컨테이너형). 왼쪽 130px 제목 칸 + 오른쪽 내용 영역(.hd-body-wrap).
      편집 화면(.hd-edit): 바깥 테두리 + 제목 칸/내용 영역 세로 구분선. 결과물(.hd-exp): 하단 줄만. */
   .ax-heading{position:absolute;left:0;top:0;right:0;bottom:0;box-sizing:border-box;border-bottom:1px solid #e3e6ea;}
@@ -601,7 +604,7 @@
   html.mb-grid-full-open .mb-resize-handle,html.mb-grid-full-open .mb-resize-badge{display:none!important;}
   body.skin-classic .ax-grid .gtoolbar{display:none;}
   .ax-grid .gtoolbar .gtitle{font-size:13px;font-weight:700;color:var(--ax-navy);display:flex;align-items:center;gap:4px;flex:none;white-space:nowrap;}
-  .ax-grid .gtoolbar .gtitle::before{content:"⌃";transform:rotate(180deg);color:var(--ax-green);font-weight:700;}
+  .ax-grid .gtoolbar .gtitle::before{content:"";flex:none;width:10px;height:10px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5l3 3 3-3' fill='none' stroke='%231e9e6a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/10px 10px no-repeat;}
   /* 씬모드 그리드 제목 우측 - "(N)건" (Excel Download 사용 옵션) */
   .ax-grid .gtoolbar .gcount{display:inline-flex;align-items:center;gap:0;flex:none;margin-left:10px;font-size:13px;font-weight:600;color:#6b7280;white-space:nowrap;}
   .ax-grid .gtoolbar .gcount-n{color:var(--ax-green);font-weight:700;}
@@ -684,7 +687,7 @@
   .ax-grid .gr .gcell-check .box{width:14px;height:14px;flex:none;border:1.5px solid var(--ax-border);border-radius:3px;box-sizing:border-box;}
   .ax-grid .gr .gcell-check.interactive{cursor:pointer;}
   .ax-grid .gr .gcell-check.interactive .box.on{background:var(--ax-green);border-color:var(--ax-green);position:relative;}
-  .ax-grid .gr .gcell-check.interactive .box.on::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;line-height:1;}
+  .ax-grid .gr .gcell-check.interactive .box.on::after{content:"";position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 5.2l2 2L8 2.8' fill='none' stroke='%23fff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/9px 9px no-repeat;}
   .ax-grid .gr .gcell-file{width:100%;height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}
   .ax-grid .gr .gcell-file-ic{width:18px;height:18px;flex:none;color:#9aa1a9;}
   /* 그리드 좌측 유틸리티 컬럼: Row Order(순번) / CheckBox - 씬모드 전용 */
@@ -804,8 +807,8 @@
   .ax-search .sctl.ro::after{opacity:.45;}
   .ax-search .sradio.ro{opacity:.55;cursor:default;pointer-events:none;}
   .ax-search .sctl.combo,.ax-search .sctl.date,.ax-search .sctl.daterange{justify-content:space-between;}
-  .ax-search .sctl.combo::after{content:"▾";color:var(--ax-gray);font-size:11px;}
-  .ax-search .sctl.date::after,.ax-search .sctl.daterange::after{content:"📅";font-size:12px;}
+  .ax-search .sctl.combo::after{content:"";flex:none;width:8px;height:12px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0h8L4 5z' fill='%236b7280'/%3E%3C/svg%3E") center/5px 3px no-repeat;}
+  .ax-search .sctl.date::after,.ax-search .sctl.daterange::after{content:"";flex:none;width:15px;height:15px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Crect x='1' y='2' width='12' height='11' rx='1.6' fill='%23e6e0f4'/%3E%3Crect x='1' y='11.2' width='12' height='1.8' rx='.9' fill='%23cdbff0'/%3E%3Cpath d='M2.6 2h8.8A1.6 1.6 0 0 1 13 3.6V5H1V3.6A1.6 1.6 0 0 1 2.6 2z' fill='%232f80ed'/%3E%3Crect x='3' y='6.3' width='2' height='1.6' fill='%238c8a99'/%3E%3Crect x='6' y='6.3' width='2' height='1.6' fill='%238c8a99'/%3E%3Crect x='9' y='6.3' width='2' height='1.6' fill='%232f80ed'/%3E%3Crect x='3' y='8.8' width='2' height='1.6' fill='%238c8a99'/%3E%3Crect x='6' y='8.8' width='2' height='1.6' fill='%238c8a99'/%3E%3Crect x='9' y='8.8' width='2' height='1.6' fill='%238c8a99'/%3E%3C/svg%3E") center/14px 14px no-repeat;}
   .ax-search .sctl.search{justify-content:flex-end;gap:8px;}
   /* 조회조건 「체크박스」 필드(.sctl.schk): 테두리 없는 칸 안에 체크박스 하나. 필수·읽기전용 배경은 칸이 아니라 상자에만 */
   .ax-search .sctl.schk{border:0;background:transparent!important;padding:0;width:auto;}
@@ -813,20 +816,12 @@
   .ax-search .sctl.schk.ro .box{background:#f6f7f8;}
   .ax-search .sctl.schk.interactive:not(.ro){cursor:pointer;}
   .ax-search .sctl.schk .box.on{background:var(--ax-green);border-color:var(--ax-green);}
-  .ax-search .sctl.schk .box.on::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;line-height:1;}
-  .sctl-search-ic{width:14px;height:14px;flex:none;background-color:#6b7280;
-    -webkit-mask:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
-    mask:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");}
-  /* html2canvas(화면 캡처가 쓰는 라이브러리)는 CSS mask/-webkit-mask를 렌더링하지 못해서, 위
-     돋보기 아이콘(mask 방식)이 캡처 결과물에는 그냥 회색 네모로 나온다 - 실제 화면·미리보기에서는
-     멀쩡히 보이는데 "캡처했을 때만" 깨지는 이유가 이거다. 캡처하는 그 순간에만(mbCapture가 캔버스에
-     .mb-capturing 클래스를 잠깐 붙였다 뗀다) mask를 지우고 이모지(📅 날짜 아이콘과 같은 방식 -
-     이건 html2canvas가 문제없이 그려낸다)로 잠깐 바꿔치기해서, 캡처 결과물에서만 정상적인 돋보기
-     모양이 나오게 한다. 평소 화면·미리보기 모양(mask 방식, 색상 자유자재)은 그대로 유지된다. */
-  .mb-capturing .sctl-search-ic{background:none!important;-webkit-mask:none!important;mask:none!important;}
-  .mb-capturing .sctl-search-ic::after{content:"🔍";font-size:11px;line-height:14px;display:block;text-align:center;}
+  .ax-search .sctl.schk .box.on::after{content:"";position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 5.2l2 2L8 2.8' fill='none' stroke='%23fff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/10px 10px no-repeat;}
+  /* 돋보기 아이콘: 예전에는 CSS mask 방식이라 html2canvas(Alt+P 캡처)가 못 그려 캡처 순간에만 이모지로 바꿔치기했다.
+     이제 색을 SVG 안에 넣은 배경 이미지라 화면·캡처·사양서 스킬 캡처 모두 같은 모양으로 그려진다(바꿔치기 불필요). */
+  .sctl-search-ic{width:14px;height:14px;flex:none;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") center/contain no-repeat;}
   .ax-search .sctl.ro .sctl-search-ic{opacity:.45;}
-  .ax-search .ssearch .sctl-search-ic{background-color:#fff;}
+  .ax-search .ssearch .sctl-search-ic{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");}
   .ax-search .sctl.text{color:#111;}
   .ax-search .sradio{display:flex;align-items:center;gap:14px;height:32px;}
   .ax-search .sradio .opt{display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;}
@@ -1212,7 +1207,7 @@
   .ax-check.interactive .box{transition:background .12s,border-color .12s;}
   .ax-check.interactive:hover .box{border-color:var(--ax-green);}
   .ax-check.interactive .box.on{background:var(--ax-green);border-color:var(--ax-green);position:relative;}
-  .ax-check.interactive .box.on::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;line-height:1;}
+  .ax-check.interactive .box.on::after{content:"";position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 5.2l2 2L8 2.8' fill='none' stroke='%23fff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/10px 10px no-repeat;}
   .ax-radio.interactive .dot{transition:border-color .12s;}
   .ax-radio.interactive:hover .dot{border-color:var(--ax-green-dark);}
   .ax-radio.interactive .dot::after{display:none;}
@@ -2523,13 +2518,13 @@ body.skin-classic .ax-input,body.skin-classic .ax-combo,body.skin-classic .ax-da
 body.skin-classic .ax-input-el:not(:hover):not(:focus),body.skin-classic .ax-daterange .ax-date-part{border-color:var(--fat-fld-bd);}
 /* D1: 콤보 화살표 - 오른쪽 하늘색 칸 + 파란 ▼ (내보내기에서 펼칠 때 칸이 뒤집히지 않게 회전 없음) */
 body.skin-classic .ax-combo{padding-right:0;}
-body.skin-classic .ax-combo::after{content:"\25BC";flex:none;width:15px;align-self:stretch;display:flex;align-items:center;justify-content:center;
-  font-size:7px;color:#2f5f9e;background:#dbe9f6;border-left:1px solid #c5d6e8;}
+body.skin-classic .ax-combo::after{content:"";flex:none;width:15px;height:auto;align-self:stretch;
+  background:#dbe9f6 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0h8L4 5z' fill='%232f5f9e'/%3E%3C/svg%3E") center/7px 4px no-repeat;border-left:1px solid #c5d6e8;}
 body.skin-classic .ax-combo.interactive.open::after{transform:none;}
 body.skin-classic .ax-combo.readonly::after,body.skin-classic .ax-combo.ro::after{opacity:.6;}
 body.skin-classic .ax-search .sctl.combo{padding-right:0;}
-body.skin-classic .ax-search .sctl.combo::after{content:"\25BC";flex:none;width:15px;align-self:stretch;display:flex;align-items:center;justify-content:center;
-  font-size:7px;color:#2f5f9e;background:#dbe9f6;border-left:1px solid #c5d6e8;}
+body.skin-classic .ax-search .sctl.combo::after{content:"";flex:none;width:15px;height:auto;align-self:stretch;
+  background:#dbe9f6 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0h8L4 5z' fill='%232f5f9e'/%3E%3C/svg%3E") center/7px 4px no-repeat;border-left:1px solid #c5d6e8;}
 /* E1: 날짜·기간 - 달력 아이콘 대신 오른쪽 상하 스핀 버튼 */
 body.skin-classic .ax-date,body.skin-classic .ax-daterange .ax-date-part{padding-right:2px;}
 body.skin-classic .ax-date::after,body.skin-classic .ax-daterange .ax-date-part::after,

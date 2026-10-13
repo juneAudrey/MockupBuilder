@@ -1185,7 +1185,7 @@
     const B=Object.assign({project:'',author:'',module:'',subModule:'',name:'',date:'',kind:'',devType:'new',base:'',refs:'',purpose:'',uiType:'',blType:'',freq:''},S.basic||{});
     B.devType=mbsDevType(B.devType);
     if(B.kind==='rep') B.kind='inq'; // 화면 종류 「출력 화면」은 없앴다 - 예전 값은 조회로 본다
-    const P=Object.assign({aiFill:true,prev:[],next:[],flowNote:'',rules:[],ex:[],roles:[],rolesDiff:false,perms:{},raw:''},S.proc||{});
+    const P=Object.assign({aiFill:false,prev:[],next:[],flowNote:'',rules:[],ex:[],roles:[],rolesDiff:false,perms:{},raw:''},S.proc||{});
     ['prev','next','rules','ex','roles'].forEach(function(k){ if(!Array.isArray(P[k])) P[k]=[]; });
     if(!P.perms||typeof P.perms!=='object') P.perms={};
     const O=Object.assign({guide:true,summary:false},S.opts||{});
