@@ -2787,7 +2787,9 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
   // 업그레이드한다 — 관리자가 그리드 커스터마이징을 아예 안 했으면(테이블에 그 그리드 행이 없으면)
   // 조용히 스냅샷을 그대로 둔다. hostDoc 이 그 사이 다른 화면으로 바뀌었으면(문서 자체가 달라짐)
   // 아무것도 안 한다.
-  function upgradeGridColumnsWithLiveData(hostDoc, gridElm, gridId, programId, dict, popupMap) {
+  // snapshotGo: 이 그리드의 배포 스냅샷 gridOptions(RESOURCE_JSON) — 실시간 컬럼 행에 없는 콤보 바인딩
+  // (serviceId/serviceUid/beforeComboCall 등)과 그리드 제목을 보충한다(P.mapLiveGridColumns 참고).
+  function upgradeGridColumnsWithLiveData(hostDoc, gridElm, gridId, programId, dict, popupMap, snapshotGo) {
     fetchLiveGridConfig(programId, gridId).then((result) => {
       if (!result || !result.columns || !result.columns.length) return;
       if (!gridElm || gridElm.ownerDocument !== hostDoc || !hostDoc.contains(gridElm)) return; // 그 사이 다른 화면으로 이동
@@ -2797,12 +2799,12 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       const hostKind = (tabFrame && tabFrame.contentDocument === hostDoc) ? 'tab' : 'modal';
       const infoMap = hostKind === 'tab' ? _uiTabInfoMap : _viewerInfoMap;
       // 그리드 제목은 배포 스냅샷 쪽 정보에서 가져온다(실시간 컬럼 행에는 그리드 제목이 없음).
-      const snapshotInfo = Object.keys(infoMap).map(k => infoMap[k]).find(i => i && i.gridId === gridId);
-      const gridTitle = snapshotInfo ? snapshotInfo.gridTitle : '';
+      const gridTitle = (snapshotGo && snapshotGo.title) || '';
+      const snapshotCols = (snapshotGo && Array.isArray(snapshotGo.columns)) ? snapshotGo.columns : [];
       let html = '';
       let liveCols = [];
       try {
-        liveCols = P.mapLiveGridColumns(result.columns);
+        liveCols = P.mapLiveGridColumns(result.columns, snapshotCols);
         const cols = P.computeGridColumnDefs({ gridId, title: gridTitle, columns: liveCols }, (navKey) => store.nodes.get(navKey), popupByTitle, dict);
         html = P.renderGridColumnsTableFromDefs(cols);
       } catch (e) { return; }
@@ -3200,16 +3202,18 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
           // 스냅샷 컬럼 표를 z_grid_columns 실시간 값으로 백그라운드에서 업그레이드한다.
           try {
             const programId = raw && raw.PROGRAM_ID;
+            // 배포 스냅샷의 그리드 정의 — 실시간 컬럼에 빠진 콤보 바인딩을 보충하는 데 쓴다.
+            const snapGo = rj ? P.collectGridOptionsMap(rj) : {};
             if (programId && fdoc) {
               if (mode === 'html') {
                 (_viewerGridIds || new Set()).forEach((gid) => {
                   const gridElm = fdoc.getElementById(gid);
-                  if (gridElm) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _viewerDict.single, _viewerGridColumnPopupMap);
+                  if (gridElm) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _viewerDict.single, _viewerGridColumnPopupMap, snapGo[gid]);
                 });
               } else {
                 fdoc.querySelectorAll('[data-grid-id]').forEach((gridElm) => {
                   const gid = gridElm.getAttribute('data-grid-id');
-                  if (gid) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _viewerDict.single, _viewerGridColumnPopupMap);
+                  if (gid) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _viewerDict.single, _viewerGridColumnPopupMap, snapGo[gid]);
                 });
               }
             }
@@ -4588,16 +4592,18 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
         try { bindInfoBadges(iframe, 'tab'); } catch (e) { /* 무시 */ }
         try {
           const programId = raw && raw.PROGRAM_ID;
+          // 배포 스냅샷의 그리드 정의 — 실시간 컬럼에 빠진 콤보 바인딩을 보충하는 데 쓴다.
+          const snapGo = rj ? P.collectGridOptionsMap(rj) : {};
           if (programId && fdoc) {
             if (mode === 'html') {
               (_uiTabGridIds || new Set()).forEach((gid) => {
                 const gridElm = fdoc.getElementById(gid);
-                if (gridElm) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _uiTabDict.single, _uiTabGridColumnPopupMap);
+                if (gridElm) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _uiTabDict.single, _uiTabGridColumnPopupMap, snapGo[gid]);
               });
             } else {
               fdoc.querySelectorAll('[data-grid-id]').forEach((gridElm) => {
                 const gid = gridElm.getAttribute('data-grid-id');
-                if (gid) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _uiTabDict.single, _uiTabGridColumnPopupMap);
+                if (gid) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _uiTabDict.single, _uiTabGridColumnPopupMap, snapGo[gid]);
               });
             }
           }

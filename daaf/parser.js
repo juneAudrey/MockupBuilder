@@ -697,12 +697,35 @@
   // ADDITIONAL_OPTIONS(JSON 문자열)엔 serviceId/serviceUid/comboType 처럼 전용 컬럼이 없는 필드가
   // 들어있을 수 있어 먼저 펼쳐두고, 그 위에 확실한 DB 컬럼값으로 덮어써서 최신값이 항상 이기게 한다.
   function ynToBool(v) { return v === 'Y' || v === true || v === '1' || v === 1; }
-  function mapLiveGridColumns(rows) {
+  // snapshotColumns(선택): 같은 그리드의 배포 스냅샷 컬럼(RESOURCE_JSON gridOptions.columns). 실제 운영 화면에서
+  // 콤보 바인딩(serviceId/serviceUid/beforeComboCall …)은 컴파일된 화면 스크립트(RESOURCE_JS)에 들어 있어
+  // z_grid_columns 를 바꿔도 그대로 동작한다 — 그런데 z_grid_columns 행(ADDITIONAL_OPTIONS 포함)에는 이
+  // 바인딩이 없는 경우가 많아, 실시간 값으로 표를 교체하면 콤보 컬럼의 WF/I 배지가 통째로 사라졌다.
+  // 그래서 실시간 행에 값이 없는 바인딩 속성만 같은 이름(name/data)의 스냅샷 컬럼에서 보충한다
+  // (제목/순서/표시여부/폭 등 실시간으로 바뀌는 값은 그대로 실시간 값이 이긴다).
+  const LIVE_COL_FALLBACK_KEYS = ['serviceId', 'serviceUid', 'serviceName', 'idColumn', 'textColumn', 'comboType',
+    'isMuliColumn', 'comboCriteria', 'beforeComboCall', 'afterComboCall', 'options', 'dropdownTemplate', 'searchTp'];
+  const LIVE_COL_EXPLICIT = new Set(['NAME', 'DATA', 'TITLE', 'ALIGN', 'WIDTH', 'VISIBLE', 'SORT_ORDER', 'DATA_TYPE',
+    'EDIT_TYPE', 'REQUIRED', 'CELL_TEMPLATE', 'ADDITIONAL_OPTIONS']);
+  const snakeToCamel = (k) => String(k).toLowerCase().replace(/_([a-z0-9])/g, (m, c) => c.toUpperCase());
+  const isBlank = (v) => v == null || (typeof v === 'string' && v.trim() === '');
+  function mapLiveGridColumns(rows, snapshotColumns) {
+    const snapByName = {};
+    (Array.isArray(snapshotColumns) ? snapshotColumns : []).forEach(c => {
+      const k = c && (c.name || c.data);
+      if (k && !snapByName[String(k).toLowerCase()]) snapByName[String(k).toLowerCase()] = c;
+    });
     return (rows || []).map(r => {
       let addl = null;
       if (r && r.ADDITIONAL_OPTIONS) { try { addl = JSON.parse(r.ADDITIONAL_OPTIONS); } catch (e) { addl = null; } }
       const out = Object.assign({}, addl || {});
-      return Object.assign(out, {
+      // 전용 매핑이 없는 그 밖의 컬럼(예: SERVICE_ID 같은 컬럼이 테이블에 따로 있는 경우)도 camelCase 로 옮겨 둔다.
+      Object.keys(r || {}).forEach(k => {
+        if (LIVE_COL_EXPLICIT.has(k) || isBlank(r[k])) return;
+        const ck = snakeToCamel(k);
+        if (isBlank(out[ck])) out[ck] = r[k];
+      });
+      const mapped = Object.assign(out, {
         name: r.NAME,
         data: r.DATA || r.NAME,
         title: r.TITLE,
@@ -716,6 +739,9 @@
         cellTemplate: r.CELL_TEMPLATE,
         compId: out.compId || r.NAME
       });
+      const snap = snapByName[String(r.NAME || r.DATA || '').toLowerCase()];
+      if (snap) LIVE_COL_FALLBACK_KEYS.forEach(k => { if (isBlank(mapped[k]) && !isBlank(snap[k])) mapped[k] = snap[k]; });
+      return mapped;
     });
   }
 
