@@ -1233,6 +1233,10 @@
   }
   // 기간 체크 메시지(개발지침 7번 문구 · 메시지코드 없음 = DT9999) - app.js MB_SPEC_PERIOD_MSG 와 같아야 한다
   const MBS_PERIOD_MSG='종료일은 시작일보다 같거나 이후이어야 합니다.';
+  // 업무 프로세스를 알 수 없을 때(설명·업무 서술 원문 모두 없음)의 「확인 필요 사항」 선택지 - app.js MB_SPEC_PROC_Q_OPTS 와 같아야 한다
+  const MBS_PROC_Q_OPTS='① 2단계 「업무 프로세스 설명」에 담당자·업무 단계·처리 순서 입력 ② 모듈 표준 업무 흐름 적용';
+  // 업무 프로세스 설명(빌더 2단계 「업무 프로세스 설명」 = proc.flowNote) - 동시 수정 관련 줄은 뺀다. app.js mbSpecProcNote 와 같은 규칙
+  function mbsProcNote(P){ return String((P||{}).flowNote||'').split('\n').filter(function(l){ return l.trim()&&!mbsIsConc(l); }).map(function(l){ return l.trim(); }).join('\n'); }
   const MBS_MATCH={eq:'같음',like:'포함(앞뒤 % Like)',range:'범위(From~To)',in:'선택값'};
   const MBS_KIND={reg:'등록',inq:'조회',rep:'리포트(조회/출력)'};
   const MBS_DEV={new:'신규',mod:'수정',mig:'이관'};
@@ -1356,7 +1360,7 @@
         let proc=[base,mbsT(s.proc)].filter(Boolean).join(' ');
         if(a==='save'||a==='delete'){ const tg=writeTargets(it); if(tg) proc+=' '+(a==='save'?'저장':'삭제')+' 대상: '+tg+'.'; }
         // 막기마다 원래 위치(qk)를 남긴다 - 메시지 문구가 없는 막기를 「확인 필요」 번호와 연결(app.js spDerivedRules 와 같은 규칙)
-        R.push({key:it.key,item:it,title:it.name+' 버튼 · '+MBS_ACT[a],on:nm+(it.where?' ('+it.where+')':''),cond:nm+' 클릭 시',proc:proc,action:a,target:mbsT(s.target),
+        R.push({key:it.key,item:it,title:it.name+' 버튼 · '+MBS_ACT[a],on:nm+(it.where?' ('+it.where+')':''),cond:nm+' 클릭 시',proc:proc,base:base,action:a,target:mbsT(s.target),
           checks:(s.checks||[]).map(function(k,ci){ return k?{cond:mbsT(k.cond),msg:mbsT(k.msg),qk:it.key+'|'+ci}:null; }).filter(function(k){ return k&&(k.cond||k.msg)&&!mbsIsConc(k.cond+' '+k.msg); })}); }
     });
     // 화면 전체 규칙 - 「표준 대비 변경」(chg) 규칙은 처리 내용이 비어도 변경 내용(이름)으로 처리를 쓴다
@@ -1388,19 +1392,21 @@
     comps.filter(function(c){ return c.type==='combo'||c.type==='radio'; }).forEach(function(c){ const key='c'+c.id; combos.push({key:key,name:labelOf(c),where:'입력 항목',colId:mbsT(cs(c).colId),type:c.type,code:mbsT(codes[key])}); });
     all.filter(function(c){ return c.type==='grid'; }).forEach(function(c){ gridCols(c).forEach(function(n,i){ const k=colSpec(c,'cols',i); if(!k.cc) return;
       combos.push({key:'g'+c.id+'.'+i,name:n||('컬럼'+(i+1)),where:'그리드'+((c.colReadonly||[])[i]?' · 읽기전용':''),colId:mbsT(k.colId),type:'combo',code:mbsT(k.code),grid:true}); }); });
-    // 입력만으로 정해지는 「확인 필요 사항」(Q1…) - 빌더 spOpenQs 와 같은 순서·문구: ① 아직 정하지 않은 것 ② 코드값 컬럼의 「코드에 없는 값」 ③ 문구 없는 막기
-    const Q=[];
-    (Array.isArray(S.open)?S.open:[]).forEach(function(q){ if(!q||typeof q!=='object') return; const w=mbsT(q.what); if(!w||mbsIsConc(w)) return; Q.push({what:w,now:'',opts:mbsT(q.opts),who:mbsT(q.who),src:'open'}); });
-    combos.filter(function(x){ return x.grid; }).forEach(function(x){ Q.push({what:'['+x.name+'] 값이 공통코드에 없을 때의 표시',now:x.code?('공통코드 '+x.code+' 코드명으로 표시'):'공통코드 미지정',opts:'① 원래 값 그대로 표시 ② 빈칸으로 표시 ③ 공통코드에 값 추가',who:'현업',src:'code',key:x.key}); });
-    items.filter(function(it){ return it.kind==='btn'&&btnAct(it); }).forEach(function(it){ (btnSpec(it).checks||[]).forEach(function(k,ci){ if(!k) return; const cd=mbsT(k.cond);
-      if(cd&&!mbsT(k.msg)&&!mbsIsConc(cd)) Q.push({what:'['+it.name+'] 버튼 막기 메시지 문구 — '+cd,now:'메시지 문구 없음',opts:'문구 지정 (메시지코드가 없으면 DT9999 소스 메시지)',who:'컨설턴트',src:'msg',qk:it.key+'|'+ci}); }); });
-    Q.forEach(function(q,i){ q.id='Q'+(i+1); });
+    // 입력만으로 정해지는 「확인 필요 사항」(Q1…) - 빌더 spOpenQs 와 같은 순서·문구: ① 아직 정하지 않은 것 ② 업무 프로세스 설명 없음 ③ 코드값 컬럼의 「코드에 없는 값」 ④ 문구 없는 막기
     // 단계별 「텍스트로 붙여넣기」 원문(예전 파일의 「현업 요구사항 원문」은 업무·프로세스 원문으로 본다)
     const fr=(S.free&&typeof S.free==='object')?S.free:{}, free={};
     ['s1','s2','s3','s4'].forEach(function(k){ free[k]=String(fr[k]==null?'':fr[k]); });
     if(mbsT(P.raw)) free.s2=free.s2.trim()?free.s2.replace(/\s+$/,'')+'\n\n'+String(P.raw):String(P.raw); // 빌더(mbSpecNormalize)와 같은 규칙
     // 서술 원문에 들어 있는 「다른 사용자가 먼저 수정(동시 수정)」 관련 줄은 사양서에 담지 않는다
     Object.keys(free).forEach(function(k){ free[k]=free[k].split('\n').filter(function(l){ return !mbsIsConc(l); }).join('\n'); });
+    const Q=[];
+    (Array.isArray(S.open)?S.open:[]).forEach(function(q){ if(!q||typeof q!=='object') return; const w=mbsT(q.what); if(!w||mbsIsConc(w)) return; Q.push({what:w,now:'',opts:mbsT(q.opts),who:mbsT(q.who),src:'open'}); });
+    // 업무 프로세스(3.기능사양 「업무 흐름 - 프로세스」의 근거) - 설명도, 업무·프로세스 서술 원문도 없으면 확인 필요
+    if(!mbsProcNote(P)&&!free.s2.trim()) Q.push({what:'업무 프로세스(담당자·업무 단계·처리 순서)',now:'업무 프로세스 설명 없음',opts:MBS_PROC_Q_OPTS,who:'컨설턴트',src:'proc'});
+    combos.filter(function(x){ return x.grid; }).forEach(function(x){ Q.push({what:'['+x.name+'] 값이 공통코드에 없을 때의 표시',now:x.code?('공통코드 '+x.code+' 코드명으로 표시'):'공통코드 미지정',opts:'① 원래 값 그대로 표시 ② 빈칸으로 표시 ③ 공통코드에 값 추가',who:'현업',src:'code',key:x.key}); });
+    items.filter(function(it){ return it.kind==='btn'&&btnAct(it); }).forEach(function(it){ (btnSpec(it).checks||[]).forEach(function(k,ci){ if(!k) return; const cd=mbsT(k.cond);
+      if(cd&&!mbsT(k.msg)&&!mbsIsConc(cd)) Q.push({what:'['+it.name+'] 버튼 막기 메시지 문구 — '+cd,now:'메시지 문구 없음',opts:'문구 지정 (메시지코드가 없으면 DT9999 소스 메시지)',who:'컨설턴트',src:'msg',qk:it.key+'|'+ci}); }); });
+    Q.forEach(function(q,i){ q.id='Q'+(i+1); });
     return {free:free,S:S,B:B,P:P,comps:comps,items:items,R:R,PR:PR,EX:EX,procAny:procAny,tables:tables,combos:combos,codes:codes,Q:Q,
       comp:comp,cs:cs,colSpec:colSpec,btnSpec:btnSpec,gridCols:gridCols,labelOf:labelOf,srcsGet:srcsGet,joinGet:joinGet,writeTargets:writeTargets};
   }
@@ -1566,7 +1572,7 @@
   }
 
   // 이 런타임의 사양서 내보내기 버전 - 메인 화면 「사양서 템플릿 저장」이 최신 기능(프롬프트 정보로 채우기)인지 확인할 때 쓴다.
-  window.mbSpecExportVer=5; // 5: 확인 필요 사항(Q)·빨간 글자·긴 SQL 나눔·코드값 컬럼·기간 체크·표준과 동일 버튼·참고 프로그램 목록·추가(확장) 테이블 · 4: 개발지침 18줄(기준 사양서 문구·배경색·행 높이)을 항상 4.기술사양 「기타」에 · 3: 99.개발지침 시트 폐지 · 선택 조회조건 SQL · 수정 개발 화면설명 문구
+  window.mbSpecExportVer=6; // 6: 업무 흐름 - 프로세스/프로그램 두 절·업무 프로세스 확인 필요(Q) · 5: 확인 필요 사항(Q)·빨간 글자·긴 SQL 나눔·코드값 컬럼·기간 체크·표준과 동일 버튼·참고 프로그램 목록·추가(확장) 테이블 · 4: 개발지침 18줄(기준 사양서 문구·배경색·행 높이)을 항상 4.기술사양 「기타」에 · 3: 99.개발지침 시트 폐지 · 선택 조회조건 SQL · 수정 개발 화면설명 문구
   window.mbOpenSpecExport=async function(){
     if(!mbIsThin) return false; // 씬모드 화면에서만
     const badge=document.getElementById('mbBadgeS');
@@ -1748,12 +1754,20 @@
           const secs=[];
           const ov=purposeLines.length?purposeLines.map(function(l,i){ return mbsCircled(i)+' '+l; }):[];
           if(ov.length) secs.push(['화면 개요',ov]);
-          if(M.P.prev.length||M.P.next.length||mbsT(M.P.flowNote)){ const L=[]; let k=1;
+          // 업무 흐름 - 프로세스(담당자·업무 단계·처리 순서) → 업무 흐름 - 프로그램(이 화면에서 하는 작업) - 빌더 프롬프트 「업무 흐름」 원칙과 같은 순서·구성
+          { const pn=mbsProcNote(M.P), pq=M.Q.find(function(q){ return q.src==='proc'; }), L=[progName+' 업무 프로세스'];
+            if(pn) pn.split('\n').forEach(function(l){ L.push(l); });
+            else if(pq) L.push('확인 필요 '+pq.id);
+            else L.push("※ 아래 「컨설턴트 서술 (원문)」 절의 [업무 · 프로세스] 원문 참고");
+            secs.push(['업무 흐름 - 프로세스',L]); }
+          { const L=[progName+' 프로그램']; let k=1;
             if(M.P.prev.length) L.push((k++)+') 앞 단계 : '+M.P.prev.map(function(x){ return '['+x+']'; }).join(', '));
             L.push((k++)+') 이 화면 : ['+progName+']');
             if(M.P.next.length) L.push((k++)+') 다음 단계 : '+M.P.next.map(function(x){ return '['+x+']'; }).join(', '));
-            String(M.P.flowNote||'').split('\n').map(mbsT).filter(function(l){ return l&&!mbsIsConc(l); }).forEach(function(l){ L.push((k++)+') '+l); });
-            secs.push(['업무 흐름',L]); }
+            // 이 화면에서 하는 작업 - 조회 + 버튼별 기본 동작(상세 처리·막기는 「처리 절차」 절)
+            searchItems.forEach(function(it){ const rr=ruleOfItem('q:'+it.key); L.push((k++)+') [조회] '+mbsPolite('조회조건으로 목록을 조회한다.')+(rr?' ('+rr.id+')':'')); });
+            M.R.filter(function(rr){ return rr.item&&rr.item.kind==='btn'; }).forEach(function(rr){ const t=mbsT(rr.base)||mbsT(rr.proc); if(t) L.push((k++)+') ['+rr.item.name+'] '+mbsPolite(t)+' ('+rr.id+')'); });
+            secs.push(['업무 흐름 - 프로그램',L]); }
           if(M.PR.length) secs.push(['업무 규칙·제약',M.PR.map(function(p,i){ return (i+1)+') ['+p.tag+'] '+p.text+' ('+p.id+')'; })]);
           if(M.EX.length) secs.push(['예외 처리',M.EX.map(function(e,i){ return (i+1)+') '+e.q+' → '+(e.a||'표준 메시지·처리를 따릅니다.'); })]);
           if(M.P.roles.length) secs.push(['사용자·권한',M.P.rolesDiff?M.P.roles.map(function(ro,i){ return (i+1)+') '+ro+' : '+(mbsT(M.P.perms[ro])||''); }):['1) 사용 역할 : '+M.P.roles.join(', ')+' (역할별 권한 동일)']]);
