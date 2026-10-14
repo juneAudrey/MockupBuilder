@@ -2792,9 +2792,18 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       if (!result || !result.columns || !result.columns.length) return;
       if (!gridElm || gridElm.ownerDocument !== hostDoc || !hostDoc.contains(gridElm)) return; // 그 사이 다른 화면으로 이동
       const popupByTitle = (popupMap && (popupMap[gridId] || popupMap.__nogrid__)) || {};
+      // 이 문서가 어느 호스트(모달/UI 탭)의 미리보기인지 — 새로 끼운 표의 배지 바인딩과 정보 맵 갱신 대상.
+      const tabFrame = el('uiTabDesignView');
+      const hostKind = (tabFrame && tabFrame.contentDocument === hostDoc) ? 'tab' : 'modal';
+      const infoMap = hostKind === 'tab' ? _uiTabInfoMap : _viewerInfoMap;
+      // 그리드 제목은 배포 스냅샷 쪽 정보에서 가져온다(실시간 컬럼 행에는 그리드 제목이 없음).
+      const snapshotInfo = Object.keys(infoMap).map(k => infoMap[k]).find(i => i && i.gridId === gridId);
+      const gridTitle = snapshotInfo ? snapshotInfo.gridTitle : '';
       let html = '';
+      let liveCols = [];
       try {
-        const cols = P.computeGridColumnDefs({ columns: P.mapLiveGridColumns(result.columns) }, (navKey) => store.nodes.get(navKey), popupByTitle, dict);
+        liveCols = P.mapLiveGridColumns(result.columns);
+        const cols = P.computeGridColumnDefs({ gridId, title: gridTitle, columns: liveCols }, (navKey) => store.nodes.get(navKey), popupByTitle, dict);
         html = P.renderGridColumnsTableFromDefs(cols);
       } catch (e) { return; }
       if (!html) return;
@@ -2802,8 +2811,16 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       wrap.innerHTML = html;
       const fresh = wrap.firstChild;
       if (!fresh) return;
+      // 실시간 컬럼 기준으로 이 그리드의 컬럼 정보("I" 배지)를 다시 채운다(스냅샷 정보는 지우고 교체).
+      Object.keys(infoMap).forEach(k => { if (infoMap[k] && infoMap[k].gridId === gridId && k.indexOf('grid:') === 0) delete infoMap[k]; });
+      liveCols.forEach(col => {
+        const info = P.gridColumnInfo(gridId, gridTitle, col);
+        if (info) infoMap[P.gridColumnInfoKey(gridId, col)] = info;
+      });
       const old = gridElm.querySelector('.dz-grid-cols-wrap');
       if (old) old.replaceWith(fresh); else gridElm.appendChild(fresh);
+      bindNavElements(fresh, hostKind);
+      bindInfoBadgeElements(fresh, hostKind);
     }).catch(() => { /* 무시 */ });
   }
 
@@ -3178,7 +3195,7 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
           try { bindDesignTabs(iframe); } catch (e) { /* 무시 */ }
           bindDesignLinks(iframe);
           try { bindInitBadges(iframe, _viewerInitMap); } catch (e) { /* 무시 */ }
-          try { bindInfoBadges(iframe, _viewerInfoMap); } catch (e) { /* 무시 */ }
+          try { bindInfoBadges(iframe, 'modal'); } catch (e) { /* 무시 */ }
           // 그리드가 있으면(모드 무관 — json 은 data-grid-id, html 은 _viewerGridIds) 배포
           // 스냅샷 컬럼 표를 z_grid_columns 실시간 값으로 백그라운드에서 업그레이드한다.
           try {
@@ -3932,6 +3949,8 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     catch (e) { return; }
     if (!doc || !doc.body) return;
     Object.keys(infoMap).forEach(id => {
+      // 그리드 컬럼 정보(grid:그리드ID:컬럼)는 컬럼 표 안에 배지가 이미 그려지므로 여기선 건너뛴다.
+      if (id.indexOf('grid:') === 0) return;
       const elm = resolveOverlayTarget(doc, id);
       if (!elm || elm.getAttribute('data-dz-info') === '1') return;
       elm.setAttribute('data-dz-info', '1');
@@ -3947,7 +3966,9 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
   }
 
   // 디자인 미리보기 안의 "I" 배지에 클릭 핸들러를 건다(bindInitBadges 와 같은 패턴 — 호스트별 중복 바인딩 방지).
-  function bindInfoBadges(iframe, infoMap, hostKind) {
+  // 정보 맵은 클릭 시점에 호스트의 현재 맵(_viewerInfoMap/_uiTabInfoMap)에서 읽는다 — 그리드 컬럼 표가
+  // 실시간 컬럼(z_grid_columns)으로 나중에 교체되면 그 컬럼 정보가 맵에 추가되기 때문(upgradeGridColumnsWithLiveData).
+  function bindInfoBadges(iframe, hostKind) {
     hostKind = hostKind === 'tab' ? 'tab' : 'modal';
     let doc = null;
     try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
@@ -3960,7 +3981,14 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       if (_infoBadgesBoundModal === doc) return;
       _infoBadgesBoundModal = doc;
     }
-    doc.querySelectorAll('[data-info-id]').forEach(elm => {
+    bindInfoBadgeElements(doc, hostKind);
+  }
+  // root(문서 또는 새로 끼워 넣은 요소) 아래의 아직 바인딩되지 않은 "I" 배지에만 핸들러를 건다.
+  function bindInfoBadgeElements(root, hostKind) {
+    const doc = root.ownerDocument || root;
+    root.querySelectorAll('[data-info-id]').forEach(elm => {
+      if (elm.getAttribute('data-dz-info-bound') === '1') return;
+      elm.setAttribute('data-dz-info-bound', '1');
       elm.style.cursor = 'pointer';
       elm.addEventListener('click', (e) => {
         e.preventDefault(); e.stopPropagation();
@@ -3974,9 +4002,11 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
           box.removeAttribute('data-current-id');
           return;
         }
-        elm.classList.add('dz-info-on');
+        const infoMap = hostKind === 'tab' ? _uiTabInfoMap : _viewerInfoMap;
         const base = infoMap && infoMap[id];
-        if (base) showInfoDetail(id, base, hostKind);
+        if (!base) return;
+        elm.classList.add('dz-info-on');
+        showInfoDetail(id, base, hostKind);
       });
     });
   }
@@ -4116,10 +4146,11 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     const chip = (s, cls) => '<span class="ci-chip' + (cls ? ' ' + cls : '') + '">' + escHtmlLite(s) + '</span>';
     let html = '';
     // 1) 기본
-    let b = kv('라벨', escHtmlLite(base.label || '(없음)'))
-      + kv('컴포넌트 ID', code(base.id))
+    let b = kv('라벨', escHtmlLite(base.label || '(없음)'));
+    if (base.gridId) b += kv('그리드', escHtmlLite((base.gridTitle ? base.gridTitle + ' · ' : '') + base.gridId));
+    b += kv(base.gridId ? '컬럼 ID' : '컴포넌트 ID', code(base.id))
       + kv('유형', escHtmlLite([base.compClass, base.object].filter(Boolean).join(' · ') || '-'))
-      + kv('필수 / 읽기전용', (base.required ? 'Y' : 'N') + ' / ' + (base.readonly ? 'Y' : 'N'));
+      + kv(base.gridId ? '필수 / 읽기전용(편집불가)' : '필수 / 읽기전용', (base.required ? 'Y' : 'N') + ' / ' + (base.readonly ? 'Y' : 'N'));
     if (base.hidden) b += kv('표시', '숨김');
     if (base.maxlength) b += kv('최대 길이', escHtmlLite(base.maxlength));
     if (base.dateType) b += kv('날짜 형식', escHtmlLite(base.dateType));
@@ -4182,14 +4213,14 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     // 5) 연관 이벤트
     if (base.events.length || base.refreshedBy.length) {
       let ev = '';
-      if (base.events.length) ev += '<div class="iv-row"><span class="iv-label">이 컴포넌트의 이벤트</span>' + base.events.map(a => chip(a)).join(' ') + '</div>';
+      if (base.events.length) ev += '<div class="iv-row"><span class="iv-label">' + (base.gridId ? '이 컬럼의 스크립트' : '이 컴포넌트의 이벤트') + '</span>' + base.events.map(a => chip(a)).join(' ') + '</div>';
       if (base.refreshedBy.length) {
         ev += '<div class="iv-row"><span class="iv-label">이 콤보를 다시 조회하는 곳(refreshAjax)</span>'
           + base.refreshedBy.map(r => chip((r.label ? r.label + '(' + r.id + ')' : r.id) + ' · ' + r.attr, 'ci-chip-ref')).join(' ') + '</div>';
       }
       html += '<div class="iv-card ci-card ci-basic"><div class="iv-card-head">연관 이벤트</div>' + ev + '</div>';
     }
-    box.innerHTML = '<div class="fsb-head"><b>ℹ️ 컴포넌트 정보 · ' + escHtmlLite(base.label || compId) + '</b>'
+    box.innerHTML = '<div class="fsb-head"><b>ℹ️ ' + (base.gridId ? '컬럼 정보 · ' : '컴포넌트 정보 · ') + escHtmlLite(base.label || base.id || compId) + '</b>'
       + '<button class="fsb-min" title="' + (_infoBoxCollapsed ? '펼치기' : '접기') + '">'
       + (_infoBoxCollapsed ? '▸ 펼치기' : '▾ 접기') + '</button></div>'
       + '<div class="iv-body">' + html + '</div>';
@@ -4335,8 +4366,17 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       if (_designLinksBoundModal === doc) return;
       _designLinksBoundModal = doc;
     }
-    const nodes = doc.querySelectorAll('[data-navkey]');
-    nodes.forEach(elm => {
+    bindNavElements(doc, hostKind);
+  }
+
+  // root(문서 또는 새로 끼워 넣은 요소) 아래의 아직 바인딩되지 않은 연결 객체(data-navkey)에만 핸들러를 건다.
+  // 그리드 컬럼 표가 실시간 컬럼(z_grid_columns)으로 나중에 통째로 교체되면(upgradeGridColumnsWithLiveData)
+  // 새 표의 WF/UI 배지는 문서 단위 바인딩이 끝난 뒤에 생기므로, 그 요소만 따로 다시 바인딩한다.
+  // (예전엔 이 경우 교체된 컬럼 표의 배지가 눌러도 반응이 없었다.)
+  function bindNavElements(root, hostKind) {
+    root.querySelectorAll('[data-navkey]').forEach(elm => {
+      if (elm.getAttribute('data-dz-nav-bound') === '1') return;
+      elm.setAttribute('data-dz-nav-bound', '1');
       elm.style.cursor = 'pointer';
       const go = (e) => {
         e.preventDefault(); e.stopPropagation();
@@ -4545,7 +4585,7 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
         try { bindDesignTabs(iframe, 'tab'); } catch (e) { /* 무시 */ }
         bindDesignLinks(iframe, 'tab');
         try { bindInitBadges(iframe, _uiTabInitMap, 'tab'); } catch (e) { /* 무시 */ }
-        try { bindInfoBadges(iframe, _uiTabInfoMap, 'tab'); } catch (e) { /* 무시 */ }
+        try { bindInfoBadges(iframe, 'tab'); } catch (e) { /* 무시 */ }
         try {
           const programId = raw && raw.PROGRAM_ID;
           if (programId && fdoc) {

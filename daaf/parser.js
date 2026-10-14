@@ -107,7 +107,7 @@
   // 공통코드(MAJOR_CD/MINOR_CD) 참조 추출
   // - UI 콤보박스 정의: "majorCd":"SYS001" / "minorCd":"..."
   //   + 콤보 조회조건(comboCriteria): {"paramId":"majorCd","paramValue":"'B9003'"} (실무 화면 대부분이 이 형태)
-  //   + 컴파일된 RESOURCE_JS: $param["majorCd"] = 'B9003';
+  //   + 스크립트/컴파일된 RESOURCE_JS: $param["majorCd"] = 'B9003'; / $comboParam.majorCd = 'P1001';(그리드 콤보 beforeComboCall)
   // - WF/Rp SQL 상수:   MAJOR_CD = 'I0001' / MINOR_CD = 'xxx'
   //   SQL 은 대소문자를 가리지 않으므로(a.major_cd = 'B9002' 처럼 소문자로 쓴 WF 가 실제로 있다)
   //   대소문자 무시로 찾는다 — 예전엔 대문자만 잡아 소문자 SQL 의 코드가 통째로 빠졌다.
@@ -126,7 +126,7 @@
     while ((m = majCrit.exec(text)) !== null) major.add(m[1]);
     const majCritRev = /"paramValue"\s*:\s*"'([^'"]+)'"\s*,\s*"paramId"\s*:\s*"majorCd"/gi;
     while ((m = majCritRev.exec(text)) !== null) major.add(m[1]);
-    const majJs = /\$param\s*\[\s*["']majorCd["']\s*\]\s*=\s*'([^']+)'/gi;
+    const majJs = /\$(?:comboParam|param)\s*(?:\.\s*majorCd|\[\s*["']majorCd["']\s*\])\s*=\s*'([^']+)'/gi;
     while ((m = majJs.exec(text)) !== null) major.add(m[1]);
     const majSql = /\bMAJOR_CD\s*=\s*'([^']+)'/gi;
     while ((m = majSql.exec(text)) !== null) major.add(m[1]);
@@ -753,6 +753,7 @@
         return {
           title,
           name: c.name || c.data || '',
+          infoKey: gridColumnInfo(go.gridId, go.title, c) ? gridColumnInfoKey(go.gridId, c) : null,
           align: c.align || 'left',
           width: c.width,
           required,
@@ -796,7 +797,9 @@
     const badgeRow = cols.map(c => {
       const badgesHtml = (c.links || []).map(link =>
         '<span class="dz-link-tag ' + link.cls + '" data-navkey="' + esc(link.navKey) + '" title="' + esc(link.title) + '" style="display:inline-block;margin:0;font-size:9px;font-weight:800;color:#fff;background:' + (badgeColorOf[link.cls] || '#12a150') + ';border-radius:4px;padding:0 5px;cursor:pointer">' + esc(link.badge) + '</span>'
-      ).join('');
+      ).join('')
+        // 콤보/공통코드 컬럼의 "I"(컴포넌트 정보) 배지 — 폼 컴포넌트의 I 배지와 같은 패널을 연다(app.js bindInfoBadges).
+        + (c.infoKey ? '<span class="dz-link-tag dz-info-tag" data-info-id="' + esc(c.infoKey) + '" title="컬럼 정보 보기 (클릭)" style="display:inline-block;margin:0;font-size:9px;font-weight:800;color:#fff;background:#0f766e;border-radius:4px;padding:0 5px;cursor:pointer">I</span>' : '');
       return '<th style="' + thBase(c.width) + 'padding:0;background:#eef2ff;height:24px">'
         + '<div style="display:flex;align-items:center;justify-content:center;gap:3px;height:24px;width:100%;box-sizing:border-box">' + badgesHtml + '</div></th>';
     }).join('');
@@ -1793,15 +1796,85 @@
   // buildDesignHtml 의 renderComp 에서 라벨(field 래퍼) 없이 그려지는 종류와 같은 목록이다.
   const INFO_EXCLUDED_OBJECTS = new Set(['button', 'heading', 'activeReport', 'tree', 'image', 'icon', 'badge',
     'horizontalDivider', 'verticalDivider', 'html', 'amchart3', 'echarts', 'jsGantt', 'bnb', 'tnb']);
+  // 콤보/공통코드 정보 공통 추출 — 폼 컴포넌트(propertyValue)와 그리드 컬럼 정의가 같은 키
+  // (serviceId/serviceUid/idColumn/textColumn/comboCriteria/beforeComboCall)를 쓰므로 한 곳에서 처리한다.
+  function stripQuotedLiteral(v) {
+    const m = String(v == null ? '' : v).trim().match(/^'([^']*)'$|^"([^"]*)"$/);
+    return m ? { value: m[1] != null ? m[1] : m[2], literal: true } : { value: String(v == null ? '' : v), literal: false };
+  }
+  function buildComboInfo(src) {
+    if (!src || (src.serviceUid == null && !src.serviceId)) return null;
+    return {
+      serviceId: src.serviceId || '',
+      serviceUid: src.serviceUid != null ? String(src.serviceUid) : '',
+      serviceName: src.serviceName || '',
+      idColumn: src.idColumn || '',
+      textColumn: src.textColumn || '',
+      comboType: src.comboType || '',
+      multiColumn: src.isMuliColumn === true,
+      criteria: (Array.isArray(src.comboCriteria) ? src.comboCriteria : [])
+        .filter(c => c && c.paramId)
+        .map(c => { const v = stripQuotedLiteral(c.paramValue); return { paramId: c.paramId, value: v.value, literal: v.literal }; })
+    };
+  }
+  // MAJOR_CD 수집: (1) 콤보 조회조건 comboCriteria(majorCd='X') (2) 스크립트 속성(대개 beforeComboCall)의
+  // $comboParam.majorCd = 'X' / $param["majorCd"] = 'X' 대입 — 그리드 콤보 컬럼은 거의 항상 (2) 형태다.
+  // src 의 최상위 문자열 속성만 본다(하위 객체의 스크립트는 다른 컴포넌트/컬럼 소속일 수 있음).
+  const MAJOR_ASSIGN_RE = /\$(?:comboParam|param)\s*(?:\.\s*majorCd|\[\s*["']majorCd["']\s*\])\s*=\s*'([^']+)'/gi;
+  function collectMajorCds(src, combo) {
+    const out = [];
+    const add = (code, source) => { if (code && !out.some(x => x.code === code)) out.push({ code, source }); };
+    if (combo) combo.criteria.forEach(c => { if (/^majorcd$/i.test(c.paramId) && c.literal) add(c.value, '콤보 조회조건'); });
+    Object.keys(src || {}).forEach(attr => {
+      const v = src[attr];
+      if (typeof v !== 'string' || !/majorCd/i.test(v)) return;
+      let m;
+      MAJOR_ASSIGN_RE.lastIndex = 0;
+      while ((m = MAJOR_ASSIGN_RE.exec(v)) !== null) add(m[1], '스크립트(' + attr + ')');
+    });
+    return out;
+  }
+
+  // 그리드 컬럼 하나의 정보("I" 배지 대상이면 정보 객체, 아니면 null). 대상: 콤보 컬럼(serviceId/serviceUid)
+  // 이거나 공통코드(MAJOR_CD)를 쓰는 컬럼. 배포 스냅샷(RESOURCE_JSON)과 실시간 컬럼(mapLiveGridColumns)
+  // 양쪽에 같은 규칙을 쓰므로, 배지(computeGridColumnDefs)와 패널 정보가 항상 일치한다.
+  function gridColumnInfoKey(gridId, col) {
+    return 'grid:' + (gridId || '') + ':' + ((col && (col.name || col.data)) || '');
+  }
+  function gridColumnInfo(gridId, gridTitle, col) {
+    if (!col || !(col.name || col.data)) return null;
+    const combo = buildComboInfo(col);
+    const majorCds = collectMajorCds(col, combo);
+    if (!combo && !majorCds.length) return null;
+    const events = ['beforeComboCall', 'afterComboCall', 'beforeChange', 'afterChange']
+      .filter(a => typeof col[a] === 'string' && col[a].trim());
+    return {
+      id: col.name || col.data,
+      label: col.title || col.name || col.data || '',
+      gridId: gridId || '',
+      gridTitle: gridTitle || '',
+      compClass: '그리드 컬럼',
+      object: col.dataType || '',
+      required: col.required === true || col.required === 'true' || col.required === '1',
+      readonly: String(col.editType || '').toUpperCase() !== 'E',
+      hidden: col.visible === false,
+      dataBinding: col.data || col.name || '',
+      maxlength: '',
+      defaultValue: '',
+      dateType: '',
+      combo,
+      radioItems: [],
+      majorCds,
+      events,
+      refreshedBy: []
+    };
+  }
+
   function computeComponentInfoMap(resourceJson) {
     const map = {};
     let obj;
     try { obj = JSON.parse(resourceJson); } catch (e) { return map; }
-    const stripQuotes = (v) => {
-      const m = String(v == null ? '' : v).trim().match(/^'([^']*)'$|^"([^"]*)"$/);
-      return m ? { value: m[1] != null ? m[1] : m[2], literal: true } : { value: String(v == null ? '' : v), literal: false };
-    };
-    // 1) 컴포넌트 수집
+    // 1) 컴포넌트 수집(+ 그리드 컬럼)
     const comps = [];
     (function scan(o) {
       if (!o || typeof o !== 'object') return;
@@ -1811,10 +1884,17 @@
         const cls = (o.editorAttr && o.editorAttr.componentClass) || '';
         const object = (o.viewerAttr && o.viewerAttr.object) || '';
         if (pv.id && cls !== 'form/Button' && !INFO_EXCLUDED_OBJECTS.has(object)) comps.push({ pv, cls, object });
+      } else if (o.type === 'grid') {
+        const go = (o.propertyValue && o.propertyValue.gridOptions) || {};
+        (Array.isArray(go.columns) ? go.columns : []).forEach(col => {
+          const info = gridColumnInfo(go.gridId, go.title, col);
+          if (info) map[gridColumnInfoKey(go.gridId, col)] = info;
+        });
       }
       Object.keys(o).forEach(k => scan(o[k]));
     })(obj);
     comps.forEach(({ pv, cls, object }) => {
+      const combo = buildComboInfo(pv);
       const info = {
         id: pv.id,
         label: pv.formLabel || pv.label || pv.title || '',
@@ -1827,31 +1907,12 @@
         maxlength: pv.maxlength != null ? String(pv.maxlength) : '',
         defaultValue: pv.default != null && typeof pv.default !== 'object' ? String(pv.default) : '',
         dateType: pv.dateType || '',
-        combo: null,
+        combo,
         radioItems: [],
-        majorCds: [],
+        majorCds: collectMajorCds(pv, combo),
         events: [],
         refreshedBy: []
       };
-      if (pv.serviceUid != null || pv.serviceId) {
-        info.combo = {
-          serviceId: pv.serviceId || '',
-          serviceUid: pv.serviceUid != null ? String(pv.serviceUid) : '',
-          serviceName: pv.serviceName || '',
-          idColumn: pv.idColumn || '',
-          textColumn: pv.textColumn || '',
-          comboType: pv.comboType || '',
-          multiColumn: pv.isMuliColumn === true,
-          criteria: (Array.isArray(pv.comboCriteria) ? pv.comboCriteria : [])
-            .filter(c => c && c.paramId)
-            .map(c => { const v = stripQuotes(c.paramValue); return { paramId: c.paramId, value: v.value, literal: v.literal }; })
-        };
-        info.combo.criteria.forEach(c => {
-          if (/^majorcd$/i.test(c.paramId) && c.literal && c.value && !info.majorCds.some(x => x.code === c.value)) {
-            info.majorCds.push({ code: c.value, source: '콤보 조회조건' });
-          }
-        });
-      }
       if (Array.isArray(pv.radioItems)) {
         info.radioItems = pv.radioItems.filter(r => r).map(r => ({ value: r.value != null ? String(r.value) : '', label: r.label || r.text || '' }));
       }
@@ -2290,5 +2351,5 @@
     return out;
   }
 
-  return { computeComponentInfoMap, extractEntityFieldMap, extractServiceRefs, extractTables, extractScriptPopupTriggers, extractStructuralButtonTriggers, resolveScriptPopupTargets, indexScriptFunctions, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeGridServiceMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
+  return { computeComponentInfoMap, gridColumnInfo, gridColumnInfoKey, extractEntityFieldMap, extractServiceRefs, extractTables, extractScriptPopupTriggers, extractStructuralButtonTriggers, resolveScriptPopupTargets, indexScriptFunctions, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeGridServiceMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
 });
