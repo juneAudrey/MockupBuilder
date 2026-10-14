@@ -9,13 +9,21 @@ window.WaveOffline = (function () {
     report_link: '리포트-WF 연결(b_report_file)', report_link_tenant: '리포트-WF 연결 테넌트 오버라이드(b_report_file_tenant, 선택)',
     // "IV"(초기값 추적) 상세패널의 "지금 값 조회" 버튼을 오프라인에서도 쓰려면 필요.
     config_ref: '초기값 기준코드(B_CONFIGURATION_V)',
+    // 디자인 미리보기 "I"(컴포넌트 정보) 팝업의 공통코드 목록을 오프라인에서도 보려면 필요.
+    minor: '공통코드(B_MINOR_V)',
     // 그리드 컬럼/옵션 실시간 구성 — 관리자가 그리드 커스터마이징으로 배포 없이 바꾼 컬럼 순서/
     // 표시여부/제목/폭 등을 파도타기 미리보기에도 반영하려면 필요. grid_columns/grid_options는
     // 필수(전역 기본), _tenant 는 테넌트별 오버라이드가 있을 때만 선택적으로 받으면 된다.
     grid_columns: '그리드 컬럼 구성(z_grid_columns)', grid_columns_tenant: '그리드 컬럼 테넌트 오버라이드(z_grid_columns_tenant, 선택)',
     grid_options: '그리드 옵션(z_grid_options)', grid_options_tenant: '그리드 옵션 테넌트 오버라이드(z_grid_options_tenant, 선택)'
   };
-  const ALL_TABLES = ['menu', 'ui_deploy', 'wf_deploy', 'rp_deploy', 'mo_deploy', 'dd', 'dd_lang', 'report_link', 'report_link_tenant', 'config_ref', 'grid_columns', 'grid_columns_tenant', 'grid_options', 'grid_options_tenant'];
+  // minor(공통코드)는 이 테이블을 아는 클라이언트(1.2.0 이상 — preload 에 offlineQueryMinorCodes 가 있는 빌드)에서만 받을 수 있다 — 화면(웹)은
+  // GitHub Pages 로 먼저 배포되므로, 예전 클라이언트에서는 목록에 띄우지 않는다(예전 메인 프로세스는 모르는
+  // 테이블 키를 조용히 건너뛰어, 체크해도 아무 일도 안 일어나는 혼란만 생기기 때문).
+  const SUPPORTS_MINOR = !!(window.api && window.api.offlineQueryMinorCodes);
+  const ALL_TABLES = ['menu', 'ui_deploy', 'wf_deploy', 'rp_deploy', 'mo_deploy', 'dd', 'dd_lang', 'report_link', 'report_link_tenant', 'config_ref']
+    .concat(SUPPORTS_MINOR ? ['minor'] : [])
+    .concat(['grid_columns', 'grid_columns_tenant', 'grid_options', 'grid_options_tenant']);
 
   const state = { filePath: '', manifest: null, active: false, busy: false };
   let getProductCd = null, getLang = null, onModeChange = null, onDataChange = null, setStatus = null;

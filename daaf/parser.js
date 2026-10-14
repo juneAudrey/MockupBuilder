@@ -106,18 +106,31 @@
 
   // 공통코드(MAJOR_CD/MINOR_CD) 참조 추출
   // - UI 콤보박스 정의: "majorCd":"SYS001" / "minorCd":"..."
+  //   + 콤보 조회조건(comboCriteria): {"paramId":"majorCd","paramValue":"'B9003'"} (실무 화면 대부분이 이 형태)
+  //   + 컴파일된 RESOURCE_JS: $param["majorCd"] = 'B9003';
   // - WF/Rp SQL 상수:   MAJOR_CD = 'I0001' / MINOR_CD = 'xxx'
+  //   SQL 은 대소문자를 가리지 않으므로(a.major_cd = 'B9002' 처럼 소문자로 쓴 WF 가 실제로 있다)
+  //   대소문자 무시로 찾는다 — 예전엔 대문자만 잡아 소문자 SQL 의 코드가 통째로 빠졌다.
   function extractCodes(text) {
     if (!text) return { major: [], minor: [] };
     const major = new Set(), minor = new Set();
     let m;
+    // JSON 의 "majorCd"/"minorCd" 키는 코드값 외에 멀티컬럼 콤보의 헤더 라벨(options.headers 의
+    // {"minorCd":"업종"} 등)로도 쓰인다 — 코드 형태(영숫자/_-.*)인 값만 코드로 인정한다.
+    const isCodeLike = (v) => /^[A-Za-z0-9_.*-]+$/.test(v) && !/^(minorCd|minorNm|majorCd|majorNm)$/i.test(v);
     const majJson = /"majorCd"\s*:\s*"([^"]+)"/g;
-    while ((m = majJson.exec(text)) !== null) if (m[1]) major.add(m[1]);
+    while ((m = majJson.exec(text)) !== null) if (isCodeLike(m[1])) major.add(m[1]);
     const minJson = /"minorCd"\s*:\s*"([^"]+)"/g;
-    while ((m = minJson.exec(text)) !== null) if (m[1] && !/^(코드|명칭|요청자|minorCd|minorNm)/.test(m[1])) minor.add(m[1]);
-    const majSql = /\bMAJOR_CD\s*=\s*'([^']+)'/g;
+    while ((m = minJson.exec(text)) !== null) if (isCodeLike(m[1])) minor.add(m[1]);
+    const majCrit = /"paramId"\s*:\s*"majorCd"\s*,\s*"paramValue"\s*:\s*"'([^'"]+)'"/gi;
+    while ((m = majCrit.exec(text)) !== null) major.add(m[1]);
+    const majCritRev = /"paramValue"\s*:\s*"'([^'"]+)'"\s*,\s*"paramId"\s*:\s*"majorCd"/gi;
+    while ((m = majCritRev.exec(text)) !== null) major.add(m[1]);
+    const majJs = /\$param\s*\[\s*["']majorCd["']\s*\]\s*=\s*'([^']+)'/gi;
+    while ((m = majJs.exec(text)) !== null) major.add(m[1]);
+    const majSql = /\bMAJOR_CD\s*=\s*'([^']+)'/gi;
     while ((m = majSql.exec(text)) !== null) major.add(m[1]);
-    const minSql = /\bMINOR_CD\s*=\s*'([^']+)'/g;
+    const minSql = /\bMINOR_CD\s*=\s*'([^']+)'/gi;
     while ((m = minSql.exec(text)) !== null) minor.add(m[1]);
     return { major: [...major], minor: [...minor] };
   }
@@ -799,7 +812,8 @@
     return renderGridColumnsTableFromDefs(computeGridColumnDefs(go, lookupNode, popupByTitle, dict));
   }
 
-  function buildDesignHtml(resourceJson, resourceHtml, dict, lookupNode, initMap, resourceJsText) {
+  // infoMap: computeComponentInfoMap() 결과 — 키(컴포넌트 id)가 있는 입력 컴포넌트에 "I"(컴포넌트 정보) 배지를 붙인다.
+  function buildDesignHtml(resourceJson, resourceHtml, dict, lookupNode, initMap, resourceJsText, infoMap) {
     let obj;
     try { obj = JSON.parse(resourceJson); } catch (e) { return null; }
     const page = obj && obj.page;
@@ -888,9 +902,14 @@
         ? ('<span class="dz-link-tag dz-init-tag ' + initCls + '" data-init-id="' + esc(pv.id) + '" title="초기값 추적 정보 보기 (클릭)">IV</span>')
         : '';
 
-      // 뱃지(숨김/연결/초기값)는 컨트롤 박스 안이 아니라 "라벨 텍스트 오른쪽"에 붙인다(요청사항:
+      // 컴포넌트 정보 배지("I"): 클릭하면(app.js bindInfoBadges) 컬럼 매핑/공통코드 등 종합정보 패널을 띄운다.
+      const infoTag = (infoMap && pv.id && Object.prototype.hasOwnProperty.call(infoMap, pv.id))
+        ? ('<span class="dz-link-tag dz-info-tag" data-info-id="' + esc(pv.id) + '" title="컴포넌트 정보 보기 (클릭)">I</span>')
+        : '';
+
+      // 뱃지(숨김/연결/초기값/정보)는 컨트롤 박스 안이 아니라 "라벨 텍스트 오른쪽"에 붙인다(요청사항:
       // 컴포넌트 안에 넣은 뱃지가 마음에 안 든다 — 그리드 제외 모든 컴포넌트는 라벨 우측으로).
-      const badgesInner = (hiddenBadge || linkTag || initTag) ? (hiddenBadge + linkTag + initTag) : '';
+      const badgesInner = (hiddenBadge || linkTag || initTag || infoTag) ? (hiddenBadge + linkTag + initTag + infoTag) : '';
       const badgeSlot = badgesInner ? ('<span class="dz-label-badges">' + badgesInner + '</span>') : '';
       const field = (inner) => '<div class="dz-field' + linkCls + hiddenCls + '"' + dataAttr + '>'
         + (label ? ('<label>' + esc(label) + req + badgeSlot + '</label>')
@@ -1762,6 +1781,144 @@
     return map;
   }
 
+  // ---- 컴포넌트 종합정보("I" 배지) ----
+  // 디자인 미리보기의 각 입력 컴포넌트(입력창/콤보/라디오/체크박스/날짜 등 — 버튼·그리드·레이아웃 제외)에
+  // 대해, 화면 정의(RESOURCE_JSON)만으로 알 수 있는 정보를 모은다. 테이블.컬럼 매핑이나 콤보 WF 의 SQL
+  // 안에 하드코딩된 공통코드처럼 "다른 리소스(WF)"가 있어야 알 수 있는 정보는 app.js 가 store 의 WF 노드로
+  // 보강한다(extractEntityFieldMap / extractCodes 재사용).
+  // 반환: { compId: { id, label, compClass, object, required, readonly, hidden, dataBinding, maxlength,
+  //                   defaultValue, dateType, combo, radioItems, majorCds:[{code,source}], events:[attr],
+  //                   refreshedBy:[{id,label,attr}] } }
+  // 정보 배지 대상이 아닌 컴포넌트(viewerAttr.object) — 데이터 값을 갖지 않는 버튼/장식/영역 컴포넌트.
+  // buildDesignHtml 의 renderComp 에서 라벨(field 래퍼) 없이 그려지는 종류와 같은 목록이다.
+  const INFO_EXCLUDED_OBJECTS = new Set(['button', 'heading', 'activeReport', 'tree', 'image', 'icon', 'badge',
+    'horizontalDivider', 'verticalDivider', 'html', 'amchart3', 'echarts', 'jsGantt', 'bnb', 'tnb']);
+  function computeComponentInfoMap(resourceJson) {
+    const map = {};
+    let obj;
+    try { obj = JSON.parse(resourceJson); } catch (e) { return map; }
+    const stripQuotes = (v) => {
+      const m = String(v == null ? '' : v).trim().match(/^'([^']*)'$|^"([^"]*)"$/);
+      return m ? { value: m[1] != null ? m[1] : m[2], literal: true } : { value: String(v == null ? '' : v), literal: false };
+    };
+    // 1) 컴포넌트 수집
+    const comps = [];
+    (function scan(o) {
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) { o.forEach(scan); return; }
+      if (o.type === 'component') {
+        const pv = o.propertyValue || {};
+        const cls = (o.editorAttr && o.editorAttr.componentClass) || '';
+        const object = (o.viewerAttr && o.viewerAttr.object) || '';
+        if (pv.id && cls !== 'form/Button' && !INFO_EXCLUDED_OBJECTS.has(object)) comps.push({ pv, cls, object });
+      }
+      Object.keys(o).forEach(k => scan(o[k]));
+    })(obj);
+    comps.forEach(({ pv, cls, object }) => {
+      const info = {
+        id: pv.id,
+        label: pv.formLabel || pv.label || pv.title || '',
+        compClass: cls,
+        object,
+        required: pv.isRequired === true,
+        readonly: pv.isReadonly === true,
+        hidden: pv.isDisplay === false || pv.visible === false,
+        dataBinding: pv.dataBinding || '',
+        maxlength: pv.maxlength != null ? String(pv.maxlength) : '',
+        defaultValue: pv.default != null && typeof pv.default !== 'object' ? String(pv.default) : '',
+        dateType: pv.dateType || '',
+        combo: null,
+        radioItems: [],
+        majorCds: [],
+        events: [],
+        refreshedBy: []
+      };
+      if (pv.serviceUid != null || pv.serviceId) {
+        info.combo = {
+          serviceId: pv.serviceId || '',
+          serviceUid: pv.serviceUid != null ? String(pv.serviceUid) : '',
+          serviceName: pv.serviceName || '',
+          idColumn: pv.idColumn || '',
+          textColumn: pv.textColumn || '',
+          comboType: pv.comboType || '',
+          multiColumn: pv.isMuliColumn === true,
+          criteria: (Array.isArray(pv.comboCriteria) ? pv.comboCriteria : [])
+            .filter(c => c && c.paramId)
+            .map(c => { const v = stripQuotes(c.paramValue); return { paramId: c.paramId, value: v.value, literal: v.literal }; })
+        };
+        info.combo.criteria.forEach(c => {
+          if (/^majorcd$/i.test(c.paramId) && c.literal && c.value && !info.majorCds.some(x => x.code === c.value)) {
+            info.majorCds.push({ code: c.value, source: '콤보 조회조건' });
+          }
+        });
+      }
+      if (Array.isArray(pv.radioItems)) {
+        info.radioItems = pv.radioItems.filter(r => r).map(r => ({ value: r.value != null ? String(r.value) : '', label: r.label || r.text || '' }));
+      }
+      (Array.isArray(pv.eventCollection) ? pv.eventCollection : []).forEach(ev => {
+        const attr = ev && typeof ev === 'object' ? ev.eventAttrName : null;
+        if (attr && typeof pv[attr] === 'string' && pv[attr].trim() && !info.events.includes(attr)) info.events.push(attr);
+      });
+      map[pv.id] = info;
+    });
+    // 2) 역참조: 다른 컴포넌트(또는 페이지 onLoad)의 스크립트가 select.refreshAjax(폼, 'id', …) 로
+    //    이 컴포넌트(콤보)를 다시 조회하는 경우 — "업태를 바꾸면 업종 목록이 바뀐다" 같은 연동 관계.
+    const refreshRe = /refreshAjax\s*\(\s*[^,()]+,\s*['"]([A-Za-z_$][\w$]*)['"]/g;
+    (function scanRefs(o, owner) {
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) { o.forEach(x => scanRefs(x, owner)); return; }
+      const pv = o.propertyValue || {};
+      const go = pv.gridOptions || {};
+      const me = (o.type === 'component' && pv.id) ? { id: pv.id, label: pv.formLabel || pv.label || pv.title || '' }
+        : (o.type === 'grid' && go.gridId) ? { id: go.gridId, label: go.title || '' }
+        : (o.compId && String(o.compId).indexOf('page') === 0 ? { id: '(page)', label: '화면 로드' } : owner);
+      // propertyValue 아래의 모든 스크립트 문자열(최상위 이벤트 속성뿐 아니라 form[].afterSubmit,
+      // gridOptions.event[].eventFnc 처럼 한 단계 더 안쪽에 있는 것까지)을 최상위 속성명 기준으로 검사한다.
+      const check = (attr, v) => {
+        if (typeof v === 'string') {
+          if (v.indexOf('refreshAjax') < 0 || !me) return;
+          let m;
+          refreshRe.lastIndex = 0;
+          while ((m = refreshRe.exec(v)) !== null) {
+            const target = map[m[1]];
+            if (!target || m[1] === me.id) continue;
+            if (!target.refreshedBy.some(r => r.id === me.id && r.attr === attr)) target.refreshedBy.push({ id: me.id, label: me.label, attr });
+          }
+        } else if (v && typeof v === 'object') {
+          Object.keys(v).forEach(k => check(attr, v[k]));
+        }
+      };
+      Object.keys(pv).forEach(attr => check(attr, pv[attr]));
+      Object.keys(o).forEach(k => { if (k !== 'propertyValue') scanRefs(o[k], me); });
+    })(obj, null);
+    return map;
+  }
+
+  // WF(RESOURCE_WF) 의 엔티티 정의에서 "필드ID → 테이블.컬럼" 매핑을 뽑는다.
+  // 엔티티 노드는 {"fieldId":"indType","columnNm":"IND_TYPE","option":{columnType,requiredYn,pkYn…}} 형태이고,
+  // 소속 테이블명은 상위 객체의 "tableNm" 에 있다. 반환: { fieldId: [{table,column,columnType,required,pk}] }
+  function extractEntityFieldMap(resourceWfText) {
+    const map = {};
+    let obj;
+    try { obj = JSON.parse(resourceWfText); } catch (e) { return map; }
+    (function walk(o, table) {
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) { o.forEach(x => walk(x, table)); return; }
+      const t = (typeof o.tableNm === 'string' && o.tableNm) ? o.tableNm : table;
+      if (typeof o.fieldId === 'string' && o.fieldId && typeof o.columnNm === 'string' && o.columnNm) {
+        const opt = (o.option && typeof o.option === 'object') ? o.option : {};
+        const arr = map[o.fieldId] || (map[o.fieldId] = []);
+        const rec = {
+          table: t || '', column: o.columnNm, columnType: opt.columnType || '',
+          required: opt.requiredYn === 'Y', pk: opt.pkYn === 'Y'
+        };
+        if (!arr.some(x => x.table.toLowerCase() === rec.table.toLowerCase() && x.column.toLowerCase() === rec.column.toLowerCase())) arr.push(rec);
+      }
+      Object.keys(o).forEach(k => walk(o[k], t));
+    })(obj, null);
+    return map;
+  }
+
   // ---- ActiveReportsJS(RDLX-JSON) 리포트 "레이아웃 추정 미리보기" ----
   // 실제 ActiveReportsJS Viewer(유료 라이선스)를 쓰지 않고, REPORT_JSON 의 각 요소에 박혀있는
   // 절대좌표(Left/Top/Width/Height, in/pt 단위)와 스타일을 그대로 픽셀로 변환해 재구성한다.
@@ -2133,5 +2290,5 @@
     return out;
   }
 
-  return { extractServiceRefs, extractTables, extractScriptPopupTriggers, extractStructuralButtonTriggers, resolveScriptPopupTargets, indexScriptFunctions, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeGridServiceMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
+  return { computeComponentInfoMap, extractEntityFieldMap, extractServiceRefs, extractTables, extractScriptPopupTriggers, extractStructuralButtonTriggers, resolveScriptPopupTargets, indexScriptFunctions, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeGridServiceMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
 });

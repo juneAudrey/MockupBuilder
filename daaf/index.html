@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Daaf Wave [파도타기]</title>
-<link rel="stylesheet" href="styles.css?v=20261008.001">
+<link rel="stylesheet" href="styles.css?v=20261014.001">
 </head>
 <body>
   <header class="topbar">
@@ -309,6 +309,8 @@
             <div id="uiTabEmpty" class="empty flow-empty">왼쪽에서 프로그램을 검색해 더블클릭하면 여기에 디자인이 표시됩니다.</div>
             <!-- 컴포넌트의 "IV"(초기값) 배지 상세 — 모달의 #vwInitBox 와 동일한 기능. -->
             <div id="uiTabInitBox" class="flow-stepbox vw-init-box" style="display:none"></div>
+            <!-- 컴포넌트의 "I"(컴포넌트 정보) 배지 상세 — 모달의 #vwInfoBox 와 동일한 기능. -->
+            <div id="uiTabInfoBox" class="flow-stepbox vw-init-box vw-info-box" style="display:none"></div>
           </div>
           <!-- 리포트(Rp)를 볼 때만 옆에 나타나는 SQL 사이드 패널 — 모달의 #vwSqlView 와 동일. -->
           <div id="uiTabSqlView" class="viewer-sql" style="display:none"></div>
@@ -340,7 +342,7 @@
     <div id="basketList" class="bk-list"></div>
     <div class="status-row">
       <div id="status" class="status">준비됨</div>
-      <div class="credit">by June (ver.20261008.001)</div>
+      <div class="credit">by June (ver.20261014.001)</div>
     </div>
   </footer>
 
@@ -469,6 +471,8 @@
           <!-- 컴포넌트의 "IV"(초기값) 배지를 클릭하면 여기에 정적/스크립트/체인 추적 결과를 보여준다.
                흐름도의 #flowStepBox 와 동일하게 닫기 없이 접기/펼치기만 지원(항상 화면에 남음). -->
           <div id="vwInitBox" class="flow-stepbox vw-init-box" style="display:none"></div>
+          <!-- 컴포넌트의 "I"(컴포넌트 정보) 배지를 클릭하면 컬럼 매핑·공통코드 등 종합정보를 보여준다(IV 패널과 같은 틀). -->
+          <div id="vwInfoBox" class="flow-stepbox vw-init-box vw-info-box" style="display:none"></div>
         </div>
         <div id="vwSqlView" class="viewer-sql" style="display:none"></div>
         <!-- 디자인 미리보기에서 WF/UI 배지를 눌렀는데 대상 노드가 현재 파도타기 결과에
@@ -840,12 +844,12 @@
 
   <script src="cytoscape.min.js"></script>
   <script src="demo-data.js"></script>
-  <script src="parser.js?v=20261008.001"></script>
-  <script src="store.js?v=20261008.001"></script>
-  <script src="graph.js?v=20261008.001"></script>
-  <script src="flowchart.js?v=20261008.001"></script>
-  <script src="offline.js?v=20261008.001"></script>
-  <script src="app.js?v=20261008.001"></script>
-  <script src="tour.js?v=20261008.001"></script>
+  <script src="parser.js?v=20261014.001"></script>
+  <script src="store.js?v=20261014.001"></script>
+  <script src="graph.js?v=20261014.001"></script>
+  <script src="flowchart.js?v=20261014.001"></script>
+  <script src="offline.js?v=20261014.001"></script>
+  <script src="app.js?v=20261014.001"></script>
+  <script src="tour.js?v=20261014.001"></script>
 </body>
 </html>
