@@ -754,8 +754,10 @@
      화면에 이미 있는 정보(라벨/타입/필수/읽기전용/그리드 컬럼/버튼)만 기계적으로 뽑아 UNIERP AX
      프로그램 사양서와 같은 7개 시트(0.변경이력~6.단위테스트) 구조로 정리한다. 업무 로직(뭘 누르면
      뭐가 되는지)·저장 테이블·SQL처럼 화면 구조만으로는 알 수 없는 항목은 채우지 않고 공란으로
-     남긴다 - AI 추정이나 "확인 필요" 문구 없이, 화면 자체의 구조 데이터만으로 가능한 것만 담는다는
-     원칙. "목업" 같은 이 편집 도구 내부 용어도 사양서 문면에는 쓰지 않고 "화면"으로 표현한다.
+     남긴다 - AI 추정 없이, 화면 자체의 구조 데이터와 사양서 프롬프트 입력만으로 가능한 것만 담는다는
+     원칙. 「확인 필요 Qn」은 입력으로 정해지는 것(미결정 목록·코드값 컬럼·문구 없는 막기)만 빌더
+     프롬프트(app.js spOpenQs)와 같은 번호로 쓴다. "목업" 같은 이 편집 도구 내부 용어도 사양서 문면에는
+     쓰지 않고 "화면"으로 표현한다.
      데이터 출처: 이 파일 맨 아래에 이미 항상 내장되어 있는 __mb_src__ JSON 블록(mbBuildSaveData()
      결과 = comps 배열 전체)을 그대로 재사용한다 - 별도로 뭘 더 심을 필요가 없다. (주의: 이 주석에
      실제 태그 문자열 "<script...id=__mb_src__>"을 그대로 적으면 안 된다 - 「불러오기」 기능이 그
@@ -1055,11 +1057,26 @@
     for(let c=colStart;c<=colEnd;c++){ const col=ws.getColumn(c); total += (col&&col.width)||8.43; }
     return total;
   }
+  // 「확인 필요 Qn」 문구는 모든 시트에서 그 부분만 빨간 글자로(셀의 나머지 글자는 기본 글꼴).
+  // 「확인 필요 사항」 표의 No 칸(Q1…)처럼 값 전체가 Q 번호면 전체를 빨갛게 한다. 해당 없으면 값을 그대로 돌려준다.
+  // (빌더 프롬프트 「확인 필요 사항」 서식과 같은 규칙: #FF0000)
+  const MB_XL_QRX=/확인 필요 Q\d+/g;
+  function mbXlRich(v, font){
+    if(typeof v!=='string') return v;
+    const red=Object.assign({},font,{color:{argb:'FFFF0000'}});
+    if(/^Q\d+$/.test(v)) return {richText:[{text:v,font:red}]};
+    if(!MB_XL_QRX.test(v)){ MB_XL_QRX.lastIndex=0; return v; }
+    MB_XL_QRX.lastIndex=0;
+    const runs=[]; let last=0, m;
+    while((m=MB_XL_QRX.exec(v))){ if(m.index>last) runs.push({text:v.slice(last,m.index),font:font}); runs.push({text:m[0],font:red}); last=m.index+m[0].length; }
+    if(last<v.length) runs.push({text:v.slice(last),font:font});
+    return {richText:runs};
+  }
   function mbXlMergeRow(ws, ncol, r, text, opts){
     opts=opts||{};
     ws.mergeCells(r,1,r,ncol);
     const c=ws.getCell(r,1);
-    if(text!==null) c.value=text;
+    if(text!==null) c.value=mbXlRich(text, opts.font||mbXlFontBody());
     c.font=opts.font||mbXlFontBody();
     c.alignment={horizontal:opts.align||'left', vertical:opts.valign||'middle', wrapText:true};
     if(opts.fill){ for(let col=1;col<=ncol;col++) ws.getCell(r,col).fill=opts.fill; }
@@ -1095,7 +1112,7 @@
     for(let col=2;col<=labelSpan;col++){ const cc=ws.getCell(r,col); cc.fill=opts.fill; cc.border=MB_XL_BORDER_ALL; }
     ws.mergeCells(r,labelSpan+1,r,ncol);
     const vc=ws.getCell(r,labelSpan+1);
-    vc.value=value; vc.font=mbXlFontBody(); vc.alignment={horizontal:'left',vertical:'middle',wrapText:true};
+    vc.value=mbXlRich(value, mbXlFontBody()); vc.font=mbXlFontBody(); vc.alignment={horizontal:'left',vertical:'middle',wrapText:true};
     vc.border=MB_XL_BORDER_ALL;
     for(let col=labelSpan+2;col<=ncol;col++) ws.getCell(r,col).border=MB_XL_BORDER_ALL;
     ws.getRow(r).height=mbXlEstRowHeight(value, mbXlColWidthSum(ws,labelSpan+1,ncol), 9, 18);
@@ -1113,7 +1130,7 @@
       const end=(col===nh)?span:col;
       if(end>col) ws.mergeCells(row,col,row,end);
       const c=ws.getCell(row,col);
-      if(v!==null&&v!==undefined&&v!=='') c.value=v;
+      if(v!==null&&v!==undefined&&v!=='') c.value=mbXlRich(v, font);
       c.font=font; c.alignment=align; c.border=MB_XL_BORDER_ALL; if(fill) c.fill=fill;
       for(let k=col+1;k<=end;k++){ const cc=ws.getCell(row,k); cc.border=MB_XL_BORDER_ALL; if(fill) cc.fill=fill; }
       return end;
@@ -1132,17 +1149,43 @@
     return r;
   }
   // SQL·코드 블록 - Consolas 9pt, 크림색(FBF8E7) 배경, 좌측·상단 정렬, 테두리 없음
+  // 엑셀 행 높이 한도(409pt) 안에 들도록 표시 줄 수 28줄 이하로 나눠 여러 행에 이어서 넣는다.
+  // 나누는 위치: ① 빈 줄(문장 사이) ② 한 문장이 길면 FROM·JOIN·WHERE·GROUP BY·ORDER BY·UNION 등 절이 시작하는 줄 앞 ③ 그래도 없으면 줄 경계
+  // (빌더 프롬프트의 「SQL 표기 - 긴 SQL」 원칙과 같은 규칙)
+  const MB_XL_CODE_MAX=28;
+  const MB_XL_SQL_CLAUSE=/^\s*(?:FROM|WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|UNION|SET|VALUES|(?:(?:LEFT|RIGHT|FULL)(?:\s+OUTER)?\s+|INNER\s+|CROSS\s+)?JOIN)\b/i;
   function mbXlCodeBlock(ws, ncol, r, text){
-    ws.mergeCells(r,1,r,ncol);
-    const c=ws.getCell(r,1); c.value=text;
-    c.font={name:'Consolas', size:9, color:{argb:'FF1A1A1A'}};
-    c.alignment={horizontal:'left', vertical:'top', wrapText:true};
-    for(let col=1;col<=ncol;col++) ws.getCell(r,col).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFBF8E7'}};
-    // 코드 블록(Consolas)은 기준 서식처럼 한 줄 약 13.6pt
-    const cw=Math.max(mbXlColWidthSum(ws,1,ncol),4); let n=0;
-    String(text).split('\n').forEach(function(l){ n+=Math.max(1,Math.ceil(mbXlDisplayWidth(l)/cw)); });
-    ws.getRow(r).height=Math.min(409,Math.max(18,Math.round((8+n*13.6)*100)/100));
-    return r+1;
+    const cw=Math.max(mbXlColWidthSum(ws,1,ncol),4);
+    const vis=function(l){ return Math.max(1,Math.ceil(mbXlDisplayWidth(l)/cw)); };
+    const chunks=[]; let cur=[], n=0;
+    // 지금 모은 줄(cur)에서 나눌 위치 - 마지막 빈 줄(그 줄은 버린다) → 마지막 절 시작 줄 → 끝
+    const cutAt=function(){ let b=-1, c=-1; cur.forEach(function(x,i){ if(i<=0) return; if(!x.trim()) b=i; else if(MB_XL_SQL_CLAUSE.test(x)) c=i; });
+      return b>0?{at:b,skip:1}:(c>0?{at:c,skip:0}:{at:cur.length,skip:0}); };
+    String(text).split('\n').forEach(function(l){
+      const h=vis(l);
+      while(cur.length&&n+h>MB_XL_CODE_MAX){
+        const k=cutAt(); chunks.push(cur.slice(0,k.at)); cur=cur.slice(k.at+k.skip);
+        n=cur.reduce(function(a,x){ return a+vis(x); },0);
+      }
+      cur.push(l); n+=h;
+    });
+    if(cur.length) chunks.push(cur);
+    chunks.forEach(function(ch){
+      while(ch.length&&!ch[ch.length-1].trim()) ch.pop();
+      if(!ch.length) return;
+      const t=ch.join('\n');
+      ws.mergeCells(r,1,r,ncol);
+      const font={name:'Consolas', size:9, color:{argb:'FF1A1A1A'}};
+      const c=ws.getCell(r,1); c.value=mbXlRich(t, font);
+      c.font=font;
+      c.alignment={horizontal:'left', vertical:'top', wrapText:true};
+      for(let col=1;col<=ncol;col++) ws.getCell(r,col).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFBF8E7'}};
+      // 코드 블록(Consolas)은 기준 서식처럼 한 줄 약 13.6pt
+      let k=0; ch.forEach(function(l){ k+=vis(l); });
+      ws.getRow(r).height=Math.min(409,Math.max(18,Math.round((8+k*13.6)*100)/100));
+      r++;
+    });
+    return r;
   }
   function mbXlParaLines(ws, ncol, r, lines){ lines.forEach(function(l){ r=mbXlParaBlock(ws,ncol,r,l); }); return r; }
 
@@ -1166,7 +1209,30 @@
   ==================================================================================== */
   const MBS_INPUT_TYPES=['input','combo','date','daterange','check','radio','popup','attach'];
   const MBS_TYPE_LABEL={input:'텍스트',combo:'콤보',date:'날짜',daterange:'기간',check:'체크',radio:'라디오',popup:'팝업',attach:'첨부파일',text:'텍스트',search:'검색팝업'};
-  const MBS_ACT={search:'조회',save:'저장',delete:'삭제',jump:'화면 이동',popup:'팝업 열기',custom:'직접 입력'};
+  const MBS_ACT={std:'표준과 동일',search:'조회',save:'저장',delete:'삭제',jump:'화면 이동',popup:'팝업 열기',custom:'직접 입력'};
+  // 표준 대비 변경 규칙 구분 · 참고 프로그램에서 가져올 정보 - app.js MB_SPEC_CHG · MB_SPEC_REF_TAKE 와 같아야 한다
+  const MBS_CHG=['추가','수정','삭제'];
+  const MBS_REF_TAKE=['콤보','공통코드','저장 방식'];
+  // 참고 프로그램 목록(예전 한 줄 입력 refs도 읽는다) - app.js mbSpecRefList 와 같은 규칙
+  function mbsRefList(list,legacy){
+    const out=Array.isArray(list)?list.filter(function(r){ return r&&typeof r==='object'; }).map(function(r){ return {pgm:String(r.pgm||''),what:String(r.what||''),take:Array.isArray(r.take)?MBS_REF_TAKE.filter(function(t){ return r.take.indexOf(t)>=0; }):[]}; }):[];
+    if(!out.length&&typeof legacy==='string'&&legacy.trim()) legacy.split(',').map(function(s){ return s.trim(); }).filter(Boolean).forEach(function(p){ out.push({pgm:p,what:'',take:[]}); });
+    return out;
+  }
+  // 조회조건 검색 방식 기본값 - app.js mbSpecDefMatch 와 같아야 한다
+  function mbsDefMatch(t){ return t==='daterange'?'range':['date','combo','radio','check','popup','search'].indexOf(t)>=0?'eq':'like'; }
+  // 시작일·종료일 쌍 찾기 - app.js mbSpecPeriodPairs 와 같아야 한다
+  function mbsPeriodPairs(labels,editable){
+    const info=labels.map(function(l,i){ const t=String(l||'').trim(); let m=t.match(/(시작|종료)(일자|일시|일)/);
+      if(m) return {i:i,k:m[1]==='시작'?'s':'e',key:t.slice(0,m.index)+'\u0001'+t.slice(m.index+m[0].length)};
+      m=t.match(/^(.+?)\s*(From|To)$/i); if(m) return {i:i,k:/^from$/i.test(m[2])?'s':'e',key:m[1]+'\u0002'};
+      return null; }).filter(Boolean);
+    const out=[];
+    info.filter(function(x){ return x.k==='s'; }).forEach(function(s){ const e=info.find(function(x){ return x.k==='e'&&x.key===s.key&&!out.some(function(p){ return p.e===x.i; }); }); if(e&&(editable[s.i]||editable[e.i])) out.push({s:s.i,e:e.i}); });
+    return out;
+  }
+  // 기간 체크 메시지(개발지침 7번 문구 · 메시지코드 없음 = DT9999) - app.js MB_SPEC_PERIOD_MSG 와 같아야 한다
+  const MBS_PERIOD_MSG='종료일은 시작일보다 같거나 이후이어야 합니다.';
   const MBS_MATCH={eq:'같음',like:'포함(앞뒤 % Like)',range:'범위(From~To)',in:'선택값'};
   const MBS_KIND={reg:'등록',inq:'조회',rep:'리포트(조회/출력)'};
   const MBS_DEV={new:'신규',mod:'수정',mig:'이관'};
@@ -1210,8 +1276,9 @@
   function mbSpecModel(src){
     const S=src&&src.spec; if(!S||typeof S!=='object') return null;
     const comps=src.comps||[];
-    const B=Object.assign({project:'',author:'',module:'',subModule:'',name:'',date:'',kind:'',devType:'new',base:'',refs:'',purpose:'',uiType:'',blType:'',freq:''},S.basic||{});
+    const B=Object.assign({project:'',author:'',module:'',subModule:'',name:'',date:'',kind:'',devType:'new',base:'',refList:[],purpose:'',uiType:'',blType:'',freq:''},S.basic||{});
     B.devType=mbsDevType(B.devType);
+    B.refList=mbsRefList(B.refList,B.refs); // 예전 파일의 한 줄 입력(refs)도 목록으로 읽는다
     if(B.kind==='rep') B.kind='inq'; // 화면 종류 「출력 화면」은 없앴다 - 예전 값은 조회로 본다
     const P=Object.assign({aiFill:false,prev:[],next:[],flowNote:'',rules:[],ex:[],roles:[],rolesDiff:false,perms:{},raw:''},S.proc||{});
     ['prev','next','rules','ex','roles'].forEach(function(k){ if(!Array.isArray(P[k])) P[k]=[]; });
@@ -1240,6 +1307,8 @@
     const joinGet=function(owner){ return owner==='inputs'?mbsT(S.inJoin):mbsT(cs(comp(+String(owner).slice(1))).join); };
     const colSpec=function(c,bag,i){ const s=cs(c); return (s[bag]&&s[bag][i])||{}; };
     const btnSpec=function(it){ const c=comp(it.cid); if(!c) return {}; if(it.ub==null) return cs(c); const s=cs(c); return (s.btns&&s.btns['b'+it.ub])||{}; };
+    // 버튼이 하는 일 - 수정(표준 복사) 개발 화면은 고르지 않으면 「표준과 동일」 (app.js btnAct 와 같은 규칙)
+    const btnAct=function(it){ const a=btnSpec(it).action; return a||(B.devType==='mod'?'std':''); };
     // 항목 목록(빌더 3단계 「화면 설명」의 번호와 같은 순서)
     const items=[]; const all=sorted(comps);
     all.filter(function(c){ return c.type==='searchbar'; }).forEach(function(c){ items.push({key:'c'+c.id,kind:'search',cid:c.id,name:'조회조건'}); });
@@ -1261,26 +1330,38 @@
         W.forEach(function(w){ const mine=comps.filter(function(c){ return MBS_INPUT_TYPES.indexOf(c.type)>=0&&!c.readonly; }).map(function(c){ const s=cs(c); const t=s.table||(L.length===1?L[0].t:''); return t===w.t?(s.colId||labelOf(c)):null; }).filter(Boolean); push(w.t,W.length>1?mine:[]); }); }
       return parts.filter(function(v,i,a){ return a.indexOf(v)===i; }).join(', ');
     };
+    // 기간 체크 규칙(시작일·종료일 쌍) - 빌더 spPeriodRule 과 같은 문구
+    const periodRule=function(it,on,labels,editable){ const pp=mbsPeriodPairs(labels,editable); if(!pp.length) return null;
+      return {key:'p:'+it.key,item:it,title:'기간 체크',on:on,cond:'저장 시',proc:'기간 체크: '+pp.map(function(p){ return '['+labels[p.s]+']~['+labels[p.e]+']'; }).join(', ')+'. 종료일이 시작일보다 빠르면 저장하지 않는다. 둘 중 하나라도 비어 있으면 확인하지 않는다.',checks:[{cond:'종료일이 시작일보다 빠르면',msg:MBS_PERIOD_MSG}],kindTag:'period'}; };
     // 규칙(R01…) - 빌더 spDerivedRules와 같은 순서·내용
     const R=[];
     items.forEach(function(it){
       if(it.kind==='search'){ const c=comp(it.cid), s=cs(c), fs=c.fields||[];
-        const parts=fs.map(function(f,i){ return f.type==='empty'?null:((f.label||'조건'+(i+1))+'='+(MBS_MATCH[colSpec(c,'fields',i).match]||MBS_MATCH[f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like'])); }).filter(Boolean);
-        R.push({key:'q:'+it.key,item:it,title:'조회조건 검색',on:'[조회]',cond:'[조회] 클릭 시',proc:'조건별 검색 방식: '+parts.join(', ')+'.'+(s.emptyAll===false?'':' 입력하지 않은 조건은 적용하지 않는다(전체 조회).')+(mbsT(s.note)?' '+mbsT(s.note):''),checks:fs.some(function(f){ return f.required; })?[{cond:'필수 조회조건이 비어 있으면',msg:'(필수 조건)을(를) 입력하세요. (표준 메시지)'}]:[]}); }
+        const parts=fs.map(function(f,i){ return f.type==='empty'?null:((f.label||'조건'+(i+1))+'='+(MBS_MATCH[colSpec(c,'fields',i).match]||MBS_MATCH[mbsDefMatch(f.type)])); }).filter(Boolean);
+        // 필수 조회조건만 막기로 쓴다(필수가 아닌 조건의 「비우면 전체 조회」는 문장으로 쓰지 않는다 - SQL에서만 처리)
+        const req=fs.filter(function(f){ return f.type!=='empty'&&f.required; }).map(function(f){ return f.label||'조건'; });
+        R.push({key:'q:'+it.key,item:it,title:'조회조건 검색',on:'[조회]',cond:'[조회] 클릭 시',proc:'조건별 검색 방식: '+parts.join(', ')+'.'+(req.length?' 필수 조회조건: '+req.join(', ')+'.':'')+(mbsT(s.note)?' '+mbsT(s.note):''),checks:req.length?[{cond:'필수 조회조건('+req.join('·')+')이 비어 있으면',msg:'(필수 조건)을(를) 입력하세요. (표준 메시지)'}]:[]}); }
+      if(it.kind==='inputs'){ const ics=it.cids.map(comp).filter(Boolean);
+        const pr=periodRule(it,'입력 항목',ics.map(labelOf),ics.map(function(c){ return !c.readonly; })); if(pr) R.push(pr); }
       if(it.kind==='grid'){ const c=comp(it.cid), s=cs(c), cols=gridCols(c), ro=c.colReadonly||[];
         if(s.sortCol!=null&&s.sortCol!==''&&cols[+s.sortCol]!=null) R.push({item:it,title:'그리드 정렬',on:it.name,cond:'조회 결과 표시 시',proc:cols[+s.sortCol]+' '+(s.sortDir==='desc'?'내림차순':'오름차순')+'으로 정렬한다.',checks:[],kindTag:'sort'});
         const ed=cols.filter(function(_,i){ return !ro[i]; });
         if(ro.some(Boolean)) R.push({item:it,title:'그리드 편집 범위',on:it.name,cond:'',proc:ed.length?('편집 가능 컬럼: '+ed.join(', ')+'. 나머지 컬럼은 읽기전용.'):'모든 컬럼 읽기전용.',checks:[],kindTag:'edit'});
+        const pr=periodRule(it,it.name,cols,cols.map(function(_,i){ return !ro[i]; })); if(pr) R.push(pr);
         if(mbsT(s.note)) R.push({item:it,title:it.name+' 규칙',on:it.name,cond:'',proc:mbsT(s.note),checks:[]}); }
-      if(it.kind==='btn'){ const s=btnSpec(it); if(!s.action||!MBS_ACT[s.action]) return; const a=s.action, nm='['+it.name+']';
+      if(it.kind==='btn'){ const s=btnSpec(it), a=btnAct(it); if(!a||!MBS_ACT[a]) return; const nm='['+it.name+']';
         const pf=s.passFrom||'row';
         const via={row:s.pass?('선택 행의 '+s.pass+' 값으로 '):'선택 행의 키 값으로 ',cond:'조회조건('+(s.passCond||'전체')+') 값으로 ',both:'선택 행의 '+(s.pass||'키 값')+'과 조회조건('+(s.passCond||'전체')+') 값으로 '}[pf]||'';
-        const base={search:'조회조건으로 목록을 조회한다.',save:'입력·수정한 내용을 저장한다.',delete:'선택한 데이터를 삭제한다.',jump:via+(mbsT(s.target)||'대상')+' 화면으로 이동하고 자동 조회한다.',popup:(mbsT(s.target)||'팝업')+'을(를) 열고, 고른 값을 '+(s.pass||'해당 항목')+'에 넣는다.',custom:''}[a];
+        const base={std:'표준 프로그램의 '+nm+' 기능과 동일하게 동작한다.',search:'조회조건으로 목록을 조회한다.',save:'입력·수정한 내용을 저장한다.',delete:'선택한 데이터를 삭제한다.',jump:via+(mbsT(s.target)||'대상')+' 화면으로 이동하고 자동 조회한다.',popup:(mbsT(s.target)||'팝업')+'을(를) 열고, 고른 값을 '+(s.pass||'해당 항목')+'에 넣는다.',custom:''}[a];
         let proc=[base,mbsT(s.proc)].filter(Boolean).join(' ');
         if(a==='save'||a==='delete'){ const tg=writeTargets(it); if(tg) proc+=' '+(a==='save'?'저장':'삭제')+' 대상: '+tg+'.'; }
-        R.push({key:it.key,item:it,title:it.name+' 버튼 · '+MBS_ACT[a],on:nm+(it.where?' ('+it.where+')':''),cond:nm+' 클릭 시',proc:proc,action:a,target:mbsT(s.target),checks:(s.checks||[]).filter(function(k){ return k&&(mbsT(k.cond)||mbsT(k.msg))&&!mbsIsConc(mbsT(k.cond)+' '+mbsT(k.msg)); })}); }
+        // 막기마다 원래 위치(qk)를 남긴다 - 메시지 문구가 없는 막기를 「확인 필요」 번호와 연결(app.js spDerivedRules 와 같은 규칙)
+        R.push({key:it.key,item:it,title:it.name+' 버튼 · '+MBS_ACT[a],on:nm+(it.where?' ('+it.where+')':''),cond:nm+' 클릭 시',proc:proc,action:a,target:mbsT(s.target),
+          checks:(s.checks||[]).map(function(k,ci){ return k?{cond:mbsT(k.cond),msg:mbsT(k.msg),qk:it.key+'|'+ci}:null; }).filter(function(k){ return k&&(k.cond||k.msg)&&!mbsIsConc(k.cond+' '+k.msg); })}); }
     });
-    (S.rules||[]).filter(function(r){ return (mbsT(r.title)||mbsT(r.proc)||mbsT(r.cond))&&!mbsIsConc([r.title,r.cond,r.proc,r.msg].join(' ')); }).forEach(function(r){ R.push({title:mbsT(r.title)||'화면 규칙',on:'화면 전체',cond:mbsT(r.cond),proc:mbsT(r.proc),checks:mbsT(r.msg)?[{cond:'',msg:mbsT(r.msg)}]:[],global:true}); });
+    // 화면 전체 규칙 - 「표준 대비 변경」(chg) 규칙은 처리 내용이 비어도 변경 내용(이름)으로 처리를 쓴다
+    (S.rules||[]).filter(function(r){ return (mbsT(r.title)||mbsT(r.proc)||mbsT(r.cond))&&!mbsIsConc([r.title,r.cond,r.proc,r.msg].join(' ')); }).forEach(function(r){ const chg=MBS_CHG.indexOf(r.chg)>=0?r.chg:'';
+      R.push({title:mbsT(r.title)||'화면 규칙',chg:chg,on:'화면 전체',cond:mbsT(r.cond),proc:mbsT(r.proc)||(chg?'표준 대비 '+chg+': '+mbsT(r.title):''),checks:mbsT(r.msg)?[{cond:'',msg:mbsT(r.msg)}]:[],global:true}); });
     R.forEach(function(r,i){ r.id='R'+String(i+1).padStart(2,'0'); });
     const PR=P.rules.filter(function(r){ return mbsT(r.text)&&!mbsIsConc(r.text)&&r.pk!=='lock'; }).map(function(r,i){ return {id:'P'+String(i+1).padStart(2,'0'),tag:mbsT(r.tag)||'기타',text:mbsT(r.text)}; });
     const procAny=!!(P.prev.length||P.next.length||mbsT(P.flowNote)||PR.length||P.roles.length||P.ex.some(function(e){ return e&&mbsT(e.a)&&!mbsIsConc(e.q); }));
@@ -1294,24 +1375,33 @@
     const tables=[]; const seenT={};
     (S.tables||[]).forEach(function(t){ const id=mbsT(t.id).toUpperCase(); if(!id||seenT[id]) return; seenT[id]=1;
       const crud=['c','r','u','d'].filter(function(k){ return t[k]; }).map(function(k){ return k.toUpperCase(); }).join('/');
-      tables.push({id:id,name:mbsT(t.name),crud:crud,kind:t.kind||'기존',note:mbsT(t.note),where:(usage[id]||{}).where||[]}); });
+      tables.push({id:id,name:mbsT(t.name),crud:crud,kind:t.kind||'기존',parent:t.kind==='확장'?mbsT(t.parent).toUpperCase():'',note:mbsT(t.note),where:(usage[id]||{}).where||[]}); });
     Object.keys(usage).forEach(function(id){ if(seenT[id]) return; const u=usage[id]; tables.push({id:id,name:'',crud:[u.read?'R':'',u.write?'U':''].filter(Boolean).join('/')||'R',kind:'기존',note:'',where:u.where}); });
     // 「테이블 정보」(자유 입력)에 적힌 테이블: 이름·신규/컬럼추가 표시를 보태고, 화면에 안 쓰인 테이블도 목록에 넣는다
     mbSpecTableInfoHeads(S.newCols).forEach(function(h){ const t=tables.find(function(x){ return x.id===h.id; });
       if(t){ if(!t.name&&h.name) t.name=h.name; if(t.kind==='기존'&&h.kind) t.kind=h.kind; t.info=true; }
       else tables.push({id:h.id,name:h.name,crud:h.kind==='신규'?'C/R/U/D':'',kind:h.kind||'기존',note:'',where:[],info:true}); });
-    // 공통코드(콤보)
-    const combos=[];
-    comps.filter(function(c){ return c.type==='searchbar'; }).forEach(function(c){ (c.fields||[]).forEach(function(f,i){ if(f.type==='combo'||f.type==='radio') combos.push({key:'c'+c.id+'.f'+i,name:f.label||('조건'+(i+1)),where:'조회조건',colId:mbsT(colSpec(c,'fields',i).colId),type:f.type}); }); });
-    comps.filter(function(c){ return c.type==='combo'||c.type==='radio'; }).forEach(function(c){ combos.push({key:'c'+c.id,name:labelOf(c),where:'입력 항목',colId:mbsT(cs(c).colId),type:c.type}); });
+    // 공통코드(콤보) - 빌더 spCombos 와 같은 순서: 조회조건 콤보·라디오 → 입력 항목 콤보·라디오 → 「코드값 컬럼」 그리드 컬럼(코드 = 컬럼 사양의 code)
     const codes=(S.codes&&typeof S.codes==='object')?S.codes:{};
+    const combos=[];
+    comps.filter(function(c){ return c.type==='searchbar'; }).forEach(function(c){ (c.fields||[]).forEach(function(f,i){ if(f.type==='combo'||f.type==='radio'){ const key='c'+c.id+'.f'+i; combos.push({key:key,name:f.label||('조건'+(i+1)),where:'조회조건',colId:mbsT(colSpec(c,'fields',i).colId),type:f.type,code:mbsT(codes[key])}); } }); });
+    comps.filter(function(c){ return c.type==='combo'||c.type==='radio'; }).forEach(function(c){ const key='c'+c.id; combos.push({key:key,name:labelOf(c),where:'입력 항목',colId:mbsT(cs(c).colId),type:c.type,code:mbsT(codes[key])}); });
+    all.filter(function(c){ return c.type==='grid'; }).forEach(function(c){ gridCols(c).forEach(function(n,i){ const k=colSpec(c,'cols',i); if(!k.cc) return;
+      combos.push({key:'g'+c.id+'.'+i,name:n||('컬럼'+(i+1)),where:'그리드'+((c.colReadonly||[])[i]?' · 읽기전용':''),colId:mbsT(k.colId),type:'combo',code:mbsT(k.code),grid:true}); }); });
+    // 입력만으로 정해지는 「확인 필요 사항」(Q1…) - 빌더 spOpenQs 와 같은 순서·문구: ① 아직 정하지 않은 것 ② 코드값 컬럼의 「코드에 없는 값」 ③ 문구 없는 막기
+    const Q=[];
+    (Array.isArray(S.open)?S.open:[]).forEach(function(q){ if(!q||typeof q!=='object') return; const w=mbsT(q.what); if(!w||mbsIsConc(w)) return; Q.push({what:w,now:'',opts:mbsT(q.opts),who:mbsT(q.who),src:'open'}); });
+    combos.filter(function(x){ return x.grid; }).forEach(function(x){ Q.push({what:'['+x.name+'] 값이 공통코드에 없을 때의 표시',now:x.code?('공통코드 '+x.code+' 코드명으로 표시'):'공통코드 미지정',opts:'① 원래 값 그대로 표시 ② 빈칸으로 표시 ③ 공통코드에 값 추가',who:'현업',src:'code',key:x.key}); });
+    items.filter(function(it){ return it.kind==='btn'&&btnAct(it); }).forEach(function(it){ (btnSpec(it).checks||[]).forEach(function(k,ci){ if(!k) return; const cd=mbsT(k.cond);
+      if(cd&&!mbsT(k.msg)&&!mbsIsConc(cd)) Q.push({what:'['+it.name+'] 버튼 막기 메시지 문구 — '+cd,now:'메시지 문구 없음',opts:'문구 지정 (메시지코드가 없으면 DT9999 소스 메시지)',who:'컨설턴트',src:'msg',qk:it.key+'|'+ci}); }); });
+    Q.forEach(function(q,i){ q.id='Q'+(i+1); });
     // 단계별 「텍스트로 붙여넣기」 원문(예전 파일의 「현업 요구사항 원문」은 업무·프로세스 원문으로 본다)
     const fr=(S.free&&typeof S.free==='object')?S.free:{}, free={};
     ['s1','s2','s3','s4'].forEach(function(k){ free[k]=String(fr[k]==null?'':fr[k]); });
     if(mbsT(P.raw)) free.s2=free.s2.trim()?free.s2.replace(/\s+$/,'')+'\n\n'+String(P.raw):String(P.raw); // 빌더(mbSpecNormalize)와 같은 규칙
     // 서술 원문에 들어 있는 「다른 사용자가 먼저 수정(동시 수정)」 관련 줄은 사양서에 담지 않는다
     Object.keys(free).forEach(function(k){ free[k]=free[k].split('\n').filter(function(l){ return !mbsIsConc(l); }).join('\n'); });
-    return {free:free,S:S,B:B,P:P,comps:comps,items:items,R:R,PR:PR,EX:EX,procAny:procAny,tables:tables,combos:combos,codes:codes,
+    return {free:free,S:S,B:B,P:P,comps:comps,items:items,R:R,PR:PR,EX:EX,procAny:procAny,tables:tables,combos:combos,codes:codes,Q:Q,
       comp:comp,cs:cs,colSpec:colSpec,btnSpec:btnSpec,gridCols:gridCols,labelOf:labelOf,srcsGet:srcsGet,joinGet:joinGet,writeTargets:writeTargets};
   }
 
@@ -1323,20 +1413,22 @@
     const join=M.joinGet(it.key);
     if(L.length>1&&!join) return null;
     const alias={}; L.forEach(function(t,i){ alias[t]=String.fromCharCode(97+i); });
-    const cols=M.gridCols(c), map=[];
+    const cols=M.gridCols(c), map=[], seenAs={};
     for(let i=0;i<cols.length;i++){ if(!cols[i]) continue; const k=M.colSpec(c,'cols',i); const id=mbsT(k.colId).toUpperCase(); if(!id||!/^[A-Z_][A-Z0-9_$#]*$/.test(id)) return null;
       const t=(k.t&&alias[k.t])?k.t:(L.length===1?L[0]:null); if(!t) return null;
-      map.push({label:cols[i],colId:id,table:t,alias:alias[t],expr:alias[t]+'.'+id.toLowerCase()}); }
+      // 출력 별칭(alias): 컬럼ID 소문자, 같은 컬럼이 여러 번 나오면 _2, _3 … (Display 컬럼 매핑·SELECT 모두 이 별칭)
+      let as=id.toLowerCase(); seenAs[as]=(seenAs[as]||0)+1; if(seenAs[as]>1) as+='_'+seenAs[as];
+      map.push({label:cols[i],colId:id,table:t,alias:alias[t],as:as,expr:alias[t]+'.'+id.toLowerCase()}); }
     if(!map.length) return null;
     const binds=[':tenantId',':coCd'], where=[map[0].alias+'.tenant_id = :tenantId','  AND '+map[0].alias+'.co_cd = :coCd'], notes=[];
     M.items.filter(function(x){ return x.kind==='search'; }).forEach(function(sit){ const sc=M.comp(sit.cid); const sL=M.srcsGet(sit.key).map(function(x){ return x.t; });
       (sc.fields||[]).forEach(function(f,i){ if(f.type==='empty') return; const k=M.colSpec(sc,'fields',i); const ids=mbsT(k.colId).toUpperCase().split(/\s*[,/]\s*/).filter(function(x){ return /^[A-Z_][A-Z0-9_$#]*$/.test(x); }); if(!ids.length) return;
         const t=(k.t&&alias[k.t])?k.t:((sL.length===1&&alias[sL[0]])?sL[0]:null);
         const al=t?alias[t]:(map.find(function(m){ return m.colId===ids[0]; })||map[0]).alias;
-        const m=k.match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like');
+        const m=k.match||mbsDefMatch(f.type);
         const b=':'+mbsCamel(ids[0]); let cond;
-        // 필수가 아닌 조건(「조건을 비우면 전체 조회」가 켜진 경우): 값이 비면(NULL 또는 '') 그 조건을 적용하지 않는다 - ANSI(COALESCE·NULLIF)
-        const opt=!f.required&&!(sc.spec&&sc.spec.emptyAll===false);
+        // 필수가 아닌 조건: 값이 비면(NULL 또는 '') 그 조건을 적용하지 않는다 - ANSI(COALESCE·NULLIF)
+        const opt=!f.required;
         const isDate=f.type==='daterange'||f.type==='date';
         const col=al+'.'+ids[0].toLowerCase();
         if(m==='range'){ binds.push(b+'From',b+'To');
@@ -1347,7 +1439,7 @@
         else if(m==='in'){ cond=col+' IN ('+b+')'; if(opt) cond="(COALESCE("+b+", '') = '' OR "+cond+')'; binds.push(b); }
         else { cond=col+' = '+b; if(opt) cond="(COALESCE("+b+", '') = '' OR "+cond+')'; binds.push(b); }
         where.push('  AND '+cond+'   -- '+(f.label||'조건'+(i+1))); }); });
-    const lines=['SELECT '+map.map(function(m,i){ return (i?'     , ':'')+m.expr; }).join('\n')];
+    const lines=['SELECT '+map.map(function(m,i){ return (i?'     , ':'')+m.expr+' AS '+m.as; }).join('\n')];
     lines.push('  FROM '+L[0].toLowerCase()+' '+alias[L[0]]+' ${nolock}');
     L.slice(1).forEach(function(t,i){ lines.push(' INNER JOIN '+t.toLowerCase()+' '+alias[t]+' ${nolock}'+(i===0?'\n    ON '+join:'')); });
     lines.push(' WHERE '+where.join('\n'));
@@ -1377,6 +1469,24 @@
   function mbSpecTableInfoHeads(text){
     const out=[]; const lines=String(text||'').replace(/\r/g,'').split('\n');
     lines.forEach(function(_,i){ const h=mbsTiHeadAt(lines,i); if(h&&!out.some(function(x){ return x.id===h.id; })) out.push(h); });
+    // 빌더 「테이블 정보 조회 쿼리」 결과(행마다 TABLE_NAME)도 테이블 목록으로 읽는다
+    mbsTiDbRows(lines).forEach(function(d){ if(!out.some(function(x){ return x.id===d.t; })) out.push({id:d.t,name:d.tnm,kind:''}); });
+    return out;
+  }
+  // 빌더 「테이블 정보 조회 쿼리」(Oracle·MySQL·MSSQL 공통 결과 컬럼) 결과를 읽는다 - 머리글 TABLE_NAME·COLUMN_NAME 이 있는 표.
+  // 결과: [{t 테이블ID, tnm 테이블 설명, id, nm, type, len, nn, def}] (값 NULL 은 빈 값)
+  function mbsTiDbRows(lines){
+    const out=[]; let h=null;
+    const nv=function(v){ v=mbsTiBlank(v); return /^null$/i.test(v)?'':v; };
+    lines.forEach(function(raw){ const l=String(raw||'').trim(); if(!l) return; const c=mbsTiSplit(l);
+      const up=c.map(function(x){ return String(x).toUpperCase(); });
+      if(up.indexOf('TABLE_NAME')>=0&&up.indexOf('COLUMN_NAME')>=0){ h={}; up.forEach(function(x,i){ h[x]=i; }); return; }
+      if(!h) return;
+      const g=function(k){ return h[k]!=null?nv(c[h[k]]):''; };
+      const t=g('TABLE_NAME').toUpperCase(), id=g('COLUMN_NAME');
+      if(!/^[A-Za-z_][A-Za-z0-9_$#]*$/.test(t)||!/^[A-Za-z_][A-Za-z0-9_$#]*$/.test(id)) return;
+      const tnm=g('TABLE_DESCRIPTION'), ty=mbsTiType(g('DATA_TYPE'),g('DATA_LENGTH'));
+      out.push({t:t,tnm:/[가-힣]/.test(tnm)?tnm:'',id:id.toUpperCase(),nm:g('COLUMN_DESCRIPTION'),type:ty.type,len:ty.len,nn:mbsTiYN(g('IS_NULLABLE')),def:g('DEFAULT_VALUE')}); });
     return out;
   }
   // 「테이블 정보」의 컬럼 표를 읽어 5.테이블 레이아웃 행으로 바꾼다.
@@ -1415,6 +1525,10 @@
   function mbsTiYN(v){ v=mbsTiBlank(v); if(!v) return ''; if(/^(y|yes|o|v|●|✓|✔|1|true|null|허용|가능)$/i.test(v)) return 'Y'; if(/^(n|no|x|0|false|not\s*null|불가|불허)$/i.test(v)) return 'N'; return v; }
   function mbSpecParseTableInfo(text,tableId,opts){
     const lines=String(text||'').replace(/\r/g,'').split('\n'); const T=String(tableId).toUpperCase(); const whole=!!(opts&&opts.whole);
+    // 빌더 「테이블 정보 조회 쿼리」 결과 형식이면 TABLE_NAME 이 같은 행만 그 테이블의 컬럼으로 읽는다(Key 는 결과에 없어 공란)
+    const db=mbsTiDbRows(lines);
+    if(db.length){ const mine=db.filter(function(d){ return d.t===T; });
+      return mine.length?{name:mine[0].tnm,cols:mine.map(function(d){ return {id:d.id,nm:d.nm,type:d.type,len:d.len,pk:'',nn:d.nn,def:d.def,rem:''}; })}:null; }
     let on=whole, out=[], name='', hmap=null;
     // (머리줄 판정은 mbsTiHeadAt과 같은 기준)
     for(let li=0;li<lines.length;li++){ const l=lines[li].trim(); if(!l){ if(on&&out.length&&!whole) break; continue; }
@@ -1452,7 +1566,7 @@
   }
 
   // 이 런타임의 사양서 내보내기 버전 - 메인 화면 「사양서 템플릿 저장」이 최신 기능(프롬프트 정보로 채우기)인지 확인할 때 쓴다.
-  window.mbSpecExportVer=4; // 4: 개발지침 18줄(기준 사양서 문구·배경색·행 높이)을 항상 4.기술사양 「기타」에 · 3: 99.개발지침 시트 폐지 · 선택 조회조건 SQL · 수정 개발 화면설명 문구
+  window.mbSpecExportVer=5; // 5: 확인 필요 사항(Q)·빨간 글자·긴 SQL 나눔·코드값 컬럼·기간 체크·표준과 동일 버튼·참고 프로그램 목록·추가(확장) 테이블 · 4: 개발지침 18줄(기준 사양서 문구·배경색·행 높이)을 항상 4.기술사양 「기타」에 · 3: 99.개발지침 시트 폐지 · 선택 조회조건 SQL · 수정 개발 화면설명 문구
   window.mbOpenSpecExport=async function(){
     if(!mbIsThin) return false; // 씬모드 화면에서만
     const badge=document.getElementById('mbBadgeS');
@@ -1508,21 +1622,22 @@
         if(spec.buttons.length && !spec.searchbars.length) fieldGroups.push({title:'[버튼]', rows:spec.buttons.map(function(b){ return {label:b,type:'버튼',required:false,readonly:false,note:''}; })});
       } else {
         searchItems.forEach(function(it){
-          const c=M.comp(it.cid), s=M.cs(c), rr=ruleOfItem('q:'+it.key);
+          const c=M.comp(it.cid), sL=M.srcsGet(it.key), rr=ruleOfItem('q:'+it.key);
           const rows=(c.fields||[]).map(function(f,i){ if(f.type==='empty'||!mbsT(f.label)) return null; const k=M.colSpec(c,'fields',i);
-            const m=k.match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like');
+            const m=k.match||mbsDefMatch(f.type);
             const code=M.codes['c'+c.id+'.f'+i];
             const desc=[(MBS_MATCH[m]?MBS_MATCH[m]+' 검색':''), mbsT(k.note), code?('공통코드 : '+code):'', mbsNoteOpt(f)].filter(Boolean).join('. ');
-            return {vals:[mbsT(f.label), mbsT(k.colId), '저장안함(조회전용)', typeOf(f.type), desc, f.required?'Y(필수)':'N(선택)', 'N', 'Y']}; }).filter(Boolean);
-          rows.push({vals:['조회','-','-','버튼','조회조건으로 목록 조회'+(s.emptyAll===false?'':'. 입력하지 않은 조건은 적용하지 않음(전체 조회)')+(rr?' ('+rr.id+')':''),'N','N','Y']});
+            // 저장/조회 테이블 칸 = 검색 대상의 실제 테이블(조건별 지정 → 조회 대상 테이블이 하나면 그 테이블)
+            return {vals:[mbsT(f.label), mbsT(k.colId), mbsT(k.t)||(sL.length===1?sL[0].t:''), typeOf(f.type), desc, f.required?'Y(필수)':'N(선택)', 'N', 'Y']}; }).filter(Boolean);
+          rows.push({vals:['조회','-','-','버튼','조회조건으로 목록 조회'+(rr?' ('+rr.id+')':''),'N','N','Y']});
           fieldGroups.push({title:'[조회조건 Selection]  (저장 없음)', rows:rows});
         });
         const inIt=M.items.find(function(i){ return i.kind==='inputs'; });
         const formRows=[];
-        if(inIt){ const L=M.srcsGet('inputs'), W=L.filter(function(x){ return x.write; });
+        if(inIt){ const L=M.srcsGet('inputs');
           inIt.cids.forEach(function(id){ const c=M.comp(id); if(!c) return; const s=M.cs(c);
-            const t=mbsT(s.table)||(L.length===1?L[0].t:'');
-            const tbl=c.readonly?'조회전용(저장안함)':(t&&W.some(function(w){ return w.t===t; })?t:(t?t:''));
+            // 저장/조회 테이블 칸 = 그 항목의 실제 테이블(읽기전용 여부는 Read Only 칸)
+            const tbl=mbsT(s.table)||(L.length===1?L[0].t:'');
             const code=M.codes['c'+c.id];
             formRows.push({vals:[M.labelOf(c), mbsT(s.colId), tbl, typeOf(c.type==='attach'?'file':c.type), [mbsT(s.note), code?('공통코드 : '+code):''].filter(Boolean).join('. '), c.required?'Y(필수)':'N(선택)', c.readonly?'Y':'N', 'Y']}); }); }
         M.items.filter(function(i){ return i.kind==='btn'&&i.ub==null; }).forEach(function(it){ const r=ruleOfItem(it.key);
@@ -1531,10 +1646,12 @@
         gridItems.forEach(function(it){
           const c=M.comp(it.cid), cols=M.gridCols(c), ro=c.colReadonly||[], rq=c.colRequired||[], ct=c.colTypes||[], L=M.srcsGet(it.key), W=L.filter(function(x){ return x.write; }), s=M.cs(c);
           const rows=cols.map(function(n,i){ if(!n) return null; const k=M.colSpec(c,'cols',i);
-            const t=k.t||(L.length===1?L[0].t:(W.length===1?W[0].t:''));
-            const tbl=ro[i]?'조회전용(저장안함)':t;
+            // 저장/조회 테이블 칸 = 그 컬럼의 실제 테이블(같은 테이블·컬럼이 여러 행이어도 그대로 - alias는 4.기술사양 Display 매핑에만)
+            const tbl=mbsT(k.t)||(L.length===1?L[0].t:(W.length===1?W[0].t:''));
             const extra=[]; if(!ro[i]) extra.push('편집 가능'); if(s.sortCol!=null&&s.sortCol!==''&&+s.sortCol===i) extra.push((s.sortDir==='desc'?'내림차순':'오름차순')+' 정렬');
-            return {vals:[n, mbsT(k.colId), tbl, typeOf(ct[i]||'input'), [mbsT(k.note)].concat(extra).filter(Boolean).join('. '), rq[i]?'Y(필수)':'N', ro[i]?'Y':'N', 'Y']}; }).filter(Boolean);
+            const cq=k.cc?M.Q.find(function(q){ return q.key==='g'+c.id+'.'+i; }):null;
+            const codeNote=k.cc?('공통코드 : '+(mbsT(k.code)||'(미지정)')+' · 코드명으로 표시'+(cq?' · 코드에 없는 값 표시는 확인 필요 '+cq.id:'')):'';
+            return {vals:[n, mbsT(k.colId), tbl, k.cc?'Combobox':typeOf(ct[i]||'input'), [codeNote, mbsT(k.note)].concat(extra).filter(Boolean).join('. '), rq[i]?'Y(필수)':'N', ro[i]?'Y':'N', 'Y']}; }).filter(Boolean);
           M.items.filter(function(b){ return b.kind==='btn'&&b.ub!=null&&b.cid===it.cid; }).forEach(function(b){ const r=ruleOfItem(b.key); rows.push({vals:[b.name,'-','-','버튼', r?(r.proc+' ('+r.id+')'):'그리드 버튼', 'N','N','Y']}); });
           fieldGroups.push({title:'[그리드] '+it.name, rows:rows, isGrid:true});
         });
@@ -1559,12 +1676,12 @@
         if(!M){
           pairs=[['프로젝트 명',''],['모듈 / 서브모듈',' / '],['프로그램ID',''],['프로세스ID','-'],['프로그램명',spec.title],['프로그램 개요',''],['요청자 / 요청일',' / '],['예상 개발기간 / 완료희망일',''],['개발자 / 개발완료일',' / '],['우선순위(A/B/C)',''],['난이도(H/M/L)',''],['프로그램 유형',mbSpecProgramType(spec)],['재사용 PGM-ID','-'],['수행빈도',''],['기타 특성',mbSpecEtcFeature(spec)]];
         } else {
-          const acts=[]; if(searchItems.length) acts.push('조회'); btnRules.forEach(function(rr){ const a=MBS_ACT[rr.action]; if(a&&acts.indexOf(a)<0) acts.push(a); });
+          const acts=[]; if(searchItems.length) acts.push('조회'); btnRules.forEach(function(rr){ const a=rr.action==='std'?'':MBS_ACT[rr.action]; if(a&&acts.indexOf(a)<0) acts.push(a); }); // 「표준과 동일」은 유형 괄호에 쓰지 않는다
           const ptype=(MBS_KIND[B.kind]||mbSpecProgramType(spec))+(acts.length?' ('+acts.join('·')+')':'');
           const etc=[]; const st=mbSpecEtcFeature(spec); if(st) etc.push(st);
           if(B.devType==='mod') etc.push('▷ 개발 방식 : '+MBS_DEV.mod+' (표준 프로그램 복사 후 수정 개발)'+(mbsT(B.base)?' (기준 '+mbsT(B.base)+')':''));
           else if(B.devType==='mig') etc.push('▷ 개발 방식 : '+MBS_DEV.mig+' (레거시 프로그램 이관)'+(mbsT(B.base)?' (이관 대상 '+mbsT(B.base)+')':''));
-          if(mbsT(B.refs)) etc.push('▷ 참고 프로그램 : '+mbsT(B.refs));
+          B.refList.filter(function(rf){ return mbsT(rf.pgm); }).forEach(function(rf){ etc.push('▷ 참고 프로그램 : '+mbsT(rf.pgm)+(mbsT(rf.what)?' — '+mbsT(rf.what):'')+(rf.take.length?' (가져올 정보: '+rf.take.join('·')+')':'')); });
           const jumps=btnRules.filter(function(rr){ return rr.action==='jump'&&rr.target; }).map(function(rr){ return rr.target; });
           if(jumps.length) etc.push('▷ 이동 대상 프로그램 : '+jumps.join(', '));
           if(M.P.prev.length||M.P.next.length) etc.push('▷ 업무 흐름 : '+[M.P.prev.join(', '),'['+progName+']',M.P.next.join(', ')].filter(Boolean).join(' → '));
@@ -1589,7 +1706,7 @@
         if(!M) desc=mbSpecDescText(spec);
         else {
           const L=[]; let n=0;
-          searchItems.forEach(function(it){ const c=M.comp(it.cid); const parts=(c.fields||[]).filter(function(f){ return f.type!=='empty'&&mbsT(f.label); }).map(function(f){ const i=(c.fields||[]).indexOf(f); const m=M.colSpec(c,'fields',i).match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like'); return '['+mbsT(f.label)+']('+(({eq:'같음',like:'포함',range:'범위',in:'선택값'})[m]||'같음')+')'; });
+          searchItems.forEach(function(it){ const c=M.comp(it.cid); const parts=(c.fields||[]).filter(function(f){ return f.type!=='empty'&&mbsT(f.label); }).map(function(f){ const i=(c.fields||[]).indexOf(f); const m=M.colSpec(c,'fields',i).match||mbsDefMatch(f.type); return '['+mbsT(f.label)+']('+(({eq:'같음',like:'포함',range:'범위',in:'선택값'})[m]||'같음')+')'; });
             L.push(mbsCircled(n++)+' 조회'); L.push('　[조회조건]을 입력하고 [조회]를 누르면'+(gridItems.length?' ['+gridItems.map(function(g){ return g.name; }).join('], [')+']에':'')+' 목록이 표시된다.'); if(parts.length) L.push('　▷ 검색 방식 : '+parts.join('·')); });
           gridItems.forEach(function(it){ const c=M.comp(it.cid), cols=M.gridCols(c), ro=c.colReadonly||[], Ls=M.srcsGet(it.key);
             L.push(mbsCircled(n++)+' ['+it.name+'] 그리드');
@@ -1644,17 +1761,21 @@
             (c.fields||[]).forEach(function(f){ if(f.type==='empty'||!mbsT(f.label)) return; L.push((k++)+') ['+mbsT(f.label)+'] 조건을 입력합니다.'+(f.required?'(필수)':'')); });
             const rr=ruleOfItem('q:'+it.key);
             L.push((k++)+') [조회] 버튼을 누르면 조건에 맞는 목록이 '+(gridItems.length?'['+gridItems.map(function(g){ return g.name; }).join('], [')+']에 ':'')+'표시됩니다.'+(rr?' ('+rr.id+')':''));
-            if(s.emptyAll!==false) L.push('· 입력하지 않은 조건은 적용하지 않고 전체를 조회합니다.');
             if(mbsT(s.note)) L.push('· '+mbsT(s.note));
             secs.push(['조회 방법',L]); });
-          const gl=[]; gridItems.forEach(function(it){ M.R.filter(function(rr){ return rr.item===it; }).forEach(function(rr){ gl.push('· ['+it.name+'] '+mbsPolite(rr.proc)+' ('+rr.id+')'); }); });
-          if(gl.length) secs.push(['그리드 사용',gl]);
+          // 막기 한 줄: 메시지 문구가 없으면 문구를 지어내지 않고 「확인 필요 Qn」을 가리킨다
+          const ckLine=function(ck){ const q=(!mbsT(ck.msg)&&ck.qk)?M.Q.find(function(x){ return x.qk===ck.qk; }):null;
+            return '　· '+(mbsT(ck.cond)?mbsT(ck.cond)+' ':'')+(mbsT(ck.msg)?'"'+mbsT(ck.msg)+'" 안내 후 처리를 멈춥니다.':(q?'메시지 안내 후 처리를 멈춥니다. (메시지 문구 확인 필요 '+q.id+')':'처리를 멈춥니다.')); };
+          // 그리드·입력 항목 규칙(편집 범위·정렬·기간 체크 등)
+          const gl=[]; M.items.filter(function(i){ return i.kind==='grid'||i.kind==='inputs'; }).forEach(function(it){ M.R.filter(function(rr){ return rr.item===it; }).forEach(function(rr){ gl.push('· ['+(it.kind==='inputs'?'입력 항목':it.name)+'] '+mbsPolite(rr.proc)+' ('+rr.id+')'); rr.checks.forEach(function(ck){ gl.push(ckLine(ck)); }); }); });
+          if(gl.length){ const hk=function(k){ return M.R.some(function(rr){ return rr.item&&rr.item.kind===k; }); };
+            secs.push([[hk('grid')?'그리드':'',hk('inputs')?'입력 항목':''].filter(Boolean).join('·')+' 사용',gl]); }
           if(btnRules.length){ const L=[]; let k=1;
             btnRules.forEach(function(rr){ L.push((k++)+') ['+rr.item.name+']'+(rr.item.where?'('+rr.item.where+')':'')+' : '+mbsPolite(rr.proc)+' ('+rr.id+')');
-              rr.checks.forEach(function(ck){ L.push('　· '+(mbsT(ck.cond)?mbsT(ck.cond)+' ':'')+(mbsT(ck.msg)?'"'+mbsT(ck.msg)+'" 안내 후 처리를 멈춥니다.':'처리를 멈춥니다.')); }); });
+              rr.checks.forEach(function(ck){ L.push(ckLine(ck)); }); });
             secs.push(['처리 절차',L]); }
           const gr=M.R.filter(function(rr){ return rr.global; });
-          if(gr.length) secs.push(['알아두면 좋은 규칙',gr.map(function(rr){ return '· '+rr.title+' : '+(rr.cond?rr.cond+' → ':'')+rr.proc+(rr.checks.length&&rr.checks[0].msg?' ("'+rr.checks[0].msg+'")':'')+' ('+rr.id+')'; })]);
+          if(gr.length) secs.push(['알아두면 좋은 규칙',gr.map(function(rr){ return '· '+(rr.chg?'('+rr.chg+') ':'')+rr.title+' : '+(rr.cond?rr.cond+' → ':'')+rr.proc+(rr.checks.length&&rr.checks[0].msg?' ("'+rr.checks[0].msg+'")':'')+' ('+rr.id+')'; })]);
           const bl=M.items.filter(function(i){ return i.kind==='btn'; }).map(function(it){ const rr=ruleOfItem(it.key); return '· ['+it.name+']'+(it.where?'('+it.where+')':'')+(rr?' : '+MBS_ACT[rr.action]+(rr.target?' ('+rr.target+')':''):''); });
           if(bl.length) secs.push(['버튼',bl]);
           // 붙여 넣은 텍스트: AI 없이는 항목별로 나눌 수 없으므로, 단계별 원문을 그대로 「컨설턴트 서술」 절에 싣는다
@@ -1676,10 +1797,16 @@
         r=mbXlSheetTitle(ws,6,r,'4. 기술사양  (Technical Specification)');
         r=mbXlHeaderKV(ws,6,r,headKV);
         if(M&&M.tables.length){ sec('테이블 정보');
-          r=mbXlDataTable2(ws,6,r,['Table명','Table ID','CRUD','비고'],M.tables.map(function(t){ return [t.name,t.id,t.crud,[({신규:'신규 테이블',컬럼추가:'컬럼 추가',뷰:'뷰 생성·수정'})[t.kind]||'',t.where.length?t.where.join('·')+'에서 사용':(t.info?'테이블 정보에 정의':'화면 외'),t.note].filter(Boolean).join(' · ')]; })); }
-        if(M){ const cb=M.combos.filter(function(x){ return M.codes[x.key]||x.colId; });
+          r=mbXlDataTable2(ws,6,r,['Table명','Table ID','CRUD','비고'],M.tables.map(function(t){ return [t.name,t.id,t.crud,[t.kind==='확장'?('추가(확장) 테이블'+(t.parent?' · 부모 '+t.parent:'')):(({신규:'신규 테이블',컬럼추가:'컬럼 추가',뷰:'뷰 생성·수정'})[t.kind]||''),t.where.length?t.where.join('·')+'에서 사용':(t.info?'테이블 정보에 정의':'화면 외'),t.note].filter(Boolean).join(' · ')]; }));
+          // 추가(확장) 테이블: 부모 테이블과 같은 키로 1:1 - 행 상태별 저장 규칙(빌더 프롬프트 원칙과 같은 문구)
+          const ext=M.tables.filter(function(t){ return t.kind==='확장'; });
+          if(ext.length){ sec('추가(확장) 테이블 저장 규칙');
+            r=mbXlDataTable2(ws,6,r,['행 상태','부모 테이블','추가(확장) 테이블'],ext.reduce(function(a,t){ const pa=t.parent||'부모 테이블';
+              return a.concat([['신규 행',pa+' INSERT',t.id+' : 같은 키로 INSERT'],['수정 행',pa+' UPDATE(변경분)',t.id+' : UPDATE, 반영 건수 0건(행 없음)이면 INSERT'],['삭제 행',pa+' DELETE',t.id+' : 같은 키로 DELETE']]); },[]));
+            r=mbXlParaBlock(ws,6,r,'조회는 부모 테이블 기준 LEFT JOIN, 저장은 부모·추가 테이블을 한 트랜잭션으로 처리한다.'); } }
+        if(M){ const cb=M.combos.filter(function(x){ return x.code||x.colId; });
           if(cb.length){ sec('콤보/조회 Service UID  (Data searchType : Workflow)');
-            r=mbXlDataTable2(ws,6,r,['항목(한글)','영문컬럼ID','표시타입','Service UID','비고'],cb.map(function(x){ return [x.name+'('+x.where+')',x.colId,x.type==='radio'?'옵션버튼(Radio)':'Combobox','',M.codes[x.key]?('공통코드 '+M.codes[x.key]):'']; })); } }
+            r=mbXlDataTable2(ws,6,r,['항목(한글)','영문컬럼ID','표시타입','Service UID','비고'],cb.map(function(x){ return [x.name+'('+x.where+')',x.colId,x.type==='radio'?'옵션버튼(Radio)':'Combobox','',[x.code?('공통코드 '+x.code):'',x.grid?'코드명으로 표시':''].filter(Boolean).join(' · ')]; })); } }
         const allBinds=[];
         gridItems.forEach(function(it){ const q=sqls[it.key]; if(!q) return; sec('조회 참고 SQL ['+it.name+'] (ANSI JOIN · 초안)');
           q.binds.forEach(function(b){ if(allBinds.indexOf(b)<0) allBinds.push(b); });
@@ -1690,11 +1817,14 @@
         if(M) gridItems.forEach(function(it){ const c=M.comp(it.cid), cols=M.gridCols(c), ro=c.colReadonly||[], ct=c.colTypes||[], L=M.srcsGet(it.key), q=sqls[it.key];
           cols.forEach(function(nm,i){ if(!nm) return; const k=M.colSpec(c,'cols',i); const mm=q?q.map.find(function(m){ return m.label===nm&&m.colId===mbsT(k.colId).toUpperCase(); }):null;
             const t=k.t||(L.length===1?L[0].t:'');
-            gridRowsAll.push([nm, mbsT(k.colId), mm?(mm.table.toLowerCase()+'('+mm.alias+')'):(t?t.toLowerCase():''), mm?mm.expr:'', typeOf(ct[i]||'input'), [ro[i]?'읽기전용':'편집 가능', mbsT(k.note)].filter(Boolean).join(' · ')]); }); });
+            // SQL 표현식 칸은 반드시 alias까지(예: a.item_nm AS item_nm) - 조회 SQL 초안과 같은 별칭
+            gridRowsAll.push([nm, mbsT(k.colId), mm?(mm.table.toLowerCase()+'('+mm.alias+')'):(t?t.toLowerCase():''), mm?(mm.expr+' AS '+mm.as):'', k.cc?'Combobox':typeOf(ct[i]||'input'), [ro[i]?'읽기전용':'편집 가능', k.cc?('공통코드 '+(mbsT(k.code)||'(미지정)')+' 코드명 표시'):'', mbsT(k.note)].filter(Boolean).join(' · ')]); }); });
         else spec.grids.forEach(function(g){ g.rows.forEach(function(row){ gridRowsAll.push([row.label,'','','',row.type,row.note||'']); }); });
         if(gridRowsAll.length){ sec('Display 컬럼 매핑'); r=mbXlDataTable2(ws,6,r,['한글명','영문컬럼ID','원천 테이블(별칭)','SQL 표현식 / 산출','표시타입','비고'],gridRowsAll); }
         if(M){ const msg=[];
-          M.R.forEach(function(rr){ rr.checks.forEach(function(ck){ msg.push([rr.item?(rr.item.kind==='search'?'조회':rr.item.name):'화면 전체','('+rr.id+') '+[mbsT(ck.cond)||rr.cond].filter(Boolean).join(''),'',mbsT(ck.msg)]); }); });
+          // 메시지코드가 없으면 공란(DT9999 소스 메시지) · 문구가 없으면 「확인 필요 Qn」
+          M.R.forEach(function(rr){ rr.checks.forEach(function(ck){ const q=(!mbsT(ck.msg)&&ck.qk)?M.Q.find(function(x){ return x.qk===ck.qk; }):null;
+            msg.push([rr.item?(rr.item.kind==='search'?'조회':(rr.item.kind==='inputs'?'입력 항목':rr.item.name)):'화면 전체','('+rr.id+') '+[mbsT(ck.cond)||rr.cond].filter(Boolean).join(''),'',mbsT(ck.msg)||(q?'확인 필요 '+q.id:'')]); }); });
           M.EX.filter(function(e){ return e.a; }).forEach(function(e){ msg.push(['예외',e.q,'',e.a]); });
           if(msg.length){ sec('처리 로직 & 저장 전 체크로직 (메시지코드)'); r=mbXlDataTable2(ws,6,r,['구분','조건 / 로직','메시지코드','메시지 문구'],msg); } }
         if(allBinds.length){ sec('바인드 변수 (Bind Variables)'); r=mbXlParaBlock(ws,6,r,allBinds.join(', ')); }
@@ -1704,7 +1834,10 @@
           String(M.S.policyExtra||'').split('\n').map(mbsT).filter(function(l){ return l&&!mbsIsConc(l); }).forEach(function(l){ etc.push('· '+l.replace(/^[-·•]\s*/,'')); });
           sec('기타'); if(etc.length) r=mbXlParaLines(ws,6,r,etc);
           // 개발지침: 옵션 없이 항상, 기술 메모 바로 다음 행부터 빈 행 없이 18줄(기준 사양서 서식)
-          r=mbXlDevGuideRows(ws,6,r); }
+          r=mbXlDevGuideRows(ws,6,r);
+          // 맨 마지막 절: 입력으로 정해지는 「확인 필요 사항」(빌더 프롬프트 6절과 같은 번호) - No 칸은 빨간 글자
+          if(M.Q.length){ sec('확인 필요 사항');
+            r=mbXlDataTable2(ws,6,r,['No','확인 내용 / 현재 사양서','결정 주체','선택지 · 근거'],M.Q.map(function(q){ return [q.id,q.what+(q.now?'\n현재: '+q.now:''),q.who,q.opts]; })); } }
         else { sec('기타'); r=mbXlDevGuideRows(ws,6,r); }
       }
 
@@ -1717,21 +1850,19 @@
         if(!M) r=mbXlParaBlock(ws,8,r,'저장/조회 대상 테이블·컬럼 정보는 화면 구성에 나타나지 않는다.');
         else {
           const info=String(M.S.newCols||'');
-          // 테이블 머리줄 없이 컬럼 표만 붙여 넣은 경우: 대상 테이블이 하나로 정해지면 그 테이블의 컬럼으로 읽는다
+          // 5.테이블 레이아웃에 넣는 테이블 = 이 프로그램이 만들거나 바꾸는 테이블(4.기술사양 구분: 신규 테이블·컬럼 추가·추가(확장) 테이블)
+          // - 빌더 프롬프트의 「테이블 정보」 원칙·부록 A(5.테이블 레이아웃)와 같은 범위. 기존 테이블은 넣지 않는다.
+          const isNew=function(t){ return t.kind==='신규'||t.kind==='컬럼추가'||t.kind==='확장'; };
+          const nt=M.tables.filter(isNew);
+          // 테이블 머리줄 없이 컬럼 표만 붙여 넣은 경우: 대상 테이블이 하나뿐이면 글 전체를 그 테이블의 컬럼으로 읽는다
           let wholeId=null;
-          if(info.trim()&&!mbSpecTableInfoHeads(info).length){
-            const cand=M.tables.filter(function(t){ return t.kind==='신규'||t.kind==='컬럼추가'; });
-            const one=cand.length===1?cand[0]:(M.tables.length===1?M.tables[0]:null);
-            if(one&&mbSpecParseTableInfo(info,one.id,{whole:true})) wholeId=one.id;
-          }
+          if(info.trim()&&nt.length===1&&!mbSpecTableInfoHeads(info).length&&mbSpecParseTableInfo(info,nt[0].id,{whole:true})) wholeId=nt[0].id;
           const parseFor=function(id){ return mbSpecParseTableInfo(info,id,{whole:id===wholeId}); };
-          const nt=M.tables.filter(function(t){ return t.kind==='신규'||t.kind==='컬럼추가'||t.id===wholeId||(t.info&&parseFor(t.id)); });
-          const anyNew=nt.some(function(t){ return t.kind==='신규'||t.kind==='컬럼추가'; });
           if(!nt.length) r=mbXlParaBlock(ws,8,r,M.tables.length?"본 프로그램은 신규 테이블을 생성하지 않는다. 사용 테이블은 '4.기술사양' 참조.":'저장/조회 대상 테이블 정보가 입력되지 않았다.');
           else {
-            r=mbXlParaBlock(ws,8,r,anyNew?'※ 테이블 디자인은 컨설턴트 협의 필요. 아래는 「테이블 정보」에 입력된 컬럼 구조 기준.':"※ 본 프로그램은 신규 테이블을 생성하지 않는다. 아래는 「테이블 정보」에 입력된 기존 테이블 구조(참고).");
+            r=mbXlParaBlock(ws,8,r,'※ 테이블 디자인은 컨설턴트 협의 필요. 아래는 「테이블 정보」에 입력된 컬럼 구조 기준.');
             nt.forEach(function(t){ const p=parseFor(t.id); const nm=t.name||(p&&p.name)||'';
-              r=mbXlSectionBanner(ws,8,r,'Table : '+t.id+(nm?' ('+nm+')':'')+(t.kind==='컬럼추가'?' - 컬럼 추가':(t.kind==='신규'?'':(anyNew?' - 기존 테이블(참고)':''))));
+              r=mbXlSectionBanner(ws,8,r,'Table : '+t.id+(nm?' ('+nm+')':'')+(t.kind==='컬럼추가'?' - 컬럼 추가':(t.kind==='확장'?(' - 추가(확장) 테이블'+(t.parent?' · 부모 '+t.parent:'')):'')));
               if(p) r=mbXlDataTable2(ws,8,r,['Column ID','Column Name','Type','Length','Key','Null','Default','Remark'],p.cols.map(function(c){ return [c.id,c.nm,c.type,c.len,c.pk,c.nn,c.def||'',c.rem||'']; }));
               else r=mbXlDataTable2(ws,8,r,['Column ID','Column Name','Type','Length','Key','Null','Default','Remark'],[]); });
             if(info.trim()&&!nt.some(function(t){ return parseFor(t.id); })){ r=mbXlSectionBanner(ws,8,r,'테이블 정보 (입력 원문)'); r=mbXlCodeBlock(ws,8,r,info.trim()); }
@@ -1749,15 +1880,20 @@
         const tc=[];
         if(M){
           searchItems.forEach(function(it){ const c=M.comp(it.cid), rr=ruleOfItem('q:'+it.key), id=rr?'['+rr.id+'] ':'';
-            (c.fields||[]).forEach(function(f,i){ if(f.type==='empty'||!mbsT(f.label)) return; const m=M.colSpec(c,'fields',i).match||(f.type==='daterange'?'range':(f.type==='combo'||f.type==='radio')?'eq':'like');
+            (c.fields||[]).forEach(function(f,i){ if(f.type==='empty'||!mbsT(f.label)) return; const m=M.colSpec(c,'fields',i).match||mbsDefMatch(f.type);
               if(f.required) tc.push([id+'['+mbsT(f.label)+'] 미입력 상태로 [조회]',mbsT(f.label)+' 공란','메시지 안내 후 조회 중단']);
-              tc.push([id+'['+mbsT(f.label)+'] 입력 후 [조회]',({like:'일부 문자열',eq:'목록 값 선택',range:'시작~종료 범위',in:'값 선택'})[m]||'조건 값',(MBS_MATCH[m]||'입력한')+' 조건으로 조회']); }); });
+              // 테스트 데이터는 입력 방식(날짜·팝업·목록)과 검색 방식에 맞춘다
+              const td=f.type==='date'?'날짜 선택':(f.type==='search'||f.type==='popup')?'팝업에서 값 선택':(f.type==='combo'||f.type==='radio'||f.type==='check')?'목록 값 선택':({like:'일부 문자열',eq:'정확한 값',range:'시작~종료 범위',in:'값 선택'})[m];
+              tc.push([id+'['+mbsT(f.label)+'] 입력 후 [조회]',td||'조건 값',(MBS_MATCH[m]||'입력한')+' 조건으로 조회']); }); });
           if(searchItems.length&&!M.EX.some(function(e){ return e.a&&/조회\s*결과/.test(e.q); })) tc.push(['조회 결과 0건 확인','존재하지 않는 조건','메시지 안내 (UNIERP 표준 처리)']);
-          M.R.filter(function(rr){ return rr.kindTag; }).forEach(function(rr){ tc.push(['['+rr.id+'] ['+rr.item.name+'] '+(rr.kindTag==='edit'?'편집 불가 컬럼 수정 시도':'조회 결과 정렬 확인'),'-',rr.proc]); });
+          M.R.filter(function(rr){ return rr.kindTag; }).forEach(function(rr){ const nm='['+rr.id+'] ['+(rr.item.kind==='inputs'?'입력 항목':rr.item.name)+'] ';
+            // 기간 체크: 예외(종료일 < 시작일) · 정상(종료일 ≥ 시작일) · 한쪽이 비어 있으면 확인하지 않음
+            if(rr.kindTag==='period'){ tc.push([nm+'종료일을 시작일보다 빠르게 입력 후 저장','시작일 > 종료일','메시지 안내 후 저장 중단']); tc.push([nm+'종료일을 시작일과 같거나 이후로 입력 후 저장','시작일 ≤ 종료일','저장됨']); tc.push([nm+'시작일·종료일 중 하나만 입력 후 저장','한쪽 공란','기간 확인 없이 저장됨']); return; }
+            tc.push([nm+(rr.kindTag==='edit'?'편집 불가 컬럼 수정 시도':'조회 결과 정렬 확인'),'-',rr.proc]); });
           gridItems.forEach(function(it){ const c=M.comp(it.cid); if(c.showToolbar!==false&&c.stdAdd===false&&c.stdDelete===false) tc.push(['['+it.name+'] 행추가/행삭제 버튼 유무 확인','-','행추가·행삭제 기능 없음']); });
           btnRules.forEach(function(rr){ tc.push(['['+rr.id+'] ['+rr.item.name+'] 클릭','정상 데이터',rr.proc]);
             rr.checks.forEach(function(ck){ tc.push(['['+rr.id+'] ['+rr.item.name+'] 클릭 - '+(mbsT(ck.cond)||'조건 위반'),'조건에 해당하는 데이터',(mbsT(ck.msg)?'메시지 안내 후 ':'')+'처리 중단']); }); });
-          M.R.filter(function(rr){ return rr.global; }).forEach(function(rr){ tc.push(['['+rr.id+'] '+rr.title+(rr.cond?' - '+rr.cond:''),'-',rr.proc]); });
+          M.R.filter(function(rr){ return rr.global; }).forEach(function(rr){ tc.push(['['+rr.id+'] '+(rr.chg?'('+rr.chg+') ':'')+rr.title+(rr.cond?' - '+rr.cond:''),'-',rr.proc]); });
           M.PR.forEach(function(p){ tc.push(['['+p.id+'] 업무 규칙 확인 - '+p.text,'규칙에 맞는/어긋나는 데이터','규칙대로 처리(어긋나면 처리 중단)']); });
           M.EX.filter(function(e){ return e.a; }).forEach(function(e){ tc.push(['예외 - '+e.q,'해당 상황 데이터',e.a]); });
         }

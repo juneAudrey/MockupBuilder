@@ -2170,10 +2170,12 @@ body.skin-classic #spBtn, body.skin-mobile #spBtn{display:none!important;}
 .sp-ctbl .nm{font-size:13px;color:var(--sp-t);font-weight:600;display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0;}
 .tg{font-style:normal;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:4px;background:#eef1f4;color:#6b7785;}
 .tg.e{background:#e7f4f6;color:var(--sp);} .tg.r{background:#ffecec;color:#c92a2a;} .tg.g{background:#eef6f0;color:#3c7d55;}
+/* 사양서 프롬프트 · 그리드 컬럼 「코드」(코드값 컬럼) 켜기/끄기 */
+.tg.cc{border:1px dashed #c7cfd6;background:#fff;color:#8b96a1;cursor:pointer;font-family:inherit;line-height:1.5;}
+.tg.cc:hover{border-color:#e0a24a;color:#b25e00;}
+.tg.cc.on{border:1px solid #f2c27a;background:#fff4e0;color:#b25e00;}
 .sp-tags{display:flex;gap:6px;flex-wrap:wrap;}
 .sp-tags span{font-size:12px;padding:4px 10px;border-radius:6px;background:#f1f4f6;color:#5b6672;}
-.sp-chk{display:flex;align-items:center;gap:8px;font-size:13px;color:#4a5864;margin:-4px 0 18px;cursor:pointer;}
-.sp-chk input{width:16px;height:16px;accent-color:var(--sp);}
 .sp-acts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px;}
 .sp-act{border:2px solid var(--sp-b);background:#fff;border-radius:11px;padding:10px 10px 9px;display:grid;grid-template-columns:28px 1fr;grid-template-rows:auto auto;column-gap:6px;text-align:left;cursor:pointer;transition:.12s;}
 .sp-act .ic{grid-row:1/3;font-size:18px;display:flex;align-items:center;justify-content:center;}
@@ -2258,7 +2260,6 @@ body.skin-classic #spBtn, body.skin-mobile #spBtn{display:none!important;}
 .sp-code .h{color:var(--sp);font-weight:700;}
 .sp-code .q{background:#fff1c2;color:#9a6b00;border-radius:3px;padding:0 2px;}
 .sp-code .id{color:#c25106;font-weight:700;}
-.sp-code .pp{color:#6741d9;font-weight:700;}
 .sp-doc{flex:1;min-height:0;border:1px solid var(--sp-b);border-radius:0 10px 10px 10px;background:#fff;padding:20px 24px;overflow:auto;font-size:13.5px;line-height:1.7;color:var(--sp-t);}
 .sp-doc h3{font-size:17px;margin:0 0 2px;}
 .sp-doc h4{font-size:13px;margin:16px 0 4px;color:var(--sp);}
@@ -2356,7 +2357,6 @@ input.sp-prole.add:focus::placeholder{color:#b3bcc5;}
 .sp-psub{margin:12px 0 6px;font-size:12.5px;font-weight:700;color:#4a5864;}
 .sp-pperm{display:grid;grid-template-columns:minmax(0,120px) minmax(0,1fr);gap:6px 10px;margin-top:10px;font-size:13px;align-items:center;}
 .sp-pperm .k{font-weight:700;color:#4a5864;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.sp-doc .prop{display:inline-block;font-size:10.5px;font-weight:700;color:#6741d9;background:#f1ecff;border-radius:4px;padding:1px 6px;margin-left:4px;}
 .sp-doc .flow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;}
 .sp-doc .flow span{background:#f1f5f7;border-radius:6px;padding:3px 9px;}
 .sp-doc .flow span.me{background:var(--sp);color:#fff;font-weight:700;}
