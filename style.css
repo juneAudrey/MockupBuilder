@@ -592,10 +592,10 @@
   .ax-grid.tb-open .gtoolbar .gtitle{font-size:15px;color:#1f2328;}
   .ax-grid.tb-open .gtoolbar .gtitle::before{content:none;}
   .ax-grid .gtoolbar .gt-up{display:inline-flex;align-items:center;flex:none;margin-left:8px;color:#1f2328;}
-  .ax-grid .gtoolbar .gt-full{display:inline-flex;align-items:center;justify-content:center;flex:none;margin-left:6px;width:18px;height:18px;color:#9aa1a9;border-radius:3px;}
+  .ax-grid .gtoolbar .gt-full{display:inline-flex;align-items:center;justify-content:center;flex:none;margin-left:4px;width:14px;height:14px;color:#393b42;border-radius:2px;}
   .ax-grid .gtoolbar .gt-full[onclick]{cursor:pointer;}
   .ax-grid .gtoolbar .gt-full[onclick]:hover{color:var(--ax-green);background:var(--ax-green-light);}
-  .ax-grid.tb-open .gtoolbar .gcount{margin-left:6px;}
+  .ax-grid .gtoolbar .gt-full + .gcount{margin-left:2px;} /* 전체화면 아이콘과 (N)건 사이 - 실제 AX 간격 */
   /* 결과물/미리보기 - 그리드 전체화면 */
   .mockup-item.mb-grid-full{position:fixed!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;
     z-index:2000000!important;background:#fff;padding:12px 16px 16px;box-sizing:border-box;clip-path:none!important;}
