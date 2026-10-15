@@ -1234,7 +1234,7 @@
   // 기간 체크 메시지(개발지침 7번 문구 · 메시지코드 없음 = DT9999) - app.js MB_SPEC_PERIOD_MSG 와 같아야 한다
   const MBS_PERIOD_MSG='종료일은 시작일보다 같거나 이후이어야 합니다.';
   // 업무 프로세스를 알 수 없을 때(설명·업무 서술 원문 모두 없음)의 「확인 필요 사항」 선택지 - app.js MB_SPEC_PROC_Q_OPTS 와 같아야 한다
-  const MBS_PROC_Q_OPTS='① 2단계 「업무 프로세스 설명」에 담당자·업무 단계·처리 순서 입력 ② 모듈 표준 업무 흐름 적용';
+  const MBS_PROC_Q_OPTS='① 2단계 「업무 프로세스 및 배경 설명」에 담당자·업무 단계·처리 순서 입력 ② 모듈 표준 업무 흐름 적용';
   // 업무 프로세스 설명(빌더 2단계 「업무 프로세스 설명」 = proc.flowNote) - 동시 수정 관련 줄은 뺀다. app.js mbSpecProcNote 와 같은 규칙
   function mbsProcNote(P){ return String((P||{}).flowNote||'').split('\n').filter(function(l){ return l.trim()&&!mbsIsConc(l); }).map(function(l){ return l.trim(); }).join('\n'); }
   const MBS_MATCH={eq:'같음',like:'포함(앞뒤 % Like)',range:'범위(From~To)',in:'선택값'};
@@ -1258,6 +1258,11 @@
   }
   // 엑셀 SQL 맨 앞줄 참고문 주석 - app.js SQL_REF_NOTE 와 같아야 한다
   const MBS_SQL_REF_NOTE='해당 SQL 은 참고문이며, 실제 개발에 필요한 부분은 사양서를 기반으로  Code & Sql 을 사용하여 Logic을 개발한다.';
+  // SQL 작성 및 주석 지침의 두 주석 문구 - app.js SQL_TECH_NOTE·SQL_RULE_NOTE 와 같아야 한다
+  //  · 기술적 판단: 사양서에 구현 방식이 없는 부분(예: 조회 테이블 사이의 JOIN 방식)
+  //  · 내부 개발 규칙: 사양서에 없지만 공통 규칙으로 정해지는 부분(예: TENANT_ID·CO_CD 조건, ${nolock} 힌트) - 한 SQL문에서 처음 적용한 줄에만
+  const MBS_SQL_TECH_NOTE='해당 부분은 사양서의 업무 프로세스 및 테이블 레이아웃을 근거로 기술적 판단하에 구현';
+  const MBS_SQL_RULE_NOTE='사양서 미기술: 내부 개발 규칙에 따라 적용';
   // 개발지침 원문 18줄 + 행 서식 - 기준: Dongah_PP004 사양서 4.기술사양 63~80행. app.js DEV_GUIDE_LINES 와 같아야 한다.
   const MBS_DEV_GUIDE_LINES=['▽ 사양서에 별도 기술하지 않은 사항은 하기 지침을 따른다.(※ 각 항목별로 본사양서에 대상이 아닐 경우에는 제외한다)','　1. 입력 콤포넌트: 입력 허용 길이를 제한하여 문자열 잘림 오류 방지 (원초적 오류 표시 방지)','　2. 필수값 누락 오류 시 명확한 메시지 표시 및 포커스 이동 (예. 품목을 입력하세요.) (사용자 인지)','　3. 그리드 행복사 후 저장 시 Key, attachId 등에 유의','　4. 조회 조건에 \'공장\'이 존재하면 기본값으로 사용자 공장 입력','　5. 조회 조건은 항상 표시 (조회 시 접히지 않음, 사용자가 직접 접기 가능)','　6. 그리드 정렬: 문자(좌측), 숫자(우측, 천단위 콤마), 날짜(가운데), 그 외(기본)','　7. 기간 콤포넌트: From 날짜가 To 날짜보다 늦지 않도록 체크(예. DT9999 : 종료일은 시작일보다 같거나 이후이어야 합니다.)','　8. 데이터 수정 후 저장하지 않고 조회(또는 확정 등) 시 "변경된 데이터가 있습니다. 계속 진행하시겠습니까?" 메시지','　9. 하단 버튼은 스크롤에 영향받지 않도록 고정','　10. 고정 하단 버튼과 그리드 공존 시 메인 프로그램에 스크롤 없도록','　11. 그리드 행추가 시 필수/비필수 색상 확인 (예. 구매요청등록(비정상), 공급처지정등록(정상))','　12. Table 컬럼 사이즈 및 샘플 데이터 사이즈에 맞게 그리드 컬럼 폭 조절','　13. 그리드 Cell 다중 선택 및 복사 가능 (RowSelect 시 Cell 복사 불가)','　14. 조회 시 그리드 헤더 체크 해제','　15. 조회조건에서 필수가 아닌 조건을 구현 시 입력하지 않았을때의 로직을 개발자 편의에 맡긴다(Sql 문 또는 코드상 변수로 Min, Max 등 의 처리)','       Sql -예1) 기간(비필수) - AND BETWEEN COALESCE(NULLIF(:dtFrom,\'\'),\'1900-01-01\') AND COALESCE(NULLIF(:dtTo,\'\'),\'2999-12-31\')','       Sql -예2) 품목코드(비필수) - AND (COALESCE(:itemCd,\'\')=\'\' OR a.item_cd=:itemCd)'];
   const MBS_DEV_GUIDE_HEIGHTS=[21.4,16.5,16.5,16.5,16.5,16.5,16.5,16.5,16.5,16.5,16.5,16.5,16.5,16.5,16.5,null,null,16.5]; // null = 기본 높이(지정 안 함)
@@ -1364,8 +1369,8 @@
           checks:(s.checks||[]).map(function(k,ci){ return k?{cond:mbsT(k.cond),msg:mbsT(k.msg),qk:it.key+'|'+ci}:null; }).filter(function(k){ return k&&(k.cond||k.msg)&&!mbsIsConc(k.cond+' '+k.msg); })}); }
     });
     // 화면 전체 규칙 - 「표준 대비 변경」(chg) 규칙은 처리 내용이 비어도 변경 내용(이름)으로 처리를 쓴다
-    (S.rules||[]).filter(function(r){ return (mbsT(r.title)||mbsT(r.proc)||mbsT(r.cond))&&!mbsIsConc([r.title,r.cond,r.proc,r.msg].join(' ')); }).forEach(function(r){ const chg=MBS_CHG.indexOf(r.chg)>=0?r.chg:'';
-      R.push({title:mbsT(r.title)||'화면 규칙',chg:chg,on:'화면 전체',cond:mbsT(r.cond),proc:mbsT(r.proc)||(chg?'표준 대비 '+chg+': '+mbsT(r.title):''),checks:mbsT(r.msg)?[{cond:'',msg:mbsT(r.msg)}]:[],global:true}); });
+    (S.rules||[]).filter(function(r){ return (mbsT(r.title)||mbsT(r.proc)||mbsT(r.cond))&&!mbsIsConc([r.title,r.cond,r.proc,r.msg].join(' ')); }).forEach(function(r){ const had=MBS_CHG.indexOf(r.chg)>=0, chg=(B.devType==='mod'&&had)?r.chg:''; // 「표준 대비 변경」 표시는 수정 개발 화면에서만(빌더 spDerivedRules와 같게)
+      R.push({title:mbsT(r.title)||'화면 규칙',chg:chg,on:'화면 전체',cond:mbsT(r.cond),proc:mbsT(r.proc)||(chg?'표준 대비 '+chg+': '+mbsT(r.title):(had?mbsT(r.title):'')),checks:mbsT(r.msg)?[{cond:'',msg:mbsT(r.msg)}]:[],global:true}); });
     R.forEach(function(r,i){ r.id='R'+String(i+1).padStart(2,'0'); });
     const PR=P.rules.filter(function(r){ return mbsT(r.text)&&!mbsIsConc(r.text)&&r.pk!=='lock'; }).map(function(r,i){ return {id:'P'+String(i+1).padStart(2,'0'),tag:mbsT(r.tag)||'기타',text:mbsT(r.text)}; });
     const procAny=!!(P.prev.length||P.next.length||mbsT(P.flowNote)||PR.length||P.roles.length||P.ex.some(function(e){ return e&&mbsT(e.a)&&!mbsIsConc(e.q); }));
@@ -1401,7 +1406,7 @@
     Object.keys(free).forEach(function(k){ free[k]=free[k].split('\n').filter(function(l){ return !mbsIsConc(l); }).join('\n'); });
     const Q=[];
     (Array.isArray(S.open)?S.open:[]).forEach(function(q){ if(!q||typeof q!=='object') return; const w=mbsT(q.what); if(!w||mbsIsConc(w)) return; Q.push({what:w,now:'',opts:mbsT(q.opts),who:mbsT(q.who),src:'open'}); });
-    // 업무 프로세스(3.기능사양 「업무 흐름 - 프로세스」의 근거) - 설명도, 업무·프로세스 서술 원문도 없으면 확인 필요
+    // 업무 프로세스(3.기능사양 「업무 흐름 - 프로세스 및 배경」의 근거) - 설명도, 업무·프로세스 서술 원문도 없으면 확인 필요
     if(!mbsProcNote(P)&&!free.s2.trim()) Q.push({what:'업무 프로세스(담당자·업무 단계·처리 순서)',now:'업무 프로세스 설명 없음',opts:MBS_PROC_Q_OPTS,who:'컨설턴트',src:'proc'});
     combos.filter(function(x){ return x.grid; }).forEach(function(x){ Q.push({what:'['+x.name+'] 값이 공통코드에 없을 때의 표시',now:x.code?('공통코드 '+x.code+' 코드명으로 표시'):'공통코드 미지정',opts:'① 원래 값 그대로 표시 ② 빈칸으로 표시 ③ 공통코드에 값 추가',who:'현업',src:'code',key:x.key}); });
     items.filter(function(it){ return it.kind==='btn'&&btnAct(it); }).forEach(function(it){ (btnSpec(it).checks||[]).forEach(function(k,ci){ if(!k) return; const cd=mbsT(k.cond);
@@ -1426,7 +1431,7 @@
       let as=id.toLowerCase(); seenAs[as]=(seenAs[as]||0)+1; if(seenAs[as]>1) as+='_'+seenAs[as];
       map.push({label:cols[i],colId:id,table:t,alias:alias[t],as:as,expr:alias[t]+'.'+id.toLowerCase()}); }
     if(!map.length) return null;
-    const binds=[':tenantId',':coCd'], where=[map[0].alias+'.tenant_id = :tenantId','  AND '+map[0].alias+'.co_cd = :coCd'], notes=[];
+    const binds=[':tenantId',':coCd'], where=[map[0].alias+'.tenant_id = :tenantId   -- '+MBS_SQL_RULE_NOTE,'  AND '+map[0].alias+'.co_cd = :coCd'];
     M.items.filter(function(x){ return x.kind==='search'; }).forEach(function(sit){ const sc=M.comp(sit.cid); const sL=M.srcsGet(sit.key).map(function(x){ return x.t; });
       (sc.fields||[]).forEach(function(f,i){ if(f.type==='empty') return; const k=M.colSpec(sc,'fields',i); const ids=mbsT(k.colId).toUpperCase().split(/\s*[,/]\s*/).filter(function(x){ return /^[A-Z_][A-Z0-9_$#]*$/.test(x); }); if(!ids.length) return;
         const t=(k.t&&alias[k.t])?k.t:((sL.length===1&&alias[sL[0]])?sL[0]:null);
@@ -1444,10 +1449,12 @@
         else if(m==='like'){ cond=ids.map(function(id){ return al+'.'+id.toLowerCase()+" LIKE CONCAT('%', "+b+", '%')"; }).join(' OR '); if(ids.length>1||opt) cond='('+(opt?"COALESCE("+b+", '') = '' OR ":'')+cond+')'; binds.push(b); }
         else if(m==='in'){ cond=col+' IN ('+b+')'; if(opt) cond="(COALESCE("+b+", '') = '' OR "+cond+')'; binds.push(b); }
         else { cond=col+' = '+b; if(opt) cond="(COALESCE("+b+", '') = '' OR "+cond+')'; binds.push(b); }
-        where.push('  AND '+cond+'   -- '+(f.label||'조건'+(i+1))); }); });
+        where.push('  AND '+cond); }); });
     const lines=['SELECT '+map.map(function(m,i){ return (i?'     , ':'')+m.expr+' AS '+m.as; }).join('\n')];
-    lines.push('  FROM '+L[0].toLowerCase()+' '+alias[L[0]]+' ${nolock}');
-    L.slice(1).forEach(function(t,i){ lines.push(' INNER JOIN '+t.toLowerCase()+' '+alias[t]+' ${nolock}'+(i===0?'\n    ON '+join:'')); });
+    lines.push('  FROM '+L[0].toLowerCase()+' '+alias[L[0]]+' ${nolock}   -- '+MBS_SQL_RULE_NOTE);
+    // 추가(확장) 테이블은 부모 기준 LEFT JOIN(사양서 4.기술사양 테이블 구분) · 그 밖의 JOIN 방식은 사양서에 없으므로 기술적 판단 주석
+    L.slice(1).forEach(function(t,i){ const ext=M.tables.some(function(x){ return x.id===t.toUpperCase()&&x.kind==='확장'; });
+      lines.push((ext?' LEFT OUTER JOIN ':' INNER JOIN ')+t.toLowerCase()+' '+alias[t]+' ${nolock}'+(ext?'':'   -- '+MBS_SQL_TECH_NOTE)+(i===0?'\n    ON '+join:'')); });
     lines.push(' WHERE '+where.join('\n'));
     const s=M.cs(c); if(s.sortCol!=null&&s.sortCol!==''){ const mm=map.find(function(m){ return m.label===cols[+s.sortCol]; }); if(mm) lines.push(' ORDER BY '+mm.expr+(s.sortDir==='desc'?' DESC':'')); }
     return {sql:lines.join('\n'),binds:binds.filter(function(v,i,a){ return a.indexOf(v)===i; }),map:map,tables:L,alias:alias};
@@ -1572,7 +1579,7 @@
   }
 
   // 이 런타임의 사양서 내보내기 버전 - 메인 화면 「사양서 템플릿 저장」이 최신 기능(프롬프트 정보로 채우기)인지 확인할 때 쓴다.
-  window.mbSpecExportVer=6; // 6: 업무 흐름 - 프로세스/프로그램 두 절·업무 프로세스 확인 필요(Q) · 5: 확인 필요 사항(Q)·빨간 글자·긴 SQL 나눔·코드값 컬럼·기간 체크·표준과 동일 버튼·참고 프로그램 목록·추가(확장) 테이블 · 4: 개발지침 18줄(기준 사양서 문구·배경색·행 높이)을 항상 4.기술사양 「기타」에 · 3: 99.개발지침 시트 폐지 · 선택 조회조건 SQL · 수정 개발 화면설명 문구
+  window.mbSpecExportVer=6; // 6: 업무 흐름 - 프로세스 및 배경/프로그램 두 절·업무 프로세스 확인 필요(Q)·SQL 작성 및 주석 지침(기술적 판단·내부 규칙 주석) · 5: 확인 필요 사항(Q)·빨간 글자·긴 SQL 나눔·코드값 컬럼·기간 체크·표준과 동일 버튼·참고 프로그램 목록·추가(확장) 테이블 · 4: 개발지침 18줄(기준 사양서 문구·배경색·행 높이)을 항상 4.기술사양 「기타」에 · 3: 99.개발지침 시트 폐지 · 선택 조회조건 SQL · 수정 개발 화면설명 문구
   window.mbOpenSpecExport=async function(){
     if(!mbIsThin) return false; // 씬모드 화면에서만
     const badge=document.getElementById('mbBadgeS');
@@ -1754,12 +1761,12 @@
           const secs=[];
           const ov=purposeLines.length?purposeLines.map(function(l,i){ return mbsCircled(i)+' '+l; }):[];
           if(ov.length) secs.push(['화면 개요',ov]);
-          // 업무 흐름 - 프로세스(담당자·업무 단계·처리 순서) → 업무 흐름 - 프로그램(이 화면에서 하는 작업) - 빌더 프롬프트 「업무 흐름」 원칙과 같은 순서·구성
+          // 업무 흐름 - 프로세스 및 배경(담당자·업무 단계·처리 순서) → 업무 흐름 - 프로그램(이 화면에서 하는 작업) - 빌더 프롬프트 「업무 흐름」 원칙과 같은 순서·구성
           { const pn=mbsProcNote(M.P), pq=M.Q.find(function(q){ return q.src==='proc'; }), L=[progName+' 업무 프로세스'];
             if(pn) pn.split('\n').forEach(function(l){ L.push(l); });
             else if(pq) L.push('확인 필요 '+pq.id);
             else L.push("※ 아래 「컨설턴트 서술 (원문)」 절의 [업무 · 프로세스] 원문 참고");
-            secs.push(['업무 흐름 - 프로세스',L]); }
+            secs.push(['업무 흐름 - 프로세스 및 배경',L]); }
           { const L=[progName+' 프로그램']; let k=1;
             if(M.P.prev.length) L.push((k++)+') 앞 단계 : '+M.P.prev.map(function(x){ return '['+x+']'; }).join(', '));
             L.push((k++)+') 이 화면 : ['+progName+']');
