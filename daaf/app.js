@@ -37,6 +37,7 @@
   // 되짚어 나올 수 있다.
   let currentFlowScope = null;
   let currentFlowRaw = null;   // 지금 열린 WF 의 RESOURCE_WF 원본(스코프를 최상위로 되돌아갈 때 재사용)
+  const MAX_DEPTH_DEFAULT = 4;
   // 폴더(메뉴 트리) 조회가 진행 중인 동안에는 "데이터 없음" 안내 문구를 잠깐 보여줬다 바로
   // 숨기는 깜빡임이 생겼다(비동기 조회가 끝나기 전에 먼저 "없음"으로 그렸다가, 끝나면 다시 채움).
   // 조회 중에는 그 안내를 아예 띄우지 않도록 상태를 추적한다.
@@ -648,6 +649,11 @@
       el('offLiveFolder').textContent = f ? f : '파일 미선택';
       if (ol) ol.classList.toggle('has-data', !!has);
     }
+  }
+  function shortPath(p) {
+    if (!p) return '';
+    if (p.length <= 34) return p;
+    return p.slice(0, 12) + '…' + p.slice(-20);
   }
 
   /* ---------- DB 접속 → DB 목록 콤보 채우기 ---------- */
@@ -1422,6 +1428,8 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
   }
 
   /* ---------- .erp 파일 불러오기 (저장된 결과를 재조회 없이 그대로 복원) ---------- */
+  const ERP_TABLE_TO_TYPE = { z_ui_deploy_info: 'UI', z_wf_deploy_info: 'WF', z_mo_deploy_info: 'Mo', z_rp_deploy_info: 'Rp' };
+
   // .erp 의 data(JSON) 를 store 에 그대로 주입한다. 이미 완성된 그래프이므로
   // DB/오프라인을 다시 조회하지 않고, 저장 시 뽑아낸 nodes/edges 를 되돌려 넣기만 한다.
   // 주의: buildJson()은 저장할 때 노드의 raw(원본 테이블 행)를 record 라는 이름으로 내보낸다.
@@ -1435,40 +1443,7 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       if (node.record && !node.raw) node.raw = node.record;
       store.addNode(node);
     });
-    // 엣지도 relType 만이 아니라 trigger(버튼→이벤트 라벨)와 cycle(순환 표시) 정보까지 되살린다.
-    // 예전엔 relType 만 복원해, 불러온 그래프에서 엣지 라벨과 "WF 를 실행하는 화면/버튼"(역방향)
-    // 목록이 비고, 순환 엣지가 일반 엣지로 그려지며 [순환 표시] 필터도 엣지에는 듣지 않았다.
-    (data.edges || []).forEach(e => {
-      const edge = store.addEdge(e.from, e.to, e.relType);
-      if (edge && e.trigger && !edge.trigger) edge.trigger = e.trigger;
-      if (edge && e.cycle) edge.cycle = true;
-    });
-    return relinkScriptPopups();
-  }
-
-  // 예전 버전으로 저장한 .erp 는 스크립트로 여는 팝업($pageObjects 헬퍼 경유 등)이 그래프에서 빠진 채
-  // 저장돼 있다. 화면 레코드(raw)는 파일 안에 그대로 있으므로, 불러올 때 현재 파서로 트리거를 다시
-  // 뽑아 빠진 "opens" 연결만 보강한다. 대상 화면의 레코드는 그 파일에 없으므로 노드만 만들고(조회 전
-  // 상태로 표시됨), 내용까지 보려면 DB/오프라인에서 다시 파도타기하면 된다. 반환: 보강한 연결 수.
-  function relinkScriptPopups() {
-    let added = 0;
-    [...store.nodes.values()].forEach(n => {
-      if ((n.type !== 'UI' && n.type !== 'Mo') || !n.raw) return;
-      let triggers = [];
-      try { triggers = P.parseUi(n.raw).triggers || []; } catch (e) { return; }
-      triggers.forEach(t => {
-        if (t.event !== 'BTN_OPEN_POPUP' || !t.programId || t.programId === n.id) return;
-        const type = P.looksLikeReportId(t.programId) ? 'Rp' : 'UI';
-        const toKey = store.nodeKey(type, t.programId, null);
-        if (store.edges.has(n.key + '->' + toKey)) return;
-        const target = store.addNode({ type, id: t.programId, name: t.programId,
-          depth: (n.depth != null ? n.depth : 0) + 1 });
-        const edge = store.addEdge(n.key, target.key, 'opens');
-        if (edge && !edge.trigger) edge.trigger = { label: t.label, event: 'BTN_OPEN_POPUP' };
-        added++;
-      });
-    });
-    return added;
+    (data.edges || []).forEach(e => store.addEdge(e.from, e.to, e.relType));
   }
 
   // store 에 담긴 프로그램(UI/WF/Mo/Rp) 노드를 좌측 검색 결과 목록(renderMenu) 형식으로 변환.
@@ -1523,7 +1498,7 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
 
   // 생성 정보 카드에서 [확인]을 누른 뒤: 좌측 목록에 전체 반영 + 첫 행을 더블클릭한 것처럼 그래프로 표시.
   function applyLoadedErp(data) {
-    const relinked = loadErpDataIntoStore(data);
+    loadErpDataIntoStore(data);
     // 이전(불러오기 전) 그래프에서 쌓인 흐름도 상태를 들고 오면 안 된다 —
     // flowNavStack 의 key 가 새 store 에 없을 수 있어 [◀ 뒤로] 클릭 시 엉뚱하게 동작할 수 있음.
     flowNavStack = [];
@@ -1548,8 +1523,7 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     renderTable();
     refreshBasket();
     showDetail(rootKey);
-    setStatus('불러오기 완료 · ' + rows.length + '개 프로그램 · ' + _lastErpPath
-      + (relinked ? (' · 저장 당시 누락된 팝업 연결 ' + relinked + '건 보강(내용은 재조회 필요)') : ''));
+    setStatus('불러오기 완료 · ' + rows.length + '개 프로그램 · ' + _lastErpPath);
   }
 
   // erpNodesToMenuRows 로 만든 row 는 UI/Mo/Rp 를 구분 못 하므로(모두 화면계열로 뭉뚱그려짐),
@@ -1714,14 +1688,22 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     const triggers = parsed.triggers || [];
     (parsed.refs || []).forEach(ref => {
       if (ref.uid == null && ref.id == null) return;
+      const wfKey = store.nodeKey('WF', ref.id, ref.uid);
       const wfNode = store.addNode({ type: 'WF', id: ref.id, uid: ref.uid, name: ref.id, depth });
       store.addEdge(fromNode.key, wfNode.key, 'calls');
       // 이 WF 를 실행하는 트리거(버튼/이벤트) 찾기
-      const trig = triggers.find(t => t.event === 'BTN_WORKFLOW' &&
+      const trigAll = triggers.filter(t => t.event === 'BTN_WORKFLOW' &&
         ((t.serviceUid && ref.uid && String(t.serviceUid) === String(ref.uid)) ||
          (t.serviceId && ref.id && t.serviceId === ref.id)));
+      const trig = trigAll[0];
       const edge = store.edges.get(fromNode.key + '->' + wfNode.key);
-      if (edge && trig) { edge.trigger = { label: trig.label, event: trig.event, serviceName: trig.serviceName }; }
+      if (edge && trig) {
+        // 같은 WF 를 여러 버튼이 실행하면(예: 조회 / 구성원 탭 Search) 버튼 이름을 모두 보여준다.
+        const labels = [];
+        trigAll.forEach(t => { if (t.label && labels.indexOf(t.label) === -1) labels.push(t.label); });
+        const svcName = (trigAll.find(t => t.serviceName) || {}).serviceName;
+        edge.trigger = { label: labels.length ? labels.join(' / ') : trig.label, event: trig.event, serviceName: svcName || trig.serviceName };
+      }
       // 조회 Depth 설정을 넘어서면 큐에 넣지 않고(=영영 조회 안 됨) 별도 표시만 해둔다.
       // 큐에는 넣되 나중에 skip 하면 "조회했는데 없음(_missing)"과 구분이 안 되어
       // 사용자가 "WF 가 비어있다"를 DB 문제로 오해하게 된다.
@@ -2191,7 +2173,7 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     const keys = new Set();
     store.nodes.forEach(n => { if (match(n)) keys.add(n.key); });
     // 그래프 강조
-    G.highlight(keys);
+    const hits = G.highlight(keys);
     // 테이블 행 강조/흐림
     if (tb) {
       [...tb.children].forEach(tr => {
@@ -2418,13 +2400,10 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
               + ' <span class="arw">→</span> ' + esc(t.serviceId || ('uid=' + t.serviceUid))
               + (t.serviceName ? ' <span class="muted">(' + esc(t.serviceName) + ')</span>' : '') + '</div>';
           } else {
-            // 팝업 대상이 리포트 명명규칙이면 그래프에는 Rp 노드로 연결되므로(linkRefs) 이동 키도 Rp 로 맞춘다.
-            const isRp = P.looksLikeReportId(t.programId);
-            const tk = store.nodeKey(isRp ? 'Rp' : 'UI', t.programId, null);
+            const tk = store.nodeKey('UI', t.programId, null);
             body += '<div class="trig nav" data-nav="' + esc(tk) + '" title="더블클릭: 그래프에서 이동">'
-              + '<span class="ev ev-pop">' + (isRp ? '리포트' : 'UI호출') + '</span> ' + btn
-              + ' <span class="arw">→</span> ' + esc(t.programId) + (isRp ? ' 리포트' : ' 화면')
-              + (t.script ? ' <span class="muted">(스크립트)</span>' : '') + '</div>';
+              + '<span class="ev ev-pop">UI호출</span> ' + btn
+              + ' <span class="arw">→</span> ' + esc(t.programId) + ' 화면</div>';
           }
         });
         body += '</div>';
@@ -2639,7 +2618,6 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
   let _viewerGridColumnPopupMap = {}; // 현재 뷰어 화면의 gridId → {컬럼제목 -> {programId,label}}(컬럼 액션버튼 UI 팝업, RESOURCE_HTML 모드에서 컬럼 표 오버레이용)
   let _viewerInlineReportMap = {}; // 현재 뷰어 화면의 컴포넌트id → 그 컴포넌트에 통째로 박혀 있는 reportJsonData(별도 Rp 배포 레코드 없이 자체 미리보기가 가능한 리포트 컴포넌트용)
   let _viewerInitMap = {}; // 현재 뷰어 화면의 id → 초기값 추적 정보(정적/리터럴/스크립트→WF→테이블 체인)
-  let _viewerInfoMap = {}; // 현재 뷰어 화면의 id → 컴포넌트 정보("I" 배지, P.computeComponentInfoMap)
   let _vwCodeRaw = '';    // "코드" 탭에 지금 표시 중인 원본 텍스트(검색/하이라이트 재계산용)
   let _vwCodeHitIdx = -1; // 코드 검색 결과 중 현재 포커스된(강조색이 다른) 일치 인덱스
   let _vwZoom = 1;        // 리포트 디자인 미리보기 확대/축소 배율(1 = 100%). 새 노드를 열 때 초기화.
@@ -2660,7 +2638,6 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
   let _uiTabGridColumnPopupMap = {};
   let _uiTabInlineReportMap = {}; // 탭 버전 — 위 _viewerInlineReportMap 과 동일한 용도
   let _uiTabInitMap = {};
-  let _uiTabInfoMap = {};
   let _uiTabDict = { single: {}, col: {} }; // 이 탭 전용 다국어 라벨 사전(모달의 _viewerDict 와 공유하지 않음 — 서로 다른 노드를 동시에 볼 수 있어야 하므로)
   let _uiTabZoom = 1;             // 이 탭의 리포트 미리보기 확대/축소 배율(모달의 _vwZoom 과 별개)
   let _uiTabReportDocHtml = '';   // 이 탭에 지금 표시 중인 리포트 문서 원문(PDF/이미지 내보내기용, 모달의 _vwReportDocHtml 과 별개)
@@ -2726,9 +2703,9 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
   }
 
   // 리포트(Rp)의 실제 데이터를 채우는 WF 전체 스텝 목록을 가져온다("SQL 보기" 패널용).
-  // b_report_file(_tenant) → SERVICE_UID 경로로 리포트 데이터 공급 WF를 찾아, 그 WF 안의 모든
-  // 스텝(반복문/분기 내부 포함)을 통째로 돌려준다. (헤더 라벨은 이 경로가 아니라 z_dd_lang 으로
-  // 조회한다 — resolveReportHeaderLabels() 참고.) 온라인 DB 접속과 오프라인(report_link/report_link_tenant 를 [데이터 관리]에서
+  // 위 resolveReportHeaderLabels() 와 같은 경로(b_report_file(_tenant) → SERVICE_UID)로 WF를
+  // 찾지만, 이번엔 라벨 하나만 뽑는 게 아니라 그 WF 안의 모든 스텝(반복문/분기 내부 포함)을
+  // 통째로 돌려준다. 온라인 DB 접속과 오프라인(report_link/report_link_tenant 를 [데이터 관리]에서
   // 미리 받아둔 경우) 모두 지원 — fetchWave() 처럼 offlineActive 여부로 두 경로를 나눈다.
   async function resolveReportQuerySteps(raw) {
     // 주의: demoMode 는 "라이브 DB에 붙어있지 않다"는 뜻으로도 쓰여 오프라인 모드에서도 true다
@@ -2787,25 +2764,14 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
   // 업그레이드한다 — 관리자가 그리드 커스터마이징을 아예 안 했으면(테이블에 그 그리드 행이 없으면)
   // 조용히 스냅샷을 그대로 둔다. hostDoc 이 그 사이 다른 화면으로 바뀌었으면(문서 자체가 달라짐)
   // 아무것도 안 한다.
-  // snapshotGo: 이 그리드의 배포 스냅샷 gridOptions(RESOURCE_JSON) — 실시간 컬럼 행에 없는 콤보 바인딩
-  // (serviceId/serviceUid/beforeComboCall 등)과 그리드 제목을 보충한다(P.mapLiveGridColumns 참고).
-  function upgradeGridColumnsWithLiveData(hostDoc, gridElm, gridId, programId, dict, popupMap, snapshotGo) {
+  function upgradeGridColumnsWithLiveData(hostDoc, gridElm, gridId, programId, dict, popupMap) {
     fetchLiveGridConfig(programId, gridId).then((result) => {
       if (!result || !result.columns || !result.columns.length) return;
       if (!gridElm || gridElm.ownerDocument !== hostDoc || !hostDoc.contains(gridElm)) return; // 그 사이 다른 화면으로 이동
       const popupByTitle = (popupMap && (popupMap[gridId] || popupMap.__nogrid__)) || {};
-      // 이 문서가 어느 호스트(모달/UI 탭)의 미리보기인지 — 새로 끼운 표의 배지 바인딩과 정보 맵 갱신 대상.
-      const tabFrame = el('uiTabDesignView');
-      const hostKind = (tabFrame && tabFrame.contentDocument === hostDoc) ? 'tab' : 'modal';
-      const infoMap = hostKind === 'tab' ? _uiTabInfoMap : _viewerInfoMap;
-      // 그리드 제목은 배포 스냅샷 쪽 정보에서 가져온다(실시간 컬럼 행에는 그리드 제목이 없음).
-      const gridTitle = (snapshotGo && snapshotGo.title) || '';
-      const snapshotCols = (snapshotGo && Array.isArray(snapshotGo.columns)) ? snapshotGo.columns : [];
       let html = '';
-      let liveCols = [];
       try {
-        liveCols = P.mapLiveGridColumns(result.columns, snapshotCols);
-        const cols = P.computeGridColumnDefs({ gridId, title: gridTitle, columns: liveCols }, (navKey) => store.nodes.get(navKey), popupByTitle, dict);
+        const cols = P.computeGridColumnDefs({ columns: P.mapLiveGridColumns(result.columns) }, (navKey) => store.nodes.get(navKey), popupByTitle, dict);
         html = P.renderGridColumnsTableFromDefs(cols);
       } catch (e) { return; }
       if (!html) return;
@@ -2813,16 +2779,8 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       wrap.innerHTML = html;
       const fresh = wrap.firstChild;
       if (!fresh) return;
-      // 실시간 컬럼 기준으로 이 그리드의 컬럼 정보("I" 배지)를 다시 채운다(스냅샷 정보는 지우고 교체).
-      Object.keys(infoMap).forEach(k => { if (infoMap[k] && infoMap[k].gridId === gridId && k.indexOf('grid:') === 0) delete infoMap[k]; });
-      liveCols.forEach(col => {
-        const info = P.gridColumnInfo(gridId, gridTitle, col);
-        if (info) infoMap[P.gridColumnInfoKey(gridId, col)] = info;
-      });
       const old = gridElm.querySelector('.dz-grid-cols-wrap');
       if (old) old.replaceWith(fresh); else gridElm.appendChild(fresh);
-      bindNavElements(fresh, hostKind);
-      bindInfoBadgeElements(fresh, hostKind);
     }).catch(() => { /* 무시 */ });
   }
 
@@ -3085,9 +3043,7 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       _designLinksBoundModal = null;   // 새 문서를 그리므로 링크 바인딩 상태 초기화
       _designTabsBoundModal = null;    // 탭 바인딩 상태도 함께 초기화
       _initBadgesBoundModal = null;    // 초기값 배지 바인딩 상태도 함께 초기화
-      _infoBadgesBoundModal = null;    // 컴포넌트 정보 배지 바인딩 상태도 함께 초기화
       { const ivBox = el('vwInitBox'); if (ivBox) ivBox.style.display = 'none'; } // 다른 화면 정보가 남아있지 않도록 숨김
-      hideInfoBox('modal');
       const raw = _viewerRaw || {};
       // 리포트(Rp): REPORT_JSON 좌표/스타일로 재구성한 "레이아웃 추정 미리보기".
       // 실제 ActiveReportsJS 뷰어(CDN)는 라이선스/네트워크 이슈로 제거하고, 이 방식만 사용한다.
@@ -3135,13 +3091,11 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       // 초기값 추적 맵(정적/리터럴/스크립트→WF→테이블 체인) — html/json 두 렌더 경로 모두에서 필요하므로
       // 모드가 정해지기 전에 한 번만 계산해 둔다.
       const initMapForNode = (rj && P.computeInitValueMap) ? P.computeInitValueMap(rj) : {};
-      // 컴포넌트 정보("I" 배지) 맵 — 초기값 맵과 같은 이유로 모드 결정 전에 한 번 계산한다.
-      const infoMapForNode = rj ? P.computeComponentInfoMap(rj) : {};
       if (htmlRes && htmlRes.text) { bodyHtml = translateHtmlLabels(htmlRes.text, _viewerDict); mode = 'html'; }
       // 2) 폴백: RESOURCE_HTML 이 없으면 RESOURCE_JSON 으로 근사 재구성
       if (!bodyHtml && rj) {
         try {
-          const built = P.buildDesignHtml(rj, raw.RESOURCE_HTML || '', _viewerDict, (navKey) => store.nodes.get(navKey), initMapForNode, raw.RESOURCE_JS, infoMapForNode);
+          const built = P.buildDesignHtml(rj, raw.RESOURCE_HTML || '', _viewerDict, (navKey) => store.nodes.get(navKey), initMapForNode, raw.RESOURCE_JS);
           if (built) { bodyHtml = built; mode = 'json'; }
         } catch (e) { /* 렌더 불가 */ }
       }
@@ -3166,7 +3120,6 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       // 초기값 배지: html 모드는 DOM 오버레이로 붙이고(applyInitValueOverlay), json 모드는 buildDesignHtml 이
       // 이미 마크업에 직접 심어 준다. bindInitBadges 는 클릭 핸들러 바인딩용이라 모드에 상관없이 항상 채워둔다.
       _viewerInitMap = rj ? initMapForNode : {};
-      _viewerInfoMap = infoMapForNode;
       if (bodyHtml) {
         // 검증 메시지 토글 기본 상태(_vwShowValMsg=false)를 최초 렌더부터 반영 — 껐다 켤 때 깜빡이지 않게
         const wrapCls = (mode === 'json' ? 'daaf-preview dz-root' : 'daaf-preview') + (_vwShowValMsg ? '' : ' dz-hide-valmsg');
@@ -3191,29 +3144,25 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
           // 초기값(IV) 배지: html 모드는 DOM 오버레이로 붙여야 하고, json 모드는 buildDesignHtml 이 이미
           // 마크업에 심어뒀으므로 바인딩만 하면 된다.
           if (mode === 'html') { try { applyInitValueOverlay(iframe, _viewerInitMap); } catch (e) { /* 무시 */ } }
-          if (mode === 'html') { try { applyInfoOverlay(iframe, _viewerInfoMap); } catch (e) { /* 무시 */ } }
           try { applyValidationMsgOverlay(iframe); } catch (e) { /* 무시 */ }
           try { preventDesignNavigation(iframe); } catch (e) { /* 무시 */ }
           try { bindDesignTabs(iframe); } catch (e) { /* 무시 */ }
           bindDesignLinks(iframe);
           try { bindInitBadges(iframe, _viewerInitMap); } catch (e) { /* 무시 */ }
-          try { bindInfoBadges(iframe, 'modal'); } catch (e) { /* 무시 */ }
           // 그리드가 있으면(모드 무관 — json 은 data-grid-id, html 은 _viewerGridIds) 배포
           // 스냅샷 컬럼 표를 z_grid_columns 실시간 값으로 백그라운드에서 업그레이드한다.
           try {
             const programId = raw && raw.PROGRAM_ID;
-            // 배포 스냅샷의 그리드 정의 — 실시간 컬럼에 빠진 콤보 바인딩을 보충하는 데 쓴다.
-            const snapGo = rj ? P.collectGridOptionsMap(rj) : {};
             if (programId && fdoc) {
               if (mode === 'html') {
                 (_viewerGridIds || new Set()).forEach((gid) => {
                   const gridElm = fdoc.getElementById(gid);
-                  if (gridElm) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _viewerDict.single, _viewerGridColumnPopupMap, snapGo[gid]);
+                  if (gridElm) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _viewerDict.single, _viewerGridColumnPopupMap);
                 });
               } else {
                 fdoc.querySelectorAll('[data-grid-id]').forEach((gridElm) => {
                   const gid = gridElm.getAttribute('data-grid-id');
-                  if (gid) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _viewerDict.single, _viewerGridColumnPopupMap, snapGo[gid]);
+                  if (gid) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _viewerDict.single, _viewerGridColumnPopupMap);
                 });
               }
             }
@@ -3931,328 +3880,6 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  /* ---------- 컴포넌트 정보("I" 배지) ----------
-   * 디자인 미리보기의 입력 컴포넌트마다 "I" 배지를 붙이고, 누르면 그 컴포넌트의 종합정보 패널을 띄운다.
-   * 패널 틀/동작(위치, 접기/펼치기, 같은 배지 재클릭 시 닫기)은 IV(초기값) 패널과 같다. 두 패널은 같은
-   * 자리에 뜨므로 한쪽을 열면 다른 쪽은 닫는다(겹쳐 보이지 않게).
-   * - 기본정보는 화면 정의(P.computeComponentInfoMap)에서,
-   * - 테이블.컬럼 매핑은 이 화면이 호출하는 WF 들의 엔티티 정의(P.extractEntityFieldMap)에서,
-   * - 공통코드(MAJOR_CD)는 콤보 조회조건 + 콤보 조회 WF 의 SQL 상수(P.extractCodes)에서 찾는다.
-   * - 코드 목록(B_MINOR_V)은 DB/오프라인에서 실시간 조회한다(새 클라이언트 필요 — 예전 클라이언트면 안내).
-   */
-  let _infoBoxCollapsed = false;
-  let _infoBadgesBoundModal = null;
-  let _infoBadgesBoundTab = null;
-
-  // RESOURCE_HTML(원본 마크업) 모드에서 "I" 배지를 오버레이로 붙인다(json 모드는 buildDesignHtml 이 직접 심음).
-  // IV 오버레이 다음에 호출되므로 같은 라벨 슬롯에서 IV 오른쪽에 붙는다.
-  function applyInfoOverlay(iframe, infoMap) {
-    if (!infoMap || !Object.keys(infoMap).length) return;
-    let doc = null;
-    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
-    catch (e) { return; }
-    if (!doc || !doc.body) return;
-    Object.keys(infoMap).forEach(id => {
-      // 그리드 컬럼 정보(grid:그리드ID:컬럼)는 컬럼 표 안에 배지가 이미 그려지므로 여기선 건너뛴다.
-      if (id.indexOf('grid:') === 0) return;
-      const elm = resolveOverlayTarget(doc, id);
-      if (!elm || elm.getAttribute('data-dz-info') === '1') return;
-      elm.setAttribute('data-dz-info', '1');
-      const slot = getOrCreateLabelBadgeSlot(doc, elm, id);
-      if (!slot) return;
-      const badge = doc.createElement('span');
-      badge.className = 'dz-link-tag dz-info-tag';
-      badge.textContent = 'I';
-      badge.title = '컴포넌트 정보 보기 (클릭)';
-      badge.setAttribute('data-info-id', id);
-      slot.appendChild(badge);
-    });
-  }
-
-  // 디자인 미리보기 안의 "I" 배지에 클릭 핸들러를 건다(bindInitBadges 와 같은 패턴 — 호스트별 중복 바인딩 방지).
-  // 정보 맵은 클릭 시점에 호스트의 현재 맵(_viewerInfoMap/_uiTabInfoMap)에서 읽는다 — 그리드 컬럼 표가
-  // 실시간 컬럼(z_grid_columns)으로 나중에 교체되면 그 컬럼 정보가 맵에 추가되기 때문(upgradeGridColumnsWithLiveData).
-  function bindInfoBadges(iframe, hostKind) {
-    hostKind = hostKind === 'tab' ? 'tab' : 'modal';
-    let doc = null;
-    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
-    catch (e) { return; }
-    if (!doc || !doc.body) return;
-    if (hostKind === 'tab') {
-      if (_infoBadgesBoundTab === doc) return;
-      _infoBadgesBoundTab = doc;
-    } else {
-      if (_infoBadgesBoundModal === doc) return;
-      _infoBadgesBoundModal = doc;
-    }
-    bindInfoBadgeElements(doc, hostKind);
-  }
-  // root(문서 또는 새로 끼워 넣은 요소) 아래의 아직 바인딩되지 않은 "I" 배지에만 핸들러를 건다.
-  function bindInfoBadgeElements(root, hostKind) {
-    const doc = root.ownerDocument || root;
-    root.querySelectorAll('[data-info-id]').forEach(elm => {
-      if (elm.getAttribute('data-dz-info-bound') === '1') return;
-      elm.setAttribute('data-dz-info-bound', '1');
-      elm.style.cursor = 'pointer';
-      elm.addEventListener('click', (e) => {
-        e.preventDefault(); e.stopPropagation();
-        const id = elm.getAttribute('data-info-id');
-        if (!id) return;
-        const box = el(hostKind === 'tab' ? 'uiTabInfoBox' : 'vwInfoBox');
-        const isOpen = box && box.style.display !== 'none' && box.getAttribute('data-current-id') === id;
-        doc.querySelectorAll('.dz-info-tag.dz-info-on').forEach(b => b.classList.remove('dz-info-on'));
-        if (isOpen) {
-          box.style.display = 'none';
-          box.removeAttribute('data-current-id');
-          return;
-        }
-        const infoMap = hostKind === 'tab' ? _uiTabInfoMap : _viewerInfoMap;
-        const base = infoMap && infoMap[id];
-        if (!base) return;
-        elm.classList.add('dz-info-on');
-        showInfoDetail(id, base, hostKind);
-      });
-    });
-  }
-
-  // 정보 패널을 닫고 선택 표시를 지운다(다른 화면을 그리거나 IV 패널을 열 때).
-  function hideInfoBox(hostKind) {
-    const box = el(hostKind === 'tab' ? 'uiTabInfoBox' : 'vwInfoBox');
-    if (box) { box.style.display = 'none'; box.removeAttribute('data-current-id'); }
-    const iframe = el(hostKind === 'tab' ? 'uiTabDesignView' : 'vwDesignView');
-    try {
-      const doc = iframe && (iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document));
-      if (doc) doc.querySelectorAll('.dz-info-tag.dz-info-on').forEach(b => b.classList.remove('dz-info-on'));
-    } catch (e) { /* 무시 */ }
-  }
-
-  // 화면 정의만으로 알 수 없는 정보(테이블.컬럼, 콤보 WF SQL 의 공통코드)를 store 의 WF 노드로 보강한다.
-  // uiKey: 지금 미리보기 중인 화면 노드 key — 이 화면이 호출(calls)하는 WF 들의 엔티티 정의에서 컬럼을 찾는다.
-  function collectComponentInfo(base, uiKey) {
-    const field = base.dataBinding || base.id;
-    const columns = [];
-    let wfTotal = 0, wfWithoutRaw = 0;
-    if (uiKey) {
-      store.edges.forEach(e => {
-        if (e.from !== uiKey || e.relType !== 'calls') return;
-        const wf = store.nodes.get(e.to);
-        if (!wf || wf.type !== 'WF') return;
-        wfTotal++;
-        const text = wf.raw && wf.raw.RESOURCE_WF;
-        if (!text) { wfWithoutRaw++; return; }
-        const fmap = P.extractEntityFieldMap(text);
-        const hits = (fmap[field] || []).concat(field !== base.id ? (fmap[base.id] || []) : []);
-        hits.forEach(h => {
-          const key = (h.table + '.' + h.column).toLowerCase();
-          const ex = columns.find(c => c.key === key);
-          const src = wf.id || ('uid=' + wf.uid);
-          if (ex) { if (!ex.sources.includes(src)) ex.sources.push(src); }
-          else columns.push(Object.assign({ key, sources: [src] }, h));
-        });
-      });
-    }
-    // 여러 WF(저장/이력/콤보 등)가 같은 필드를 각자 다른 테이블로 정의하는 경우가 흔하다 — 근거 WF 가
-    // 많은(=화면의 주 테이블일 가능성이 높은) 매핑부터, 테이블명이 없는 정의는 맨 뒤로 정렬한다.
-    columns.sort((a, b) => (!!b.table - !!a.table) || (b.sources.length - a.sources.length));
-    const majorCds = base.majorCds.map(m => Object.assign({}, m));
-    let comboWf = null;
-    if (base.combo && (base.combo.serviceUid || base.combo.serviceId)) {
-      const navKey = base.combo.serviceUid ? ('WF:u' + base.combo.serviceUid) : ('WF:s' + base.combo.serviceId);
-      const node = store.nodes.get(navKey);
-      const text = node && node.raw && node.raw.RESOURCE_WF;
-      comboWf = { navKey, exists: !!node, hasRaw: !!text };
-      if (text) {
-        P.extractCodes(text).major.forEach(code => {
-          if (!majorCds.some(m => m.code === code)) majorCds.push({ code, source: '콤보 WF SQL' });
-        });
-      }
-    }
-    return { columns, wfTotal, wfWithoutRaw, majorCds, comboWf };
-  }
-
-  // [컴포넌트 정보] B_MINOR_V 코드 목록 조회 — 온라인/오프라인 공통(resolveConfigRefValue 와 같은 분기 순서).
-  async function resolveMinorCodes(majorCd) {
-    if (demoMode && !offlineActive) return { ok: false, reason: 'demo' };
-    if (!majorCd) return { ok: false, reason: 'no-major-cd' };
-    try {
-      const tenantId = el('tenantId').value.trim() || '*', coCd = el('coCd').value.trim() || '*';
-      const lang = (el('langSel') && el('langSel').value) || 'ko';
-      if (offlineActive && WaveOffline.isOnline()) {
-        if (!window.api.offlineQueryMinorCodes) return { ok: false, reason: 'old-client' };
-        const r = await window.api.offlineQueryMinorCodes({ filePath: WaveOffline.folder(), majorCd, tenantId, coCd, lang });
-        if (!r || !r.ok) return { ok: false, reason: (r && r.error) || 'offline-query-failed' };
-        return { ok: true, rows: r.rows || [] };
-      }
-      if (!cfg) return { ok: false, reason: 'no-cfg' };
-      if (!window.api.fetchMinorCodes) return { ok: false, reason: 'old-client' };
-      const r = await window.api.fetchMinorCodes({ cfg, majorCd, tenantId, coCd, lang });
-      if (!r || !r.ok) return { ok: false, reason: (r && r.error) || 'query-failed' };
-      return { ok: true, rows: r.rows || [] };
-    } catch (e) { return { ok: false, reason: String(e && e.message ? e.message : e) }; }
-  }
-
-  async function runMinorCodesFetch(btn) {
-    const majorCd = btn.getAttribute('data-major-cd');
-    const row = btn.closest('.ci-code');
-    const resultElm = row && row.querySelector('.ci-code-result');
-    if (!majorCd || !resultElm) return;
-    btn.disabled = true;
-    btn.textContent = '조회 중…';
-    const res = await resolveMinorCodes(majorCd);
-    btn.disabled = false;
-    btn.textContent = '↻ 다시 조회';
-    resultElm.classList.remove('iv-live-error');
-    if (!res.ok) {
-      resultElm.textContent = res.reason === 'demo' ? 'DB에 연결되어 있지 않아 코드 목록을 조회할 수 없습니다(DB 접속 또는 오프라인 파일 필요).'
-        : res.reason === 'no-cfg' ? 'DB 접속 정보가 없습니다.'
-        : res.reason === 'old-client' ? '코드 목록 조회는 새 버전 클라이언트(1.2.0 이상)에서 지원됩니다. 클라이언트를 다시 설치해 주세요.'
-        : ('조회 실패: ' + res.reason);
-      resultElm.classList.add('iv-live-error');
-      return;
-    }
-    // 테넌트/회사 필터가 '*' 이면 회사별로 같은 코드가 여러 번 올 수 있다 — 코드 기준 첫 행만 남긴다.
-    const seen = new Set();
-    const rows = res.rows.filter(r => { const k = String(r.MINOR_CD); if (seen.has(k)) return false; seen.add(k); return true; });
-    if (!rows.length) {
-      resultElm.textContent = 'B_MINOR_V 에 MAJOR_CD=' + majorCd + ' 코드가 없습니다(현재 언어/테넌트·회사 기준).';
-      resultElm.classList.add('iv-live-error');
-      return;
-    }
-    const dup = res.rows.length - rows.length;
-    resultElm.innerHTML = '<table class="ci-code-table"><thead><tr><th>코드</th><th>코드명</th><th>사용</th></tr></thead><tbody>'
-      + rows.map(r => '<tr' + (r.USE_YN === 'N' ? ' class="ci-unused"' : '') + '><td>' + escHtmlLite(r.MINOR_CD) + '</td><td>'
-        + escHtmlLite(r.MINOR_NM == null ? '' : r.MINOR_NM) + '</td><td>' + escHtmlLite(r.USE_YN == null ? '' : r.USE_YN) + '</td></tr>').join('')
-      + '</tbody></table><div class="mut ci-note">' + rows.length + '건'
-      + (dup > 0 ? ' · 테넌트/회사 미지정이라 회사별 중복 ' + dup + '건은 생략' : '') + '</div>';
-  }
-
-  function showInfoDetail(compId, base, hostKind) {
-    hostKind = hostKind === 'tab' ? 'tab' : 'modal';
-    const box = el(hostKind === 'tab' ? 'uiTabInfoBox' : 'vwInfoBox');
-    if (!box) return;
-    // IV 패널과 같은 자리에 뜨므로 IV 패널은 닫는다.
-    const ivBox = el(hostKind === 'tab' ? 'uiTabInitBox' : 'vwInitBox');
-    if (ivBox) { ivBox.style.display = 'none'; ivBox.removeAttribute('data-current-id'); }
-    box.setAttribute('data-current-id', compId);
-    if (!box.hasAttribute('data-positioned')) {
-      const pane = el(hostKind === 'tab' ? 'uiTabDesignPane' : 'vwDesignPane');
-      const paneW = (pane && pane.clientWidth) || 900;
-      const w = box.offsetWidth || 360;
-      box.style.left = Math.max(12, paneW - w - 12) + 'px';
-      box.style.right = 'auto';
-      box.style.top = '12px';
-      box.setAttribute('data-positioned', '1');
-    }
-    const uiKey = hostKind === 'tab' ? _uiTabKey : _viewerKey;
-    const x = collectComponentInfo(base, uiKey);
-    const kv = (k, v) => '<div class="kv"><span>' + escHtmlLite(k) + '</span><b>' + v + '</b></div>';
-    const code = (s) => '<code class="ci-code-inline">' + escHtmlLite(s) + '</code>';
-    const chip = (s, cls) => '<span class="ci-chip' + (cls ? ' ' + cls : '') + '">' + escHtmlLite(s) + '</span>';
-    let html = '';
-    // 1) 기본
-    let b = kv('라벨', escHtmlLite(base.label || '(없음)'));
-    if (base.gridId) b += kv('그리드', escHtmlLite((base.gridTitle ? base.gridTitle + ' · ' : '') + base.gridId));
-    b += kv(base.gridId ? '컬럼 ID' : '컴포넌트 ID', code(base.id))
-      + kv('유형', escHtmlLite([base.compClass, base.object].filter(Boolean).join(' · ') || '-'))
-      + kv(base.gridId ? '필수 / 읽기전용(편집불가)' : '필수 / 읽기전용', (base.required ? 'Y' : 'N') + ' / ' + (base.readonly ? 'Y' : 'N'));
-    if (base.hidden) b += kv('표시', '숨김');
-    if (base.maxlength) b += kv('최대 길이', escHtmlLite(base.maxlength));
-    if (base.dateType) b += kv('날짜 형식', escHtmlLite(base.dateType));
-    if (base.defaultValue) b += kv('기본값(정적)', escHtmlLite(base.defaultValue));
-    if (base.radioItems.length) {
-      b += '<div class="iv-row"><span class="iv-label">선택 항목</span>'
-        + base.radioItems.map(r => chip(r.value + (r.label ? ' : ' + r.label : ''))).join(' ') + '</div>';
-    }
-    html += '<div class="iv-card ci-card ci-basic"><div class="iv-card-head">기본</div>' + b + '</div>';
-    // 2) 데이터 매핑
-    let d = kv('바인딩 필드', base.dataBinding ? code(base.dataBinding) : '<span class="mut">(없음)</span>');
-    if (x.columns.length) {
-      x.columns.forEach(c => {
-        d += kv('테이블.컬럼', escHtmlLite((c.table ? c.table.toUpperCase() + '.' : '') + c.column.toUpperCase())
-          + (c.pk ? ' ' + chip('PK', 'ci-chip-pk') : ''));
-        d += kv('타입 / NULL', escHtmlLite((c.columnType || '?') + ' / ' + (c.required ? 'NOT NULL' : 'NULL 허용')));
-        const shown = c.sources.slice(0, 3).map(s => escHtmlLite(s)).join(', ');
-        const more = c.sources.length > 3 ? ' <span class="mut" title="' + escHtmlLite(c.sources.slice(3).join(', ')) + '">외 ' + (c.sources.length - 3) + '개</span>' : '';
-        d += '<div class="iv-row"><span class="iv-label">근거(엔티티 정의 WF)</span>' + shown + more + '</div>';
-      });
-    } else {
-      const why = !uiKey ? '현재 화면이 그래프에 없어 연결 WF 를 알 수 없습니다.'
-        : !x.wfTotal ? '이 화면이 호출하는 WF 가 파도타기 결과에 없습니다.'
-        : ('이 화면이 호출하는 WF ' + x.wfTotal + '개의 엔티티 정의에서 이 필드를 찾지 못했습니다'
-          + (x.wfWithoutRaw ? '(그중 ' + x.wfWithoutRaw + '개는 내용 미조회)' : '') + '.');
-      d += '<div class="mut ci-note">' + escHtmlLite(why) + '</div>';
-    }
-    html += '<div class="iv-card ci-card ci-map"><div class="iv-card-head">데이터 매핑</div>' + d + '</div>';
-    // 3) 콤보
-    if (base.combo) {
-      const c = base.combo;
-      const wfLabel = (c.serviceId || '') + (c.serviceUid ? ' · UID ' + c.serviceUid : '');
-      let cb = kv('조회 WF', escHtmlLite(wfLabel || '-')
-        + ' <button class="btn ghost xs ci-goto-wf" data-navkey="' + escHtmlLite(x.comboWf ? x.comboWf.navKey : '') + '"'
-        + (x.comboWf && x.comboWf.exists ? '' : ' disabled title="현재 파도타기 결과에 없음"') + '>🔀 WF로 이동</button>');
-      if (c.serviceName) cb += kv('WF 이름', escHtmlLite(c.serviceName));
-      if (c.idColumn || c.textColumn) cb += kv('값 / 표시 컬럼', escHtmlLite((c.idColumn || '-') + ' / ' + (c.textColumn || '-')));
-      if (c.comboType || c.multiColumn) cb += kv('콤보 형태', escHtmlLite([c.comboType, c.multiColumn ? '멀티컬럼' : ''].filter(Boolean).join(' · ')));
-      if (c.criteria.length) {
-        cb += '<div class="iv-row"><span class="iv-label">조회조건</span>'
-          + c.criteria.map(p => chip(p.paramId + ' = ' + (p.literal ? "'" + p.value + "'" : p.value))).join(' ') + '</div>';
-      }
-      html += '<div class="iv-card ci-card ci-combo"><div class="iv-card-head">콤보</div>' + cb + '</div>';
-    }
-    // 4) 공통코드
-    if (x.majorCds.length) {
-      let m = '';
-      x.majorCds.forEach(mc => {
-        m += '<div class="ci-code">'
-          + '<div class="kv"><span>MAJOR_CD</span><b class="ci-major">' + escHtmlLite(mc.code) + '</b></div>'
-          + '<div class="iv-row"><span class="iv-label">찾은 곳</span>' + chip(mc.source, 'ci-chip-src') + '</div>'
-          + '<div class="kv"><span>코드 목록</span><button class="btn ghost xs ci-fetch-codes" data-major-cd="' + escHtmlLite(mc.code) + '">▶ 코드 조회</button></div>'
-          + '<div class="ci-code-result"></div></div>';
-      });
-      html += '<div class="iv-card ci-card ci-codes"><div class="iv-card-head">공통코드 매핑</div>' + m + '</div>';
-    } else if (base.combo && x.comboWf && !x.comboWf.hasRaw) {
-      html += '<div class="iv-card ci-card ci-codes"><div class="iv-card-head">공통코드 매핑</div>'
-        + '<div class="mut ci-note">콤보 조회조건에 MAJOR_CD 가 없고, 조회 WF 내용이 파도타기 결과에 없어 SQL 을 확인할 수 없습니다.</div></div>';
-    }
-    // 5) 연관 이벤트
-    if (base.events.length || base.refreshedBy.length) {
-      let ev = '';
-      if (base.events.length) ev += '<div class="iv-row"><span class="iv-label">' + (base.gridId ? '이 컬럼의 스크립트' : '이 컴포넌트의 이벤트') + '</span>' + base.events.map(a => chip(a)).join(' ') + '</div>';
-      if (base.refreshedBy.length) {
-        ev += '<div class="iv-row"><span class="iv-label">이 콤보를 다시 조회하는 곳(refreshAjax)</span>'
-          + base.refreshedBy.map(r => chip((r.label ? r.label + '(' + r.id + ')' : r.id) + ' · ' + r.attr, 'ci-chip-ref')).join(' ') + '</div>';
-      }
-      html += '<div class="iv-card ci-card ci-basic"><div class="iv-card-head">연관 이벤트</div>' + ev + '</div>';
-    }
-    box.innerHTML = '<div class="fsb-head"><b>ℹ️ ' + (base.gridId ? '컬럼 정보 · ' : '컴포넌트 정보 · ') + escHtmlLite(base.label || base.id || compId) + '</b>'
-      + '<button class="fsb-min" title="' + (_infoBoxCollapsed ? '펼치기' : '접기') + '">'
-      + (_infoBoxCollapsed ? '▸ 펼치기' : '▾ 접기') + '</button></div>'
-      + '<div class="iv-body">' + html + '</div>';
-    box.classList.toggle('collapsed', _infoBoxCollapsed);
-    box.style.display = 'flex';
-    const minBtn = box.querySelector('.fsb-min');
-    if (minBtn) minBtn.addEventListener('click', () => {
-      _infoBoxCollapsed = !_infoBoxCollapsed;
-      box.classList.toggle('collapsed', _infoBoxCollapsed);
-      minBtn.textContent = _infoBoxCollapsed ? '▸ 펼치기' : '▾ 접기';
-      minBtn.title = _infoBoxCollapsed ? '펼치기' : '접기';
-    });
-    const gotoBtn = box.querySelector('.ci-goto-wf');
-    if (gotoBtn && !gotoBtn.disabled) {
-      gotoBtn.addEventListener('click', () => {
-        const navKey = gotoBtn.getAttribute('data-navkey');
-        if (!navKey) return;
-        if (hostKind === 'modal') { closeViewer(); gotoNodeInGraph(navKey); }
-        else { focusWfAndShowFlow(navKey); }
-      });
-    }
-    // 코드 목록은 IV 의 "지금 값 조회"처럼 패널이 열리면 바로 한 번 조회하고, 버튼은 재조회용으로 남긴다.
-    box.querySelectorAll('.ci-fetch-codes').forEach(btn => {
-      btn.addEventListener('click', () => runMinorCodesFetch(btn));
-      runMinorCodesFetch(btn);
-    });
-  }
-
   // 초기값 상세패널(#vwInitBox) 표시/갱신. flowStepBox 와 동일하게 "닫기" 없이 접기/펼치기만 지원 —
   // 화면을 옮기며(다른 배지 클릭) 계속 참고할 일이 많아 항상 화면에 남겨둔다.
   let _initBoxCollapsed = false;
@@ -4260,7 +3887,6 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     hostKind = hostKind === 'tab' ? 'tab' : 'modal';
     const box = el(hostKind === 'tab' ? 'uiTabInitBox' : 'vwInitBox');
     if (!box) return;
-    hideInfoBox(hostKind); // 컴포넌트 정보 패널과 같은 자리에 뜨므로 그쪽은 닫는다
     box.setAttribute('data-current-id', compId); // 같은 뱃지 재클릭 시 닫기(토글) 판단용
     if (!box.hasAttribute('data-positioned')) {
       const pane = el(hostKind === 'tab' ? 'uiTabDesignPane' : 'vwDesignPane');
@@ -4370,17 +3996,8 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       if (_designLinksBoundModal === doc) return;
       _designLinksBoundModal = doc;
     }
-    bindNavElements(doc, hostKind);
-  }
-
-  // root(문서 또는 새로 끼워 넣은 요소) 아래의 아직 바인딩되지 않은 연결 객체(data-navkey)에만 핸들러를 건다.
-  // 그리드 컬럼 표가 실시간 컬럼(z_grid_columns)으로 나중에 통째로 교체되면(upgradeGridColumnsWithLiveData)
-  // 새 표의 WF/UI 배지는 문서 단위 바인딩이 끝난 뒤에 생기므로, 그 요소만 따로 다시 바인딩한다.
-  // (예전엔 이 경우 교체된 컬럼 표의 배지가 눌러도 반응이 없었다.)
-  function bindNavElements(root, hostKind) {
-    root.querySelectorAll('[data-navkey]').forEach(elm => {
-      if (elm.getAttribute('data-dz-nav-bound') === '1') return;
-      elm.setAttribute('data-dz-nav-bound', '1');
+    const nodes = doc.querySelectorAll('[data-navkey]');
+    nodes.forEach(elm => {
       elm.style.cursor = 'pointer';
       const go = (e) => {
         e.preventDefault(); e.stopPropagation();
@@ -4511,9 +4128,7 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     _designLinksBoundTab = null;
     _designTabsBoundTab = null;
     _initBadgesBoundTab = null;
-    _infoBadgesBoundTab = null;
     { const ivBox = el('uiTabInitBox'); if (ivBox) ivBox.style.display = 'none'; } // 다른 화면 정보가 남아있지 않도록 숨김
-    hideInfoBox('tab');
     const raw = (n && n.raw) || {};
     if (emptyEl) emptyEl.style.display = 'none';
     const toolbar = el('uiTabDesignToolbar');
@@ -4553,11 +4168,10 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     let bodyHtml = null, mode = '';
     const rj = raw.RESOURCE_JSON;
     const initMapForNode = (rj && P.computeInitValueMap) ? P.computeInitValueMap(rj) : {};
-    const infoMapForNode = rj ? P.computeComponentInfoMap(rj) : {};
     if (raw.RESOURCE_HTML) { bodyHtml = translateHtmlLabels(raw.RESOURCE_HTML, _uiTabDict); mode = 'html'; }
     if (!bodyHtml && rj) {
       try {
-        const built = P.buildDesignHtml(rj, raw.RESOURCE_HTML || '', _uiTabDict, (navKey) => store.nodes.get(navKey), initMapForNode, raw.RESOURCE_JS, infoMapForNode);
+        const built = P.buildDesignHtml(rj, raw.RESOURCE_HTML || '', _uiTabDict, (navKey) => store.nodes.get(navKey), initMapForNode, raw.RESOURCE_JS);
         if (built) { bodyHtml = built; mode = 'json'; }
       } catch (e) { /* 렌더 불가 */ }
     }
@@ -4568,7 +4182,6 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
     _uiTabGridColumnPopupMap = (rj && P.computeGridColumnPopups) ? P.computeGridColumnPopups(rj, raw.RESOURCE_JS) : {};
     _uiTabInlineReportMap = (rj && P.computeInlineReportMap) ? P.computeInlineReportMap(rj) : {};
     _uiTabInitMap = rj ? initMapForNode : {};
-    _uiTabInfoMap = infoMapForNode;
     if (bodyHtml) {
       // 검증 메시지는 탭에는 토글 UI가 없으므로 항상 숨김 상태로 고정한다(모달의 기본값과 동일).
       const wrapCls = (mode === 'json' ? 'daaf-preview dz-root' : 'daaf-preview') + ' dz-hide-valmsg';
@@ -4583,27 +4196,23 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
         if (mode === 'html') { try { insertValidationMessages(fdoc, _uiTabDict); } catch (e) { /* 무시 */ } }
         try { applyHtmlLinkOverlay(iframe, _uiTabLinkMap, _uiTabGridIds, _uiTabGridButtonMap, _uiTabGridColsMap, _uiTabGridColumnPopupMap, _uiTabDict.single); } catch (e) { /* 무시 */ }
         if (mode === 'html') { try { applyInitValueOverlay(iframe, _uiTabInitMap); } catch (e) { /* 무시 */ } }
-        if (mode === 'html') { try { applyInfoOverlay(iframe, _uiTabInfoMap); } catch (e) { /* 무시 */ } }
         try { applyValidationMsgOverlay(iframe); } catch (e) { /* 무시 */ }
         try { preventDesignNavigation(iframe); } catch (e) { /* 무시 */ }
         try { bindDesignTabs(iframe, 'tab'); } catch (e) { /* 무시 */ }
         bindDesignLinks(iframe, 'tab');
         try { bindInitBadges(iframe, _uiTabInitMap, 'tab'); } catch (e) { /* 무시 */ }
-        try { bindInfoBadges(iframe, 'tab'); } catch (e) { /* 무시 */ }
         try {
           const programId = raw && raw.PROGRAM_ID;
-          // 배포 스냅샷의 그리드 정의 — 실시간 컬럼에 빠진 콤보 바인딩을 보충하는 데 쓴다.
-          const snapGo = rj ? P.collectGridOptionsMap(rj) : {};
           if (programId && fdoc) {
             if (mode === 'html') {
               (_uiTabGridIds || new Set()).forEach((gid) => {
                 const gridElm = fdoc.getElementById(gid);
-                if (gridElm) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _uiTabDict.single, _uiTabGridColumnPopupMap, snapGo[gid]);
+                if (gridElm) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _uiTabDict.single, _uiTabGridColumnPopupMap);
               });
             } else {
               fdoc.querySelectorAll('[data-grid-id]').forEach((gridElm) => {
                 const gid = gridElm.getAttribute('data-grid-id');
-                if (gid) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _uiTabDict.single, _uiTabGridColumnPopupMap, snapGo[gid]);
+                if (gid) upgradeGridColumnsWithLiveData(fdoc, gridElm, gid, programId, _uiTabDict.single, _uiTabGridColumnPopupMap);
               });
             }
           }
@@ -4937,8 +4546,6 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       '.dz-link-tag.dz-init-static{background:#a78bfa}',
       '.dz-link-tag.dz-init-lit{background:#7c3aed}',
       '.dz-link-tag.dz-init-chain{background:#5b21b6}',
-      '.dz-link-tag.dz-info-tag{background:#0f766e}',
-      '.dz-link-tag.dz-info-tag.dz-info-on{box-shadow:0 0 0 2px #fff,0 0 0 3px #0f766e}',
       '.dz-report.dz-linked{border-style:solid;border-color:#e08e0b}',
       '.dz-tree.dz-linked{border-style:solid;border-color:#2563eb}',
       '.dz-chart.dz-linked{border-style:solid;border-color:#e08e0b}',
@@ -5105,7 +4712,7 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       let nl = startLeft + (e.clientX - sx);
       let nt = startTop + (e.clientY - sy);
       // 화면 밖으로 완전히 벗어나지 않도록 약간의 여유를 두고 클램프
-      const w = boxEl.offsetWidth;
+      const w = boxEl.offsetWidth, h = boxEl.offsetHeight;
       const minX = 40 - w, maxX = window.innerWidth - 40;
       const minY = 0, maxY = window.innerHeight - 36;
       nl = Math.max(minX, Math.min(maxX, nl));
