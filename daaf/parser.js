@@ -106,18 +106,31 @@
 
   // 공통코드(MAJOR_CD/MINOR_CD) 참조 추출
   // - UI 콤보박스 정의: "majorCd":"SYS001" / "minorCd":"..."
+  //   + 콤보 조회조건(comboCriteria): {"paramId":"majorCd","paramValue":"'B9003'"} (실무 화면 대부분이 이 형태)
+  //   + 스크립트/컴파일된 RESOURCE_JS: $param["majorCd"] = 'B9003'; / $comboParam.majorCd = 'P1001';(그리드 콤보 beforeComboCall)
   // - WF/Rp SQL 상수:   MAJOR_CD = 'I0001' / MINOR_CD = 'xxx'
+  //   SQL 은 대소문자를 가리지 않으므로(a.major_cd = 'B9002' 처럼 소문자로 쓴 WF 가 실제로 있다)
+  //   대소문자 무시로 찾는다 — 예전엔 대문자만 잡아 소문자 SQL 의 코드가 통째로 빠졌다.
   function extractCodes(text) {
     if (!text) return { major: [], minor: [] };
     const major = new Set(), minor = new Set();
     let m;
+    // JSON 의 "majorCd"/"minorCd" 키는 코드값 외에 멀티컬럼 콤보의 헤더 라벨(options.headers 의
+    // {"minorCd":"업종"} 등)로도 쓰인다 — 코드 형태(영숫자/_-.*)인 값만 코드로 인정한다.
+    const isCodeLike = (v) => /^[A-Za-z0-9_.*-]+$/.test(v) && !/^(minorCd|minorNm|majorCd|majorNm)$/i.test(v);
     const majJson = /"majorCd"\s*:\s*"([^"]+)"/g;
-    while ((m = majJson.exec(text)) !== null) if (m[1]) major.add(m[1]);
+    while ((m = majJson.exec(text)) !== null) if (isCodeLike(m[1])) major.add(m[1]);
     const minJson = /"minorCd"\s*:\s*"([^"]+)"/g;
-    while ((m = minJson.exec(text)) !== null) if (m[1] && !/^(코드|명칭|요청자|minorCd|minorNm)/.test(m[1])) minor.add(m[1]);
-    const majSql = /\bMAJOR_CD\s*=\s*'([^']+)'/g;
+    while ((m = minJson.exec(text)) !== null) if (isCodeLike(m[1])) minor.add(m[1]);
+    const majCrit = /"paramId"\s*:\s*"majorCd"\s*,\s*"paramValue"\s*:\s*"'([^'"]+)'"/gi;
+    while ((m = majCrit.exec(text)) !== null) major.add(m[1]);
+    const majCritRev = /"paramValue"\s*:\s*"'([^'"]+)'"\s*,\s*"paramId"\s*:\s*"majorCd"/gi;
+    while ((m = majCritRev.exec(text)) !== null) major.add(m[1]);
+    const majJs = /\$(?:comboParam|param)\s*(?:\.\s*majorCd|\[\s*["']majorCd["']\s*\])\s*=\s*'([^']+)'/gi;
+    while ((m = majJs.exec(text)) !== null) major.add(m[1]);
+    const majSql = /\bMAJOR_CD\s*=\s*'([^']+)'/gi;
     while ((m = majSql.exec(text)) !== null) major.add(m[1]);
-    const minSql = /\bMINOR_CD\s*=\s*'([^']+)'/g;
+    const minSql = /\bMINOR_CD\s*=\s*'([^']+)'/gi;
     while ((m = minSql.exec(text)) !== null) minor.add(m[1]);
     return { major: [...major], minor: [...minor] };
   }
@@ -684,12 +697,35 @@
   // ADDITIONAL_OPTIONS(JSON 문자열)엔 serviceId/serviceUid/comboType 처럼 전용 컬럼이 없는 필드가
   // 들어있을 수 있어 먼저 펼쳐두고, 그 위에 확실한 DB 컬럼값으로 덮어써서 최신값이 항상 이기게 한다.
   function ynToBool(v) { return v === 'Y' || v === true || v === '1' || v === 1; }
-  function mapLiveGridColumns(rows) {
+  // snapshotColumns(선택): 같은 그리드의 배포 스냅샷 컬럼(RESOURCE_JSON gridOptions.columns). 실제 운영 화면에서
+  // 콤보 바인딩(serviceId/serviceUid/beforeComboCall …)은 컴파일된 화면 스크립트(RESOURCE_JS)에 들어 있어
+  // z_grid_columns 를 바꿔도 그대로 동작한다 — 그런데 z_grid_columns 행(ADDITIONAL_OPTIONS 포함)에는 이
+  // 바인딩이 없는 경우가 많아, 실시간 값으로 표를 교체하면 콤보 컬럼의 WF/I 배지가 통째로 사라졌다.
+  // 그래서 실시간 행에 값이 없는 바인딩 속성만 같은 이름(name/data)의 스냅샷 컬럼에서 보충한다
+  // (제목/순서/표시여부/폭 등 실시간으로 바뀌는 값은 그대로 실시간 값이 이긴다).
+  const LIVE_COL_FALLBACK_KEYS = ['serviceId', 'serviceUid', 'serviceName', 'idColumn', 'textColumn', 'comboType',
+    'isMuliColumn', 'comboCriteria', 'beforeComboCall', 'afterComboCall', 'options', 'dropdownTemplate', 'searchTp'];
+  const LIVE_COL_EXPLICIT = new Set(['NAME', 'DATA', 'TITLE', 'ALIGN', 'WIDTH', 'VISIBLE', 'SORT_ORDER', 'DATA_TYPE',
+    'EDIT_TYPE', 'REQUIRED', 'CELL_TEMPLATE', 'ADDITIONAL_OPTIONS']);
+  const snakeToCamel = (k) => String(k).toLowerCase().replace(/_([a-z0-9])/g, (m, c) => c.toUpperCase());
+  const isBlank = (v) => v == null || (typeof v === 'string' && v.trim() === '');
+  function mapLiveGridColumns(rows, snapshotColumns) {
+    const snapByName = {};
+    (Array.isArray(snapshotColumns) ? snapshotColumns : []).forEach(c => {
+      const k = c && (c.name || c.data);
+      if (k && !snapByName[String(k).toLowerCase()]) snapByName[String(k).toLowerCase()] = c;
+    });
     return (rows || []).map(r => {
       let addl = null;
       if (r && r.ADDITIONAL_OPTIONS) { try { addl = JSON.parse(r.ADDITIONAL_OPTIONS); } catch (e) { addl = null; } }
       const out = Object.assign({}, addl || {});
-      return Object.assign(out, {
+      // 전용 매핑이 없는 그 밖의 컬럼(예: SERVICE_ID 같은 컬럼이 테이블에 따로 있는 경우)도 camelCase 로 옮겨 둔다.
+      Object.keys(r || {}).forEach(k => {
+        if (LIVE_COL_EXPLICIT.has(k) || isBlank(r[k])) return;
+        const ck = snakeToCamel(k);
+        if (isBlank(out[ck])) out[ck] = r[k];
+      });
+      const mapped = Object.assign(out, {
         name: r.NAME,
         data: r.DATA || r.NAME,
         title: r.TITLE,
@@ -703,6 +739,9 @@
         cellTemplate: r.CELL_TEMPLATE,
         compId: out.compId || r.NAME
       });
+      const snap = snapByName[String(r.NAME || r.DATA || '').toLowerCase()];
+      if (snap) LIVE_COL_FALLBACK_KEYS.forEach(k => { if (isBlank(mapped[k]) && !isBlank(snap[k])) mapped[k] = snap[k]; });
+      return mapped;
     });
   }
 
@@ -740,6 +779,7 @@
         return {
           title,
           name: c.name || c.data || '',
+          infoKey: gridColumnInfo(go.gridId, go.title, c) ? gridColumnInfoKey(go.gridId, c) : null,
           align: c.align || 'left',
           width: c.width,
           required,
@@ -783,7 +823,9 @@
     const badgeRow = cols.map(c => {
       const badgesHtml = (c.links || []).map(link =>
         '<span class="dz-link-tag ' + link.cls + '" data-navkey="' + esc(link.navKey) + '" title="' + esc(link.title) + '" style="display:inline-block;margin:0;font-size:9px;font-weight:800;color:#fff;background:' + (badgeColorOf[link.cls] || '#12a150') + ';border-radius:4px;padding:0 5px;cursor:pointer">' + esc(link.badge) + '</span>'
-      ).join('');
+      ).join('')
+        // 콤보/공통코드 컬럼의 "I"(컴포넌트 정보) 배지 — 폼 컴포넌트의 I 배지와 같은 패널을 연다(app.js bindInfoBadges).
+        + (c.infoKey ? '<span class="dz-link-tag dz-info-tag" data-info-id="' + esc(c.infoKey) + '" title="컬럼 정보 보기 (클릭)" style="display:inline-block;margin:0;font-size:9px;font-weight:800;color:#fff;background:#0f766e;border-radius:4px;padding:0 5px;cursor:pointer">I</span>' : '');
       return '<th style="' + thBase(c.width) + 'padding:0;background:#eef2ff;height:24px">'
         + '<div style="display:flex;align-items:center;justify-content:center;gap:3px;height:24px;width:100%;box-sizing:border-box">' + badgesHtml + '</div></th>';
     }).join('');
@@ -799,12 +841,10 @@
     return renderGridColumnsTableFromDefs(computeGridColumnDefs(go, lookupNode, popupByTitle, dict));
   }
 
-  function buildDesignHtml(resourceJson, resourceHtml, dict, lookupNode, initMap, resourceJsText) {
+  // infoMap: computeComponentInfoMap() 결과 — 키(컴포넌트 id)가 있는 입력 컴포넌트에 "I"(컴포넌트 정보) 배지를 붙인다.
+  function buildDesignHtml(resourceJson, resourceHtml, dict, lookupNode, initMap, resourceJsText, infoMap) {
     let obj;
     try { obj = JSON.parse(resourceJson); } catch (e) { return null; }
-    // $pageObjects 공용 함수 → WF 호출 지도(필요할 때 한 번만 계산)
-    let _pageHelpers = null;
-    const getPageHelpers = () => _pageHelpers || (_pageHelpers = buildPageHelperMap(resourceJson, resourceJsText));
     const page = obj && obj.page;
     if (!page) return null;
     const langMap = extractLangMap(resourceHtml || '');
@@ -891,9 +931,14 @@
         ? ('<span class="dz-link-tag dz-init-tag ' + initCls + '" data-init-id="' + esc(pv.id) + '" title="초기값 추적 정보 보기 (클릭)">IV</span>')
         : '';
 
-      // 뱃지(숨김/연결/초기값)는 컨트롤 박스 안이 아니라 "라벨 텍스트 오른쪽"에 붙인다(요청사항:
+      // 컴포넌트 정보 배지("I"): 클릭하면(app.js bindInfoBadges) 컬럼 매핑/공통코드 등 종합정보 패널을 띄운다.
+      const infoTag = (infoMap && pv.id && Object.prototype.hasOwnProperty.call(infoMap, pv.id))
+        ? ('<span class="dz-link-tag dz-info-tag" data-info-id="' + esc(pv.id) + '" title="컴포넌트 정보 보기 (클릭)">I</span>')
+        : '';
+
+      // 뱃지(숨김/연결/초기값/정보)는 컨트롤 박스 안이 아니라 "라벨 텍스트 오른쪽"에 붙인다(요청사항:
       // 컴포넌트 안에 넣은 뱃지가 마음에 안 든다 — 그리드 제외 모든 컴포넌트는 라벨 우측으로).
-      const badgesInner = (hiddenBadge || linkTag || initTag) ? (hiddenBadge + linkTag + initTag) : '';
+      const badgesInner = (hiddenBadge || linkTag || initTag || infoTag) ? (hiddenBadge + linkTag + initTag + infoTag) : '';
       const badgeSlot = badgesInner ? ('<span class="dz-label-badges">' + badgesInner + '</span>') : '';
       const field = (inner) => '<div class="dz-field' + linkCls + hiddenCls + '"' + dataAttr + '>'
         + (label ? ('<label>' + esc(label) + req + badgeSlot + '</label>')
@@ -1008,6 +1053,7 @@
       const title = withExtra(navKey, idPart, 'WF 연결: ' + idPart + ' (더블클릭: 그래프 이동)');
       return { navKey, cls: 'lk-wf', badge: 'WF', title };
     }
+    let scriptFnIndex = null; // compLink 4-a 에서 처음 필요할 때 생성(getScriptIndex)
     function compLink(node, pv, o) {
       // 0) eventType 이 명시된 경우: 그 eventType 에 해당하는 링크(팝업/리포트)를 최우선으로 찾는다.
       if (pv.eventType === 'BTN_OPEN_POPUP' || pv.eventType === 'BTN_REPORT_PREVIEW') {
@@ -1064,17 +1110,20 @@
         //      extractStructuralButtonTriggers()(파도타기 그래프 확장)와 동일한 규칙을 여기
         //      (디자인 미리보기 배지)에도 적용해, "그래프엔 연결되는데 배지는 안 보임" 같은
         //      불일치가 생기지 않게 한다.
-        const pgmM = pv.usrEventFn.match(/calleePgmId\s*=\s*['"]([^'"]+)['"]/)
-          || pv.usrEventFn.match(/\bprogramId\s*[:=]\s*['"]([^'"]+)['"]/);
-        if (pgmM && pgmM[1]) {
-          const pgmId2 = pgmM[1];
+        //      $pageObjects["헬퍼"]() 를 거치거나 대상 ID 를 헬퍼 인자로 넘기는 경우도 함께 추적한다.
+        //      배지는 1개만 표시하므로 첫 번째 대상을 대표로 쓰고, 여러 건이면 툴팁에 "외 N건"을 붙인다.
+        if (!scriptFnIndex) scriptFnIndex = getScriptIndex(resourceJson, resourceJsText);
+        const popTargets = resolveScriptPopupTargets(pv.usrEventFn, scriptFnIndex, true);
+        if (popTargets.length) {
+          const pgmId2 = popTargets[0];
+          const extraPop = popTargets.length > 1 ? (' 외 ' + (popTargets.length - 1) + '건') : '';
           if (looksLikeReportId(pgmId2)) {
             const navKey = 'Rp:' + pgmId2;
-            const title = withExtra(navKey, pgmId2, '리포트 연결: ' + pgmId2 + ' · 직접호출(스크립트) (더블클릭: 그래프 이동)');
+            const title = withExtra(navKey, pgmId2, '리포트 연결: ' + pgmId2 + extraPop + ' · 직접호출(스크립트) (더블클릭: 그래프 이동)');
             return { navKey, cls: 'lk-rp', badge: 'Rp', title };
           }
           const navKey = 'UI:' + pgmId2;
-          const title = withExtra(navKey, pgmId2, '팝업 UI 연결: ' + pgmId2 + ' · 직접호출(스크립트) (더블클릭: 그래프 이동)');
+          const title = withExtra(navKey, pgmId2, '팝업 UI 연결: ' + pgmId2 + extraPop + ' · 직접호출(스크립트) (더블클릭: 그래프 이동)');
           return { navKey, cls: 'lk-ui', badge: 'UI', title };
         }
         // 4-b) ajax.postJson(... '/wf/{uid}/execute...' ...) 형태로 WF 를 직접 호출하는 경우
@@ -1083,17 +1132,20 @@
         //    빠져 있어 배지가 전혀 안 붙는 버그가 있었다 — 여기서도 동일하게 잡아준다.
         //    이 함수는 배지 1개만 표시하므로(복수 지원 X) 첫 번째 UID를 대표로 쓰고,
         //    여러 건이면 툴팁에 "외 N건"으로 알려준다.
-        //    + 화면 onLoad 에 정의된 $pageObjects 공용 함수를 거쳐 WF 를 호출하는 경우(구성원 탭 Search 버튼 등,
-        //    resolveScriptWfUids 가 호출 사슬을 따라간다).
-        if (pv.usrEventFn.indexOf('/execute') !== -1 || pv.usrEventFn.indexOf('$pageObjects') !== -1) {
-          const found = resolveScriptWfUids(pv.usrEventFn, getPageHelpers);
-          if (found.length) {
-            const uids = found.map(f => f.uid);
+        if (pv.usrEventFn.indexOf('/execute') !== -1) {
+          const wfCallRe = /\/wf\/(\d+)\/execute/g;
+          const uids = [];
+          const seen = new Set();
+          let wm;
+          while ((wm = wfCallRe.exec(pv.usrEventFn)) !== null) {
+            if (seen.has(wm[1])) continue;
+            seen.add(wm[1]); uids.push(wm[1]);
+          }
+          if (uids.length) {
             const navKey = 'WF:u' + uids[0];
             const idPart = 'uid=' + uids[0];
             const extraCnt = uids.length > 1 ? (' 외 ' + (uids.length - 1) + '건') : '';
-            const viaTxt = found[0].via ? (' · ' + found[0].via + '() 경유') : '';
-            const baseTitle = 'WF 연결: ' + idPart + extraCnt + ' · 직접호출(스크립트)' + viaTxt + ' (더블클릭: 그래프 이동)';
+            const baseTitle = 'WF 연결: ' + idPart + extraCnt + ' · 직접호출(스크립트) (더블클릭: 그래프 이동)';
             const title = withExtra(navKey, idPart, baseTitle);
             return { navKey, cls: 'lk-wf', badge: 'WF', title };
           }
@@ -1207,6 +1259,249 @@
     return out;
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // 스크립트 간접호출 팝업 추적
+  // ---------------------------------------------------------------------------------------------
+  // 실무 화면은 팝업을 선언적 BTN_OPEN_POPUP(form[].programId)이 아니라 스크립트로 여는 경우가 많다.
+  //   (1) 이벤트 본문에서 바로 여는 경우:   var calleePgmId = 'XXX'; popup.show(page, $url, ...)
+  //   (2) 헬퍼 함수를 거쳐 여는 경우:       usrEventFn = $pageObjects["fncOpenItemDocNoPopup"]();
+  //       → onLoad 에 정의된 그 함수 안에서 calleePgmId = 'PPISPUI0003'; popup.open(page, calleePgmId, ...)
+  //   (3) 대상 ID 를 인자로 넘기는 경우:    $pageObjects["fncOpenRefPopup"]('PPISPUI0005', '...', 'I');
+  //       → function(popId, ...) { ... popup.open(page, popId, ...) }
+  // 예전 규칙은 (1)만 이벤트 본문 안에서 찾았기 때문에 (2)(3)으로 열리는 팝업은 파도타기 그래프와
+  // 디자인 배지에서 통째로 빠졌다. 아래 함수들은 RESOURCE_JS + RESOURCE_JSON 안의 스크립트에서
+  // $pageObjects["이름"] = function(...){...} / function 이름(...){...} 정의를 모아 색인하고,
+  // 호출을 따라가(최대 SCRIPT_RESOLVE_MAX_DEPTH 단계) 실제로 열리는 팝업 프로그램 ID 를 찾는다.
+  // 실행하지 않는 정적 분석이므로 문자열 리터럴로 확정되는 대상만 잡는다(변수 계산값은 추적하지 않음).
+  const SCRIPT_RESOLVE_MAX_DEPTH = 4;
+  const PGM_ID_PAT = '[A-Za-z][A-Za-z0-9_]{2,}';
+
+  // text[openIdx] 의 여는 괄호에 짝이 맞는 닫는 괄호까지 잘라낸다. sliceBalanced 와 달리
+  // 문자열('', "", ``)과 주석(//, /* */) 안의 괄호는 세지 않는다 — 스크립트 안의 "{" 같은
+  // 문자열 때문에 함수 본문을 잘못 자르는 일을 막는다. 짝을 못 찾으면 null.
+  function sliceJsBlock(text, openIdx, openCh, closeCh) {
+    if (!text || text[openIdx] !== openCh) return null;
+    let depth = 0;
+    for (let i = openIdx; i < text.length; i++) {
+      const c = text[i];
+      if (c === '"' || c === "'" || c === '`') {
+        for (i++; i < text.length && text[i] !== c; i++) { if (text[i] === '\\') i++; }
+        continue;
+      }
+      if (c === '/' && text[i + 1] === '/') { const nl = text.indexOf('\n', i); if (nl < 0) return null; i = nl; continue; }
+      if (c === '/' && text[i + 1] === '*') { const ce = text.indexOf('*/', i + 2); if (ce < 0) return null; i = ce + 1; continue; }
+      if (c === openCh) depth++;
+      else if (c === closeCh) { depth--; if (depth === 0) return text.slice(openIdx, i + 1); }
+    }
+    return null;
+  }
+
+  // "a, 'b,c', fn(x, y)" → ["a", "'b,c'", "fn(x, y)"] (최상위 콤마로만 분리, 문자열/괄호 안의 콤마는 무시)
+  function splitTopLevelArgs(argText) {
+    const out = [];
+    let depth = 0, cur = '';
+    for (let i = 0; i < argText.length; i++) {
+      const c = argText[i];
+      if (c === '"' || c === "'" || c === '`') {
+        let j = i + 1;
+        for (; j < argText.length && argText[j] !== c; j++) { if (argText[j] === '\\') j++; }
+        cur += argText.slice(i, j + 1); i = j; continue;
+      }
+      if (c === '(' || c === '[' || c === '{') depth++;
+      else if (c === ')' || c === ']' || c === '}') depth--;
+      if (c === ',' && depth === 0) { out.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  }
+
+  function stringLiteralValue(argText) {
+    const m = String(argText || '').trim().match(/^(['"`])([^'"`$\\]*)\1$/);
+    return m ? m[2] : null;
+  }
+
+  // 코드 조각 안에서 "문자열 리터럴로 확정되는" 팝업 대상 프로그램 ID 를 찾는다.
+  //   - calleePgmId = 'XXX'                         (DaaF 팝업 스니펫 표준 변수)
+  //   - popup.open(page, 'XXX', ...)                (open 은 두 번째 인자가 프로그램 ID)
+  //   - '/common/builder/ui/p/XXX/view.do'          (popup.show 에 넘기는 URL 리터럴)
+  //   - programId: 'XXX' / programId = 'XXX'        (allowProgramIdKey 일 때만 — 버튼 이벤트 본문 한정.
+  //     페이지 전체 스크립트에서는 다른 용도의 programId 대입과 구분이 안 돼 오탐 위험이 있다)
+  function findDirectPopupTargets(code, allowProgramIdKey) {
+    const out = [];
+    if (!code) return out;
+    const pats = [
+      new RegExp('calleePgmId\\s*=\\s*[\'"](' + PGM_ID_PAT + ')[\'"]', 'g'),
+      new RegExp('popup\\.open\\s*\\(\\s*[^,()]+,\\s*[\'"](' + PGM_ID_PAT + ')[\'"]', 'g'),
+      new RegExp('/ui/p/(' + PGM_ID_PAT + ')/view', 'g')
+    ];
+    if (allowProgramIdKey) pats.push(new RegExp('\\bprogramId\\s*[:=]\\s*[\'"](' + PGM_ID_PAT + ')[\'"]', 'g'));
+    pats.forEach(re => {
+      let m;
+      while ((m = re.exec(code)) !== null) if (!out.includes(m[1])) out.push(m[1]);
+    });
+    return out;
+  }
+
+  // 함수 정의에서 "팝업 대상 ID 로 쓰이는 매개변수"의 위치(index) 목록을 찾는다.
+  //   function(popId, title) { popup.open(page, popId, ...) }      → [0]
+  //   function(pgm) { var calleePgmId = pgm; ... }                  → [0]
+  //   function(pgm) { $url = '.../ui/p/' + pgm + '/view.do'; ... }  → [0]
+  function findPopupParamIndexes(params, body) {
+    const idx = [];
+    params.forEach((p, i) => {
+      if (!p || !/^[A-Za-z_$][\w$]*$/.test(p)) return;
+      const ep = p.replace(/\$/g, '\\$');
+      const res = [
+        new RegExp('popup\\.open\\s*\\(\\s*[^,()]+,\\s*' + ep + '\\s*[,)]'),
+        new RegExp('calleePgmId\\s*=\\s*' + ep + '\\s*[;,\\n)]'),
+        new RegExp('/ui/p/[\'"`]?\\s*\\+\\s*' + ep + '\\b')
+      ];
+      if (res.some(re => re.test(body))) idx.push(i);
+    });
+    return idx;
+  }
+
+  // 스크립트 함수 색인: 이름 → [{ params, body, popupParamIdx }]
+  // 같은 이름이 여러 번 정의돼도(RESOURCE_JS 와 RESOURCE_JSON onLoad 에 같은 코드가 중복 저장됨) 모두 보관.
+  function indexScriptFunctions(texts) {
+    const index = {};
+    const add = (name, paramText, text, braceIdx) => {
+      let body = sliceJsBlock(text, braceIdx, '{', '}');
+      if (body == null) body = text.slice(braceIdx, braceIdx + 6000); // 짝을 못 찾으면 앞부분만이라도
+      const params = String(paramText || '').split(',').map(s => s.trim().replace(/\s*=.*$/, ''));
+      const list = index[name] || (index[name] = []);
+      if (list.some(d => d.body === body)) return;
+      list.push({ params, body, popupParamIdx: findPopupParamIndexes(params, body) });
+    };
+    const defRes = [
+      // $pageObjects["name"] = function(a, b) {   /   = async function(...) {
+      /\$pageObjects\s*\[\s*(['"])([A-Za-z_$][\w$]*)\1\s*\]\s*=\s*(?:async\s+)?function\s*[A-Za-z_$\w]*\s*\(([^)]*)\)\s*\{/g,
+      // $pageObjects["name"] = (a, b) => {
+      /\$pageObjects\s*\[\s*(['"])([A-Za-z_$][\w$]*)\1\s*\]\s*=\s*(?:async\s*)?\(([^)]*)\)\s*=>\s*\{/g,
+      // $pageObjects.name = function(...) {
+      /\$pageObjects\s*\.\s*()([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\s*[A-Za-z_$\w]*\s*\(([^)]*)\)\s*\{/g,
+      // function name(...) {   (스크립트 안의 일반 함수 선언)
+      /(?:^|[^\w$.])function\s+()([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{/g
+    ];
+    (texts || []).forEach(text => {
+      if (!text || typeof text !== 'string') return;
+      defRes.forEach(re => {
+        re.lastIndex = 0;
+        let m;
+        while ((m = re.exec(text)) !== null) add(m[2], m[3], text, m.index + m[0].length - 1);
+      });
+    });
+    return index;
+  }
+
+  // RESOURCE_JSON 안의 모든 문자열 값 중 스크립트로 보이는 것(onLoad, usrEventFn, afterSubmit 등)을 모은다.
+  function collectJsonScriptStrings(resourceJsonText) {
+    const out = [];
+    let obj;
+    try { obj = JSON.parse(resourceJsonText); } catch (e) { return out; }
+    (function walk(o) {
+      if (typeof o === 'string') {
+        if (/\$pageObjects|popup\.|calleePgmId|\/ui\/p\/|function\s*[\w$]*\s*\(/.test(o)) out.push(o);
+        return;
+      }
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) { o.forEach(walk); return; }
+      Object.keys(o).forEach(k => walk(o[k]));
+    })(obj);
+    return out;
+  }
+
+  // 같은 리소스를 여러 번(그래프 확장 / 상세 패널 / 디자인 미리보기) 파싱하므로 직전 결과를 재사용한다.
+  let _scriptIndexCache = { json: null, js: null, index: null };
+  function getScriptIndex(resourceJsonText, resourceJsText) {
+    const json = resourceJsonText || '', js = resourceJsText || '';
+    if (_scriptIndexCache.index && _scriptIndexCache.json === json && _scriptIndexCache.js === js) return _scriptIndexCache.index;
+    const index = indexScriptFunctions([js].concat(collectJsonScriptStrings(json)));
+    _scriptIndexCache = { json, js, index };
+    return index;
+  }
+
+  // 코드 조각(이벤트 본문 등)이 실제로 여는 팝업 프로그램 ID 목록(중복 제거, 발견 순).
+  // fnIndex: indexScriptFunctions() 결과. allowProgramIdKey: findDirectPopupTargets 참고.
+  function resolveScriptPopupTargets(code, fnIndex, allowProgramIdKey) {
+    const out = [];
+    const push = (id) => { if (id && !out.includes(id)) out.push(id); };
+    const visited = new Set();
+    (function walk(src, depth, allowKey) {
+      if (!src || depth > SCRIPT_RESOLVE_MAX_DEPTH) return;
+      findDirectPopupTargets(src, allowKey).forEach(push);
+      if (!fnIndex) return;
+      // $pageObjects["name"](args)  /  $pageObjects.name(args)  /  name(args) (색인에 있는 일반 함수만)
+      const callRe = /\$pageObjects\s*(?:\[\s*(['"])([A-Za-z_$][\w$]*)\1\s*\]|\.\s*([A-Za-z_$][\w$]*))\s*\(|(?:^|[^\w$.])([A-Za-z_$][\w$]*)\s*\(/g;
+      let m;
+      while ((m = callRe.exec(src)) !== null) {
+        const name = m[2] || m[3] || m[4];
+        const defs = fnIndex[name];
+        if (!defs || !defs.length) continue;
+        // 일반 함수 호출 매치의 경우 "function name(" 정의 자체를 호출로 오인하지 않게 거른다.
+        if (m[4] && /function\s*$/.test(src.slice(Math.max(0, m.index - 12), m.index + 1))) continue;
+        const parenIdx = m.index + m[0].length - 1;
+        const argBlock = sliceJsBlock(src, parenIdx, '(', ')');
+        const args = argBlock ? splitTopLevelArgs(argBlock.slice(1, -1)) : [];
+        defs.forEach(def => {
+          // (3) 대상 ID 를 인자로 넘기는 헬퍼: 호출부의 문자열 리터럴 인자를 대상으로 채택
+          def.popupParamIdx.forEach(i => push(stringLiteralValue(args[i])));
+          // (2) 헬퍼 본문 안에서 직접 여는 팝업 — 같은 본문은 한 번만 따라간다(순환 호출 방지)
+          if (visited.has(def.body)) return;
+          visited.add(def.body);
+          walk(def.body, depth + 1, false);
+        });
+      }
+    })(code, 0, !!allowProgramIdKey);
+    return out;
+  }
+
+  // 컴포넌트 트리 전체에서 "스크립트로 여는 팝업"을 BTN_OPEN_POPUP 트리거로 뽑는다.
+  // 버튼의 usrEventFn 은 extractStructuralButtonTriggers 가 라벨과 함께 이미 처리하므로, 여기서는
+  // 그 밖의 스크립트(입력창 blur/change 이벤트, 그리드 이벤트, beforeSubmit/afterSubmit, 페이지 onLoad 등)를
+  // 대상으로 한다. parseUi() 에서 가장 마지막에 합쳐지므로(같은 대상은 앞선 트리거가 우선) 라벨 품질이
+  // 더 좋은 버튼 트리거를 덮어쓰지 않는다. 마지막으로 RESOURCE_JS 전체도 한 번 훑어, JSON 에는 없고
+  // 컴파일 결과(RESOURCE_JS)에만 남아있는 팝업 호출까지 놓치지 않게 한다.
+  function extractScriptPopupTriggers(resourceJsonText, resourceJsText, selfProgramId) {
+    const out = [];
+    const fnIndex = getScriptIndex(resourceJsonText, resourceJsText);
+    const seen = new Set();
+    const add = (programId, label) => {
+      if (!programId || programId === selfProgramId || seen.has(programId)) return;
+      seen.add(programId);
+      out.push({ event: 'BTN_OPEN_POPUP', programId, label: label || '', script: true });
+    };
+    let obj = null;
+    try { obj = JSON.parse(resourceJsonText); } catch (e) { obj = null; }
+    if (obj) {
+      (function scan(o, groupLabel, key) {
+        if (typeof o === 'string') {
+          if (key === 'usrEventFn') return; // 버튼 이벤트는 extractStructuralButtonTriggers 담당
+          if (!/\$pageObjects|popup\.|calleePgmId|\/ui\/p\/|\(/.test(o)) return;
+          const targets = resolveScriptPopupTargets(o, fnIndex, false);
+          targets.forEach(id => add(id, groupLabel ? (groupLabel + (key ? ' [' + key + ']' : '')) : (key ? '[' + key + ']' : '')));
+          return;
+        }
+        if (!o || typeof o !== 'object') return;
+        if (Array.isArray(o)) { o.forEach(x => scan(x, groupLabel, key)); return; }
+        const pv = o.propertyValue || {};
+        // 라벨 우선순위: 자기 라벨(label/formLabel/title) → 상위 그룹 라벨(예: InputGroup 의 formLabel
+        // "수불번호") → 컴포넌트 id. id 는 하위로 물려주지 않는다(그룹 라벨이 더 사람이 읽기 좋음).
+        const own = pv.label || pv.formLabel || pv.title || null;
+        const inherit = own || groupLabel || null;
+        const lbl = inherit || (o.type === 'component' ? (pv.id || null) : null);
+        Object.keys(o).forEach(k => {
+          const v = o[k];
+          if (typeof v === 'string') scan(v, lbl, k);
+          else scan(v, inherit, key);
+        });
+      })(obj, null, null);
+    }
+    if (resourceJsText) resolveScriptPopupTargets(resourceJsText, fnIndex, false).forEach(id => add(id, '(스크립트)'));
+    return out;
+  }
+
   // 그리드 액션 컬럼 버튼(Tracking No 팝업, 품목 팝업 등) → BTN_OPEN_POPUP 트리거로 변환.
   // 일반 팝업 버튼은 컴포넌트의 propertyValue.form[].programId 로 선언되지만(→ extractTriggers 가 처리),
   // 그리드 컬럼의 액션 버튼(dataType:"button" + cellTemplate)은 정적 HTML 조각과 RESOURCE_JS 의
@@ -1258,153 +1553,6 @@
     return out;
   }
 
-  // ---- 페이지 공용 함수($pageObjects) 경유 WF 호출 추적 ----
-  // BTN_USR_EVENT 버튼은 usrEventFn 안에서 WF 를 직접 호출('/wf/{uid}/execute')하기도 하지만, 실무 화면에서는
-  // 화면 onLoad 스크립트에 공용 함수를 정의해 두고($pageObjects['getOrgMember'] = (param) => { ajax.postJson(
-  // '.../wf/7406/execute.do', ...) }) 버튼 스크립트는 그 함수만 부르는 경우가 매우 흔하다
-  // (예: 조직/사용자 관리 > 구성원 탭의 Search 버튼). 이 경우 버튼 본문에는 '/execute' 가 없어 WF 가
-  // 통째로 안 잡혔다. 아래 함수들이 (1) onLoad/RESOURCE_JS 에서 $pageObjects 함수 정의를 찾아 각 함수가
-  // 부르는 WF uid·다른 공용 함수를 모으고 (2) 버튼 스크립트에서 시작해 호출 사슬을 따라가 WF 를 찾는다.
-
-  // 주석(/* */, //)을 제거한다. 문자열/템플릿 리터럴 안의 내용은 건드리지 않는다.
-  // (주석 처리된 호출 — 예: /*$pageObjects['getOrgMember'](param);*/ — 이 실제 호출로 오인되는 것을 막는다.)
-  function stripJsComments(src) {
-    let out = '';
-    const n = src.length;
-    let i = 0;
-    while (i < n) {
-      const c = src[i];
-      const d = src[i + 1];
-      if (c === '"' || c === "'" || c === '`') {
-        let j = i + 1;
-        while (j < n && src[j] !== c) {
-          if (src[j] === '\\') j++;
-          else if (src[j] === '\n' && c !== '`') break;   // 닫히지 않은 따옴표(정규식 리터럴 등)가 멀리까지 번지지 않게
-          j++;
-        }
-        out += src.slice(i, j + 1);
-        i = j + 1;
-        continue;
-      }
-      if (c === '/' && d === '*') {
-        const e = src.indexOf('*/', i + 2);
-        i = e < 0 ? n : e + 2;
-        out += ' ';
-        continue;
-      }
-      if (c === '/' && d === '/') {
-        while (i < n && src[i] !== '\n') i++;
-        continue;
-      }
-      out += c;
-      i++;
-    }
-    return out;
-  }
-
-  // src[openIdx] === '{' 에서 시작해 짝이 맞는 '}' 까지 잘라 돌려준다(문자열 안의 중괄호는 무시). 실패 시 null.
-  function sliceBalancedBraces(src, openIdx) {
-    const n = src.length;
-    let depth = 0;
-    for (let i = openIdx; i < n; i++) {
-      const c = src[i];
-      if (c === '"' || c === "'" || c === '`') {
-        let j = i + 1;
-        while (j < n && src[j] !== c) {
-          if (src[j] === '\\') j++;
-          else if (src[j] === '\n' && c !== '`') break;
-          j++;
-        }
-        i = j;
-        continue;
-      }
-      if (c === '{') depth++;
-      else if (c === '}') { depth--; if (depth === 0) return src.slice(openIdx, i + 1); }
-    }
-    return null;
-  }
-
-  const PAGE_FN_NAME_SRC = "(?:\\s*\\[\\s*(['\"])([\\w$.\\-]+)\\1\\s*\\]|\\.([A-Za-z_$][\\w$]*))";
-
-  // 화면 스크립트(RESOURCE_JS + RESOURCE_JSON 안의 $pageObjects 가 들어있는 모든 문자열: onLoad 등)에서
-  // $pageObjects 함수 정의를 모아 { 함수명: { uids:Set, calls:Set } } 로 돌려준다.
-  function buildPageHelperMap(resourceJsonText, resourceJsText) {
-    const helpers = Object.create(null);
-    const texts = [];
-    if (resourceJsText) texts.push(String(resourceJsText));
-    if (resourceJsonText) {
-      try {
-        (function walk(o) {
-          if (typeof o === 'string') { if (o.indexOf('$pageObjects') !== -1) texts.push(o); return; }
-          if (!o || typeof o !== 'object') return;
-          if (Array.isArray(o)) { o.forEach(walk); return; }
-          Object.keys(o).forEach(k => walk(o[k]));
-        })(JSON.parse(resourceJsonText));
-      } catch (e) { /* JSON 파싱 실패 시 RESOURCE_JS 만으로 진행 */ }
-    }
-    const defRe = new RegExp('\\$pageObjects' + PAGE_FN_NAME_SRC + '\\s*=(?![=>])\\s*', 'g');
-    const callRe = new RegExp('\\$pageObjects' + PAGE_FN_NAME_SRC + '\\s*(?:\\.\\s*(?:call|apply)\\s*)?\\(', 'g');
-    const wfRe = /\/wf\/(\d+)\/execute/g;
-    texts.forEach(raw => {
-      const src = stripJsComments(raw);
-      let m;
-      defRe.lastIndex = 0;
-      while ((m = defRe.exec(src)) !== null) {
-        const name = m[2] || m[3];
-        const start = defRe.lastIndex;
-        const rest = src.slice(start, start + 400);
-        let body = null;
-        const fm = /^(?:async\s+)?function\b[^{]*\{/.exec(rest);
-        const am = fm ? null : /^(?:async\s+)?(?:\([^)]*\)|[\w$]+)\s*=>\s*/.exec(rest);
-        if (fm) {
-          body = sliceBalancedBraces(src, start + fm[0].length - 1);
-        } else if (am) {
-          const bodyStart = start + am[0].length;
-          if (src[bodyStart] === '{') body = sliceBalancedBraces(src, bodyStart);
-          else { const e = src.slice(bodyStart).search(/[;\n]/); body = src.slice(bodyStart, e < 0 ? undefined : bodyStart + e); }
-        }
-        if (body == null) continue;   // 함수가 아닌 값(객체/문자열 등) 대입은 대상 아님
-        const h = helpers[name] || (helpers[name] = { uids: new Set(), calls: new Set() });
-        let x;
-        wfRe.lastIndex = 0;
-        while ((x = wfRe.exec(body)) !== null) h.uids.add(x[1]);
-        callRe.lastIndex = 0;
-        while ((x = callRe.exec(body)) !== null) h.calls.add(x[2] || x[3]);
-      }
-    });
-    return helpers;
-  }
-
-  // 버튼 스크립트(usrEventFn)가 실행하는 WF uid 목록: 본문의 직접호출('/wf/{uid}/execute') +
-  // 본문이 부르는 $pageObjects 공용 함수(재귀적으로 그 함수가 부르는 함수까지)가 호출하는 WF.
-  // 반환: [{ uid, via }] — via 는 경유한 공용 함수명(직접호출이면 '').
-  function resolveScriptWfUids(fnText, getHelpers) {
-    const out = [];
-    const seen = new Set();
-    const add = (uid, via) => { if (!seen.has(uid)) { seen.add(uid); out.push({ uid, via }); } };
-    const src = stripJsComments(String(fnText || ''));
-    let m;
-    const wfRe = /\/wf\/(\d+)\/execute/g;
-    while ((m = wfRe.exec(src)) !== null) add(m[1], '');
-    if (src.indexOf('$pageObjects') === -1) return out;
-    const helpers = getHelpers ? getHelpers() : null;
-    if (!helpers) return out;
-    const callRe = new RegExp('\\$pageObjects' + PAGE_FN_NAME_SRC + '\\s*(?:\\.\\s*(?:call|apply)\\s*)?\\(', 'g');
-    const queue = [];
-    while ((m = callRe.exec(src)) !== null) queue.push({ name: m[2] || m[3], root: m[2] || m[3] });
-    const visited = new Set();
-    while (queue.length) {
-      const q = queue.shift();
-      if (visited.has(q.name)) continue;
-      visited.add(q.name);
-      const h = helpers[q.name];
-      if (!h) continue;
-      h.uids.forEach(u => add(u, q.root));
-      h.calls.forEach(c => queue.push({ name: c, root: q.root }));
-    }
-    return out;
-  }
-
   // 컴포넌트 트리(propertyValue)를 직접 순회해 BTN_WORKFLOW/BTN_OPEN_POPUP 트리거를 뽑아낸다.
   // extractTriggers() 는 RESOURCE_JSON 을 평문으로 놓고 "eventType" 매치 지점에서 앞쪽 2500자
   // 창(near())만 훑어 programId/serviceId 를 찾는데, beforeSubmit/afterSubmit 안에 긴 인라인
@@ -1419,11 +1567,10 @@
     if (!resourceJsonText) return out;
     let obj;
     try { obj = JSON.parse(resourceJsonText); } catch (e) { return out; }
-    let _helpers = null;
-    const getHelpers = () => _helpers || (_helpers = buildPageHelperMap(resourceJsonText, resourceJsText));
-    (function scan(o) {
+    let fnIndex = null; // BTN_USR_EVENT 버튼을 만났을 때만 지연 생성
+    (function scan(o, groupLabel) {
       if (!o || typeof o !== 'object') return;
-      if (Array.isArray(o)) { o.forEach(scan); return; }
+      if (Array.isArray(o)) { o.forEach(x => scan(x, groupLabel)); return; }
       const pv = o.propertyValue || {};
       if (pv.eventType === 'BTN_WORKFLOW') {
         const serviceId = pv.serviceId || null;
@@ -1445,23 +1592,18 @@
         // 파도타기 그래프 확장에서 이 팝업이 통째로 빠진다. extractGridButtonTriggers() 가 그리드
         // 컬럼 버튼의 같은 패턴을 RESOURCE_JS 안에서 calleePgmId 로 찾는 것과 동일한 규칙을,
         // 여기서는 그리드 밖(검색조건 등) 버튼의 usrEventFn 본문에 바로 적용한다.
-        const pm = pv.usrEventFn.match(/calleePgmId\s*=\s*['"]([^'"]+)['"]/)
-          || pv.usrEventFn.match(/\bprogramId\s*[:=]\s*['"]([^'"]+)['"]/);
-        if (pm && pm[1]) out.push({ event: 'BTN_OPEN_POPUP', programId: pm[1], label: pv.label || pv.id || '' });
-        // WF 실행: (a) 컴포넌트에 선언된 serviceId/serviceUid 바인딩, (b) 스크립트가 직접 호출하거나
-        // $pageObjects 공용 함수를 거쳐 호출하는 WF(예: 구성원 탭 Search → getOrgMember → WF 7406).
-        // custom:true — 선언형(BTN_WORKFLOW) 버튼이 아니라 스크립트 버튼이 실행하는 WF 라는 표시.
-        const btnLabel = pv.label || pv.id || '';
-        const dUid = pv.serviceUid != null ? String(pv.serviceUid) : null;
-        const dId = pv.serviceId || null;
-        if (dUid || dId) out.push({ event: 'BTN_WORKFLOW', serviceId: dId, serviceUid: dUid, serviceName: pv.serviceName || null, label: btnLabel, custom: true });
-        resolveScriptWfUids(pv.usrEventFn, getHelpers).forEach(r => {
-          if (dUid && r.uid === dUid) return;
-          out.push({ event: 'BTN_WORKFLOW', serviceId: null, serviceUid: r.uid, serviceName: null, label: btnLabel, custom: true, via: r.via || null });
-        });
+        //
+        // 본문에서 바로 여는 경우뿐 아니라, $pageObjects["헬퍼"]() 를 거쳐 여는 경우(헬퍼는 보통
+        // onLoad 에 정의됨)와 대상 ID 를 헬퍼 인자로 넘기는 경우까지 resolveScriptPopupTargets 로 추적한다.
+        // 아이콘만 있는 돋보기 버튼은 label 이 없으므로 상위 그룹(InputGroup)의 formLabel 을 라벨로 쓴다.
+        if (!fnIndex) fnIndex = getScriptIndex(resourceJsonText, resourceJsText);
+        const label = pv.label || (groupLabel ? groupLabel + ' 코드도움' : '') || pv.id || '';
+        resolveScriptPopupTargets(pv.usrEventFn, fnIndex, true)
+          .forEach(programId => out.push({ event: 'BTN_OPEN_POPUP', programId, label, script: true }));
       }
-      Object.keys(o).forEach(k => scan(o[k]));
-    })(obj);
+      const nextGroup = pv.formLabel || pv.label || groupLabel || null;
+      Object.keys(o).forEach(k => scan(o[k], nextGroup));
+    })(obj, null);
     return out;
   }
 
@@ -1469,12 +1611,14 @@
   function parseUi(row) {
     const text = textOf(row, ['RESOURCE_JSON', 'RESOURCE_JS', 'RESOURCE_DTO', 'RESOURCE_HTML']);
     const seen = new Set();
-    const triggerKey = (t) => t.event + '|' + (t.event === 'BTN_OPEN_POPUP' ? t.programId : (t.serviceUid ? 'u' + t.serviceUid : 's' + t.serviceId))
-      + (t.custom ? '|c|' + (t.label || '') : '');   // 스크립트 버튼 트리거는 버튼별로 따로 보관(같은 WF 를 여러 버튼이 불러도 각각 표시)
+    const triggerKey = (t) => t.event + '|' + (t.event === 'BTN_OPEN_POPUP' ? t.programId : (t.serviceUid ? 'u' + t.serviceUid : 's' + t.serviceId));
     const triggers = [];
+    // 순서 = 우선순위(같은 대상이면 먼저 나온 트리거의 라벨을 쓴다): 선언적 → 그리드 컬럼 버튼 →
+    // 구조 순회(버튼 usrEventFn 간접호출 포함) → 그 밖의 스크립트(blur/그리드 이벤트/onLoad 등).
     extractTriggers(text)
       .concat(extractGridButtonTriggers(row && row.RESOURCE_JSON, row && row.RESOURCE_JS))
       .concat(extractStructuralButtonTriggers(row && row.RESOURCE_JSON, row && row.RESOURCE_JS))
+      .concat(extractScriptPopupTriggers(row && row.RESOURCE_JSON, row && row.RESOURCE_JS, row && row.PROGRAM_ID))
       .forEach(t => {
         const k = triggerKey(t);
         if (seen.has(k)) return;
@@ -1591,8 +1735,6 @@
     } catch (e) { /* 무시 */ }
     let obj;
     try { obj = JSON.parse(resourceJson); } catch (e) { return map; }
-    let _pageHelpers = null;
-    const getPageHelpers = () => _pageHelpers || (_pageHelpers = buildPageHelperMap(resourceJson, resourceJsText));
     (function scan(o) {
       if (!o || typeof o !== 'object') return;
       if (Array.isArray(o)) { o.forEach(scan); return; }
@@ -1625,11 +1767,25 @@
         //    전혀 안 붙는다 — 그래프(파도타기)에는 extractServiceRefs 가 잡아주지만, 디자인 미리보기
         //    배지는 이 컴포넌트 트리 스캔에서만 만들어지므로 여기서도 별도로 잡아줘야 한다.
         //    custom:true 로 표시해 배지/툴팁에서 "직접호출(스크립트)"임을 구분할 수 있게 한다.
-        if (compKey && typeof pv.usrEventFn === 'string'
-            && (pv.usrEventFn.indexOf('/execute') !== -1 || pv.usrEventFn.indexOf('$pageObjects') !== -1)) {
-          // 본문의 직접호출 + $pageObjects 공용 함수(onLoad 정의)를 거치는 호출(구성원 탭 Search → getOrgMember 등)
-          resolveScriptWfUids(pv.usrEventFn, getPageHelpers).forEach(r => {
-            addLink(compKey, { navKey: 'WF:u' + r.uid, label: 'uid=' + r.uid, kind: 'wf', custom: true });
+        if (compKey && typeof pv.usrEventFn === 'string' && pv.usrEventFn.indexOf('/execute') !== -1) {
+          const wfCallRe = /\/wf\/(\d+)\/execute/g;
+          const seenUid = new Set();
+          let wm;
+          while ((wm = wfCallRe.exec(pv.usrEventFn)) !== null) {
+            const uid = wm[1];
+            if (seenUid.has(uid)) continue;
+            seenUid.add(uid);
+            addLink(compKey, { navKey: 'WF:u' + uid, label: 'uid=' + uid, kind: 'wf', custom: true });
+          }
+        }
+        // (a-3) BTN_USR_EVENT 버튼이 스크립트로 여는 팝업(본문 직접 / $pageObjects 헬퍼 경유 / 헬퍼 인자).
+        //    json 모드(buildDesignHtml compLink 4-a)와 파도타기 그래프(extractStructuralButtonTriggers)는
+        //    이미 이 연결을 잡는데 html 모드(이 맵)만 빠져 있어, 같은 화면이 모드에 따라 배지 유무가
+        //    갈렸다 — 세 경로가 같은 resolveScriptPopupTargets 규칙을 쓰도록 맞춘다.
+        if (compKey && typeof pv.usrEventFn === 'string') {
+          resolveScriptPopupTargets(pv.usrEventFn, getScriptIndex(resourceJson, resourceJsText), true).forEach(pid => {
+            if (looksLikeReportId(pid)) addLink(compKey, { navKey: 'Rp:' + pid, label: pid, kind: 'rp', custom: true });
+            else addLink(compKey, { navKey: 'UI:' + pid, label: pid, kind: 'ui', custom: true });
           });
         }
         // (d) 팝업 UI 연결 — 대부분 최상위 pv.programId 가 아니라 BTN_OPEN_POPUP 패턴의
@@ -1654,40 +1810,200 @@
     return map;
   }
 
-  // ---- 리포트 헤더/데이터 공급 WF 안의 실제 라벨(header1~N) 추출 ----
-  // 리포트 디자인(REPORT_JSON)에는 실제 값이 없고, b_report_file(_tenant)에 연결된 WF가 실행 시점에
-  // headerN 자리를 실제 문자열로 채운다. 이 WF(RESOURCE_WF)를 스캔해서 그 하드코딩된 값을 찾는다.
-  // 1) EntityDefinition/설정성 스텝의 JSON 구조: {"fieldId":"header3", ..., "value":"발주번호"}
-  // 2) 단순조회형 WF의 SQL 리터럴: 'header3' AS header3 → '발주번호' AS header3
-  // 둘 다 "추정"이며, WF 구조가 다르면 못 찾을 수 있다(그런 header는 그냥 {{headerN}} 그대로 남는다).
-  function extractHeaderLabels(resourceWfText) {
-    const labels = {};
-    if (!resourceWfText) return labels;
-    const HDR_RE = /^header\d+$/i;
-    let rwf;
-    try { rwf = JSON.parse(resourceWfText); } catch (e) { rwf = null; }
-    if (rwf) {
-      (function walk(o) {
-        if (!o || typeof o !== 'object') return;
-        if (Array.isArray(o)) { o.forEach(walk); return; }
-        const key = o.fieldId || o.columnNm || o.name || o.Name;
-        if (typeof key === 'string' && HDR_RE.test(key)) {
-          const val = o.value != null ? o.value : o.Value;
-          if (typeof val === 'string' && val && !val.startsWith('=') && val.toLowerCase() !== key.toLowerCase()) {
-            labels[key.toLowerCase()] = val;
+  // ---- 컴포넌트 종합정보("I" 배지) ----
+  // 디자인 미리보기의 각 입력 컴포넌트(입력창/콤보/라디오/체크박스/날짜 등 — 버튼·그리드·레이아웃 제외)에
+  // 대해, 화면 정의(RESOURCE_JSON)만으로 알 수 있는 정보를 모은다. 테이블.컬럼 매핑이나 콤보 WF 의 SQL
+  // 안에 하드코딩된 공통코드처럼 "다른 리소스(WF)"가 있어야 알 수 있는 정보는 app.js 가 store 의 WF 노드로
+  // 보강한다(extractEntityFieldMap / extractCodes 재사용).
+  // 반환: { compId: { id, label, compClass, object, required, readonly, hidden, dataBinding, maxlength,
+  //                   defaultValue, dateType, combo, radioItems, majorCds:[{code,source}], events:[attr],
+  //                   refreshedBy:[{id,label,attr}] } }
+  // 정보 배지 대상이 아닌 컴포넌트(viewerAttr.object) — 데이터 값을 갖지 않는 버튼/장식/영역 컴포넌트.
+  // buildDesignHtml 의 renderComp 에서 라벨(field 래퍼) 없이 그려지는 종류와 같은 목록이다.
+  const INFO_EXCLUDED_OBJECTS = new Set(['button', 'heading', 'activeReport', 'tree', 'image', 'icon', 'badge',
+    'horizontalDivider', 'verticalDivider', 'html', 'amchart3', 'echarts', 'jsGantt', 'bnb', 'tnb']);
+  // 콤보/공통코드 정보 공통 추출 — 폼 컴포넌트(propertyValue)와 그리드 컬럼 정의가 같은 키
+  // (serviceId/serviceUid/idColumn/textColumn/comboCriteria/beforeComboCall)를 쓰므로 한 곳에서 처리한다.
+  function stripQuotedLiteral(v) {
+    const m = String(v == null ? '' : v).trim().match(/^'([^']*)'$|^"([^"]*)"$/);
+    return m ? { value: m[1] != null ? m[1] : m[2], literal: true } : { value: String(v == null ? '' : v), literal: false };
+  }
+  function buildComboInfo(src) {
+    if (!src || (src.serviceUid == null && !src.serviceId)) return null;
+    return {
+      serviceId: src.serviceId || '',
+      serviceUid: src.serviceUid != null ? String(src.serviceUid) : '',
+      serviceName: src.serviceName || '',
+      idColumn: src.idColumn || '',
+      textColumn: src.textColumn || '',
+      comboType: src.comboType || '',
+      multiColumn: src.isMuliColumn === true,
+      criteria: (Array.isArray(src.comboCriteria) ? src.comboCriteria : [])
+        .filter(c => c && c.paramId)
+        .map(c => { const v = stripQuotedLiteral(c.paramValue); return { paramId: c.paramId, value: v.value, literal: v.literal }; })
+    };
+  }
+  // MAJOR_CD 수집: (1) 콤보 조회조건 comboCriteria(majorCd='X') (2) 스크립트 속성(대개 beforeComboCall)의
+  // $comboParam.majorCd = 'X' / $param["majorCd"] = 'X' 대입 — 그리드 콤보 컬럼은 거의 항상 (2) 형태다.
+  // src 의 최상위 문자열 속성만 본다(하위 객체의 스크립트는 다른 컴포넌트/컬럼 소속일 수 있음).
+  const MAJOR_ASSIGN_RE = /\$(?:comboParam|param)\s*(?:\.\s*majorCd|\[\s*["']majorCd["']\s*\])\s*=\s*'([^']+)'/gi;
+  function collectMajorCds(src, combo) {
+    const out = [];
+    const add = (code, source) => { if (code && !out.some(x => x.code === code)) out.push({ code, source }); };
+    if (combo) combo.criteria.forEach(c => { if (/^majorcd$/i.test(c.paramId) && c.literal) add(c.value, '콤보 조회조건'); });
+    Object.keys(src || {}).forEach(attr => {
+      const v = src[attr];
+      if (typeof v !== 'string' || !/majorCd/i.test(v)) return;
+      let m;
+      MAJOR_ASSIGN_RE.lastIndex = 0;
+      while ((m = MAJOR_ASSIGN_RE.exec(v)) !== null) add(m[1], '스크립트(' + attr + ')');
+    });
+    return out;
+  }
+
+  // 그리드 컬럼 하나의 정보("I" 배지 대상이면 정보 객체, 아니면 null). 대상: 콤보 컬럼(serviceId/serviceUid)
+  // 이거나 공통코드(MAJOR_CD)를 쓰는 컬럼. 배포 스냅샷(RESOURCE_JSON)과 실시간 컬럼(mapLiveGridColumns)
+  // 양쪽에 같은 규칙을 쓰므로, 배지(computeGridColumnDefs)와 패널 정보가 항상 일치한다.
+  function gridColumnInfoKey(gridId, col) {
+    return 'grid:' + (gridId || '') + ':' + ((col && (col.name || col.data)) || '');
+  }
+  function gridColumnInfo(gridId, gridTitle, col) {
+    if (!col || !(col.name || col.data)) return null;
+    const combo = buildComboInfo(col);
+    const majorCds = collectMajorCds(col, combo);
+    if (!combo && !majorCds.length) return null;
+    const events = ['beforeComboCall', 'afterComboCall', 'beforeChange', 'afterChange']
+      .filter(a => typeof col[a] === 'string' && col[a].trim());
+    return {
+      id: col.name || col.data,
+      label: col.title || col.name || col.data || '',
+      gridId: gridId || '',
+      gridTitle: gridTitle || '',
+      compClass: '그리드 컬럼',
+      object: col.dataType || '',
+      required: col.required === true || col.required === 'true' || col.required === '1',
+      readonly: String(col.editType || '').toUpperCase() !== 'E',
+      hidden: col.visible === false,
+      dataBinding: col.data || col.name || '',
+      maxlength: '',
+      defaultValue: '',
+      dateType: '',
+      combo,
+      radioItems: [],
+      majorCds,
+      events,
+      refreshedBy: []
+    };
+  }
+
+  function computeComponentInfoMap(resourceJson) {
+    const map = {};
+    let obj;
+    try { obj = JSON.parse(resourceJson); } catch (e) { return map; }
+    // 1) 컴포넌트 수집(+ 그리드 컬럼)
+    const comps = [];
+    (function scan(o) {
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) { o.forEach(scan); return; }
+      if (o.type === 'component') {
+        const pv = o.propertyValue || {};
+        const cls = (o.editorAttr && o.editorAttr.componentClass) || '';
+        const object = (o.viewerAttr && o.viewerAttr.object) || '';
+        if (pv.id && cls !== 'form/Button' && !INFO_EXCLUDED_OBJECTS.has(object)) comps.push({ pv, cls, object });
+      } else if (o.type === 'grid') {
+        const go = (o.propertyValue && o.propertyValue.gridOptions) || {};
+        (Array.isArray(go.columns) ? go.columns : []).forEach(col => {
+          const info = gridColumnInfo(go.gridId, go.title, col);
+          if (info) map[gridColumnInfoKey(go.gridId, col)] = info;
+        });
+      }
+      Object.keys(o).forEach(k => scan(o[k]));
+    })(obj);
+    comps.forEach(({ pv, cls, object }) => {
+      const combo = buildComboInfo(pv);
+      const info = {
+        id: pv.id,
+        label: pv.formLabel || pv.label || pv.title || '',
+        compClass: cls,
+        object,
+        required: pv.isRequired === true,
+        readonly: pv.isReadonly === true,
+        hidden: pv.isDisplay === false || pv.visible === false,
+        dataBinding: pv.dataBinding || '',
+        maxlength: pv.maxlength != null ? String(pv.maxlength) : '',
+        defaultValue: pv.default != null && typeof pv.default !== 'object' ? String(pv.default) : '',
+        dateType: pv.dateType || '',
+        combo,
+        radioItems: [],
+        majorCds: collectMajorCds(pv, combo),
+        events: [],
+        refreshedBy: []
+      };
+      if (Array.isArray(pv.radioItems)) {
+        info.radioItems = pv.radioItems.filter(r => r).map(r => ({ value: r.value != null ? String(r.value) : '', label: r.label || r.text || '' }));
+      }
+      (Array.isArray(pv.eventCollection) ? pv.eventCollection : []).forEach(ev => {
+        const attr = ev && typeof ev === 'object' ? ev.eventAttrName : null;
+        if (attr && typeof pv[attr] === 'string' && pv[attr].trim() && !info.events.includes(attr)) info.events.push(attr);
+      });
+      map[pv.id] = info;
+    });
+    // 2) 역참조: 다른 컴포넌트(또는 페이지 onLoad)의 스크립트가 select.refreshAjax(폼, 'id', …) 로
+    //    이 컴포넌트(콤보)를 다시 조회하는 경우 — "업태를 바꾸면 업종 목록이 바뀐다" 같은 연동 관계.
+    const refreshRe = /refreshAjax\s*\(\s*[^,()]+,\s*['"]([A-Za-z_$][\w$]*)['"]/g;
+    (function scanRefs(o, owner) {
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) { o.forEach(x => scanRefs(x, owner)); return; }
+      const pv = o.propertyValue || {};
+      const go = pv.gridOptions || {};
+      const me = (o.type === 'component' && pv.id) ? { id: pv.id, label: pv.formLabel || pv.label || pv.title || '' }
+        : (o.type === 'grid' && go.gridId) ? { id: go.gridId, label: go.title || '' }
+        : (o.compId && String(o.compId).indexOf('page') === 0 ? { id: '(page)', label: '화면 로드' } : owner);
+      // propertyValue 아래의 모든 스크립트 문자열(최상위 이벤트 속성뿐 아니라 form[].afterSubmit,
+      // gridOptions.event[].eventFnc 처럼 한 단계 더 안쪽에 있는 것까지)을 최상위 속성명 기준으로 검사한다.
+      const check = (attr, v) => {
+        if (typeof v === 'string') {
+          if (v.indexOf('refreshAjax') < 0 || !me) return;
+          let m;
+          refreshRe.lastIndex = 0;
+          while ((m = refreshRe.exec(v)) !== null) {
+            const target = map[m[1]];
+            if (!target || m[1] === me.id) continue;
+            if (!target.refreshedBy.some(r => r.id === me.id && r.attr === attr)) target.refreshedBy.push({ id: me.id, label: me.label, attr });
           }
+        } else if (v && typeof v === 'object') {
+          Object.keys(v).forEach(k => check(attr, v[k]));
         }
-        Object.keys(o).forEach((k) => walk(o[k]));
-      })(rwf);
-    }
-    // 보강: SQL 문자열 리터럴 'xxx' AS headerN 패턴(단순조회형 WF 대응) — JSON 파싱 결과에 없는 것만 채운다.
-    const sqlRe = /['"]([^'"]*)['"]\s*AS\s*["']?(header\d+)["']?/gi;
-    let m;
-    while ((m = sqlRe.exec(resourceWfText)) !== null) {
-      const lit = m[1], hdr = m[2].toLowerCase();
-      if (lit && lit.toLowerCase() !== hdr && !(hdr in labels)) labels[hdr] = lit;
-    }
-    return labels;
+      };
+      Object.keys(pv).forEach(attr => check(attr, pv[attr]));
+      Object.keys(o).forEach(k => { if (k !== 'propertyValue') scanRefs(o[k], me); });
+    })(obj, null);
+    return map;
+  }
+
+  // WF(RESOURCE_WF) 의 엔티티 정의에서 "필드ID → 테이블.컬럼" 매핑을 뽑는다.
+  // 엔티티 노드는 {"fieldId":"indType","columnNm":"IND_TYPE","option":{columnType,requiredYn,pkYn…}} 형태이고,
+  // 소속 테이블명은 상위 객체의 "tableNm" 에 있다. 반환: { fieldId: [{table,column,columnType,required,pk}] }
+  function extractEntityFieldMap(resourceWfText) {
+    const map = {};
+    let obj;
+    try { obj = JSON.parse(resourceWfText); } catch (e) { return map; }
+    (function walk(o, table) {
+      if (!o || typeof o !== 'object') return;
+      if (Array.isArray(o)) { o.forEach(x => walk(x, table)); return; }
+      const t = (typeof o.tableNm === 'string' && o.tableNm) ? o.tableNm : table;
+      if (typeof o.fieldId === 'string' && o.fieldId && typeof o.columnNm === 'string' && o.columnNm) {
+        const opt = (o.option && typeof o.option === 'object') ? o.option : {};
+        const arr = map[o.fieldId] || (map[o.fieldId] = []);
+        const rec = {
+          table: t || '', column: o.columnNm, columnType: opt.columnType || '',
+          required: opt.requiredYn === 'Y', pk: opt.pkYn === 'Y'
+        };
+        if (!arr.some(x => x.table.toLowerCase() === rec.table.toLowerCase() && x.column.toLowerCase() === rec.column.toLowerCase())) arr.push(rec);
+      }
+      Object.keys(o).forEach(k => walk(o[k], t));
+    })(obj, null);
+    return map;
   }
 
   // ---- ActiveReportsJS(RDLX-JSON) 리포트 "레이아웃 추정 미리보기" ----
@@ -2061,5 +2377,5 @@
     return out;
   }
 
-  return { extractServiceRefs, extractTables, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, extractHeaderLabels, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeGridServiceMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
+  return { computeComponentInfoMap, gridColumnInfo, gridColumnInfoKey, extractEntityFieldMap, extractServiceRefs, extractTables, extractScriptPopupTriggers, extractStructuralButtonTriggers, resolveScriptPopupTargets, indexScriptFunctions, extractQueries, extractTriggers, extractGridButtonTriggers, extractGridToolbarButtonTriggers, computeGridToolbarLinks, computeGridToolbarButtonList, extractCodes, extractReportRefs, looksLikeReportId, buildDesignHtml, buildReportPreviewHtml, collectAllWfSteps, extractLangMap, computeLinkMap, computeInlineReportMap, computeInitValueMap, computeGridServiceMap, collectGridIds, collectGridOptionsMap, computeGridColumnDefs, computeGridColumnPopups, mapLiveGridColumns, renderGridColumnsTableFromDefs, buildGridColumnsTableHtml, parseUi, parseRp, parseWf, textOf };
 });
