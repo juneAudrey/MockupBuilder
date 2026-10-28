@@ -7717,7 +7717,7 @@ let tmplTab='reg';
 // older ones stay available as history tabs.
 const PATCH_NOTES=[
   {ver:'20261028.001', date:'2026년 10월 28일', items:[
-    {t:'📋 사양서 프롬프트 관련 수정 (씬모드)', d:'① 프롬프트 맨 앞에 <b>「작성 도구 선택」</b>이 들어갑니다 — Claude Code에서는 사양서도구로, 그 밖(Cowork·claude.ai)에서는 설치된 사양서 스킬로(없으면 직접) 작성하고, 응답 첫 줄에 작성 방식을 알려 줍니다.<br>② 출력 옵션에 <b>「참고 SQL 파일(.sql) 받기」</b>(기본 켬)가 추가되었습니다. SQL은 사양서에 넣지 않고 설계자 확인용 별도 파일로 받습니다.<br>③ 작성 원칙을 정리했습니다 — 사양서 도구 엑셀 서식(9시트), 시트 간 중복 삭제·충돌 확인, 개요 번호 체계(1. → 1-1. → 1) → ·), 규칙 ID 표기 금지, 너비 「-」, 0.변경이력 「최초 작성」, 목업 링크 없음, 메시지 문구가 없으면 「메시지 안내 후」, 「확인 필요 사항」 답변 칸.<br>④ 그리드 컬럼에 <b>데이터 정렬</b>(헤더 정렬과 별개)이 추가되었고, 왼쪽(기본) 정렬은 사양서에 쓰지 않습니다. 이미지 변환도 데이터 정렬을 인식합니다.<br>⑤ 그리드 컬럼 <b>일괄 변경</b>(전체 선택·전체 필수/읽기전용, 여러 컬럼 선택 후 유형·정렬·필수·읽기전용·변경상태·상위헤더·삭제)이 추가되었습니다.<br>⑥ <b>「테이블 정보 조회 쿼리 복사」</b>가 Oracle·MySQL·MSSQL 모두 뷰·PK·FK·UNIQUE·인덱스·참조 FK·Identity·계산 컬럼·뷰 정의까지 조회하도록 바뀌었습니다.'},
+    {t:'📋 사양서 프롬프트 관련 수정 (씬모드)', d:'① 프롬프트 맨 앞에 <b>「작성 도구 선택」</b>이 들어갑니다 — Claude Code에서는 사양서도구로, 그 밖(Cowork·claude.ai)에서는 설치된 사양서 스킬로(없으면 직접) 작성하고, 응답 첫 줄에 작성 방식을 알려 줍니다.<br>② 출력 옵션에 <b>「참고 SQL 파일(.sql) 받기」</b>(기본 켬)가 추가되었습니다. SQL은 사양서에 넣지 않고 설계자 확인용 별도 파일로 받습니다.<br>③ 작성 원칙을 정리했습니다 — 사양서 도구 엑셀 서식(9시트), 시트 간 중복 삭제·충돌 확인, 개요 번호 체계(1. → 1-1. → 1) → ·), 규칙 ID 표기 금지, 너비 「-」, 0.변경이력 「최초 작성」, 목업 링크 없음, 메시지 문구가 없으면 「메시지 안내 후」, 「확인 필요 사항」 답변 칸.<br>④ 그리드 컬럼에 <b>데이터 정렬</b>(헤더 정렬과 별개)이 추가되었고, 왼쪽(기본) 정렬은 사양서에 쓰지 않습니다. 이미지 변환도 데이터 정렬을 인식합니다.<br>⑤ 그리드 컬럼 <b>일괄 변경</b>(전체 선택·전체 필수/읽기전용, 여러 컬럼 선택 후 유형·정렬·필수·읽기전용·변경상태·상위헤더·삭제)이 추가되었습니다.<br>⑥ <b>「테이블 정보 조회 쿼리 복사」</b>가 Oracle·MySQL·MSSQL 모두 뷰·PK·FK·UNIQUE·인덱스·참조 FK·Identity·계산 컬럼·뷰 정의까지 조회하도록 바뀌었습니다.<br>⑦ 그리드 <b>엑셀 다운로드</b>는 기본 기능이라 사양서 프롬프트의 그리드 표준 버튼에 표시·기술하지 않습니다.'},
   ]},
   {ver:'20261004.001', date:'2026년 10월 4일', items:[
     {t:'⚡ Quick Builder 기능 안정화 (씬모드)', d:'① Quick Builder로 화면 뼈대를 자동 배치할 때의 동작을 다듬어 <b>더 안정적으로</b> 만들어집니다.<br>② 기존과 같이 <b>씬모드 전용</b>입니다.'},
@@ -9360,7 +9360,7 @@ function spEditor(it){
   if(it.kind==='grid'){
     const c=comp(it.cid), s=cspec(c,false), cols=gridCols(c), ro=c.colReadonly||[], req=c.colRequired||[], L=srcsGet(it.key), multi=L.length>1;
     const edit=cols.filter((_,i)=>!ro[i]);
-    const stdB=[]; if(c.showToolbar!==false){ if(c.stdAdd!==false)stdB.push('행추가'); if(c.stdCopy!==false)stdB.push('행복사'); if(c.stdDelete!==false)stdB.push('행삭제'); if(c.stdCancel!==false)stdB.push('취소'); if(c.excelDownload!==false)stdB.push('엑셀 다운로드'); }
+    const stdB=[]; if(c.showToolbar!==false){ if(c.stdAdd!==false)stdB.push('행추가'); if(c.stdCopy!==false)stdB.push('행복사'); if(c.stdDelete!==false)stdB.push('행삭제'); if(c.stdCancel!==false)stdB.push('취소'); }
     return head('이 목록의 데이터는 어느 테이블에 있나요?',`컬럼 ${cols.length}개 · 편집 가능 ${edit.length}개`)+
      srcsEditor(it.key,{label:'데이터 출처 테이블',opt:'여러 개면 모두 추가 (JOIN 조회 · 테이블별 저장)',ph:'예) B_ITEM_HIST 입력 후 Enter',hint:'조회만 하는 테이블은 「저장」을 끄세요. 저장 대상이 여러 테이블이면 각각 「저장」을 켜요.'})+`
      <div class="sp-q"><label>컬럼 ${idTip}</label>
@@ -10069,7 +10069,7 @@ function spBuildPrompt(){
       tbl(gridCols(c).map((nm,i)=>{ const cs=colSpec(c,'cols',i,false), cq=cs.cc?QS.find(q=>q.key===`g${c.id}.${i}`):null;
         const memo=[cs.cc?`코드값 컬럼 · 공통코드 ${cs.code?cv(cs.code):Q} · 코드명으로 표시${cq?' · 코드에 없는 값의 표시는 확인 필요 '+cq.id:''}`:'',cv(cs.note)].filter(Boolean).join(' · ');
         return [cv(nm)||Q,cv(cs.colId)||NOID,cv(colTbl(L,cs.t))||NOSRC,rq[i]?'Y':'',ro[i]?'':'Y'].concat(gAl?[spGridColAl(c,i)]:[],[memo]); }),['컬럼','컬럼ID','테이블','필수','편집'].concat(gAl?['서식']:[],['메모']));
-      const std=[]; if(c.showToolbar!==false){ if(c.stdAdd!==false)std.push('행추가'); if(c.stdCopy!==false)std.push('행복사'); if(c.stdDelete!==false)std.push('행삭제'); if(c.stdCancel!==false)std.push('취소'); if(c.excelDownload!==false)std.push('엑셀 다운로드'); }
+      const std=[]; if(c.showToolbar!==false){ if(c.stdAdd!==false)std.push('행추가'); if(c.stdCopy!==false)std.push('행복사'); if(c.stdDelete!==false)std.push('행삭제'); if(c.stdCancel!==false)std.push('취소'); }
       P(`- 그리드 표준 버튼: ${std.length?std.join(', ')+' (표준 기능)':'없음'}`); P(''); }
   });
   const btns=items.filter(i=>i.kind==='btn'), qs=items.filter(i=>i.kind==='search');
