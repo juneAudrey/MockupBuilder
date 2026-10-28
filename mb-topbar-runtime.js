@@ -1234,7 +1234,7 @@
   // 기간 체크 메시지(개발지침 7번 문구 · 메시지코드 없음 = DT9999) - app.js MB_SPEC_PERIOD_MSG 와 같아야 한다
   const MBS_PERIOD_MSG='종료일은 시작일보다 같거나 이후이어야 합니다.';
   // 업무 프로세스를 알 수 없을 때(설명·업무 서술 원문 모두 없음)의 「확인 필요 사항」 선택지 - app.js MB_SPEC_PROC_Q_OPTS 와 같아야 한다
-  const MBS_PROC_Q_OPTS='① 2단계 「업무 프로세스 및 배경 설명」에 담당자·업무 단계·처리 순서 입력 ② 모듈 표준 업무 흐름 적용';
+  const MBS_PROC_Q_OPTS='1. 2단계 「업무 프로세스 및 배경 설명」에 담당자·업무 단계·처리 순서 입력 2. 모듈 표준 업무 흐름 적용';
   // 업무 프로세스 설명(빌더 2단계 「업무 프로세스 설명」 = proc.flowNote) - 동시 수정 관련 줄은 뺀다. app.js mbSpecProcNote 와 같은 규칙
   function mbsProcNote(P){ return String((P||{}).flowNote||'').split('\n').filter(function(l){ return l.trim()&&!mbsIsConc(l); }).map(function(l){ return l.trim(); }).join('\n'); }
   const MBS_MATCH={eq:'같음',like:'포함(앞뒤 % Like)',range:'범위(From~To)',in:'선택값'};
@@ -1408,9 +1408,8 @@
     (Array.isArray(S.open)?S.open:[]).forEach(function(q){ if(!q||typeof q!=='object') return; const w=mbsT(q.what); if(!w||mbsIsConc(w)) return; Q.push({what:w,now:'',opts:mbsT(q.opts),who:mbsT(q.who),src:'open'}); });
     // 업무 프로세스(3.기능사양 「업무 흐름 - 프로세스 및 배경」의 근거) - 설명도, 업무·프로세스 서술 원문도 없으면 확인 필요
     if(!mbsProcNote(P)&&!free.s2.trim()) Q.push({what:'업무 프로세스(담당자·업무 단계·처리 순서)',now:'업무 프로세스 설명 없음',opts:MBS_PROC_Q_OPTS,who:'컨설턴트',src:'proc'});
-    combos.filter(function(x){ return x.grid; }).forEach(function(x){ Q.push({what:'['+x.name+'] 값이 공통코드에 없을 때의 표시',now:x.code?('공통코드 '+x.code+' 코드명으로 표시'):'공통코드 미지정',opts:'① 원래 값 그대로 표시 ② 빈칸으로 표시 ③ 공통코드에 값 추가',who:'현업',src:'code',key:x.key}); });
-    items.filter(function(it){ return it.kind==='btn'&&btnAct(it); }).forEach(function(it){ (btnSpec(it).checks||[]).forEach(function(k,ci){ if(!k) return; const cd=mbsT(k.cond);
-      if(cd&&!mbsT(k.msg)&&!mbsIsConc(cd)) Q.push({what:'['+it.name+'] 버튼 막기 메시지 문구 — '+cd,now:'메시지 문구 없음',opts:'문구 지정 (메시지코드가 없으면 DT9999 소스 메시지)',who:'컨설턴트',src:'msg',qk:it.key+'|'+ci}); }); });
+    combos.filter(function(x){ return x.grid; }).forEach(function(x){ Q.push({what:'['+x.name+'] 값이 공통코드에 없을 때의 표시',now:x.code?('공통코드 '+x.code+' 코드명으로 표시'):'공통코드 미지정',opts:'1. 원래 값 그대로 표시 2. 빈칸으로 표시 3. 공통코드에 값 추가',who:'현업',src:'code',key:x.key}); });
+    // 막기 메시지 문구가 없으면 「메시지 안내 후 …」로 쓰고 확인 필요로 올리지 않는다(2026-10-28) - app.js spOpenQs 와 같은 규칙
     Q.forEach(function(q,i){ q.id='Q'+(i+1); });
     return {free:free,S:S,B:B,P:P,comps:comps,items:items,R:R,PR:PR,EX:EX,procAny:procAny,tables:tables,combos:combos,codes:codes,Q:Q,
       comp:comp,cs:cs,colSpec:colSpec,btnSpec:btnSpec,gridCols:gridCols,labelOf:labelOf,srcsGet:srcsGet,joinGet:joinGet,writeTargets:writeTargets};
@@ -1481,13 +1480,16 @@
   }
   function mbSpecTableInfoHeads(text){
     const out=[]; const lines=String(text||'').replace(/\r/g,'').split('\n');
-    lines.forEach(function(_,i){ const h=mbsTiHeadAt(lines,i); if(h&&!out.some(function(x){ return x.id===h.id; })) out.push(h); });
+    // 조회 쿼리 결과(머리글 TABLE_NAME·COLUMN_NAME)가 있으면 그 아래 줄(뷰 정의 SQL 등 여러 줄 값)은 테이블 머리줄로 보지 않는다
+    let dbAt=lines.length; for(let i=0;i<lines.length;i++){ const up=mbsTiSplit(String(lines[i]||'').trim()).map(function(x){ return String(x).toUpperCase(); }); if(up.indexOf('TABLE_NAME')>=0&&up.indexOf('COLUMN_NAME')>=0){ dbAt=i; break; } }
+    lines.forEach(function(_,i){ if(i>=dbAt) return; const h=mbsTiHeadAt(lines,i); if(h&&!out.some(function(x){ return x.id===h.id; })) out.push(h); });
     // 빌더 「테이블 정보 조회 쿼리」 결과(행마다 TABLE_NAME)도 테이블 목록으로 읽는다
     mbsTiDbRows(lines).forEach(function(d){ if(!out.some(function(x){ return x.id===d.t; })) out.push({id:d.t,name:d.tnm,kind:''}); });
     return out;
   }
   // 빌더 「테이블 정보 조회 쿼리」(Oracle·MySQL·MSSQL 공통 결과 컬럼) 결과를 읽는다 - 머리글 TABLE_NAME·COLUMN_NAME 이 있는 표.
-  // 결과: [{t 테이블ID, tnm 테이블 설명, id, nm, type, len, nn, def}] (값 NULL 은 빈 값)
+  // 결과: [{t 테이블ID, tnm 테이블 설명, id, nm, type, len, nn, def, pk, rem}] (값 NULL 은 빈 값)
+  // pk = IS_PRIMARY_KEY Y → PK, 아니고 IS_FOREIGN_KEY Y → FK · rem = 뷰·Identity·계산 컬럼·UNIQUE·FK 대상(2026-10-28 확장 쿼리 · 예전 결과엔 없어 빈 값)
   function mbsTiDbRows(lines){
     const out=[]; let h=null;
     const nv=function(v){ v=mbsTiBlank(v); return /^null$/i.test(v)?'':v; };
@@ -1499,7 +1501,14 @@
       const t=g('TABLE_NAME').toUpperCase(), id=g('COLUMN_NAME');
       if(!/^[A-Za-z_][A-Za-z0-9_$#]*$/.test(t)||!/^[A-Za-z_][A-Za-z0-9_$#]*$/.test(id)) return;
       const tnm=g('TABLE_DESCRIPTION'), ty=mbsTiType(g('DATA_TYPE'),g('DATA_LENGTH'));
-      out.push({t:t,tnm:/[가-힣]/.test(tnm)?tnm:'',id:id.toUpperCase(),nm:g('COLUMN_DESCRIPTION'),type:ty.type,len:ty.len,nn:mbsTiYN(g('IS_NULLABLE')),def:g('DEFAULT_VALUE')}); });
+      const yn=function(k){ return mbsTiYN(g(k))==='Y'; };
+      const pk=yn('IS_PRIMARY_KEY')?'PK':(yn('IS_FOREIGN_KEY')?'FK':'');
+      const rem=[/^view$/i.test(g('OBJECT_TYPE'))?'뷰 컬럼':'',
+        yn('IS_IDENTITY')?'IDENTITY'+(g('IDENTITY_SEED')||g('IDENTITY_INCREMENT')?'('+(g('IDENTITY_SEED')||'?')+','+(g('IDENTITY_INCREMENT')||'?')+')':''):'',
+        yn('IS_COMPUTED')?'계산: '+g('COMPUTED_DEFINITION'):'',
+        yn('IS_UNIQUE_KEY')&&!yn('IS_PRIMARY_KEY')?'UNIQUE':'',
+        g('FK_INFO')?'FK: '+g('FK_INFO'):''].filter(Boolean).join(' · ');
+      out.push({t:t,tnm:/[가-힣]/.test(tnm)?tnm:'',id:id.toUpperCase(),nm:g('COLUMN_DESCRIPTION'),type:ty.type,len:ty.len,nn:mbsTiYN(g('IS_NULLABLE')),def:yn('IS_COMPUTED')?'':g('DEFAULT_VALUE'),pk:pk,rem:rem}); });
     return out;
   }
   // 「테이블 정보」의 컬럼 표를 읽어 5.테이블 레이아웃 행으로 바꾼다.
@@ -1538,10 +1547,10 @@
   function mbsTiYN(v){ v=mbsTiBlank(v); if(!v) return ''; if(/^(y|yes|o|v|●|✓|✔|1|true|null|허용|가능)$/i.test(v)) return 'Y'; if(/^(n|no|x|0|false|not\s*null|불가|불허)$/i.test(v)) return 'N'; return v; }
   function mbSpecParseTableInfo(text,tableId,opts){
     const lines=String(text||'').replace(/\r/g,'').split('\n'); const T=String(tableId).toUpperCase(); const whole=!!(opts&&opts.whole);
-    // 빌더 「테이블 정보 조회 쿼리」 결과 형식이면 TABLE_NAME 이 같은 행만 그 테이블의 컬럼으로 읽는다(Key 는 결과에 없어 공란)
+    // 빌더 「테이블 정보 조회 쿼리」 결과 형식이면 TABLE_NAME 이 같은 행만 그 테이블의 컬럼으로 읽는다(Key·비고는 확장 쿼리 결과에서 · 예전 결과면 공란)
     const db=mbsTiDbRows(lines);
     if(db.length){ const mine=db.filter(function(d){ return d.t===T; });
-      return mine.length?{name:mine[0].tnm,cols:mine.map(function(d){ return {id:d.id,nm:d.nm,type:d.type,len:d.len,pk:'',nn:d.nn,def:d.def,rem:''}; })}:null; }
+      return mine.length?{name:mine[0].tnm,cols:mine.map(function(d){ return {id:d.id,nm:d.nm,type:d.type,len:d.len,pk:d.pk||'',nn:(d.pk==='PK'&&!d.nn)?'N':d.nn,def:d.def,rem:d.rem||''}; })}:null; }
     let on=whole, out=[], name='', hmap=null;
     // (머리줄 판정은 mbsTiHeadAt과 같은 기준)
     for(let li=0;li<lines.length;li++){ const l=lines[li].trim(); if(!l){ if(on&&out.length&&!whole) break; continue; }
@@ -1786,7 +1795,7 @@
             secs.push(['조회 방법',L]); });
           // 막기 한 줄: 메시지 문구가 없으면 문구를 지어내지 않고 「확인 필요 Qn」을 가리킨다
           const ckLine=function(ck){ const q=(!mbsT(ck.msg)&&ck.qk)?M.Q.find(function(x){ return x.qk===ck.qk; }):null;
-            return '　· '+(mbsT(ck.cond)?mbsT(ck.cond)+' ':'')+(mbsT(ck.msg)?'"'+mbsT(ck.msg)+'" 안내 후 처리를 멈춥니다.':(q?'메시지 안내 후 처리를 멈춥니다. (메시지 문구 확인 필요 '+q.id+')':'처리를 멈춥니다.')); };
+            return '　· '+(mbsT(ck.cond)?mbsT(ck.cond)+' ':'')+(mbsT(ck.msg)?'"'+mbsT(ck.msg)+'" 안내 후 처리를 멈춥니다.':(q?'메시지 안내 후 처리를 멈춥니다. (메시지 문구 확인 필요 '+q.id+')':'메시지 안내 후 처리를 멈춥니다.')); };
           // 그리드·입력 항목 규칙(편집 범위·정렬·기간 체크 등)
           const gl=[]; M.items.filter(function(i){ return i.kind==='grid'||i.kind==='inputs'; }).forEach(function(it){ M.R.filter(function(rr){ return rr.item===it; }).forEach(function(rr){ gl.push('· ['+(it.kind==='inputs'?'입력 항목':it.name)+'] '+mbsPolite(rr.proc)+' ('+rr.id+')'); rr.checks.forEach(function(ck){ gl.push(ckLine(ck)); }); }); });
           if(gl.length){ const hk=function(k){ return M.R.some(function(rr){ return rr.item&&rr.item.kind===k; }); };
@@ -1845,7 +1854,7 @@
         if(M){ const msg=[];
           // 메시지코드가 없으면 공란(DT9999 소스 메시지) · 문구가 없으면 「확인 필요 Qn」
           M.R.forEach(function(rr){ rr.checks.forEach(function(ck){ const q=(!mbsT(ck.msg)&&ck.qk)?M.Q.find(function(x){ return x.qk===ck.qk; }):null;
-            msg.push([rr.item?(rr.item.kind==='search'?'조회':(rr.item.kind==='inputs'?'입력 항목':rr.item.name)):'화면 전체','('+rr.id+') '+[mbsT(ck.cond)||rr.cond].filter(Boolean).join(''),'',mbsT(ck.msg)||(q?'확인 필요 '+q.id:'')]); }); });
+            msg.push([rr.item?(rr.item.kind==='search'?'조회':(rr.item.kind==='inputs'?'입력 항목':rr.item.name)):'화면 전체','('+rr.id+') '+[mbsT(ck.cond)||rr.cond].filter(Boolean).join(''),'',mbsT(ck.msg)||(q?'확인 필요 '+q.id:'메시지 안내 후 처리 중단')]); }); });
           M.EX.filter(function(e){ return e.a; }).forEach(function(e){ msg.push(['예외',e.q,'',e.a]); });
           if(msg.length){ sec('처리 로직 & 저장 전 체크로직 (메시지코드)'); r=mbXlDataTable2(ws,6,r,['구분','조건 / 로직','메시지코드','메시지 문구'],msg); } }
         if(allBinds.length){ sec('바인드 변수 (Bind Variables)'); r=mbXlParaBlock(ws,6,r,allBinds.join(', ')); }

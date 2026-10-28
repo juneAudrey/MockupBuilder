@@ -1018,6 +1018,23 @@
   .sf-move:disabled{opacity:.3;cursor:default;}
   .gcol-type{flex:none;width:84px;}
   .gcol-grp-h{display:flex;align-items:center;justify-content:space-between;gap:6px;}
+  /* 그리드 컬럼 일괄 변경 - 전체 선택·전체 필수/읽기전용 줄과, 선택한 컬럼이 있을 때만 나오는 일괄 변경 상자 */
+  .gc-bulk{display:flex;align-items:center;gap:4px;margin:4px 0 6px;font-size:11px;color:#4b5563;}
+  .gc-bulk-all{display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;}
+  .gc-bulk-sp{flex:1;}
+  .gc-bulk-btn{padding:3px 7px;border:1px solid var(--ax-border);background:#fff;border-radius:4px;cursor:pointer;font-size:11px;color:#374151;white-space:nowrap;}
+  .gc-bulk-btn:hover{background:#f3f4f6;}
+  .gc-bulk-btn.on{background:#eef4ff;border-color:#93b4f5;color:#1d4ed8;}
+  .gc-bulk-btn.danger{color:#b91c1c;border-color:#f3c4c4;}
+  .gc-bulk-btn.danger:hover{background:#fef2f2;}
+  .gc-bulk-bar{border:1px solid #c7d7fb;background:#f6f9ff;border-radius:6px;padding:6px 8px;margin:0 0 8px;display:flex;flex-direction:column;gap:5px;font-size:11px;}
+  .gc-bulk-title{display:flex;align-items:center;justify-content:space-between;font-weight:700;color:#1e3a8a;}
+  .gc-bulk-link{border:0;background:none;color:#2563eb;cursor:pointer;font-size:11px;padding:0;}
+  .gc-bulk-row{display:flex;align-items:center;gap:4px;}
+  .gc-bulk-lab{width:68px;flex:none;color:#4b5563;}
+  .gc-bulk-row select{flex:1;min-width:0;font-size:11px;padding:2px 4px;border:1px solid var(--ax-border);border-radius:4px;background:#fff;}
+  .gc-bulk-grp{flex:1;min-width:0;font-size:11px;padding:3px 5px;border:1px solid var(--ax-border);border-radius:4px;}
+  .sfield-row .gc-bulk-chk{flex:none;margin:0 2px 0 0;cursor:pointer;width:13px;height:13px;}
   .gcol-grp-toggle{flex:none;padding:4px 8px;border:1px solid var(--ax-border);background:#fff;border-radius:4px;cursor:pointer;font-size:10px;color:#556;white-space:nowrap;text-transform:none;letter-spacing:normal;font-weight:600;}
   .gcol-grp-toggle:hover{background:#eef2f5;}
   .sfield-row{transition:opacity .12s;border-top:2px solid transparent;}
