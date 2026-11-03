@@ -58,6 +58,12 @@
   }
 
   function addRef(refs, uid, id) {
+    // serviceUid 0 은 실제 서비스가 아니다 — 2026-11 이후 deploy-cli 로 배포된 WF는 자기 헤더
+    // (service.serviceUid)를 0 으로 저장한다. 이걸 그대로 'WF:u0' 으로 만들면 새로 배포된 WF들이
+    // 전부 하나의 가짜 노드(u0)를 "호출"하는 것처럼 엉켜 그려진다. uid 0 은 없는 것으로 보고
+    // serviceId 로만 연결한다(자기 헤더면 앱에서 자기순환으로 합쳐짐 — 예전 WF와 같은 모양).
+    if (uid != null && String(uid) === '0') uid = null;
+    if (uid == null && !id) return;
     const key = uid != null ? ('u:' + uid) : ('s:' + id);
     if (!refs[key]) refs[key] = { uid: uid != null ? String(uid) : null, id: id || null };
     else if (id && !refs[key].id) refs[key].id = id;

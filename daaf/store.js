@@ -25,6 +25,8 @@
         // 보강
         if (n.name && (!ex.name || ex.name === ex.id || n.menuNm)) ex.name = n.name;
         if (ex.uid == null && n.uid != null) ex.uid = n.uid;
+        // /wf/{uid}/execute 스크립트 직접호출로 먼저 생긴 노드는 id 가 null — 레코드를 읽어 온 뒤 채운다.
+        if (ex.id == null && n.id != null) ex.id = n.id;
         if (!ex.raw && n.raw) ex.raw = n.raw;
         if (!ex.triggers && n.triggers) ex.triggers = n.triggers;
         if (!ex.menuNm && n.menuNm) ex.menuNm = n.menuNm;

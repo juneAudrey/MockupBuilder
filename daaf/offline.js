@@ -7,6 +7,8 @@ window.WaveOffline = (function () {
     // 리포트 "SQL 보기" 패널을 오프라인에서도 쓰려면 필요 — report_link(b_report_file)는 필수,
     // report_link_tenant(b_report_file_tenant)는 테넌트별 오버라이드가 있을 때만 선택적으로 받으면 된다.
     report_link: '리포트-WF 연결(b_report_file)', report_link_tenant: '리포트-WF 연결 테넌트 오버라이드(b_report_file_tenant, 선택)',
+    // getReportData() 로 출력하는 리포트(입고표·회계전표 등)는 b_report_file 대신 이 테이블로 WF를 찾는다.
+    report_list_rpt: '리포트-WF 연결 2(b_report_list_rpt)',
     // "IV"(초기값 추적) 상세패널의 "지금 값 조회" 버튼을 오프라인에서도 쓰려면 필요.
     config_ref: '초기값 기준코드(B_CONFIGURATION_V)',
     // 디자인 미리보기 "I"(컴포넌트 정보) 팝업의 공통코드 목록을 오프라인에서도 보려면 필요.
@@ -21,8 +23,11 @@ window.WaveOffline = (function () {
   // GitHub Pages 로 먼저 배포되므로, 예전 클라이언트에서는 목록에 띄우지 않는다(예전 메인 프로세스는 모르는
   // 테이블 키를 조용히 건너뛰어, 체크해도 아무 일도 안 일어나는 혼란만 생기기 때문).
   const SUPPORTS_MINOR = !!(window.api && window.api.offlineQueryMinorCodes);
+  // report_list_rpt 는 이 테이블을 아는 클라이언트(preload features.reportListRpt)에서만 띄운다.
+  const SUPPORTS_RLR = !!(window.api && window.api.features && window.api.features.reportListRpt);
   const ALL_TABLES = ['menu', 'ui_deploy', 'wf_deploy', 'rp_deploy', 'mo_deploy', 'dd', 'dd_lang', 'report_link', 'report_link_tenant', 'config_ref']
     .concat(SUPPORTS_MINOR ? ['minor'] : [])
+    .concat(SUPPORTS_RLR ? ['report_list_rpt'] : [])
     .concat(['grid_columns', 'grid_columns_tenant', 'grid_options', 'grid_options_tenant']);
 
   const state = { filePath: '', manifest: null, active: false, busy: false };

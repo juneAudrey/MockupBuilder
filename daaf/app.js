@@ -2755,7 +2755,7 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       if (!row || row.SERVICE_UID == null) return null;
       const wfRows = await fetchWave('WF', 'serviceUid', row.SERVICE_UID, tenantId, coCd, true);
       if (!wfRows || !wfRows.length || !wfRows[0].RESOURCE_WF) return null;
-      return { serviceUid: row.SERVICE_UID, steps: P.collectAllWfSteps(wfRows[0].RESOURCE_WF) };
+      return { serviceUid: row.SERVICE_UID, linkSource: row.LINK_SOURCE || null, steps: P.collectAllWfSteps(wfRows[0].RESOURCE_WF) };
     } catch (e) { return null; }
   }
 
@@ -3358,8 +3358,8 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
   function renderReportSqlCards(box, hostKind, result) {
     if (!result || !Array.isArray(result.steps) || !result.steps.length) {
       renderSqlPanelBody(box, hostKind, '<div class="rpq-empty">연결된 WF를 찾지 못했습니다(' + (offlineActive
-        ? '오프라인 데이터에 리포트-WF 연결 정보가 없습니다 — [데이터 관리]에서 "리포트-WF 연결(b_report_file)" 테이블을 받아보세요.'
-        : 'b_report_file 에 등록되지 않았거나, 해당 서비스가 삭제됐을 수 있습니다.') + ')</div>');
+        ? '오프라인 데이터에 리포트-WF 연결 정보가 없습니다 — [데이터 관리]에서 "리포트-WF 연결(b_report_file)"과 "리포트-WF 연결 2(b_report_list_rpt)" 테이블을 받아보세요.'
+        : 'b_report_file 과 b_report_list_rpt(getReportData 리포트) 어디에도 등록되지 않았거나, 해당 서비스가 삭제됐을 수 있습니다. 상단 테넌트/회사도 확인하세요.') + ')</div>');
       return;
     }
     const queried = result.steps.filter(stepHasQuery);
@@ -3368,7 +3368,8 @@ AI(Claude 등)에게 이 파일을 첨부하며 아래처럼 요청하세요:
       return;
     }
     const bodyHtml = '<div class="rp-guess-banner" style="margin-bottom:14px">'
-      + '이 리포트의 실제 데이터를 채우는 WF(serviceUid=' + esc(result.serviceUid) + ') 안에서 쿼리를 가진 스텝 '
+      + '이 리포트의 실제 데이터를 채우는 WF(serviceUid=' + esc(result.serviceUid)
+      + (result.linkSource ? ', 연결: ' + esc(result.linkSource) : '') + ') 안에서 쿼리를 가진 스텝 '
       + queried.length + '개를 순서대로 보여줍니다. SQL 이 없는 선언적 스텝은 🧩 추정 쿼리로 표시됩니다.</div>'
       + queried.map(renderReportQueryCard).join('');
     const bodyEl = renderSqlPanelBody(box, hostKind, bodyHtml);
