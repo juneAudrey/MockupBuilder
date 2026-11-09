@@ -288,8 +288,9 @@
     // 4) $pageObjects["name"] = (args) => { ... } 헬퍼 정의를 onLoad+모든 버튼 스크립트에서 수집
     //    (헬퍼는 보통 onLoad 에 정의되고 다른 버튼 스크립트에서 호출되는 경우가 흔해 전체를 뒤진다)
     const allScriptTexts = [onLoad].concat(Object.keys(buttonScripts).map(k => buttonScripts[k]));
-    const helperBodies = {};
-    const helperParams = {}; // 헬퍼명 -> 선언된 매개변수명 배열(예: ['majorCd']) — 호출부 리터럴 치환용
+    // 스크립트에서 뽑은 이름을 키로 쓰므로 프로토타입 없는 객체(constructor/toString 등과 충돌 방지).
+    const helperBodies = Object.create(null);
+    const helperParams = Object.create(null); // 헬퍼명 -> 선언된 매개변수명 배열(예: ['majorCd']) — 호출부 리터럴 치환용
     const helperDefRe = /\$pageObjects\[\s*["'](\w+)["']\s*\]\s*=\s*\(([^)]*)\)\s*=>\s*\{/g;
     allScriptTexts.forEach(txt => {
       if (!txt) return;
@@ -368,7 +369,7 @@
     loadScripts.forEach(scr => {
       const txt = scr.text || '';
       if (!txt) return;
-      const localVarMap = {}; // 로컬변수명 -> {helperName, argsText} (const x = $pageObjects["h"]('M2104') 형태)
+      const localVarMap = Object.create(null); // 로컬변수명 -> {helperName, argsText} (const x = $pageObjects["h"]('M2104') 형태)
       const localRe = /\b(?:const|let|var)\s+(\w+)\s*=\s*\$pageObjects\[\s*["'](\w+)["']\s*\]\(([^)]*)\)/g;
       let lm;
       while ((lm = localRe.exec(txt)) !== null) localVarMap[lm[1]] = { helperName: lm[2], argsText: lm[3] };
@@ -1371,7 +1372,10 @@
   // 스크립트 함수 색인: 이름 → [{ params, body, popupParamIdx }]
   // 같은 이름이 여러 번 정의돼도(RESOURCE_JS 와 RESOURCE_JSON onLoad 에 같은 코드가 중복 저장됨) 모두 보관.
   function indexScriptFunctions(texts) {
-    const index = {};
+    // 프로토타입 없는 객체 — {} 로 만들면 화면 스크립트에 constructor(/toString( 같은 이름이 있을 때
+    // index['constructor'] 가 Object 기본 함수로 잡혀 "defs.forEach is not a function" 오류가 난다
+    // (2026-11-10 COTPA3UI0005).
+    const index = Object.create(null);
     const add = (name, paramText, text, braceIdx) => {
       let body = sliceJsBlock(text, braceIdx, '{', '}');
       if (body == null) body = text.slice(braceIdx, braceIdx + 6000); // 짝을 못 찾으면 앞부분만이라도
