@@ -2076,6 +2076,11 @@ body.skin-mobile #qbBtn{display:none!important;}
 .topbar button.btn-sp svg{width:14px;height:14px;flex-shrink:0;}
 
 body.skin-classic #spBtn, body.skin-mobile #spBtn{display:none!important;}
+/* 사양서 찾기 (씬모드 PC 전용) - 새 창으로 사양서 목록 열기 */
+.topbar button.btn-sf{background:#1971c2;border:1px solid #fff!important;display:inline-flex;align-items:center;gap:6px;height:31px;box-sizing:border-box;padding:0 13px;white-space:nowrap;}
+.topbar button.btn-sf:hover{background:#1864ab;}
+.topbar button.btn-sf svg{width:14px;height:14px;flex-shrink:0;}
+body.skin-classic #sfBtn, body.skin-mobile #sfBtn, body.mb-tablet #sfBtn, body.mb-mobile #sfBtn{display:none!important;}
 #spBg{--sp:#0b7285;--sp-d:#0a5f6f;--sp-l:#e7f4f6;--sp-ll:#f3fafb;--sp-t:#253545;--sp-m:#6b7785;--sp-b:#e2e7ec;--sp-ok:#1e9e6a;--sp-wa:#d9822b;}
 #spBg .modal{width:min(1320px,calc(var(--vw) * 96));height:calc(var(--vh) * 92);max-height:900px;display:flex;flex-direction:column;overflow:hidden;border-radius:14px;}
 #spBg .modal-h{background:#fff;color:var(--sp-t);border-bottom:1px solid var(--sp-b);padding:14px 22px;}
