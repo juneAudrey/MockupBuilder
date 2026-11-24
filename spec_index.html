@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spec Finder · 사양서 찾기</title>
+<meta name="description" content="내 PC의 프로그램사양서 폴더를 연결해 테이블 · 컬럼 · 로직 · 쿼리를 바로 찾는 도구. 파일은 브라우저 밖으로 나가지 않습니다.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Ccircle cx='14' cy='14' r='6.5' fill='none' stroke='white' stroke-width='3'/%3E%3Cpath d='M19 19l6 6' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="spec_app.css">
+<script>try{const d=document.documentElement,t=localStorage.getItem('sf.theme'),f=localStorage.getItem('sf.fz'),z=localStorage.getItem('sf.zoom');if(t)d.dataset.theme=t;if(f)d.style.setProperty('--fz',f);if(z)d.style.setProperty('--zoom',z);}catch(e){}</script>
+</head>
+<body>
+<header class="top">
+  <a class="logo" onclick="go('#/')" title="처음으로">
+    <span class="mark"><svg viewBox="0 0 32 32"><circle cx="14" cy="14" r="6.5" fill="none" stroke="currentColor" stroke-width="3"/><path d="M19 19l6 6" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></span>
+    <span class="wm">Spec Finder<small>사양서 찾기</small></span>
+  </a>
+  <div class="tsearch" id="tsearch">
+    <svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input id="q2" placeholder="테이블 · 컬럼 · 화면 · 프로그램ID · 로직" autocomplete="off" spellcheck="false">
+    <kbd>/</kbd>
+  </div>
+  <div class="tright">
+    <span id="scopeTop"></span>
+    <button class="sync" id="syncBtn" title="연결한 폴더를 다시 읽어 색인을 새로 만듭니다"><span class="dot"></span><span id="syncTxt">동기화</span></button>
+    <button class="icon" onclick="go('#/settings')" title="폴더 · 설정"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
+    <div class="dwrap"><button class="icon aa" id="viewBtn" title="글자 크기 · 화면 배율 (Ctrl + 휠 · Ctrl +/- 도 됩니다)">가</button><div class="dpop" id="dpop"></div></div>
+    <button class="icon" id="themeBtn" title="밝게 · 어둡게"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  </div>
+</header>
+<div id="banner"></div>
+<main id="app"></main>
+
+<div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="mbox">
+    <div class="mhead"><b id="mTitle"></b><span id="mTools"></span><button class="icon" onclick="closeModal()" title="닫기 (Esc)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="mbody" id="mBody"></div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script src="spec_xlsx.full.min.js"></script>
+<script src="spec_adapters.js"></script>
+<script src="spec_engine.js"></script>
+<script src="spec_demo.js"></script>
+<script src="spec_app.js"></script>
+</body>
+</html>
