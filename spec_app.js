@@ -457,6 +457,8 @@ function bindQHelp(inp, box) {
     const ops = `<span class="qops">${empty ? '<span class="lab">조합 검색</span>' : ''}${QOPS.map((o, i) => `<button type="button" data-op="${i}" title="${esc(o.tip)} — 누르면 검색창에 넣습니다"><code>${esc(o.ex)}</code>${esc(o.k)}</button>`).join('')}</span>`;
     box.innerHTML = (empty ? '' : `<span class="qinterp"><span class="lab">이렇게 찾습니다</span><span class="qline">${termsHtml(qx)}</span></span>`) + ops;
     box.classList.toggle('typed', !empty);
+    // 한 줄: 왼쪽 = 예시(비었을 때) 또는 풀이(입력 중) · 오른쪽 = 조합 버튼
+    const sg = $('sugg'); if (sg) sg.hidden = !empty;
     box.querySelectorAll('[data-op]').forEach((b) => (b.onmousedown = (e) => {
       e.preventDefault();
       const o = QOPS[+b.dataset.op]; const cur = inp.value.replace(/\s+$/, '');
@@ -513,6 +515,7 @@ function renderOnboard() {
 function renderHome() {
   const SC = L.filter((s) => inScope(s)), hidden = S.filter((s) => !s.isLatest && inScope(s)).length;
   const mods = {}; SC.forEach((s) => (mods[s.module] = (mods[s.module] || 0) + 1));
+  const nTool = SC.filter((s) => s.source !== '수기').length;
   const recent = [...SC].filter((s) => s.confirmedAt).sort((a, b) => b.confirmedAt.localeCompare(a.confirmedAt) || (b.rev || 0) - (a.rev || 0)).slice(0, 8);
   const tops = Object.values(TBL).map((t) => ({ id: t.id, name: t.name, n: Object.keys(t.specs).length })).sort((a, b) => b.n - a.n).slice(0, 9);
   const max = tops[0]?.n || 1;
@@ -525,11 +528,11 @@ function renderHome() {
     <p>테이블 · 컬럼 · 화면 라벨 · 프로그램ID · 로직에 나온 말로 찾습니다. 여러 말을 포함 · 또는 · 제외로 조합할 수 있습니다. <span class="muted">@프로젝트 로 범위 지정</span></p>
     <div class="bigsearch"><div class="box"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
       <input id="q1" placeholder="예) S_SO_HDR S_SO_DTL  ·  S_SO_HDR | S_SO_DTL  ·  S_SO_HDR -S_SO_DTL" autocomplete="off" spellcheck="false" autofocus></div>${scopeSelect('scHome')}</div>
-    <div class="qhelp" id="qhelp"></div>
-    <div class="sugg"><span class="lab">이렇게 찾아 보세요</span>${sugg.map(([k, v]) => `<button data-q="${esc(v)}"><b>${k}</b>${esc(v)}</button>`).join('')}</div>
+    <div class="qrow"><div class="sugg" id="sugg"><span class="lab">이렇게 찾아 보세요</span>${sugg.map(([k, v]) => `<button data-q="${esc(v)}"><b>${k}</b>${esc(v)}</button>`).join('')}</div>
+      <div class="qhelp" id="qhelp"></div></div>
   </section>
   <div class="stats">
-    <div class="card stat"><div class="v">${SC.length}<small>건</small></div><div class="l">사양서 · ${esc(scopeLabel())}${hidden ? `<br><span title="같은 프로그램의 옛 판 · 다른 폴더 사본은 최신 판 하나로 묶어 셉니다">옛 판 · 사본 ${hidden}건 묶음</span>` : ''}</div></div>
+    <div class="card stat"><div class="v">${SC.length}<small>건</small></div><div class="l">사양서 · ${esc(scopeLabel())}<br><span title="도구 = AX사양서도구로 확정 · 수기 = 도구 밖에서 만든 사양서">도구 ${nTool} · 수기 ${SC.length - nTool}</span>${hidden ? `<br><span title="같은 프로그램의 옛 판 · 다른 폴더 사본은 최신 판 하나로 묶어 셉니다">옛 판 · 사본 ${hidden}건 묶음</span>` : ''}</div></div>
     <div class="card stat"><div class="v">${Object.keys(TBL).length}</div><div class="l">테이블</div></div>
     <div class="card stat"><div class="v">${nCols.toLocaleString()}</div><div class="l">화면 컬럼 매핑</div></div>
     <div class="card stat"><div class="v">${nSql}</div><div class="l">쿼리 파일</div></div>
@@ -1150,6 +1153,59 @@ function openPatch() {
   openModal('패치 노트', `<div class="pn"><div class="pnh">Spec Finder · 사양서 찾기 — 판마다 바뀐 기능 (최근 순)</div><table><thead><tr><th>버전</th><th>일시</th><th>요약</th></tr></thead><tbody>${rows}</tbody></table></div>`);
 }
 window.openPatch = openPatch;
+
+/* 배지 범례 — 화면에 나오는 배지를 실제 모양 그대로 보이고 한 줄로 풀이 */
+function openLegend() {
+  const C = (cls, t, st) => `<span class="chip ${cls}"${st ? ` style="${st}"` : ''}>${esc(t)}</span>`;
+  const KD = { name: '검색어가 화면(프로그램) 이름에 있음', col: '화면 컬럼 라벨 · 테이블 컬럼에 있음', tbl: '쓰는 테이블 이름에 있음', sql: '쿼리 · SQL 파일에 있음', logic: '처리 로직 · 동작 설명에 있음', svc: '서비스 · API 이름에 있음', cmb: '콤보 · 코드 정의에 있음', ov: '개요 · 요약에 있음', memo: '결정 메모(_대화메모.md)에 있음', req: '요청 글(컨설턴트 요청 원문)에 있음', rev: '검토 기록에 있음', hist: '변경 이력 시트에 있음', full: '위 구역이 아닌 엑셀 본문 어딘가에 있음', old: '지금 판에는 없고 옛 판에만 있음' };
+  const RD = { 재사용: '저 화면 · 기능을 그대로 다시 씀', 기준: '저 화면을 기준(기반)으로 만듦', 참조: '저 화면 · 자료를 참조함', 참고: '저 화면과 같은 방식 · 동일하게 처리', 호출: '저 화면을 팝업 · 이동 · 클릭으로 엶', 연계: '저 화면과 값을 주고받음(전달 · 가져옴)', '같은 기준 화면': '둘 다 같은 표준 화면을 기준으로 함', 연관: '「연관 프로그램」 칸에 적혀 있음', 언급: '글에 이름만 나옴(종류를 가를 말이 없음)' };
+  const row = (b, d) => `<div class="lgr"><div class="lgb">${b}</div><div class="lgd">${d}</div></div>`;
+  const grp = (t, rows, note) => `<section class="lgg"><h4>${t}</h4>${note ? `<div class="lgn">${note}</div>` : ''}${rows.join('')}</section>`;
+  const mods = Object.keys(MODC);
+  const html = `<div class="pn lg"><div class="pnh">화면에 나오는 배지 · 표시가 무엇을 뜻하는지 한 줄로 풀었습니다. 배지 위에 마우스를 올려도 설명이 나옵니다.</div><div class="lgcols">
+  ${grp('출처 — 누가 만든 사양서인가', [
+    row(srcChip({ source: '도구' }), 'AX사양서도구로 만들어 확정한 사양서 — 연결 폴더에 <code>_프로젝트정보.json</code> 이 있고 <code>확정/…_컨설턴트확정.xlsx</code> 를 읽음'),
+    row(srcChip({ source: '수기' }), '도구 밖에서 사람이 직접 만든 사양서 — 폴더 이름이 <code>모듈_ID_이름</code> 꼴(예 SD_SD001_판매계획등록)'),
+    row('<span class="lgdot"></span><span class="lgdot m"></span>', '검색 결과 이름 옆 점 — 파랑 = 도구 · 주황 = 수기'),
+  ])}
+  ${grp('모듈', [
+    row(mods.map((m) => modTag(m)).join(''), mods.map((m) => `${m} ${MODN[m] || ''}`).join(' · ')),
+    row(modTag('XX'), '위에 없는 모듈은 이름으로 색을 정함 · <code>?</code> = 모듈을 알 수 없음'),
+  ], '색 네모를 누르면(처음 화면 모듈별) 그 모듈만 봅니다.')}
+  ${grp('판(리비전)', [
+    row(revTag({ rev: 1 }), '처음 확정한 판'),
+    row(revTag({ rev: 2 }), '다시 확정한 판 — 숫자가 클수록 새 판'),
+    row(C('stale', '최신 판 아님'), '같은 프로그램의 더 새 판이 있음 → 최신 판으로 가는 버튼이 함께 나옴'),
+    row(C('', '같은 판 · 다른 폴더'), '날짜 · 판이 같은 사본이 다른 폴더에도 있어 한쪽을 대표로 보임'),
+    row(C('stale', '옛 판(초판)에만 있음'), '검색어가 지금 판에는 없고 옛 판에만 있음(지워졌거나 바뀐 내용)'),
+  ], '같은 프로그램은 최신 판 하나로 묶어 셉니다.')}
+  ${grp('사양서 머리', [
+    row(C('id', 'SDSOQUI0023') + C('id', 'ID 미정'), '프로그램ID · 아직 ID 를 받지 않은 신규 화면은 ID 미정'),
+    row(C('id', 'SD001'), '요구ID(요구사항 번호) — 있을 때만'),
+    row(C('ok', '모델JSON v1') + C('ok', '표준엑셀 v1'), '구조를 읽은 방식 — 도구 모델 JSON 또는 표준 엑셀 양식을 알아보고 구역별로 색인함'),
+    row(C('warn', '구조 미해석 · 본문만'), '양식을 알아보지 못해 글만 색인함 — 걸린 곳이 「본문」으로만 나옴'),
+    row(C('', '엑셀 없음 · 자료만'), '엑셀 사양서 없이 목업 · 쿼리 · 메모 같은 자료만 있음'),
+  ])}
+  ${grp('걸린 곳 — 검색어가 사양서 어디에 나왔나', Object.keys(KIND).map((k) => row(kindTag(k), KD[k])))}
+  ${grp('연관 종류 — 다른 프로그램과의 관계', [
+    ...RORDER.map((t) => row(relTag(t), RD[t])),
+    row('<span class="lgdir">→</span><span class="lgdir">←</span>', '→ 이 사양서가 저 프로그램을 말함 · ← 저 프로그램 사양서가 이 사양서를 말함'),
+  ], '사양서 글에 다른 화면 이름 · 프로그램ID · 요구ID 가 나오면 그 문장의 말로 종류를 가릅니다(같은 프로젝트 · 최신 판).')}
+  ${grp('테이블 · 컬럼', [
+    row(`<span class="tbl">S_SO_HDR</span>`, '테이블 이름 — 누르면 그 테이블을 쓰는 사양서 · 컬럼 매핑'),
+    row(crudHtml('CR'), '그 화면이 테이블에 하는 일 — C 등록 · R 조회 · U 수정 · D 삭제(진한 글자만 함)'),
+    row(C('add', '추가'), '이 사양서에서 새로 넣은 컬럼 · 항목'),
+    row(C('chg', '변경'), '기준 화면에서 바꾼 컬럼 · 항목'),
+  ])}
+  ${grp('폴더 · 동기화', [
+    row(C('ok', '읽기 허용됨'), '연결한 폴더를 지금 읽을 수 있음'),
+    row(C('warn', '다시 허용 필요'), '브라우저가 폴더 권한을 잊음 — 눌러서 다시 허용(파일은 그대로)'),
+    row('<span class="sync lgsync"><span class="dot"></span>127건 · 11-25 09:18</span>', '상단 동기화 — 사양서 수 · 마지막으로 다시 읽은 때. 새로 확정한 사양서는 눌러서 동기화해야 나옴'),
+  ])}
+  </div></div>`;
+  openModal('배지 범례', html);
+}
+window.openLegend = openLegend;
 (() => {
   const b = $('verBtn'); if (!b) return;
   b.textContent = '(ver.' + PATCH[0].v + ')';

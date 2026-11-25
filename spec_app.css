@@ -64,6 +64,18 @@ mark{background:var(--mark);color:var(--mark-ink);border-radius:3px;padding:0 1p
 .pn td.s b{display:block;font-size:calc(15px*var(--fz))}
 .pn td.s ul{margin:6px 0 0;padding-left:18px;color:var(--ink2,var(--ink3))}
 .pn td.s li{margin:2px 0}
+.lgcols{columns:2 460px;column-gap:28px}
+.lgg{break-inside:avoid;margin:0 0 22px;border:1px solid var(--line);border-radius:12px;padding:12px 14px 6px;background:var(--surface)}
+.lgg h4{margin:0 0 6px;font-size:calc(14px*var(--fz))}
+.lgn{color:var(--ink3);font-size:calc(12px*var(--fz));margin-bottom:6px}
+.lgr{display:grid;grid-template-columns:minmax(120px,auto) 1fr;gap:12px;align-items:center;padding:7px 0;border-top:1px solid var(--line)}
+.lgg h4+.lgr,.lgn+.lgr{border-top:0}
+.lgb{display:flex;flex-wrap:wrap;gap:4px;align-items:center;max-width:300px}
+.lgd{font-size:calc(13px*var(--fz));color:var(--ink2,var(--ink))}
+.lgd code{font-family:inherit;font-weight:600;color:var(--ink);background:var(--surface2);padding:0 5px;border-radius:4px}
+.lgdot{width:8px;height:8px;border-radius:50%;background:var(--brand);display:inline-block;margin-right:4px}.lgdot.m{background:var(--warn)}
+.lgdir{font-weight:700;color:var(--ink3);margin-right:8px}
+.lgsync{pointer-events:none}
 .pn .now{display:inline-block;margin-left:6px;font-family:inherit;font-weight:600;font-size:calc(11px*var(--fz));color:#fff;background:#047857;border-radius:6px;padding:1px 7px;vertical-align:1px}
 @media (max-width:720px){.pn{padding:14px 12px 30px}.pn thead{display:none}.pn tr,.pn td{display:block}.pn td{border:0;padding:4px 0}.pn tr{border-bottom:1px solid var(--line);padding:10px 0}}
 .tsearch{flex:1;max-width:620px;position:relative;display:flex;align-items:center}
@@ -180,6 +192,12 @@ table.t td.desc{color:var(--ink2);font-size:calc(13px*var(--fz))}
 .bigsearch{display:flex;gap:10px;align-items:center}
 /* 조합 검색: 도움말 줄 · 풀이 칩 */
 .qhelp{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;min-height:30px}
+/* 예시(왼쪽) · 조합 버튼(오른쪽)을 한 줄에 — 입력 중엔 왼쪽이 풀이로 바뀜 */
+.qrow{display:flex;align-items:center;justify-content:space-between;gap:10px 24px;flex-wrap:wrap;margin-top:14px;min-height:34px}
+.qrow .sugg,.qrow .qhelp{margin-top:0}
+.qrow .sugg[hidden]{display:none}
+.qrow .qhelp{margin-left:auto;min-height:0}
+.qrow .qhelp.typed{flex:1;margin-left:0}
 .qhelp .qinterp,.qhelp .qops{display:inline-flex;gap:8px;flex-wrap:wrap;align-items:center}
 .qhelp.typed .qops{margin-left:auto}
 .qhelp.typed .qops button{padding:2px 8px 2px 3px;opacity:.85}
