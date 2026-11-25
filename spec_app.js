@@ -1026,6 +1026,31 @@ async function hydrate(root) {
     catch (e) { const p = el.closest('.thumb,.mini-mock'); if (p) { el.remove(); p.insertAdjacentHTML('afterbegin', '<div class="ph">폴더 허용이 필요합니다</div>'); } }
   }
 }
+/* ---------------- 패치 노트 ----------------
+ * 새 판을 올릴 때 맨 위에 한 줄 추가한다. 위쪽 버전 표시는 맨 위 항목(PATCH[0].v)으로 바뀐다. */
+const PATCH = [
+  { v: '20261125.003', at: '2026-11-25 10:36', sum: '프로젝트 · 작업공간 이름을 콤보에 보일 이름으로 바꿀 수 있게 함',
+    items: ['프로젝트 콤보 맨 아래 \'✎ 이름 바꾸기…\' · 폴더 · 설정의 \'이름 바꾸기\' 로 엶', '바꾼 이름은 콤보 · 범위 표시 · 사양서 경로 · @검색에 쓰임 (이 브라우저에만 저장 · 동기화해도 유지)', '버전 표시를 누르면 패치 노트(이 화면)가 열림'] },
+  { v: '20261125.002', at: '2026-11-25 10:18', sum: '상단 버전 표시 모양 정리',
+    items: ['\'사양서 찾기 (ver.…)\' 한 칸 띄움 · 버전 글자를 2/3 크기로'] },
+  { v: '20261125.001', at: '2026-11-25 09:32', sum: '리비전(판) 관리 · 연관 프로그램 · 뒤로 가기 추가',
+    items: ['같은 프로그램은 최신 판 하나로 묶어 보이고, 옛 판에만 있는 내용은 \'옛 판에만 있음\' 표시와 최신 판으로 가는 버튼', '최근 확정 · 개정과 사양서 화면에 초판 · 2판 · 3판 표시', '사양서마다 연관 탭 — 재사용 · 기준 · 참조 · 참고 · 호출 · 연계 관계와 근거 문장', '뒤로 가기 버튼(Alt + ←)', '프로젝트 콤보를 검색창 크기에 맞춤 · 밝게 모드 모듈 네모 글자 잘 보이게', '상단에 버전 표시'] },
+  { v: '첫 공개', at: '2026-11-24 11:50', sum: '사양서 폴더를 연결해 테이블 · 컬럼 · 화면 · 로직 · 쿼리를 찾는 도구 첫 공개',
+    items: ['여러 폴더 연결 · 동기화 (파일은 브라우저 밖으로 나가지 않음)', '통합 검색 · 결과 안에서 다시 찾기 · @프로젝트 범위', '테이블 화면(컬럼 × 화면 매핑) · 엑셀 미리보기', '글자 크기 · 화면 배율 · 밝게/어둡게 · 데모 모드'] },
+];
+function openPatch() {
+  const rows = PATCH.map((p, i) => `<tr><td class="v">${/^\d/.test(p.v) ? 'ver.' : ''}${esc(p.v)}${i === 0 ? '<span class="now">현재</span>' : ''}</td><td class="d">${esc(p.at)}</td><td class="s"><b>${esc(p.sum)}</b>${p.items.length ? `<ul>${p.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</td></tr>`).join('');
+  openModal('패치 노트', `<div class="pn"><div class="pnh">Spec Finder · 사양서 찾기 — 판마다 바뀐 기능 (최근 순)</div><table><thead><tr><th>버전</th><th>일시</th><th>요약</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+}
+window.openPatch = openPatch;
+(() => {
+  const b = $('verBtn'); if (!b) return;
+  b.textContent = '(ver.' + PATCH[0].v + ')';
+  const open = (e) => { e.preventDefault(); e.stopPropagation(); openPatch(); };
+  b.addEventListener('click', open);
+  b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') open(e); });
+})();
+
 function openModal(title, html, tools) { $('modal').classList.remove('sm'); $('mTitle').textContent = title; $('mBody').innerHTML = html; $('mTools').innerHTML = tools || ''; $('modal').classList.add('on'); }
 function closeModal() { $('modal').classList.remove('on', 'sm'); $('mBody').innerHTML = ''; }
 window.closeModal = closeModal;

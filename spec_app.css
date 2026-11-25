@@ -51,6 +51,21 @@ mark{background:var(--mark);color:var(--mark-ink);border-radius:3px;padding:0 1p
 .mark{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,var(--brand),var(--brand2));box-shadow:0 4px 12px color-mix(in srgb,var(--brand) 35%,transparent)}
 .mark svg{width:20px;height:20px}
 .wm{font-weight:800;font-size:calc(16.5px*var(--fz));letter-spacing:-.02em;line-height:1.1}.wm small{display:block;font-weight:500;font-size:calc(12px*var(--fz));color:var(--ink3);letter-spacing:0}
+.wm .ver{font-size:.67em;cursor:pointer;border-radius:4px;padding:0 2px}
+.wm .ver:hover,.wm .ver:focus-visible{color:var(--ink);text-decoration:underline;outline:none}
+/* 패치 노트 */
+.pn{max-width:1100px;margin:0 auto;padding:22px 26px 40px}
+.pn .pnh{color:var(--ink3);margin-bottom:16px}
+.pn table{width:100%;border-collapse:collapse}
+.pn th{text-align:left;font-size:calc(12px*var(--fz));color:var(--ink3);font-weight:600;padding:8px 12px;border-bottom:1px solid var(--line2);white-space:nowrap}
+.pn td{padding:14px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.pn td.v{white-space:nowrap;font-family:var(--mono);font-weight:700}
+.pn td.d{white-space:nowrap;color:var(--ink3)}
+.pn td.s b{display:block;font-size:calc(15px*var(--fz))}
+.pn td.s ul{margin:6px 0 0;padding-left:18px;color:var(--ink2,var(--ink3))}
+.pn td.s li{margin:2px 0}
+.pn .now{display:inline-block;margin-left:6px;font-family:inherit;font-weight:600;font-size:calc(11px*var(--fz));color:#fff;background:#047857;border-radius:6px;padding:1px 7px;vertical-align:1px}
+@media (max-width:720px){.pn{padding:14px 12px 30px}.pn thead{display:none}.pn tr,.pn td{display:block}.pn td{border:0;padding:4px 0}.pn tr{border-bottom:1px solid var(--line);padding:10px 0}}
 .tsearch{flex:1;max-width:620px;position:relative;display:flex;align-items:center}
 .tsearch .ico{position:absolute;left:12px;width:17px;height:17px;color:var(--ink3)}
 .tsearch input{width:100%;height:38px;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:0 40px 0 36px;font:inherit;color:var(--ink);outline:none;transition:.15s}
