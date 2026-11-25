@@ -412,19 +412,78 @@ function searchAll(qx, sc) {
 
 /* ---------------- 라우팅 ---------------- */
 let fSrc = null, fMod = null, fKind = null, selKey = null;
-/* 뒤로 가기: 이 사이트 안에서 지나온 주소를 쌓아 두고, 쌓인 게 있으면 브라우저 뒤로 · 없으면 처음 화면 */
-const NAV = [];
+/* 뒤로 · 앞으로: 브라우저 기록 칸마다 번호(history.state.sfi)를 붙여 지금 위치(NAVI) · 처음(NAVB) · 끝(NAVM)을 안다.
+ * 새 주소로 가면 그 뒤 기록은 브라우저가 지우므로 끝 = 지금. 새로 고침해도 sessionStorage 로 이어 간다. */
+const ss = { get: (k) => { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) {} } };
+const stIdx = () => (history.state && typeof history.state.sfi === 'number' ? history.state.sfi : null);
+let NAVI = stIdx(), NAVB, NAVM;
+if (NAVI === null) { NAVI = 0; try { history.replaceState({ ...(history.state || {}), sfi: 0 }, ''); } catch (e) {} NAVB = 0; NAVM = 0; }
+else { NAVB = Math.min(+ss.get('sf.navb') || 0, NAVI); NAVM = Math.max(+ss.get('sf.navm') || 0, NAVI); }
 function track() {
-  const h = location.hash || '#/';
-  if (NAV.length > 1 && NAV[NAV.length - 2] === h) NAV.pop();
-  else if (NAV[NAV.length - 1] !== h) NAV.push(h);
+  const i = stIdx();
+  if (i === null) { NAVI = NAVI + 1; NAVM = NAVI; try { history.replaceState({ ...(history.state || {}), sfi: NAVI }, ''); } catch (e) {} }
+  else { NAVI = i; if (i < NAVB) NAVB = i; if (i > NAVM) NAVM = i; }
+  ss.set('sf.navb', NAVB); ss.set('sf.navm', NAVM);
 }
+const canBack = () => NAVI > NAVB, canFwd = () => NAVI < NAVM;
 function updateBack() {
   const home = !location.hash || location.hash === '#/' || location.hash === '#';
-  $('backBtn').hidden = home && NAV.length < 2;
+  $('backBtn').hidden = home && !canBack();
+  updateFab();
 }
-$('backBtn').onclick = () => { if (NAV.length > 1) history.back(); else { NAV.length = 0; go('#/'); } };
+function goBack() { if (canBack()) history.back(); else go('#/'); }
+function goFwd() { if (canFwd()) history.forward(); }
+$('backBtn').onclick = goBack;
 window.addEventListener('hashchange', () => { track(); render(); });
+ss.set('sf.navb', NAVB); ss.set('sf.navm', NAVM);
+
+/* 오른쪽 아래 세로 버튼: 처음 · 뒤로 · 앞으로(뒤로 간 뒤에만) · 맨 위 · 맨 아래 */
+const FAB_ICON = {
+  home: '<path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5"/>',
+  back: '<path d="M15 18l-6-6 6-6"/>',
+  fwd: '<path d="M9 6l6 6-6 6"/>',
+  top: '<path d="M6 5h12"/><path d="M12 19V9"/><path d="M7 13l5-5 5 5"/>',
+  bot: '<path d="M6 19h12"/><path d="M12 5v10"/><path d="M7 11l5 5 5-5"/>',
+};
+(() => {
+  const f = document.createElement('nav'); f.className = 'fab'; f.id = 'fab'; f.setAttribute('aria-label', '화면 이동');
+  const B = (k, t) => `<button type="button" data-f="${k}" title="${t}" aria-label="${t}"><svg viewBox="0 0 24 24">${FAB_ICON[k]}</svg></button>`;
+  f.innerHTML = B('home', '처음 화면') + B('back', '뒤로 (Alt + ←)') + B('fwd', '앞으로 (Alt + →)') + B('top', '맨 위로') + B('bot', '맨 아래로');
+  document.body.appendChild(f);
+  const scroller = () => document.scrollingElement || document.documentElement;
+  f.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const k = b.dataset.f;
+    if (k === 'home') go('#/');
+    else if (k === 'back') goBack();
+    else if (k === 'fwd') goFwd();
+    else if (k === 'top' || k === 'bot') {
+      const smooth = !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+      const el = scroller(), y0 = el.scrollTop, to = () => (k === 'top' ? 0 : el.scrollHeight);
+      window.scrollTo({ top: to(), behavior: smooth ? 'smooth' : 'auto' });
+      // 부드러운 스크롤이 시작도 못 했으면(배율 · 백그라운드 등) 바로 이동
+      if (smooth) setTimeout(() => { if (Math.abs(el.scrollTop - y0) < 1) window.scrollTo({ top: to(), behavior: 'auto' }); }, 700);
+    }
+    [150, 600, 1200].forEach((t) => setTimeout(updateFab, t)); // 스크롤 이벤트가 늦거나 빠져도 상태를 맞춤
+  });
+  window.addEventListener('scroll', updateFab, { passive: true });
+  window.addEventListener('scrollend', updateFab);
+  window.addEventListener('resize', updateFab);
+  new ResizeObserver(updateFab).observe(document.body);
+})();
+function updateFab() {
+  const f = $('fab'); if (!f) return;
+  const el = document.scrollingElement || document.documentElement;
+  const max = el.scrollHeight - el.clientHeight, y = el.scrollTop;
+  const home = !location.hash || location.hash === '#/' || location.hash === '#';
+  // 자리가 흔들리지 않게 — 앞으로만 생기고 없어지고, 나머지는 쓸 수 없을 때 흐리게
+  const q = (k) => f.querySelector(`[data-f="${k}"]`);
+  q('home').disabled = home;
+  q('back').disabled = !canBack();
+  q('fwd').hidden = !canFwd();
+  q('top').disabled = !(max > 4 && y > 4);
+  q('bot').disabled = !(max > 4 && y < max - 4);
+}
 function route() { const segs = location.hash.replace(/^#\/?/, '').split('/').map((x) => { try { return decodeURIComponent(x); } catch (e) { return x; } }); return segs; }
 function render() {
   const [r, a, b] = route();
@@ -1137,6 +1196,8 @@ async function hydrate(root) {
 /* ---------------- 패치 노트 ----------------
  * 새 판을 올릴 때 맨 위에 한 줄 추가한다. 위쪽 버전 표시는 맨 위 항목(PATCH[0].v)으로 바뀐다. */
 const PATCH = [
+  { v: '20261125.005', at: '2026-11-25 15:08', sum: '오른쪽 아래 이동 버튼 · 배지 범례 · 도구/수기 건수',
+    items: ['오른쪽 아래 세로 버튼 — 처음 화면 · 뒤로 · 앞으로(뒤로 간 뒤에만) · 맨 위로 · 맨 아래로 (쓸 수 없을 때는 흐리게)', '상단 ? 버튼 — 화면에 나오는 배지를 실제 모양 그대로 한 줄 풀이(출처 · 모듈 · 판 · 걸린 곳 · 연관 · 테이블 · 동기화)', '처음 화면 사양서 수 밑에 도구 · 수기 건수'] },
   { v: '20261125.004', at: '2026-11-25 11:20', sum: '조합 검색(포함 · 또는 · 제외 · 붙은 말) · 검색창 넓힘',
     items: ['A B(또는 쉼표) = 모두 포함 · A | B(OR · 또는) = 둘 중 하나 · -A = 제외 · "A B" = 붙은 말 — 섞어 쓸 수 있음', '검색창 아래에 조합 버튼(누르면 넣어 줌)과 입력 중 \'이렇게 찾습니다\' 풀이 칩', '결과 제목 · 결과 안에서 다시 찾기도 같은 문법과 칩으로 보임', '검색창과 프로젝트 콤보가 한 줄을 꽉 채움'] },
   { v: '20261125.003', at: '2026-11-25 10:36', sum: '프로젝트 · 작업공간 이름을 콤보에 보일 이름으로 바꿀 수 있게 함',

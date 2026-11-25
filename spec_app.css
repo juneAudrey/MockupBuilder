@@ -64,6 +64,17 @@ mark{background:var(--mark);color:var(--mark-ink);border-radius:3px;padding:0 1p
 .pn td.s b{display:block;font-size:calc(15px*var(--fz))}
 .pn td.s ul{margin:6px 0 0;padding-left:18px;color:var(--ink2,var(--ink3))}
 .pn td.s li{margin:2px 0}
+.fab{position:fixed;right:10px;bottom:18px;z-index:35;opacity:.6;transition:opacity .15s;display:flex;flex-direction:column;gap:4px;padding:5px;border-radius:14px;background:color-mix(in srgb,var(--surface) 88%,transparent);border:1px solid var(--line);box-shadow:var(--shadow2);backdrop-filter:blur(10px)}
+.fab:hover,.fab:focus-within{opacity:1}
+@media (hover:none){.fab{opacity:.9}}
+.fab button{width:36px;height:36px;border-radius:10px;border:0;background:none;display:grid;place-items:center;color:var(--ink2);cursor:pointer;padding:0}
+.fab button:hover:not(:disabled){background:var(--brand-soft);color:var(--brand-ink)}
+.fab button:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.fab button:disabled{opacity:.3;cursor:default}
+.fab button[hidden]{display:none}
+.fab svg{width:18px;height:18px}
+.fab button[data-f="fwd"]{color:var(--brand-ink)}
+@media print{.fab{display:none}}
 .lgcols{columns:2 460px;column-gap:28px}
 .lgg{break-inside:avoid;margin:0 0 22px;border:1px solid var(--line);border-radius:12px;padding:12px 14px 6px;background:var(--surface)}
 .lgg h4{margin:0 0 6px;font-size:calc(14px*var(--fz))}
