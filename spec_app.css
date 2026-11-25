@@ -177,7 +177,28 @@ table.t td.desc{color:var(--ink2);font-size:calc(13px*var(--fz))}
   radial-gradient(700px 300px at 100% 100%,color-mix(in srgb,var(--brand2) 16%,transparent),transparent 60%),var(--surface);border:1px solid var(--line);box-shadow:var(--shadow)}
 .hero h1{margin:0 0 6px;font-size:calc(31px*var(--fz));letter-spacing:-.03em;font-weight:800}
 .hero p{margin:0 0 22px;color:var(--ink2)}
-.bigsearch{display:flex;gap:10px;align-items:center;max-width:860px}
+.bigsearch{display:flex;gap:10px;align-items:center}
+/* 조합 검색: 도움말 줄 · 풀이 칩 */
+.qhelp{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;min-height:30px}
+.qhelp .qinterp,.qhelp .qops{display:inline-flex;gap:8px;flex-wrap:wrap;align-items:center}
+.qhelp.typed .qops{margin-left:auto}
+.qhelp.typed .qops button{padding:2px 8px 2px 3px;opacity:.85}
+.qhelp .lab{font-size:calc(12.5px*var(--fz));color:var(--ink3);margin-right:2px}
+.qhelp button{border:1px dashed var(--line2);background:transparent;border-radius:8px;padding:3px 10px 3px 4px;font-size:calc(12.5px*var(--fz));color:var(--ink3);display:inline-flex;gap:7px;align-items:center;cursor:pointer}
+.qhelp button code{font-family:var(--mono);font-size:calc(12px*var(--fz));background:var(--surface2);color:var(--ink2);border-radius:5px;padding:1px 6px}
+.qhelp button:hover{border-color:var(--brand);color:var(--brand)}
+.qline{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px}
+.qt{display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:7px;font-family:var(--mono);font-size:calc(13px*var(--fz));font-weight:600;letter-spacing:0;border:1px solid}
+.qt.inc{background:var(--brand-soft);color:var(--brand-ink);border-color:var(--brand-line)}
+.qt.exc{background:color-mix(in srgb,var(--bad) 10%,transparent);color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,transparent);text-decoration:line-through;text-decoration-thickness:1px}
+.qor{display:inline-flex;align-items:center;gap:4px;padding:2px;border-radius:9px;border:1px dashed var(--brand-line)}
+.qop{font-size:calc(11.5px*var(--fz));font-weight:600;color:var(--ink3);padding:0 2px;letter-spacing:0}
+.qop.not{color:var(--bad)}
+.qsep{width:1px;height:18px;background:var(--line2);margin:0 4px}
+.rhead h2 .qline{vertical-align:middle}
+.rhead h2 .qt{height:30px;font-size:calc(16px*var(--fz))}
+.rchip.exc{background:color-mix(in srgb,var(--bad) 10%,transparent);color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,transparent)}
+.rchip small{font-weight:600;font-size:.82em;margin-right:4px;opacity:.85}
 .bigsearch .box{flex:1;position:relative}
 .bigsearch .box svg{position:absolute;left:18px;top:50%;transform:translateY(-50%);width:22px;height:22px;color:var(--ink3)}
 .bigsearch input{width:100%;height:58px;border-radius:16px;border:1px solid var(--line2);background:var(--surface);padding:0 18px 0 52px;font:inherit;font-size:calc(18px*var(--fz));color:var(--ink);outline:none;box-shadow:var(--shadow);transition:.15s}

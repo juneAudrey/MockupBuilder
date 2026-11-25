@@ -265,9 +265,47 @@ function openNames() {
 window.openNames = openNames;
 
 /* ---------------- 검색 ---------------- */
+/* 검색어 문법 (조합 검색)
+ *   띄어쓰기 · 쉼표   = 모두 포함 (그리고)      S_SO_HDR S_SO_DTL
+ *   |  · OR · 또는     = 둘 중 하나라도 포함      S_SO_HDR | S_SO_DTL
+ *   -말 · !말          = 이 말이 있는 사양서 제외  S_SO_HDR -S_SO_DTL
+ *   "두 단어"          = 띄어쓰기까지 붙은 말
+ * 결과: { groups: [[또는로 묶인 말…], …](그룹끼리 그리고), not: [제외할 말…] } */
+const OR_WORD = /^(\||or|또는)$/i, AND_WORD = /^(and|그리고|&)$/i;
+function parseTerms(str) {
+  const groups = [], not = []; let join = false;
+  const push = (t, neg) => {
+    t = t.trim(); if (!t) return;
+    if (neg) { if (!not.some((x) => x.toLowerCase() === t.toLowerCase())) not.push(t); join = false; return; }
+    if (join && groups.length) { const g = groups[groups.length - 1]; if (!g.some((x) => x.toLowerCase() === t.toLowerCase())) g.push(t); }
+    else groups.push([t]);
+    join = false;
+  };
+  const re = /(-|!)?"([^"]*)"|(\S+)/g; let m;
+  while ((m = re.exec(String(str || '')))) {
+    if (m[2] !== undefined) { push(m[2], !!m[1]); continue; }
+    let w = m[3];
+    if (OR_WORD.test(w)) { if (groups.length) join = true; continue; }
+    if (AND_WORD.test(w)) { join = false; continue; }
+    // 쉼표는 '그리고', 낱말 안의 | 는 '또는'
+    w.split(',').forEach((piece, pi) => {
+      if (pi > 0) join = false;
+      if (!piece || piece === '-' || piece === '!') return;
+      const neg = /^[-!]./.test(piece); if (neg) piece = piece.slice(1);
+      const alts = piece.split('|');
+      alts.forEach((a, ai) => {
+        if (ai > 0) { if (groups.length) join = true; }
+        if (a) push(a, neg); else if (ai === alts.length - 1 && ai > 0 && groups.length) join = true; // 'A|' 다음 말과 또는
+      });
+    });
+  }
+  return { groups, not };
+}
+const termsPos = (qx) => qx.groups.flat();
+const termsEmpty = (qx) => !qx.groups.length && !qx.not.length;
 function parseQuery(q) {
-  let sc = scope; const toks = [];
-  q.trim().split(/\s+/).filter(Boolean).forEach((t) => {
+  let sc = scope; const rest = [];
+  (String(q).match(/-?"[^"]*"|\S+/g) || []).forEach((t) => {
     if (t.startsWith('@') && t.length > 1) {
       const n = t.slice(1).toLowerCase();
       const hit = (orig, shown) => orig.toLowerCase().includes(n) || shown.toLowerCase().includes(n);
@@ -275,14 +313,44 @@ function parseQuery(q) {
       if (p) { sc = 'p:' + p; return; }
       for (const pp of Object.keys(PROJ)) { const w = Object.keys(PROJ[pp]).find((x) => hit(x, wName(pp, x))); if (w) { sc = 'w:' + pp + '/' + w; return; } }
     }
-    toks.push(t);
+    rest.push(t);
   });
-  return { sc, toks };
+  const qx = parseTerms(rest.join(' '));
+  return { sc, qx, toks: termsPos(qx) };
 }
-function searchAll(toks, sc) {
-  if (!toks.length) return [];
+/* 검색어 풀이를 칩으로: 포함 · 또는 · 제외 */
+function termsHtml(qx, o = {}) {
+  const chip = (t, cls) => `<span class="qt ${cls}">${esc(t)}</span>`;
+  const parts = qx.groups.map((g) => g.length > 1
+    ? `<span class="qor">${g.map((t) => chip(t, 'inc')).join('<span class="qop">또는</span>')}</span>`
+    : chip(g[0], 'inc'));
+  let h = parts.join(o.compact ? ' ' : '<span class="qop and">그리고</span>');
+  if (qx.not.length) h += `${parts.length ? '<span class="qsep"></span>' : ''}<span class="qop not">제외</span>${qx.not.map((t) => chip(t, 'exc')).join('')}`;
+  return h;
+}
+/* 사양서 한 건의 지금 판 전체 글 (제외 검사용 · 소문자) */
+function specText(s) {
+  if (s._xt) return s._xt;
+  const p = [s.name, s.programId, s.reqId, s.base.join(' '), s.overview, s.memo];
+  s.columns.forEach((c) => p.push(c.label, c.column, c.tbl, c.desc, c.source));
+  s.tables.forEach((t) => p.push(t.id, t.name, t.note));
+  [...s.sql, ...s.prompts, ...s.reviews].forEach((f) => p.push(f.name, f.text));
+  s.services.forEach((v) => p.push(v.id, v.name, v.note));
+  s.combos.forEach((v) => p.push(v.id, v.usedBy, v.name));
+  p.push(...s.func, ...s.tech, ...s.layout);
+  s.history.forEach((h) => p.push(h.join(' ')));
+  if (!s.parsed && s.fulltext) p.push(s.fulltext);
+  return (s._xt = p.filter(Boolean).join('\n').toLowerCase());
+}
+const excluded = (s, not) => not.length > 0 && not.some((t) => specText(s).includes(t.toLowerCase()));
+function searchAll(qx, sc) {
+  if (Array.isArray(qx)) qx = { groups: qx.map((t) => [t]), not: [] };
+  // 제외만 있으면: 범위 안 최신 판 중 그 말이 없는 사양서 모두
+  if (!qx.groups.length) return qx.not.length ? L.filter((s) => inScope(s, sc) && !excluded(s, qx.not)).map((s) => ({ s, hits: [], score: 0, rank: 0, others: [] })).sort((a, b) => a.s.name.localeCompare(b.s.name)) : [];
+  const toks = termsPos(qx);
+  const ok = (cov) => qx.groups.every((g) => g.some((t) => cov.has(t.toLowerCase())));
   const out = [];
-  S.filter((s) => inScope(s, sc)).forEach((s) => {
+  S.filter((s) => inScope(s, sc) && !excluded(s, qx.not)).forEach((s) => {
     const hits = [], covered = new Set();
     const add = (kind, obj, txt, score) => {
       const m = toks.filter((t) => has(txt, t)); if (!m.length) return;
@@ -306,7 +374,7 @@ function searchAll(toks, sc) {
     if (s.memo) s.memo.split('\n').filter((l) => l.trim().startsWith('-')).forEach((l) => add('memo', l, l, 1));
     s.history.forEach((h) => add('hist', h.join(' · '), h.join(' '), 1));
     if (!s.parsed && s.fulltext) s.fulltext.split('\n').forEach((l) => add('full', l, l, 1));
-    if (toks.every((t) => covered.has(t.toLowerCase()))) {
+    if (ok(covered)) {
       hits.sort((a, b) => b.score - a.score);
       out.push({ s, hits, score: hits.reduce((a, h) => a + h.score, 0) });
       return;
@@ -319,10 +387,12 @@ function searchAll(toks, sc) {
         m.forEach((x) => oc.add(x.toLowerCase()));
         if (m.some((x) => !covered.has(x.toLowerCase()))) oh.push({ kind: 'old', obj: { sub: k, line: t, rev: o }, m: m.map((x) => x.toLowerCase()), score: m.length * m.length });
       });
-      if (toks.every((t) => oc.has(t.toLowerCase()))) {
+      if (ok(oc)) {
         hits.sort((a, b) => b.score - a.score);
         const all = [...oh, ...hits];
-        out.push({ s, hits: all, score: all.reduce((a, h) => a + h.score, 0) * 0.5, oldRev: o, onlyOld: toks.filter((t) => !covered.has(t.toLowerCase())) });
+        // 옛 판에만 있는 말 = 지금 판으로는 못 채운 그룹에서 옛 판이 채운 말
+        const onlyOld = qx.groups.filter((g) => !g.some((t) => covered.has(t.toLowerCase()))).flatMap((g) => g.filter((t) => oc.has(t.toLowerCase())));
+        out.push({ s, hits: all, score: all.reduce((a, h) => a + h.score, 0) * 0.5, oldRev: o, onlyOld });
         break;
       }
     }
@@ -370,6 +440,33 @@ function render() {
   if (r === 't') return renderTable(a);
   if (r === 'm') { fMod = a; return go(link('q', '') ); }
   renderHome();
+}
+/* 검색창 아래 한 줄: 비어 있으면 조합 방법(누르면 넣어 줌) · 입력하면 '이렇게 찾습니다' 풀이 */
+const QOPS = [
+  { k: '모두 포함', ex: 'A B', ins: ' ', tip: '띄어쓰기(또는 쉼표)로 이으면 모두 들어간 사양서만' },
+  { k: '또는', ex: 'A | B', ins: ' | ', tip: '| 또는 OR 로 이으면 둘 중 하나라도 들어간 사양서' },
+  { k: '제외', ex: '-A', ins: ' -', tip: '말 앞에 - 를 붙이면 그 말이 있는 사양서는 뺌' },
+  { k: '붙은 말', ex: '"A B"', ins: ' ""', tip: '따옴표로 묶으면 띄어쓰기까지 그대로 찾음' },
+];
+function bindQHelp(inp, box) {
+  if (!inp || !box) return;
+  const draw = () => {
+    const v = inp.value.trim();
+    const { qx } = v ? parseQuery(v) : { qx: { groups: [], not: [] } };
+    const empty = !v || termsEmpty(qx);
+    const ops = `<span class="qops">${empty ? '<span class="lab">조합 검색</span>' : ''}${QOPS.map((o, i) => `<button type="button" data-op="${i}" title="${esc(o.tip)} — 누르면 검색창에 넣습니다"><code>${esc(o.ex)}</code>${esc(o.k)}</button>`).join('')}</span>`;
+    box.innerHTML = (empty ? '' : `<span class="qinterp"><span class="lab">이렇게 찾습니다</span><span class="qline">${termsHtml(qx)}</span></span>`) + ops;
+    box.classList.toggle('typed', !empty);
+    box.querySelectorAll('[data-op]').forEach((b) => (b.onmousedown = (e) => {
+      e.preventDefault();
+      const o = QOPS[+b.dataset.op]; const cur = inp.value.replace(/\s+$/, '');
+      // 비어 있을 때 '모두 포함' · '또는' 은 앞말이 없으니 넣지 않고 창만 고른다
+      if (cur || !/^\s*\|?\s*$/.test(o.ins)) inp.value = cur ? cur + o.ins : o.ins.trimStart();
+      let pos = inp.value.length; if (o.ins.endsWith('""')) pos -= 1;
+      inp.focus(); inp.setSelectionRange(pos, pos); draw();
+    }));
+  };
+  inp.addEventListener('input', draw); draw();
 }
 function bindSearch(inp) {
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && inp.value.trim()) { fSrc = fMod = fKind = null; selKey = null; go(link('q', inp.value.trim())); } });
@@ -425,9 +522,10 @@ function renderHome() {
   $('app').innerHTML = `
   <section class="hero">
     <h1>무엇을 찾을까요?</h1>
-    <p>테이블 · 컬럼 · 화면 라벨 · 프로그램ID · 로직에 나온 말 — 여러 단어는 모두 들어간 사양서만 찾습니다. <span class="muted">@프로젝트 로 범위 지정</span></p>
+    <p>테이블 · 컬럼 · 화면 라벨 · 프로그램ID · 로직에 나온 말로 찾습니다. 여러 말을 포함 · 또는 · 제외로 조합할 수 있습니다. <span class="muted">@프로젝트 로 범위 지정</span></p>
     <div class="bigsearch"><div class="box"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-      <input id="q1" placeholder="예) S_SO_DTL 납기" autocomplete="off" spellcheck="false" autofocus></div>${scopeSelect('scHome')}</div>
+      <input id="q1" placeholder="예) S_SO_HDR S_SO_DTL  ·  S_SO_HDR | S_SO_DTL  ·  S_SO_HDR -S_SO_DTL" autocomplete="off" spellcheck="false" autofocus></div>${scopeSelect('scHome')}</div>
+    <div class="qhelp" id="qhelp"></div>
     <div class="sugg"><span class="lab">이렇게 찾아 보세요</span>${sugg.map(([k, v]) => `<button data-q="${esc(v)}"><b>${k}</b>${esc(v)}</button>`).join('')}</div>
   </section>
   <div class="stats">
@@ -448,7 +546,7 @@ function renderHome() {
       ${tops.map((t) => `<div class="bar"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tblHtml(t.id)} <span class="muted small">${esc(t.name)}</span></span><div class="track"><div class="fill" style="width:${(t.n / max) * 100}%"></div></div><span class="n">${t.n}</span></div>`).join('')}
     </div></div>
   </div>`;
-  bindSearch($('q1')); bindScope('scHome');
+  bindSearch($('q1')); bindScope('scHome'); bindQHelp($('q1'), $('qhelp'));
   document.querySelectorAll('.sugg button').forEach((b) => (b.onclick = () => go(link('q', b.dataset.q))));
   document.querySelectorAll('.modt').forEach((d) => (d.onclick = () => { fMod = d.dataset.m; fSrc = fKind = null; go(link('q', '*')); }));
 }
@@ -457,34 +555,35 @@ function renderHome() {
 let LAST = null, REF = [], refQ = null;
 function renderResults(q) {
   if (q !== refQ) { REF = []; refQ = q; }
-  const { sc, toks: qt } = parseQuery(q);
-  const all = q.trim() === '*' || (!qt.length && fMod);
-  let res = all ? L.filter((s) => inScope(s, sc)).map((s) => ({ s, hits: [], score: 0 })).sort((a, b) => a.s.name.localeCompare(b.s.name)) : searchAll(qt, sc);
-  // 검색 내 검색: 좁히기 말마다 그 말이 걸린 사양서(같은 프로그램 단위)만 남기고, 걸린 곳을 앞에 붙인다
+  const { sc, qx, toks: qt } = parseQuery(q);
+  const all = q.trim() === '*' || (termsEmpty(qx) && fMod);
+  let res = all ? L.filter((s) => inScope(s, sc)).map((s) => ({ s, hits: [], score: 0 })).sort((a, b) => a.s.name.localeCompare(b.s.name)) : searchAll(qx, sc);
+  // 검색 내 검색: 좁히기 말(포함 · 또는 · 제외 문법 그대로)이 걸린 사양서(같은 프로그램 단위)만 남기고, 걸린 곳을 앞에 붙인다
+  const rx = parseTerms(REF.join(' '));
   if (REF.length) {
-    const sub = new Map(searchAll(REF, sc).map((r) => [r.s.latest, r]));
+    const sub = new Map(searchAll(rx, sc).map((r) => [r.s.latest, r]));
     res = res.filter((r) => sub.has(r.s.latest)).map((r) => { const x = sub.get(r.s.latest); return { ...r, hits: [...(x.s === r.s ? x.hits : []), ...r.hits], score: r.score + x.score }; });
   }
-  const toks = [...qt, ...REF];
+  const toks = [...qt, ...termsPos(rx)];
   const cnt = (f) => { const m = {}; res.forEach((r) => f(r).forEach((k) => (m[k] = (m[k] || 0) + 1))); return m; };
   const cSrc = cnt((r) => [r.s.source]), cMod = cnt((r) => [r.s.module]), cKind = cnt((r) => [...new Set(r.hits.map((h) => h.kind))].filter((k) => k !== 'name'));
   const shown = res.filter((r) => (!fSrc || r.s.source === fSrc) && (!fMod || r.s.module === fMod) && (!fKind || r.hits.some((h) => h.kind === fKind)));
   LAST = { toks, shown };
   if (!shown.find((r) => r.s.key === selKey)) selKey = shown[0]?.s.key || null;
-  const outside = sc && !all && !REF.length ? searchAll(qt, '').length - res.length : 0;
+  const outside = sc && !all && !REF.length ? searchAll(qx, '').length - res.length : 0;
   const x13 = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>';
-  const title = all ? (fMod ? `${esc(MODN[fMod] || fMod)} 모듈` : '전체 사양서') : `<q>${esc(qt.join(' '))}</q>`;
+  const title = all ? (fMod ? `${esc(MODN[fMod] || fMod)} 모듈` : '전체 사양서') : `<span class="qline">${termsHtml(qx)}</span>`;
   const grp = (label, cur, counts, set, names) => {
     const keys = Object.keys(counts); if (keys.length < 2 && !cur) return '';
     return `<div class="g"><span>${label}</span><button class="${!cur ? 'on' : ''}" data-f="${set}" data-v="">전체</button>${keys.sort((a, b) => counts[b] - counts[a]).map((k) => `<button class="${cur === k ? 'on' : ''}" data-f="${set}" data-v="${esc(k)}">${esc(names ? names(k) : k)} <em>${counts[k]}</em></button>`).join('')}</div>`;
   };
   $('app').innerHTML = `
-    <div class="rhead"><h2 class="crumbq">${title}${REF.map((t) => `<span class="gt">›</span><q>${esc(t)}</q>`).join('')}</h2>
+    <div class="rhead"><h2 class="crumbq">${title}${REF.length ? `<span class="gt">›</span><span class="qline">${termsHtml(rx)}</span>` : ''}</h2>
       <span class="cnt">사양서 <b>${shown.length}</b>건${shown.length !== res.length ? ` / ${res.length}` : ''} · ${esc(scopeLabel(sc))}</span>
       ${sc ? `<a class="small" onclick="setScope('');">범위 풀기</a>` : ''}${outside > 0 ? `<span class="small muted">범위 밖에 ${outside}건 더</span>` : ''}</div>
     <div class="refine"><span class="lab"><svg viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>결과 안에서</span>
-      ${REF.map((t, i) => `<span class="rchip">${esc(t)}<button data-ri="${i}" title="이 조건 빼기">${x13}</button></span>`).join('')}
-      <input id="rq" placeholder="${REF.length ? '더 좁힐 말 + Enter' : '이 결과에서 다시 찾기 — 예) 그리드 · 수량 · 테이블명 + Enter'}" autocomplete="off" spellcheck="false">
+      ${REF.map((t, i) => `<span class="rchip${/^[-!]./.test(t) ? ' exc' : ''}" title="${/^[-!]./.test(t) ? '이 말이 있는 사양서 제외' : t.includes('|') ? '둘 중 하나라도 포함' : '포함'}">${/^[-!]./.test(t) ? `<small>제외</small>${esc(t.slice(1))}` : esc(t.replace(/\|/g, ' 또는 '))}<button data-ri="${i}" title="이 조건 빼기">${x13}</button></span>`).join('')}
+      <input id="rq" placeholder="${REF.length ? '더 좁힐 말 + Enter' : '이 결과에서 다시 찾기 — 예) 그리드 · -수량(제외) · A|B(또는) + Enter'}" autocomplete="off" spellcheck="false">
       ${REF.length ? '<button class="clr" id="rclr">모두 풀기</button>' : ''}</div>
     ${all ? '' : answerCard(qt)}
     <div class="filters">${grp('출처', fSrc, cSrc, 'src')}${grp('모듈', fMod, cMod, 'mod', (k) => k)}${grp('걸린 곳', fKind, cKind, 'kind', (k) => KIND[k])}</div>
@@ -496,7 +595,13 @@ function renderResults(q) {
   const again = (focus) => { renderResults(q); if (focus) $('rq').focus(); };
   $('rq').onkeydown = (e) => {
     const v = e.target.value.trim();
-    if (e.key === 'Enter' && v) { v.split(/\s+/).forEach((t) => { if (!REF.some((x) => x.toLowerCase() === t.toLowerCase())) REF.push(t); }); again(true); }
+    if (e.key === 'Enter' && v) {
+      // 좁히기 말도 같은 문법: 그룹마다 칩 하나 (또는 = A|B · 제외 = -A)
+      const px = parseTerms(v);
+      [...px.groups.map((g) => g.map((t) => (/\s/.test(t) ? `"${t}"` : t)).join('|')), ...px.not.map((t) => '-' + (/\s/.test(t) ? `"${t}"` : t))]
+        .forEach((t) => { if (!REF.some((x) => x.toLowerCase() === t.toLowerCase())) REF.push(t); });
+      again(true);
+    }
     else if (e.key === 'Backspace' && !e.target.value && REF.length) { REF.pop(); again(true); }
     else if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); }
   };
@@ -1029,6 +1134,8 @@ async function hydrate(root) {
 /* ---------------- 패치 노트 ----------------
  * 새 판을 올릴 때 맨 위에 한 줄 추가한다. 위쪽 버전 표시는 맨 위 항목(PATCH[0].v)으로 바뀐다. */
 const PATCH = [
+  { v: '20261125.004', at: '2026-11-25 11:20', sum: '조합 검색(포함 · 또는 · 제외 · 붙은 말) · 검색창 넓힘',
+    items: ['A B(또는 쉼표) = 모두 포함 · A | B(OR · 또는) = 둘 중 하나 · -A = 제외 · "A B" = 붙은 말 — 섞어 쓸 수 있음', '검색창 아래에 조합 버튼(누르면 넣어 줌)과 입력 중 \'이렇게 찾습니다\' 풀이 칩', '결과 제목 · 결과 안에서 다시 찾기도 같은 문법과 칩으로 보임', '검색창과 프로젝트 콤보가 한 줄을 꽉 채움'] },
   { v: '20261125.003', at: '2026-11-25 10:36', sum: '프로젝트 · 작업공간 이름을 콤보에 보일 이름으로 바꿀 수 있게 함',
     items: ['프로젝트 콤보 맨 아래 \'✎ 이름 바꾸기…\' · 폴더 · 설정의 \'이름 바꾸기\' 로 엶', '바꾼 이름은 콤보 · 범위 표시 · 사양서 경로 · @검색에 쓰임 (이 브라우저에만 저장 · 동기화해도 유지)', '버전 표시를 누르면 패치 노트(이 화면)가 열림'] },
   { v: '20261125.002', at: '2026-11-25 10:18', sum: '상단 버전 표시 모양 정리',
