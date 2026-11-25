@@ -24,6 +24,10 @@ const link = (...segs) => '#/' + segs.map((s) => encodeURIComponent(s)).join('/'
 
 /* ---------------- 상태 ---------------- */
 let IDX = null, S = [], L = [], BYKEY = {}, TBL = {}, OLDT = {}, PROJ = {}, DEMO = false; // L = 최신 판(대표)만
+// 보일 이름: { '프로젝트': '보일 이름', '프로젝트/작업공간': '보일 이름' } — 이 브라우저에만
+let PNAME = {}; try { PNAME = JSON.parse(ls.get('sf.pname') || '{}') || {}; } catch (e) { PNAME = {}; }
+const pName = (p) => (!DEMO && PNAME[p]) || p;
+const wName = (p, w) => { if (p && typeof p === 'object') { w = p.workspace; p = p.project; } return (!DEMO && PNAME[p + '/' + w]) || w; };
 let scope = ls.get('sf.scope') || '';
 const KIND = { name: '화면 이름', col: '컬럼', tbl: '테이블', sql: '쿼리', logic: '로직', svc: '서비스', cmb: '콤보', ov: '요약', memo: '결정 메모', req: '요청 글', rev: '검토', hist: '변경 이력', full: '본문', old: '옛 판에만' };
 const KC = { col: 'var(--k-col)', tbl: 'var(--k-tbl)', sql: 'var(--k-sql)', logic: 'var(--k-logic)', svc: 'var(--k-svc)', cmb: 'var(--k-cmb)', old: 'var(--warn)' };
@@ -196,7 +200,11 @@ function relList(s) {
 }
 function scopeValid(sc) { if (!sc) return true; const [k, v] = [sc[0], sc.slice(2)]; if (k === 'p') return !!PROJ[v]; const [p, w] = v.split('/'); return !!(PROJ[p] && PROJ[p][w]); }
 function inScope(s, sc = scope) { if (!sc) return true; const v = sc.slice(2); return sc[0] === 'p' ? s.project === v : s.project + '/' + s.workspace === v; }
-function scopeLabel(sc = scope) { return !sc ? '전체 프로젝트' : sc.slice(2).replace('/', ' › '); }
+function scopeLabel(sc = scope) {
+  if (!sc) return '전체 프로젝트';
+  const v = sc.slice(2); if (sc[0] === 'p') return pName(v);
+  const i = v.indexOf('/'); return pName(v.slice(0, i)) + ' › ' + wName(v.slice(0, i), v.slice(i + 1));
+}
 function rebuild() {
   // 테이블 색인은 최신 판만 센다. 옛 판 · 사본에만 나오는 테이블은 OLDT 에 따로 둔다
   TBL = {}; OLDT = {};
@@ -224,12 +232,37 @@ function scopeSelect(id) {
   let o = `<option value="">전체 프로젝트 (${L.length})</option>`;
   ps.forEach((p) => {
     const ws = PROJ[p]; const n = Object.values(ws).reduce((a, b) => a + b, 0);
-    o += `<option value="p:${esc(p)}">${esc(p)} (${n})</option>`;
-    if (Object.keys(ws).length > 1) Object.keys(ws).sort().forEach((w) => (o += `<option value="w:${esc(p + '/' + w)}">　└ ${esc(w)} (${ws[w]})</option>`));
+    o += `<option value="p:${esc(p)}">${esc(pName(p))} (${n})</option>`;
+    if (Object.keys(ws).length > 1) Object.keys(ws).sort().forEach((w) => (o += `<option value="w:${esc(p + '/' + w)}">　└ ${esc(wName(p, w))} (${ws[w]})</option>`));
   });
+  if (!DEMO) o += `<option value="__edit">✎ 이름 바꾸기…</option>`;
   return `<select class="scope" id="${id}" title="찾을 범위">${o}</select>`;
 }
-function bindScope(id) { const el = $(id); if (!el) return; el.value = scope; el.onchange = () => setScope(el.value); }
+function bindScope(id) {
+  const el = $(id); if (!el) return; el.value = scope;
+  el.onchange = () => { if (el.value === '__edit') { el.value = scope; openNames(); return; } setScope(el.value); };
+}
+
+/* 콤보 · 화면에 보일 프로젝트 · 작업공간 이름 — 이 브라우저에만 저장 · 폴더 · 색인은 그대로(원래 이름으로 묶고 찾음) */
+function openNames() {
+  const ps = Object.keys(PROJ).sort();
+  if (!ps.length) { toast('먼저 사양서 폴더를 연결하세요'); return; }
+  const row = (k, orig, cur, sub) => `<div class="nmrow${sub ? ' sub' : ''}"><span class="orig" title="원래 이름 (폴더 · 작업공간 정보)">${sub ? '└ ' : ''}${esc(orig)}</span><input data-nk="${esc(k)}" value="${esc(PNAME[k] || '')}" placeholder="${esc(orig)}" maxlength="60"></div>`;
+  let h = `<div class="muted small" style="margin-bottom:10px">콤보와 화면에 보일 이름만 바꿉니다. 비우면 원래 이름으로 돌아갑니다. 이 브라우저에만 저장되고 폴더 · 사양서 · 색인은 그대로입니다.</div><div class="nmlist">`;
+  ps.forEach((p) => {
+    h += row(p, p, PNAME[p], false);
+    Object.keys(PROJ[p]).sort().forEach((w) => (h += row(p + '/' + w, w, PNAME[p + '/' + w], true)));
+  });
+  h += `</div><div class="acts" style="margin-top:14px"><button class="btn pri" id="nmSave">저장</button><button class="btn ghost" id="nmReset">모두 원래 이름으로</button><button class="btn ghost" onclick="closeModal()">취소</button></div>`;
+  openModal('프로젝트 · 작업공간 이름 바꾸기', h); $('modal').classList.add('sm');
+  $('nmSave').onclick = () => {
+    const nx = {};
+    document.querySelectorAll('#mBody [data-nk]').forEach((i) => { const v = i.value.trim(); if (v && v !== i.placeholder) nx[i.dataset.nk] = v; });
+    PNAME = nx; ls.set('sf.pname', JSON.stringify(PNAME)); closeModal(); render(); toast('이름을 저장했습니다');
+  };
+  $('nmReset').onclick = () => document.querySelectorAll('#mBody [data-nk]').forEach((i) => (i.value = ''));
+}
+window.openNames = openNames;
 
 /* ---------------- 검색 ---------------- */
 function parseQuery(q) {
@@ -237,9 +270,10 @@ function parseQuery(q) {
   q.trim().split(/\s+/).filter(Boolean).forEach((t) => {
     if (t.startsWith('@') && t.length > 1) {
       const n = t.slice(1).toLowerCase();
-      const p = Object.keys(PROJ).find((x) => x.toLowerCase().includes(n));
+      const hit = (orig, shown) => orig.toLowerCase().includes(n) || shown.toLowerCase().includes(n);
+      const p = Object.keys(PROJ).find((x) => hit(x, pName(x)));
       if (p) { sc = 'p:' + p; return; }
-      for (const pp of Object.keys(PROJ)) { const w = Object.keys(PROJ[pp]).find((x) => x.toLowerCase().includes(n)); if (w) { sc = 'w:' + pp + '/' + w; return; } }
+      for (const pp of Object.keys(PROJ)) { const w = Object.keys(PROJ[pp]).find((x) => hit(x, wName(pp, x))); if (w) { sc = 'w:' + pp + '/' + w; return; } }
     }
     toks.push(t);
   });
@@ -507,7 +541,7 @@ function staleNote(s, r) {
   if (!s.isLatest && L1) {
     h += `<div class="stalebox"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg><div>
       <b>${s.stale === 'old' ? '이 사양서는 최신 판이 아닙니다.' : '같은 날짜 · 같은 판의 같은 프로그램 사양서가 다른 폴더에도 있습니다.'}</b>
-      <div class="small">지금 보는 것: ${esc(s.workspace)} · ${esc(dateTxt(s))} → ${s.stale === 'old' ? '최신' : '대표'}: <b>${esc(L1.name)}</b> · ${esc(L1.workspace)} · ${esc(dateTxt(L1))}</div>
+      <div class="small">지금 보는 것: ${esc(wName(s))} · ${esc(dateTxt(s))} → ${s.stale === 'old' ? '최신' : '대표'}: <b>${esc(L1.name)}</b> · ${esc(wName(L1))} · ${esc(dateTxt(L1))}</div>
       <div class="acts"><button class="btn pri" onclick="go('${link('s', L1.key)}')">${s.stale === 'old' ? '최신 판으로 →' : '대표 사양서로 →'}</button></div></div></div>`;
   }
   return h;
@@ -594,10 +628,10 @@ function preview(r, toks) {
   }).join('');
   const nRel = relList(s).length;
   return `<div class="ph">${staleNote(s, r)}<h3>${modTag(s.module)}${hl(s.name, toks)}</h3>
-    <div class="chips"><span class="chip id">${esc(pidTxt(s))}</span>${s.reqId ? `<span class="chip id">${esc(s.reqId)}</span>` : ''}${srcChip(s)}${revTag(s)}${s.base.map((b) => `<span class="chip id" title="기준 화면">기준 ${esc(b)}</span>`).join('')}<span class="chip">${esc(s.workspace)}</span>${s.parsed ? '' : '<span class="chip warn">구조 미해석</span>'}</div>
+    <div class="chips"><span class="chip id">${esc(pidTxt(s))}</span>${s.reqId ? `<span class="chip id">${esc(s.reqId)}</span>` : ''}${srcChip(s)}${revTag(s)}${s.base.map((b) => `<span class="chip id" title="기준 화면">기준 ${esc(b)}</span>`).join('')}<span class="chip">${esc(wName(s))}</span>${s.parsed ? '' : '<span class="chip warn">구조 미해석</span>'}</div>
     ${s.overview ? `<div class="ov">${sent(hl(s.overview, toks))}</div>` : ''}
     <div class="acts"><button class="btn pri" onclick="go('${link('s', s.key)}')">사양서 열기</button>${s.excel && !DEMO ? `<button class="btn" onclick="openExcel('${esc(s.key)}')">엑셀 미리보기</button>` : ''}${nRel ? `<button class="btn" onclick="go('${link('s', s.key, 'rel')}')">연관 프로그램 ${nRel}</button>` : ''}</div>
-    ${r.others && r.others.length ? `<div class="muted small" style="margin-top:8px">같은 프로그램의 ${r.others.map((k) => { const o = BYKEY[k]; return o ? `<a onclick="go('${link('s', k)}')">${esc(o.workspace)} · ${esc(dateTxt(o))}</a>` : ''; }).join(', ')} 에서도 찾았습니다 (최신 기준으로 하나만 보임)</div>` : ''}
+    ${r.others && r.others.length ? `<div class="muted small" style="margin-top:8px">같은 프로그램의 ${r.others.map((k) => { const o = BYKEY[k]; return o ? `<a onclick="go('${link('s', k)}')">${esc(wName(o))} · ${esc(dateTxt(o))}</a>` : ''; }).join(', ')} 에서도 찾았습니다 (최신 기준으로 하나만 보임)</div>` : ''}
   </div><div class="pb">
     ${s.columns.length ? `<div class="pvsec">화면 ↔ DB 매핑 <span class="n">컬럼 ${s.columns.length} · 테이블 ${Object.keys(tblColors(s)).length}${r.hits.some((h) => h.kind === 'col') ? ` · <mark>검색어 걸린 줄</mark>` : ''}</span><a onclick="go('${link('s', s.key, 'col')}')">크게 보기 →</a></div><div id="pvmap"></div>` : ''}
     ${body ? `${s.columns.length ? '<div class="pvsec">그 밖에 걸린 곳</div>' : ''}${body}` : s.columns.length ? '' : `<div class="empty small">이름이 걸렸습니다.</div>`}
@@ -655,7 +689,7 @@ function renderSpec(key, tab) {
   const copies = s.copies.map((k) => BYKEY[k]).filter(Boolean);
   const same = s.same.map((k) => BYKEY[k]).filter((o) => o && !s.copies.includes(o.key) && o.latest !== s.latest);
   $('app').innerHTML = `
-  <div class="crumb"><a onclick="go('#/')">홈</a>›<a onclick="setScope('p:${esc(s.project)}')">${esc(s.project)}</a><span>(${esc(s.workspace)})</span>›<a onclick="fMod='${esc(s.module)}';fSrc=fKind=null;go('${link('q', '*')}')">${esc(MODN[s.module] || s.module)}</a>›<span>${esc(s.name)}</span></div>
+  <div class="crumb"><a onclick="go('#/')">홈</a>›<a onclick="setScope('p:${esc(s.project)}')">${esc(pName(s.project))}</a><span>(${esc(wName(s))})</span>›<a onclick="fMod='${esc(s.module)}';fSrc=fKind=null;go('${link('q', '*')}')">${esc(MODN[s.module] || s.module)}</a>›<span>${esc(s.name)}</span></div>
   ${staleNote(s, null)}
   <div class="card dhero" style="--mc:${modColor(s.module)}">
     <h1>${modTag(s.module)}${esc(s.name)}</h1>
@@ -682,11 +716,11 @@ function renderSpec(key, tab) {
       <div class="card"><div class="ch">목업 <span class="muted">${s.mockups.length}개</span></div><div class="cb">
         ${s.mockups.length ? s.mockups.map((m, k) => `<div class="thumb" style="${k ? 'margin-top:8px;height:110px' : ''}" onclick="openMock('${esc(m)}')"><iframe data-ref="${esc(m)}" tabindex="-1"></iframe><span class="cap">${esc(fileName(m))}</span></div>`).join('') : '<div class="muted small">목업 없음</div>'}</div></div>
       ${copies.length ? `<div class="card"><div class="ch">같은 프로그램의 판 · 사본 <span class="muted">${copies.length + 1}곳</span></div><div class="cb"><ul class="list">
-        ${[s, ...copies].sort((a, b) => (b.isLatest ? 1 : 0) - (a.isLatest ? 1 : 0) || (b.confirmedAt || '').localeCompare(a.confirmedAt || '')).map((o) => `<li><span class="chip ${o.isLatest ? 'ok' : o.stale === 'old' ? 'stale' : ''}" style="height:20px">${o.isLatest ? '최신' : o.stale === 'old' ? '옛 판' : '사본'}</span>${o === s ? `<b>${esc(o.workspace)}</b><span class="muted small">지금 보는 것</span>` : `<a onclick="go('${link('s', o.key)}')">${esc(o.workspace)}</a>`}<span class="r">${esc(dateTxt(o))}</span></li>`).join('')}</ul></div></div>` : ''}
+        ${[s, ...copies].sort((a, b) => (b.isLatest ? 1 : 0) - (a.isLatest ? 1 : 0) || (b.confirmedAt || '').localeCompare(a.confirmedAt || '')).map((o) => `<li><span class="chip ${o.isLatest ? 'ok' : o.stale === 'old' ? 'stale' : ''}" style="height:20px">${o.isLatest ? '최신' : o.stale === 'old' ? '옛 판' : '사본'}</span>${o === s ? `<b>${esc(wName(o))}</b><span class="muted small">지금 보는 것</span>` : `<a onclick="go('${link('s', o.key)}')">${esc(wName(o))}</a>`}<span class="r">${esc(dateTxt(o))}</span></li>`).join('')}</ul></div></div>` : ''}
       ${par || kids.length || same.length ? `<div class="card"><div class="ch">본 화면 · 팝업${same.length ? ' · 이름이 같은 사양서' : ''}</div><div class="cb"><ul class="list">
         ${par ? `<li><span class="muted small">본 화면</span><a onclick="go('${link('s', par.key)}')">${esc(par.name)}</a></li>` : ''}
         ${kids.map((k) => `<li><span class="muted small">${k.name.includes('_출력물') || (!k.excel && (k.outputs || []).length) ? '출력물' : '팝업'}</span><a onclick="go('${link('s', k.key)}')">${esc(k.name.replace(s.name + '_', ''))}</a></li>`).join('')}
-        ${same.map((o) => `<li><span class="muted small" title="이름만 같고 모듈이 다른 사양서 — 다른 프로그램입니다">${esc(o.module)} 모듈</span><a onclick="go('${link('s', o.key)}')">${esc(o.name)}</a><span class="r">${esc(o.workspace)}</span></li>`).join('')}</ul></div></div>` : ''}
+        ${same.map((o) => `<li><span class="muted small" title="이름만 같고 모듈이 다른 사양서 — 다른 프로그램입니다">${esc(o.module)} 모듈</span><a onclick="go('${link('s', o.key)}')">${esc(o.name)}</a><span class="r">${esc(wName(o))}</span></li>`).join('')}</ul></div></div>` : ''}
       ${rels.length || s.related.length ? `<div class="card"><div class="ch">연관 프로그램 <span class="muted">${rels.length}</span>${rels.length ? `<a class="r small" onclick="go('${link('s', s.key, 'rel')}')">전체 보기</a>` : ''}</div><div class="cb"><ul class="list">
         ${rels.slice(0, 7).map((e) => `<li>${modTag(e.t.module)}<a onclick="go('${link('s', e.t.key)}')" title="${esc(e.t.name)}">${esc(e.t.name)}</a><span class="r">${e.types.slice(0, 2).map(relTag).join('')}</span></li>`).join('')}
         ${rels.length > 7 ? `<li><a onclick="go('${link('s', s.key, 'rel')}')">${rels.length - 7}개 더 →</a></li>` : ''}
@@ -900,7 +934,7 @@ function renderTable(id) {
   // (그 프로그램의 최신 판이 이 테이블을 쓰면 빼고, 빠진 것만 보인다)
   const olds = (OLDT[id] || []).filter((x, k, a) => a.findIndex((y) => y.i === x.i && y.no === x.no) === k)
     .filter((x) => { const L1 = BYKEY[S[x.i].latest]; return !(t && L1 && t.specs[L1.i] !== undefined); });
-  const oldCard = olds.length ? `<div class="card" style="margin-top:14px"><div class="ch">옛 판 · 사본에만 나옴 <span class="muted">최신 판에는 이 테이블이 없음</span></div><div class="cb"><ul class="list">${olds.map((x) => { const o = S[x.i], L1 = BYKEY[o.latest]; return `<li>${modTag(o.module)}<a onclick="go('${link('s', o.key)}')">${esc(o.name)}</a><span class="chip stale" style="height:20px">${x.no ? esc(revName(x.no)) + '에만' : o.stale === 'old' ? '최신 판 아님' : '다른 폴더 사본'}</span><span class="muted small">${esc(o.workspace)}</span>${L1 && L1 !== o ? `<span class="r"><a onclick="go('${link('s', L1.key)}')">최신 판으로 →</a></span>` : ''}</li>`; }).join('')}</ul></div></div>` : '';
+  const oldCard = olds.length ? `<div class="card" style="margin-top:14px"><div class="ch">옛 판 · 사본에만 나옴 <span class="muted">최신 판에는 이 테이블이 없음</span></div><div class="cb"><ul class="list">${olds.map((x) => { const o = S[x.i], L1 = BYKEY[o.latest]; return `<li>${modTag(o.module)}<a onclick="go('${link('s', o.key)}')">${esc(o.name)}</a><span class="chip stale" style="height:20px">${x.no ? esc(revName(x.no)) + '에만' : o.stale === 'old' ? '최신 판 아님' : '다른 폴더 사본'}</span><span class="muted small">${esc(wName(o))}</span>${L1 && L1 !== o ? `<span class="r"><a onclick="go('${link('s', L1.key)}')">최신 판으로 →</a></span>` : ''}</li>`; }).join('')}</ul></div></div>` : '';
   if (!t) { $('app').innerHTML = `<div class="card empty">${esc(id)} 를 쓰는 최신 판 사양서가 ${esc(scopeLabel())} 안에 없습니다.</div>${oldCard}`; return; }
   const sp = Object.entries(t.specs).map(([i, c]) => ({ s: S[i], c })).sort((a, b) => a.s.module.localeCompare(b.s.module) || a.s.name.localeCompare(b.s.name));
   const cols = Object.keys(t.cols).sort();
@@ -935,6 +969,7 @@ async function renderSettings() {
           <label>이 폴더의 PC 경로 (선택 · 경로 복사용)<input data-id="${r.id}" data-k="absPath" value="${esc(r.absPath)}" placeholder="예) D:\\프로젝트"></label></div></div>
       <div style="display:flex;gap:6px">${ok ? '' : `<button class="btn" data-grant="${r.id}">허용</button>`}<button class="btn ghost" data-rm="${r.id}">연결 끊기</button></div></div>`).join('') || '<div class="card empty">연결한 폴더가 없습니다.</div>'}
   </div>
+  ${Object.keys(PROJ).length && !DEMO ? `<div class="card" style="margin-top:14px"><div class="ch">콤보에 보일 프로젝트 이름 <span class="muted">${Object.keys(PNAME).length ? `바꾼 이름 ${Object.keys(PNAME).length}개` : '원래 이름'}</span></div><div class="cb"><span class="muted small">프로젝트 · 작업공간이 콤보와 화면에 보일 이름을 바꿉니다. 이 브라우저에만 저장되고 다시 동기화해도 그대로입니다.</span> <button class="btn" style="margin-left:8px" onclick="openNames()">이름 바꾸기</button></div></div>` : ''}
   ${IDX ? `<div class="card" style="margin-top:14px"><div class="ch">읽기 품질 리포트 <span class="muted">${(IDX.warnings || []).length}건 · 마지막 동기화 ${esc(fmtTime(IDX.builtAt))}</span></div><div class="cb"><ul class="list">${(IDX.warnings || []).map((w) => `<li>${esc(w)}</li>`).join('') || '<li class="muted">문제 없음</li>'}</ul></div></div>` : ''}
   <div class="card" style="margin-top:14px"><div class="ch">이 브라우저의 색인 지우기</div><div class="cb"><span class="muted small">만든 색인과 폴더 연결을 모두 지웁니다. 사양서 파일은 건드리지 않습니다.</span> <button class="btn ghost" id="wipe" style="margin-left:8px">모두 지우기</button></div></div>`;
   if ($('addRoot')) $('addRoot').onclick = addRootFlow;
@@ -991,8 +1026,8 @@ async function hydrate(root) {
     catch (e) { const p = el.closest('.thumb,.mini-mock'); if (p) { el.remove(); p.insertAdjacentHTML('afterbegin', '<div class="ph">폴더 허용이 필요합니다</div>'); } }
   }
 }
-function openModal(title, html, tools) { $('mTitle').textContent = title; $('mBody').innerHTML = html; $('mTools').innerHTML = tools || ''; $('modal').classList.add('on'); }
-function closeModal() { $('modal').classList.remove('on'); $('mBody').innerHTML = ''; }
+function openModal(title, html, tools) { $('modal').classList.remove('sm'); $('mTitle').textContent = title; $('mBody').innerHTML = html; $('mTools').innerHTML = tools || ''; $('modal').classList.add('on'); }
+function closeModal() { $('modal').classList.remove('on', 'sm'); $('mBody').innerHTML = ''; }
 window.closeModal = closeModal;
 window.openMock = async (ref) => { if (DEMO) return; try { const u = await SF.blobUrl(ref, 'text/html;charset=utf-8'); openModal(fileName(ref), `<iframe src="${u}"></iframe>`); } catch (e) { toast(e.message); } };
 window.openImg = async (ref) => { try { const u = await SF.blobUrl(ref); openModal(fileName(ref), `<img src="${u}">`); } catch (e) { toast(e.message); } };
