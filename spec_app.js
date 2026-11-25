@@ -23,30 +23,51 @@ window.go = (h) => { if (location.hash === h) render(); else location.hash = h; 
 const link = (...segs) => '#/' + segs.map((s) => encodeURIComponent(s)).join('/');
 
 /* ---------------- 상태 ---------------- */
-let IDX = null, S = [], BYKEY = {}, TBL = {}, PROJ = {}, DEMO = false;
+let IDX = null, S = [], L = [], BYKEY = {}, TBL = {}, OLDT = {}, PROJ = {}, DEMO = false; // L = 최신 판(대표)만
 let scope = ls.get('sf.scope') || '';
-const KIND = { name: '화면 이름', col: '컬럼', tbl: '테이블', sql: '쿼리', logic: '로직', svc: '서비스', cmb: '콤보', ov: '요약', memo: '결정 메모', req: '요청 글', rev: '검토', hist: '변경 이력', full: '본문' };
-const KC = { col: 'var(--k-col)', tbl: 'var(--k-tbl)', sql: 'var(--k-sql)', logic: 'var(--k-logic)', svc: 'var(--k-svc)', cmb: 'var(--k-cmb)' };
+const KIND = { name: '화면 이름', col: '컬럼', tbl: '테이블', sql: '쿼리', logic: '로직', svc: '서비스', cmb: '콤보', ov: '요약', memo: '결정 메모', req: '요청 글', rev: '검토', hist: '변경 이력', full: '본문', old: '옛 판에만' };
+const KC = { col: 'var(--k-col)', tbl: 'var(--k-tbl)', sql: 'var(--k-sql)', logic: 'var(--k-logic)', svc: 'var(--k-svc)', cmb: 'var(--k-cmb)', old: 'var(--warn)' };
 const kindTag = (k) => `<span class="kind" style="--kc:${KC[k] || 'var(--k-etc)'}">${KIND[k]}</span>`;
 const MODN = { APPR: '결재', BC: '기준정보', BA: '기준정보', IM: '재고', MM: '구매', PP: '생산', SD: '영업', QM: '품질', FI: '재무', CO: '원가', HR: '인사', AC: '회계' };
-const MODC = { SD: '#2563eb', MM: '#059669', IM: '#d97706', PP: '#e11d48', BC: '#475569', APPR: '#7c3aed', QM: '#0891b2', FI: '#4f46e5', CO: '#c026d3', HR: '#ea580c' };
-function modColor(m) { if (MODC[m]) return MODC[m]; let h = 0; for (const c of m || '') h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 55% 45%)`; }
+// 모듈 배지 색 — 흰 글자와 대비 4.5:1 이상 (밝게 · 어둡게 둘 다)
+const MODC = { SD: '#1d4ed8', MM: '#047857', IM: '#b45309', PP: '#be123c', BC: '#475569', APPR: '#6d28d9', QM: '#0e7490', FI: '#4338ca', CO: '#a21caf', HR: '#c2410c' };
+function modColor(m) { if (MODC[m]) return MODC[m]; let h = 0; for (const c of m || '') h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 60% 34%)`; }
 const modTag = (m) => `<span class="mod" style="--mc:${modColor(m)}" title="${esc(MODN[m] || m)}">${esc(m || '?')}</span>`;
 const crudHtml = (c) => `<span class="crud">${'CRUD'.split('').map((x) => `<i class="${x} ${c && c.includes(x) ? 'on' : ''}">${x}</i>`).join('')}</span>`;
 const tblHtml = (t) => `<span class="tbl" onclick="event.stopPropagation();go('${link('t', t)}')">${esc(t)}</span>`;
 const srcChip = (s) => s.source === '수기' ? '<span class="chip src-m" title="도구 밖에서 만든 사양서">수기</span>' : '<span class="chip src-t" title="AX사양서도구로 만든 사양서">도구</span>';
 const pidTxt = (s) => (s.programId === '미정' || !s.programId ? 'ID 미정' : s.programId);
-const dateTxt = (s) => s.source === '수기' ? (s.confirmedAt || '날짜 없음') : (s.confirmedAt || '') + (s.version > 1 ? ` · ${s.version}판` : '');
+/* 판 이름: 1 → 초판 · 2 → 2판 … (0 = 아직 모름 — 새 판 규칙으로 동기화하기 전 색인) */
+const revName = (n) => (!n ? '' : +n === 1 ? '초판' : n + '판');
+const dateTxt = (s) => [s.confirmedAt || '날짜 없음', revName(s.rev)].filter(Boolean).join(' · ');
+const revTag = (s) => (s.rev ? `<span class="chip rev${s.rev > 1 ? ' up' : ''}" title="사양서 판 — 위가 최신">${revName(s.rev)}</span>` : '');
 function mergeCrud(a, b) { const set = new Set(((a || '') + (b || '')).replace(/[^CRUD]/g, '').split('')); return 'CRUD'.split('').filter((x) => set.has(x)).join(''); }
 
 function prepare(index) {
   IDX = index; S = index.specs || [];
   S.forEach((s, i) => {
     s.i = i;
-    ['columns', 'tables', 'mockups', 'sql', 'outputs', 'prompts', 'reviews', 'files', 'revisions', 'history', 'layout', 'same', 'services', 'combos', 'func', 'tech', 'tests', 'base', 'related'].forEach((k) => (s[k] = s[k] || []));
+    ['columns', 'tables', 'mockups', 'sql', 'outputs', 'prompts', 'reviews', 'files', 'revisions', 'history', 'layout', 'same', 'services', 'combos', 'func', 'tech', 'tests', 'base', 'related', 'olds'].forEach((k) => (s[k] = s[k] || []));
     s.source = s.source || '도구'; s.workspace = s.workspace || ''; s.module = s.module || '?';
+    // 판 번호: 새 색인은 rev 를 담는다. 옛 색인의 도구 사양서 version 은 파일 번호(_n)라 판 수가 아니다 → 모름(0)
+    if (!s.rev) s.rev = s.source === '수기' ? s.revisions.length || 1 : DEMO ? s.version || 1 : 0;
+    s.revisions.forEach((r, k) => { if (!r.no) r.no = s.revisions.length - k; });
   });
   BYKEY = {}; S.forEach((s) => (BYKEY[s.key] = s));
+  // 같은 프로그램(프로젝트 · 모듈 · 이름이 같은 사양서 — 다른 폴더의 사본 · 옛 판)은 하나로 묶고 최신 판 하나를 대표로 보인다
+  const newer = (a, b) => (b.confirmedAt || '').localeCompare(a.confirmedAt || '') || (b.rev || 0) - (a.rev || 0)
+    || (b.parsed ? 1 : 0) - (a.parsed ? 1 : 0) || (b.mtime || 0) - (a.mtime || 0) || b.workspace.localeCompare(a.workspace) || a.key.localeCompare(b.key);
+  const G = new Map();
+  S.forEach((s) => { const k = s.project + '\u0001' + s.module + '\u0001' + s.name.replace(/\s/g, ''); if (!G.has(k)) G.set(k, []); G.get(k).push(s); });
+  G.forEach((list) => {
+    const sorted = [...list].sort(newer), rep = sorted[0];
+    list.forEach((s) => {
+      s.latest = rep.key; s.isLatest = s === rep; s.copies = sorted.filter((o) => o !== s).map((o) => o.key);
+      // old = 대표보다 옛 판 · same = 같은 판이 다른 폴더에도 있음(대표가 아닌 사본)
+      s.stale = s === rep ? '' : (rep.confirmedAt || '') > (s.confirmedAt || '') || ((rep.confirmedAt || '') === (s.confirmedAt || '') && (rep.rev || 0) > (s.rev || 0)) ? 'old' : 'same';
+    });
+  });
+  L = S.filter((s) => s.isLatest);
   // 사양서에 이름이 빠진 테이블은 다른 사양서에 적힌 이름을 빌려 쓴다 (빌린 이름은 nameFrom 에 출처를 남긴다)
   const TN = {}; S.forEach((s) => s.tables.forEach((t) => { if (t.id && t.name && !t.nameFrom && !TN[t.id]) TN[t.id] = { name: t.name, from: s.name }; }));
   S.forEach((s) => s.tables.forEach((t) => { if (t.id && !t.name && TN[t.id]) { t.name = TN[t.id].name; t.nameFrom = TN[t.id].from; } }));
@@ -65,18 +86,127 @@ function prepare(index) {
     });
     s.sqlTables = m;
   });
-  PROJ = {};
-  S.forEach((s) => { const p = (PROJ[s.project] = PROJ[s.project] || {}); p[s.workspace] = (p[s.workspace] || 0) + 1; });
+  PROJ = {}; // 개수는 최신 판만 센다 (옛 판 · 사본만 있는 작업공간도 범위로 고를 수 있게 0 으로 둔다)
+  S.forEach((s) => { const p = (PROJ[s.project] = PROJ[s.project] || {}); p[s.workspace] = (p[s.workspace] || 0) + (s.isLatest ? 1 : 0); });
   if (!scopeValid(scope)) scope = '';
+  buildRelations();
   rebuild();
+}
+
+/* ---------------- 연관 프로그램 ----------------
+ * 사양서 글(요약 · 로직 · 컬럼 설명 · 서비스 · 메모 · 연관 프로그램 · 이력 · 요청 글)에 다른 사양서의
+ * 화면 이름 · 프로그램ID · 요구ID 가 나오면 연관으로 본다. 그 줄의 말로 어떤 연관인지 가른다.
+ * 같은 프로젝트 안에서만 · 대상은 최신 판(대표) · 자기 자신 · 같은 프로그램 사본 · 본 화면 ↔ 팝업은 뺀다(따로 보임). */
+const RTYPES = [
+  ['재사용', /재사용|재활용|공통\s*(?:으로)?\s*(?:사용|활용)|그대로\s*(?:사용|씀|쓴)/],
+  ['기준', /기준\s*화면|기반|복사|본떠|베이스|기준으로/],
+  ['참조', /참조/],
+  ['참고', /참고|같은\s*방식|[와과]\s*같|같음|동일|처럼/],
+  ['호출', /호출|팝업|열기|열어|열림|열린|엽니다|연다|띄우|띄움|이동|링크|누르면|클릭|더블/],
+  ['연계', /연동|연계|전달|넘겨|넘김|넘어|가져와|가져온|받아\s*온|이어/],
+];
+const RORDER = ['재사용', '기준', '참조', '참고', '호출', '연계', '같은 기준 화면', '연관', '언급'];
+const RCOL = { 재사용: 'var(--ok)', 기준: 'var(--brand)', 참조: 'var(--k-svc)', 참고: 'var(--k-cmb)', 호출: 'var(--k-col)', 연계: 'var(--k-tbl)', '같은 기준 화면': 'var(--k-logic)', 연관: 'var(--k-sql)', 언급: 'var(--k-etc)' };
+const relTag = (t) => `<span class="rt" style="--rc:${RCOL[t] || 'var(--k-etc)'}">${esc(t)}</span>`;
+const WORDCH = /[0-9A-Za-z_가-힣]/;
+const PARTICLE = /^(?:에서|에게|에는|에도|에|의|을|를|과|와|으로|로|은|는|이|가|도|만|화면|팝업|프로그램|사양서)/;
+function relSources(s) {
+  const out = [];
+  const put = (loc, t) => { t = String(t ?? '').trim(); if (t) out.push([loc, t.length > 700 ? t.slice(0, 700) : t]); };
+  put('요약', s.overview); put('화면 구성', s.screenDesc);
+  s.func.forEach((l) => put('기능 로직', l)); s.tech.forEach((l) => put('기술 로직', l));
+  s.columns.forEach((c) => put('화면 컬럼', [c.label, c.desc, c.source].filter(Boolean).join(' — ')));
+  s.services.forEach((v) => put('서비스', [v.id, v.name, v.note].filter(Boolean).join(' '))); s.combos.forEach((v) => put('콤보', [v.usedBy, v.name].filter(Boolean).join(' ')));
+  s.tables.forEach((t) => put('테이블 쓰임', t.note));
+  (s.memo || '').split('\n').forEach((l) => put('결정 메모', l));
+  s.related.forEach((l) => put('연관 프로그램', l));
+  s.history.forEach((h) => put('변경 이력', [].concat(h).join(' · ')));
+  s.prompts.forEach((f) => (f.text || '').split('\n').forEach((l) => put('요청 글', l)));
+  return out;
+}
+function buildRelations() {
+  S.forEach((s) => { s.relOut = []; s.relIn = []; });
+  const byProj = {}; L.forEach((s) => (byProj[s.project] = byProj[s.project] || []).push(s));
+  Object.entries(byProj).forEach(([p, targets]) => {
+    // 찾을 말 → 대상 사양서들. 말 종류: n = 이름 그대로(…(S) 포함) · b = (S) 뗀 이름 · i = 프로그램ID · 요구ID
+    const terms = new Map();
+    const addT = (w, kind, t) => { if (!w) return; if (!terms.has(w)) terms.set(w, { kind, ts: new Set() }); terms.get(w).ts.add(t); };
+    targets.forEach((t) => {
+      if (t.name.length >= 4) addT(t.name, 'n', t);
+      const bare = t.name.replace(/\s*\(S\)$/, '');
+      if (bare !== t.name && bare.length >= 4) addT(bare, 'b', t);
+      if (t.programId && t.programId !== '미정' && /^[A-Z][A-Z0-9]{5,}$/.test(t.programId)) addT(t.programId, 'i', t);
+      const rq = /^[A-Z]{2}\d{3}$/.test(t.reqId || '') ? t.reqId : '';
+      if (rq) addT(rq, 'i', t);
+    });
+    if (!terms.size) return;
+    const re = new RegExp([...terms.keys()].sort((a, b) => b.length - a.length).map(reEsc).join('|'), 'g');
+    const progOf = (x) => (x && BYKEY[x] ? BYKEY[x].latest : null);
+    S.filter((s) => s.project === p).forEach((s) => {
+      const me = s.latest, par = progOf(s.parent);
+      const kids = new Set(S.filter((o) => o.parent && BYKEY[o.parent] && BYKEY[o.parent].latest === me).map((o) => o.latest));
+      const found = new Map(); // 대상 key → { types:Set, ev:[] }
+      const hit = (t, type, loc, line, term) => {
+        if (t.key === me || t.key === par || kids.has(t.key)) return;
+        if (!found.has(t.key)) found.set(t.key, { key: t.key, types: new Set(), ev: [] });
+        const f = found.get(t.key); f.types.add(type);
+        if (f.ev.length < 12 && !f.ev.some((e) => e.line === line)) f.ev.push({ loc, line, term, type });
+      };
+      relSources(s).forEach(([loc, line]) => {
+        for (const m of line.matchAll(re)) {
+          const w = m[0], tm = terms.get(w), i = m.index, prev = line[i - 1] || '', next = line.slice(i + w.length);
+          if (prev && WORDCH.test(prev)) continue; // 앞 글자가 붙어 있으면 다른 말의 일부
+          if (tm.kind === 'i' && next && /^[0-9A-Za-z]/.test(next)) continue;
+          if (tm.kind === 'b' && next && WORDCH.test(next[0]) && !PARTICLE.test(next)) continue;
+          // (S) 를 뗀 이름이 '표준 …' 이나 '이름(다른 ID)' 꼴이면 표준 화면을 말한 것 — 사이트 사양서가 아니다
+          if (tm.kind === 'b' && (/^\s*\((?!S\))/.test(next) || /표준\s*['"‘“\[(]?\s*$/.test(line.slice(Math.max(0, i - 8), i)))) continue;
+          // 연관 종류는 그 이름이 나온 문장(앞뒤 한 문장 · 길면 앞 40자 ~ 뒤 50자)의 말로 가른다
+          const a = Math.max(line.lastIndexOf('. ', i), line.lastIndexOf('\n', i), line.lastIndexOf(' — ', i), i - 40);
+          const z0 = [line.indexOf('. ', i + w.length), line.indexOf('\n', i + w.length), line.indexOf(' — ', i + w.length)].filter((x) => x >= 0);
+          const z = Math.min(z0.length ? Math.min(...z0) : line.length, i + w.length + 50);
+          const around = line.slice(Math.max(0, a), z).replace(w, ' ');
+          const type = (RTYPES.find(([, rx]) => rx.test(around)) || [loc === '연관 프로그램' ? '연관' : '언급'])[0];
+          // 이름이 같은 사양서가 여러 모듈에 있으면 같은 모듈 쪽으로 본다
+          const ts = [...tm.ts], same = ts.filter((t) => t.module === s.module);
+          (same.length ? same : ts).forEach((t) => hit(t, type, loc, line, w));
+        }
+      });
+      // 기준 화면 ID 가 다른 사양서의 프로그램ID 이면 '기준'
+      s.base.forEach((b) => targets.forEach((t) => { if (t.programId === b) hit(t, '기준', '기준 화면', '기준 화면 ' + b, b); }));
+      s.relOut = [...found.values()].map((f) => ({ key: f.key, types: [...f.types], ev: f.ev }));
+    });
+    // 들어오는 연관: 최신 판이 말한 것만 (옛 판 · 사본이 말한 것은 빼서 겹치지 않게)
+    targets.forEach((s) => s.relOut.forEach((r) => { const t = BYKEY[r.key]; if (t) t.relIn.push({ key: s.key, types: r.types, ev: r.ev }); }));
+    // 같은 기준 화면을 쓰는 사양서
+    const byBase = {}; targets.forEach((s) => s.base.forEach((b) => (byBase[b] = byBase[b] || []).push(s)));
+    targets.forEach((s) => { s.sameBase = []; s.base.forEach((b) => byBase[b].forEach((o) => { if (o !== s && !s.sameBase.some((x) => x.key === o.key)) s.sameBase.push({ key: o.key, base: b }); })); });
+  });
+  S.forEach((s) => { if (!s.sameBase) s.sameBase = []; });
+}
+/* 한 사양서의 연관 목록: 대상마다 { t, types, out:[근거], in:[근거], base } — 옛 판 · 사본은 대표의 들어오는 연관을 함께 본다 */
+function relList(s) {
+  const rep = BYKEY[s.latest] || s, m = new Map();
+  const get = (k) => { if (!m.has(k)) m.set(k, { t: BYKEY[k], types: new Set(), out: [], in: [], base: '' }); return m.get(k); };
+  s.relOut.forEach((r) => { const e = get(r.key); r.types.forEach((x) => e.types.add(x)); e.out.push(...r.ev); });
+  rep.relIn.forEach((r) => { if (r.key === s.key) return; const e = get(r.key); r.types.forEach((x) => e.types.add(x)); e.in.push(...r.ev); });
+  (rep.sameBase || []).forEach((r) => { if (r.key === s.key) return; const e = get(r.key); e.types.add('같은 기준 화면'); e.base = r.base; });
+  const rank = (e) => Math.min(...[...e.types].map((x) => RORDER.indexOf(x)));
+  return [...m.values()].filter((e) => e.t).map((e) => ({ ...e, types: RORDER.filter((x) => e.types.has(x)) }))
+    .sort((a, b) => rank(a) - rank(b) || (b.out.length + b.in.length) - (a.out.length + a.in.length) || a.t.name.localeCompare(b.t.name));
 }
 function scopeValid(sc) { if (!sc) return true; const [k, v] = [sc[0], sc.slice(2)]; if (k === 'p') return !!PROJ[v]; const [p, w] = v.split('/'); return !!(PROJ[p] && PROJ[p][w]); }
 function inScope(s, sc = scope) { if (!sc) return true; const v = sc.slice(2); return sc[0] === 'p' ? s.project === v : s.project + '/' + s.workspace === v; }
 function scopeLabel(sc = scope) { return !sc ? '전체 프로젝트' : sc.slice(2).replace('/', ' › '); }
 function rebuild() {
-  TBL = {};
+  // 테이블 색인은 최신 판만 센다. 옛 판 · 사본에만 나오는 테이블은 OLDT 에 따로 둔다
+  TBL = {}; OLDT = {};
   const add = (id, name, si, crud) => { const e = TBL[id] || (TBL[id] = { id, name: '', specs: {}, cols: {} }); if (!e.name && name) e.name = name; e.specs[si] = mergeCrud(e.specs[si], crud); return e; };
+  // OLDT[id] = [{ i: 사양서, no: 옛 판 번호(0 = 최신이 아닌 다른 폴더 사본) }]
   S.filter((s) => inScope(s)).forEach((s) => {
+    if (!s.isLatest) new Set([...s.tables.map((t) => t.id), ...s.columns.map((c) => c.tbl), ...Object.keys(s.sqlTables)].filter(Boolean)).forEach((id) => (OLDT[id] = OLDT[id] || []).push({ i: s.i, no: 0 }));
+    else s.olds.forEach((o) => new Set((o.lines || []).filter((x) => x[0] === 'tbl').map((x) => x[1].split(/\s/)[0].toUpperCase())).forEach((id) => (OLDT[id] = OLDT[id] || []).push({ i: s.i, no: o.no })));
+  });
+  L.filter((s) => inScope(s)).forEach((s) => {
     s.tables.forEach((t) => t.id && add(t.id, t.name, s.i, t.crud));
     s.columns.forEach((c) => {
       if (!c.tbl) return;
@@ -91,7 +221,7 @@ window.setScope = setScope;
 function scopeSelect(id) {
   const ps = Object.keys(PROJ).sort();
   if (!ps.length) return '';
-  let o = `<option value="">전체 프로젝트 (${S.length})</option>`;
+  let o = `<option value="">전체 프로젝트 (${L.length})</option>`;
   ps.forEach((p) => {
     const ws = PROJ[p]; const n = Object.values(ws).reduce((a, b) => a + b, 0);
     o += `<option value="p:${esc(p)}">${esc(p)} (${n})</option>`;
@@ -145,18 +275,57 @@ function searchAll(toks, sc) {
     if (toks.every((t) => covered.has(t.toLowerCase()))) {
       hits.sort((a, b) => b.score - a.score);
       out.push({ s, hits, score: hits.reduce((a, h) => a + h.score, 0) });
+      return;
+    }
+    // 지금 판에 없는 말이 옛 판에 있으면: 가장 최근 옛 판부터 보고 '옛 판에만 있음' 으로 낸다
+    for (const o of [...s.olds].sort((a, b) => b.no - a.no)) {
+      const oc = new Set(covered), oh = [];
+      (o.lines || []).forEach(([k, t]) => {
+        const m = toks.filter((x) => has(t, x)); if (!m.length) return;
+        m.forEach((x) => oc.add(x.toLowerCase()));
+        if (m.some((x) => !covered.has(x.toLowerCase()))) oh.push({ kind: 'old', obj: { sub: k, line: t, rev: o }, m: m.map((x) => x.toLowerCase()), score: m.length * m.length });
+      });
+      if (toks.every((t) => oc.has(t.toLowerCase()))) {
+        hits.sort((a, b) => b.score - a.score);
+        const all = [...oh, ...hits];
+        out.push({ s, hits: all, score: all.reduce((a, h) => a + h.score, 0) * 0.5, oldRev: o, onlyOld: toks.filter((t) => !covered.has(t.toLowerCase())) });
+        break;
+      }
     }
   });
-  return out.sort((a, b) => b.score - a.score);
+  // 같은 프로그램은 한 줄만: 최신 판 > 최신이 아닌 사본 > 최신 판의 옛 판 > 사본의 옛 판 순으로 고른다
+  const best = new Map();
+  out.forEach((r) => {
+    r.rank = (r.oldRev ? 2 : 0) + (r.s.isLatest ? 0 : r.s.stale === 'same' ? 0.5 : 1);
+    const b = best.get(r.s.latest);
+    if (!b || r.rank < b.rank || (r.rank === b.rank && r.score > b.score)) best.set(r.s.latest, r);
+  });
+  const res = [...best.values()];
+  res.forEach((r) => (r.others = out.filter((x) => x !== r && x.s.latest === r.s.latest).map((x) => x.s.key)));
+  // 지금 판에서 찾은 것을 먼저, 옛 판에만 있는 것은 뒤에 (각각 점수 순)
+  return res.sort((a, b) => (a.rank >= 2) - (b.rank >= 2) || b.score - a.score);
 }
 
 /* ---------------- 라우팅 ---------------- */
 let fSrc = null, fMod = null, fKind = null, selKey = null;
-window.addEventListener('hashchange', render);
+/* 뒤로 가기: 이 사이트 안에서 지나온 주소를 쌓아 두고, 쌓인 게 있으면 브라우저 뒤로 · 없으면 처음 화면 */
+const NAV = [];
+function track() {
+  const h = location.hash || '#/';
+  if (NAV.length > 1 && NAV[NAV.length - 2] === h) NAV.pop();
+  else if (NAV[NAV.length - 1] !== h) NAV.push(h);
+}
+function updateBack() {
+  const home = !location.hash || location.hash === '#/' || location.hash === '#';
+  $('backBtn').hidden = home && NAV.length < 2;
+}
+$('backBtn').onclick = () => { if (NAV.length > 1) history.back(); else { NAV.length = 0; go('#/'); } };
+window.addEventListener('hashchange', () => { track(); render(); });
 function route() { const segs = location.hash.replace(/^#\/?/, '').split('/').map((x) => { try { return decodeURIComponent(x); } catch (e) { return x; } }); return segs; }
 function render() {
   const [r, a, b] = route();
   const hasData = !!IDX;
+  updateBack();
   $('tsearch').style.visibility = hasData && r ? 'visible' : 'hidden';
   $('scopeTop').innerHTML = hasData && r && r !== 'settings' ? scopeSelect('scTop') : ''; bindScope('scTop');
   if (r === 'q') { if (!hasData) return renderOnboard(); $('q2').value = a === '*' ? '' : a || ''; return renderResults(a || ''); }
@@ -211,9 +380,9 @@ function renderOnboard() {
 
 /* ---------------- 홈 ---------------- */
 function renderHome() {
-  const SC = S.filter((s) => inScope(s));
+  const SC = L.filter((s) => inScope(s)), hidden = S.filter((s) => !s.isLatest && inScope(s)).length;
   const mods = {}; SC.forEach((s) => (mods[s.module] = (mods[s.module] || 0) + 1));
-  const recent = [...SC].filter((s) => s.confirmedAt).sort((a, b) => b.confirmedAt.localeCompare(a.confirmedAt)).slice(0, 8);
+  const recent = [...SC].filter((s) => s.confirmedAt).sort((a, b) => b.confirmedAt.localeCompare(a.confirmedAt) || (b.rev || 0) - (a.rev || 0)).slice(0, 8);
   const tops = Object.values(TBL).map((t) => ({ id: t.id, name: t.name, n: Object.keys(t.specs).length })).sort((a, b) => b.n - a.n).slice(0, 9);
   const max = tops[0]?.n || 1;
   const nCols = SC.reduce((a, s) => a + s.columns.length, 0), nSql = SC.reduce((a, s) => a + s.sql.length, 0), nMock = SC.reduce((a, s) => a + s.mockups.length, 0);
@@ -228,7 +397,7 @@ function renderHome() {
     <div class="sugg"><span class="lab">이렇게 찾아 보세요</span>${sugg.map(([k, v]) => `<button data-q="${esc(v)}"><b>${k}</b>${esc(v)}</button>`).join('')}</div>
   </section>
   <div class="stats">
-    <div class="card stat"><div class="v">${SC.length}<small>건</small></div><div class="l">사양서 · ${esc(scopeLabel())}</div></div>
+    <div class="card stat"><div class="v">${SC.length}<small>건</small></div><div class="l">사양서 · ${esc(scopeLabel())}${hidden ? `<br><span title="같은 프로그램의 옛 판 · 다른 폴더 사본은 최신 판 하나로 묶어 셉니다">옛 판 · 사본 ${hidden}건 묶음</span>` : ''}</div></div>
     <div class="card stat"><div class="v">${Object.keys(TBL).length}</div><div class="l">테이블</div></div>
     <div class="card stat"><div class="v">${nCols.toLocaleString()}</div><div class="l">화면 컬럼 매핑</div></div>
     <div class="card stat"><div class="v">${nSql}</div><div class="l">쿼리 파일</div></div>
@@ -238,8 +407,8 @@ function renderHome() {
     ${Object.entries(mods).sort((a, b) => b[1] - a[1]).map(([m, n]) => `<div class="modt" style="--mc:${modColor(m)}" data-m="${esc(m)}">${modTag(m)}<div><b>${esc(MODN[m] || m)}</b><span>${n}건</span></div></div>`).join('')}
   </div></div></div>
   <div class="grid2">
-    <div class="card"><div class="ch">최근 확정 · 개정</div><div class="cb"><ul class="list">
-      ${recent.map((s) => `<li>${modTag(s.module)}<a onclick="go('${link('s', s.key)}')">${esc(s.name)}</a>${s.source === '수기' ? '<span class="chip src-m">수기</span>' : ''}<span class="r">${esc(s.confirmedAt)}</span></li>`).join('') || '<li class="muted">없음</li>'}
+    <div class="card"><div class="ch">최근 확정 · 개정 <span class="muted">최신 판 기준</span></div><div class="cb"><ul class="list">
+      ${recent.map((s) => `<li>${modTag(s.module)}<a onclick="go('${link('s', s.key)}')">${esc(s.name)}</a>${s.source === '수기' ? '<span class="chip src-m">수기</span>' : ''}<span class="r">${revTag(s)}<span>${esc(s.confirmedAt)}</span></span></li>`).join('') || '<li class="muted">없음</li>'}
     </ul></div></div>
     <div class="card"><div class="ch">많이 쓴 테이블 <span class="muted">사양서 수</span></div><div class="cb">
       ${tops.map((t) => `<div class="bar"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tblHtml(t.id)} <span class="muted small">${esc(t.name)}</span></span><div class="track"><div class="fill" style="width:${(t.n / max) * 100}%"></div></div><span class="n">${t.n}</span></div>`).join('')}
@@ -256,11 +425,11 @@ function renderResults(q) {
   if (q !== refQ) { REF = []; refQ = q; }
   const { sc, toks: qt } = parseQuery(q);
   const all = q.trim() === '*' || (!qt.length && fMod);
-  let res = all ? S.filter((s) => inScope(s, sc)).map((s) => ({ s, hits: [], score: 0 })).sort((a, b) => a.s.name.localeCompare(b.s.name)) : searchAll(qt, sc);
-  // 검색 내 검색: 좁히기 말마다 그 말이 걸린 사양서만 남기고, 걸린 곳을 앞에 붙인다
+  let res = all ? L.filter((s) => inScope(s, sc)).map((s) => ({ s, hits: [], score: 0 })).sort((a, b) => a.s.name.localeCompare(b.s.name)) : searchAll(qt, sc);
+  // 검색 내 검색: 좁히기 말마다 그 말이 걸린 사양서(같은 프로그램 단위)만 남기고, 걸린 곳을 앞에 붙인다
   if (REF.length) {
-    const sub = new Map(searchAll(REF, sc).map((r) => [r.s.key, r]));
-    res = res.filter((r) => sub.has(r.s.key)).map((r) => { const x = sub.get(r.s.key); return { s: r.s, hits: [...x.hits, ...r.hits], score: r.score + x.score }; });
+    const sub = new Map(searchAll(REF, sc).map((r) => [r.s.latest, r]));
+    res = res.filter((r) => sub.has(r.s.latest)).map((r) => { const x = sub.get(r.s.latest); return { ...r, hits: [...(x.s === r.s ? x.hits : []), ...r.hits], score: r.score + x.score }; });
   }
   const toks = [...qt, ...REF];
   const cnt = (f) => { const m = {}; res.forEach((r) => f(r).forEach((k) => (m[k] = (m[k] || 0) + 1))); return m; };
@@ -311,12 +480,41 @@ function resultItem(r, toks) {
   const kinds = {}; r.hits.forEach((x) => { if (x.kind !== 'name') kinds[x.kind] = (kinds[x.kind] || 0) + 1; });
   return `<div class="ri ${s.key === selKey ? 'sel' : ''}" data-key="${esc(s.key)}">
     <div class="l1">${modTag(s.module)}<span class="nm" title="${esc(s.name)}">${hl(s.name, toks)}</span><span class="sd ${s.source === '수기' ? 'm' : ''}" title="${s.source} 사양서"></span><span class="dt">${esc(dateTxt(s))}</span></div>
+    ${staleBadges(s, r)}
     <div class="ans">${h ? `${kindTag(h.kind)}<span class="txt">${oneLine(h, toks)}</span>` : `<span class="txt">${hl(trim(s.overview || '', 120), toks) || '<span class="muted">요약 없음</span>'}</span>`}</div>
     ${Object.keys(kinds).length ? `<div class="l3">${Object.entries(kinds).map(([k, n]) => `<span>${KIND[k]} <b>${n}</b></span>`).join('')}</div>` : ''}
   </div>`;
 }
+/* 최신 판이 아님 · 옛 판에만 있음 표시 (결과 줄) */
+function staleBadges(s, r) {
+  const b = [];
+  if (r && r.oldRev) b.push(`<span class="chip stale" title="검색어가 지금 판에는 없고 옛 판에만 있습니다">옛 판(${esc(revName(r.oldRev.no))})에만 있음</span>`);
+  if (!s.isLatest) b.push(s.stale === 'old' ? '<span class="chip stale" title="같은 프로그램의 더 새 판이 있습니다">최신 판 아님</span>' : '<span class="chip" title="같은 날짜 · 같은 판의 같은 프로그램 사양서가 다른 폴더에도 있어 그쪽을 대표로 보입니다">같은 판 · 다른 폴더</span>');
+  if (!b.length) return '';
+  const L1 = BYKEY[s.latest];
+  return `<div class="l2s">${b.join('')}${!s.isLatest && L1 ? `<a class="small" onclick="event.stopPropagation();go('${link('s', L1.key)}')">최신 판으로 →</a>` : ''}${r && r.oldRev && s.isLatest ? `<a class="small" onclick="event.stopPropagation();go('${link('s', s.key)}')">최신 판 열기 →</a>` : ''}</div>`;
+}
+/* 최신 판이 아님 · 옛 판에만 있음 안내 (미리보기 · 사양서 화면 위) */
+function staleNote(s, r) {
+  const L1 = BYKEY[s.latest]; let h = '';
+  if (r && r.oldRev) {
+    const o = r.oldRev;
+    h += `<div class="stalebox"><svg viewBox="0 0 24 24"><path d="M12 8v5l3 2"/><circle cx="12" cy="12" r="9"/></svg><div>
+      <b>${r.onlyOld.map((t) => `<mark>${esc(t)}</mark>`).join(' ')} — 옛 판에만 있습니다.</b>
+      <div class="small">찾은 곳: ${esc(revName(o.no))}${o.label ? ' · ' + esc(o.label) : ''} <code>${esc(o.name)}</code> · 지금 판(${esc(revName(s.rev) || '최신')})에는 없음 — 바뀌었거나 빠진 내용입니다.</div>
+      <div class="acts">${s.isLatest ? `<button class="btn pri" onclick="go('${link('s', s.key)}')">최신 판 열기 →</button>` : ''}${!DEMO && o.path ? `<button class="btn" onclick="openExcelRef('${esc(o.path)}')">옛 판 엑셀 보기</button>` : ''}</div></div></div>`;
+  }
+  if (!s.isLatest && L1) {
+    h += `<div class="stalebox"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg><div>
+      <b>${s.stale === 'old' ? '이 사양서는 최신 판이 아닙니다.' : '같은 날짜 · 같은 판의 같은 프로그램 사양서가 다른 폴더에도 있습니다.'}</b>
+      <div class="small">지금 보는 것: ${esc(s.workspace)} · ${esc(dateTxt(s))} → ${s.stale === 'old' ? '최신' : '대표'}: <b>${esc(L1.name)}</b> · ${esc(L1.workspace)} · ${esc(dateTxt(L1))}</div>
+      <div class="acts"><button class="btn pri" onclick="go('${link('s', L1.key)}')">${s.stale === 'old' ? '최신 판으로 →' : '대표 사양서로 →'}</button></div></div></div>`;
+  }
+  return h;
+}
 function oneLine(h, toks) {
   const o = h.obj;
+  if (h.kind === 'old') return `<span class="muted">${esc(revName(o.rev.no))} · ${esc(KIND[o.sub] || '')}</span> ${hl(trim(snippet(o.line, toks), 120), toks)}`;
   if (h.kind === 'col') return `<span class="map"><span class="lb">${hl(o.label || '-', toks)}</span><span class="ar">←</span>${colOf(o) ? `${o.tbl ? `<span>${hl(o.tbl, toks)}</span>.` : ''}<code>${hl(colOf(o), toks)}</code>` : `${o.tbl ? `<span>${hl(o.tbl, toks)}</span> ` : ''}<span class="muted">${esc(trim(noColTxt(o), 40))}</span>`}</span>`;
   if (h.kind === 'tbl') return `<code>${hl(o.id, toks)}</code> ${hl(o.name, toks)}`;
   if (h.kind === 'sql' || h.kind === 'req' || h.kind === 'rev') return `<code>${hl(o.name, toks)}</code> <span class="muted">${hl(trim(o.line, 90), toks)}</span>`;
@@ -382,22 +580,24 @@ function mapView(s, toks, o, redraw) {
 }
 function drawMapInto(el, s, toks, o) { const v = mapView(s, toks, o, (o2) => drawMapInto(el, s, toks, o2)); el.innerHTML = v.html; v.bind(el); }
 
-const ORDER = ['col', 'tbl', 'sql', 'logic', 'svc', 'cmb', 'ov', 'memo', 'req', 'rev', 'hist', 'full'];
+const ORDER = ['old', 'col', 'tbl', 'sql', 'logic', 'svc', 'cmb', 'ov', 'memo', 'req', 'rev', 'hist', 'full'];
 function preview(r, toks) {
   const s = r.s;
   const groups = {}; r.hits.forEach((h) => { if (h.kind !== 'name' && (!fKind || h.kind === fKind) && !(h.kind === 'col' && s.columns.length)) (groups[h.kind] = groups[h.kind] || []).push(h); });
   const seen = new Set();
   const body = ORDER.filter((k) => groups[k]).map((k) => {
     const list = groups[k].filter((h) => { const id = k + JSON.stringify(h.obj).slice(0, 200); if (seen.has(id)) return false; seen.add(id); return true; });
-    const tab = { col: 'col', tbl: 'col', sql: 'sql', logic: 'logic', svc: 'flow', cmb: 'logic', memo: 'memo', req: 'mat', rev: 'mat', hist: 'mat' }[k] || 'sum';
+    const tab = { col: 'col', tbl: 'col', sql: 'sql', logic: 'logic', svc: 'flow', cmb: 'logic', memo: 'memo', req: 'mat', rev: 'mat', hist: 'mat', old: 'mat' }[k] || 'sum';
     return `<div class="hg"><div class="hgh">${kindTag(k)}<span class="n">${list.length}곳</span></div>
       ${list.slice(0, 6).map((h) => `<div class="hrow">${pvRow(h, toks)}</div>`).join('')}
       ${list.length > 6 ? `<a class="more" onclick="go('${link('s', s.key, tab)}')">${list.length - 6}곳 더 →</a>` : ''}</div>`;
   }).join('');
-  return `<div class="ph"><h3>${modTag(s.module)}${hl(s.name, toks)}</h3>
-    <div class="chips"><span class="chip id">${esc(pidTxt(s))}</span>${s.reqId ? `<span class="chip id">${esc(s.reqId)}</span>` : ''}${srcChip(s)}${s.base.map((b) => `<span class="chip id" title="기준 화면">기준 ${esc(b)}</span>`).join('')}<span class="chip">${esc(s.workspace)}</span>${s.parsed ? '' : '<span class="chip warn">구조 미해석</span>'}</div>
+  const nRel = relList(s).length;
+  return `<div class="ph">${staleNote(s, r)}<h3>${modTag(s.module)}${hl(s.name, toks)}</h3>
+    <div class="chips"><span class="chip id">${esc(pidTxt(s))}</span>${s.reqId ? `<span class="chip id">${esc(s.reqId)}</span>` : ''}${srcChip(s)}${revTag(s)}${s.base.map((b) => `<span class="chip id" title="기준 화면">기준 ${esc(b)}</span>`).join('')}<span class="chip">${esc(s.workspace)}</span>${s.parsed ? '' : '<span class="chip warn">구조 미해석</span>'}</div>
     ${s.overview ? `<div class="ov">${sent(hl(s.overview, toks))}</div>` : ''}
-    <div class="acts"><button class="btn pri" onclick="go('${link('s', s.key)}')">사양서 열기</button>${s.excel && !DEMO ? `<button class="btn" onclick="openExcel('${esc(s.key)}')">엑셀 미리보기</button>` : ''}</div>
+    <div class="acts"><button class="btn pri" onclick="go('${link('s', s.key)}')">사양서 열기</button>${s.excel && !DEMO ? `<button class="btn" onclick="openExcel('${esc(s.key)}')">엑셀 미리보기</button>` : ''}${nRel ? `<button class="btn" onclick="go('${link('s', s.key, 'rel')}')">연관 프로그램 ${nRel}</button>` : ''}</div>
+    ${r.others && r.others.length ? `<div class="muted small" style="margin-top:8px">같은 프로그램의 ${r.others.map((k) => { const o = BYKEY[k]; return o ? `<a onclick="go('${link('s', k)}')">${esc(o.workspace)} · ${esc(dateTxt(o))}</a>` : ''; }).join(', ')} 에서도 찾았습니다 (최신 기준으로 하나만 보임)</div>` : ''}
   </div><div class="pb">
     ${s.columns.length ? `<div class="pvsec">화면 ↔ DB 매핑 <span class="n">컬럼 ${s.columns.length} · 테이블 ${Object.keys(tblColors(s)).length}${r.hits.some((h) => h.kind === 'col') ? ` · <mark>검색어 걸린 줄</mark>` : ''}</span><a onclick="go('${link('s', s.key, 'col')}')">크게 보기 →</a></div><div id="pvmap"></div>` : ''}
     ${body ? `${s.columns.length ? '<div class="pvsec">그 밖에 걸린 곳</div>' : ''}${body}` : s.columns.length ? '' : `<div class="empty small">이름이 걸렸습니다.</div>`}
@@ -405,6 +605,7 @@ function preview(r, toks) {
 }
 function pvRow(h, toks) {
   const o = h.obj;
+  if (h.kind === 'old') return `<div><span class="chip stale" style="height:20px">${esc(revName(o.rev.no))}</span> <span class="muted small">${esc(KIND[o.sub] || '')}${o.rev.label ? ' · ' + esc(o.rev.label) : ''}</span></div><div class="d">${hl(trim(snippet(o.line, toks), 260), toks)}</div>`;
   if (h.kind === 'col') return `<div><span class="map"><span class="lb">${hl(o.label || '-', toks)}</span><span class="ar">←</span>${o.tbl ? tblHtml(o.tbl) : ''}${colOf(o) ? `<code>${hl(colOf(o), toks)}</code>` : ` <span class="muted">${esc(trim(noColTxt(o), 40))}</span>`}</span>
     ${o.display ? `<span class="chip" style="height:20px;margin-left:6px">${esc(o.display)}</span>` : ''}${o.change === '추가' ? '<span class="chip add" style="height:20px;margin-left:4px">추가</span>' : o.change === '변경' ? '<span class="chip chg" style="height:20px;margin-left:4px">변경</span>' : ''}
     <span class="muted small" style="margin-left:6px">${esc(o.area || '')}</span></div>${o.desc ? `<div class="d">${sent(hl(trim(o.desc, 220), toks))}</div>` : ''}`;
@@ -444,16 +645,21 @@ function answerCard(toks) {
 /* ---------------- 사양서 ---------------- */
 function renderSpec(key, tab) {
   const s = BYKEY[key]; if (!s) return renderHome();
+  const rels = relList(s);
   const nMat = s.prompts.length + s.reviews.length + s.outputs.length + s.files.length + s.revisions.length + s.history.length;
   const tabs = [['sum', '요약'], ['col', '테이블 · 컬럼', s.columns.length || s.tables.length], ['logic', '로직', s.func.length + s.tech.length],
     ...(s.sql.length ? [['sql', '쿼리', s.sql.length]] : []), ['flow', '흐름', s.services.length || null],
-    ...(s.memo ? [['memo', '결정 메모']] : []), ['test', '테스트', s.tests.length], ...(nMat ? [['mat', '자료', nMat]] : []), ['deep', '심층']];
-  const par = s.parent && BYKEY[s.parent], kids = s.children.map((k) => S[k]), same = s.same.map((k) => BYKEY[k]).filter(Boolean);
+    ...(s.memo ? [['memo', '결정 메모']] : []), ['test', '테스트', s.tests.length], ['rel', '연관', rels.length], ...(nMat ? [['mat', '자료', nMat]] : []), ['deep', '심층']];
+  const par = s.parent && BYKEY[s.parent], kids = s.children.map((k) => S[k]);
+  // 같은 프로그램의 다른 판 · 사본 / 이름만 같은 다른 모듈 사양서
+  const copies = s.copies.map((k) => BYKEY[k]).filter(Boolean);
+  const same = s.same.map((k) => BYKEY[k]).filter((o) => o && !s.copies.includes(o.key) && o.latest !== s.latest);
   $('app').innerHTML = `
   <div class="crumb"><a onclick="go('#/')">홈</a>›<a onclick="setScope('p:${esc(s.project)}')">${esc(s.project)}</a><span>(${esc(s.workspace)})</span>›<a onclick="fMod='${esc(s.module)}';fSrc=fKind=null;go('${link('q', '*')}')">${esc(MODN[s.module] || s.module)}</a>›<span>${esc(s.name)}</span></div>
+  ${staleNote(s, null)}
   <div class="card dhero" style="--mc:${modColor(s.module)}">
     <h1>${modTag(s.module)}${esc(s.name)}</h1>
-    <div class="chips"><span class="chip id">${esc(pidTxt(s))}</span>${s.reqId ? `<span class="chip id" title="요구ID">${esc(s.reqId)}</span>` : ''}${srcChip(s)}
+    <div class="chips"><span class="chip id">${esc(pidTxt(s))}</span>${s.reqId ? `<span class="chip id" title="요구ID">${esc(s.reqId)}</span>` : ''}${srcChip(s)}${revTag(s)}${!s.isLatest ? `<span class="chip stale">${s.stale === 'old' ? '최신 판 아님' : '같은 판 · 다른 폴더'}</span>` : ''}
       ${s.base.map((b) => `<span class="chip id" title="기준 화면">기준 ${esc(b)}</span>`).join('')}
       ${s.parsed ? `<span class="chip ok" title="읽은 방식">${esc(s.adapter)}</span>` : s.adapter === '자료만' ? '<span class="chip">엑셀 없음 · 자료만</span>' : '<span class="chip warn">구조 미해석 · 본문만</span>'}
       ${s.programType ? `<span class="chip">${esc(s.programType.split('(')[0])}</span>` : ''}</div>
@@ -461,7 +667,7 @@ function renderSpec(key, tab) {
     <div class="acts">${s.excel && !DEMO ? `<button class="btn" onclick="openExcel('${esc(s.key)}')"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8l8 8M16 8l-8 8"/></svg>엑셀 미리보기</button>` : ''}
       ${s.folder && !DEMO ? `<button class="btn" onclick="copyPath('${esc(s.folder)}')" title="탐색기 주소창에 붙여 넣으세요"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>폴더 경로 복사</button>` : ''}</div>
     <div class="kpis">
-      <div class="kpi"><div class="v">${esc(s.confirmedAt || '—')}</div><div class="l">${s.source === '수기' ? '최종 이력' : '확정'}${s.version > 1 ? ` · ${s.source === '수기' ? s.revisions.length + '개 판' : s.version + '번째 판'}` : ''}</div></div>
+      <div class="kpi"><div class="v">${esc(s.confirmedAt || '—')}</div><div class="l">${s.source === '수기' ? '최종 이력' : '확정'}${s.rev ? ` · ${revName(s.rev)}` : ''}${s.revisions.length > 1 ? ` <a onclick="go('${link('s', s.key, 'mat')}')">(판 ${s.revisions.length}개)</a>` : ''}</div></div>
       <div class="kpi"><div class="v">${s.tables.length}</div><div class="l">테이블</div></div>
       <div class="kpi"><div class="v">${s.columns.length}</div><div class="l">화면 컬럼</div></div>
       ${s.sql.length ? `<div class="kpi"><div class="v">${s.sql.length}</div><div class="l">쿼리</div></div>` : ''}
@@ -475,19 +681,24 @@ function renderSpec(key, tab) {
     <div class="side">
       <div class="card"><div class="ch">목업 <span class="muted">${s.mockups.length}개</span></div><div class="cb">
         ${s.mockups.length ? s.mockups.map((m, k) => `<div class="thumb" style="${k ? 'margin-top:8px;height:110px' : ''}" onclick="openMock('${esc(m)}')"><iframe data-ref="${esc(m)}" tabindex="-1"></iframe><span class="cap">${esc(fileName(m))}</span></div>`).join('') : '<div class="muted small">목업 없음</div>'}</div></div>
-      ${par || kids.length || same.length ? `<div class="card"><div class="ch">같은 프로그램 · 팝업</div><div class="cb"><ul class="list">
+      ${copies.length ? `<div class="card"><div class="ch">같은 프로그램의 판 · 사본 <span class="muted">${copies.length + 1}곳</span></div><div class="cb"><ul class="list">
+        ${[s, ...copies].sort((a, b) => (b.isLatest ? 1 : 0) - (a.isLatest ? 1 : 0) || (b.confirmedAt || '').localeCompare(a.confirmedAt || '')).map((o) => `<li><span class="chip ${o.isLatest ? 'ok' : o.stale === 'old' ? 'stale' : ''}" style="height:20px">${o.isLatest ? '최신' : o.stale === 'old' ? '옛 판' : '사본'}</span>${o === s ? `<b>${esc(o.workspace)}</b><span class="muted small">지금 보는 것</span>` : `<a onclick="go('${link('s', o.key)}')">${esc(o.workspace)}</a>`}<span class="r">${esc(dateTxt(o))}</span></li>`).join('')}</ul></div></div>` : ''}
+      ${par || kids.length || same.length ? `<div class="card"><div class="ch">본 화면 · 팝업${same.length ? ' · 이름이 같은 사양서' : ''}</div><div class="cb"><ul class="list">
         ${par ? `<li><span class="muted small">본 화면</span><a onclick="go('${link('s', par.key)}')">${esc(par.name)}</a></li>` : ''}
         ${kids.map((k) => `<li><span class="muted small">${k.name.includes('_출력물') || (!k.excel && (k.outputs || []).length) ? '출력물' : '팝업'}</span><a onclick="go('${link('s', k.key)}')">${esc(k.name.replace(s.name + '_', ''))}</a></li>`).join('')}
-        ${same.map((o) => `<li><span class="muted small">${o.source} 사양서</span><a onclick="go('${link('s', o.key)}')">${esc(o.name)}</a><span class="r">${esc(o.workspace)}</span></li>`).join('')}</ul></div></div>` : ''}
+        ${same.map((o) => `<li><span class="muted small" title="이름만 같고 모듈이 다른 사양서 — 다른 프로그램입니다">${esc(o.module)} 모듈</span><a onclick="go('${link('s', o.key)}')">${esc(o.name)}</a><span class="r">${esc(o.workspace)}</span></li>`).join('')}</ul></div></div>` : ''}
+      ${rels.length || s.related.length ? `<div class="card"><div class="ch">연관 프로그램 <span class="muted">${rels.length}</span>${rels.length ? `<a class="r small" onclick="go('${link('s', s.key, 'rel')}')">전체 보기</a>` : ''}</div><div class="cb"><ul class="list">
+        ${rels.slice(0, 7).map((e) => `<li>${modTag(e.t.module)}<a onclick="go('${link('s', e.t.key)}')" title="${esc(e.t.name)}">${esc(e.t.name)}</a><span class="r">${e.types.slice(0, 2).map(relTag).join('')}</span></li>`).join('')}
+        ${rels.length > 7 ? `<li><a onclick="go('${link('s', s.key, 'rel')}')">${rels.length - 7}개 더 →</a></li>` : ''}
+        ${!rels.length ? s.related.map((r) => `<li style="display:block">${linkify(r.replace('연관 프로그램: ', ''))}</li>`).join('') : ''}</ul></div></div>` : ''}
       <div class="card"><div class="ch">흐름 <a class="r small" onclick="go('${link('s', s.key, 'flow')}')">크게</a></div><div class="cb flowsvg">${flowSvg(s, true)}</div></div>
-      ${s.related.length ? `<div class="card"><div class="ch">연관 프로그램</div><div class="cb"><ul class="list">${s.related.map((r) => `<li style="display:block">${linkify(r.replace('연관 프로그램: ', ''))}</li>`).join('')}</ul></div></div>` : ''}
     </div>
   </div>`;
-  ({ sum: tabSum, col: tabCol, logic: tabLogic, sql: tabSql, flow: tabFlow, memo: tabMemo, test: tabTest, mat: tabMat, deep: tabDeep }[tab] || tabSum)(s);
+  ({ sum: tabSum, col: tabCol, logic: tabLogic, sql: tabSql, flow: tabFlow, memo: tabMemo, test: tabTest, rel: tabRel, mat: tabMat, deep: tabDeep }[tab] || tabSum)(s, rels);
   hydrate($('app'));
 }
 const fileName = (ref) => String(ref).split('/').pop();
-function linkify(txt) { let h = esc(txt); S.forEach((o) => { if (o.name.length > 3 && h.includes(esc(o.name))) h = h.split(esc(o.name)).join(`<a onclick="go('${link('s', o.key)}')">${esc(o.name)}</a>`); }); return h; }
+function linkify(txt) { let h = esc(txt); L.forEach((o) => { if (o.name.length > 3 && h.includes(esc(o.name))) h = h.split(esc(o.name)).join(`<a onclick="go('${link('s', o.key)}')">${esc(o.name)}</a>`); }); return h; }
 function linesHtml(arr) {
   // 한 줄 안의 여러 문장은 줄을 나누고, 이어지는 줄은 원래 들여쓰기 + 머리 번호만큼 띄운다
   arr = arr.flatMap((l) => { const m = /^(\s*)((?:\d+(?:-\d+)*\.?|[·\-•※])\s+)?/.exec(l); const pad = m[1] + ' '.repeat((m[2] || '').length); return sentTxt(l).split('\n').map((x, i) => (i ? pad + x : x)); });
@@ -616,6 +827,33 @@ function tabTest(s) {
   const row = (t) => (Array.isArray(t) ? t : [t.step || t.case || t.name || '', t.input || t.data || '', t.expected || t.exp || t.result || '']);
   $('tb').innerHTML = `<table class="t"><tr><th style="width:28%">상황 · 절차</th><th style="width:22%">입력</th><th>기대 결과</th></tr>${s.tests.map((t) => { const r = row(t); return `<tr><td>${sent(esc(r[0]))}</td><td>${sent(esc(r[1]))}</td><td class="desc">${sent(esc(r[2]))}</td></tr>`; }).join('') || '<tr><td colspan=3 class="muted">없음</td></tr>'}</table>`;
 }
+/* 연관 탭: 이 사양서가 말한 프로그램(→) · 이 사양서를 말한 프로그램(←) · 같은 기준 화면 */
+let relType = '';
+function tabRel(s, rels) {
+  rels = rels || relList(s);
+  const cnt = {}; rels.forEach((e) => e.types.forEach((t) => (cnt[t] = (cnt[t] || 0) + 1)));
+  if (relType && !cnt[relType]) relType = '';
+  const shown = rels.filter((e) => !relType || e.types.includes(relType));
+  const evHtml = (ev, dir, t) => {
+    const k = ev.term ? ev.line.indexOf(ev.term) : -1;
+    const line = k > 60 ? '…' + ev.line.slice(k - 40) : ev.line;
+    return `<div class="ev"><span class="dir ${dir}" title="${dir === 'out' ? '이 사양서에 적힌 글' : '「' + esc(t.name) + '」 사양서에 적힌 글'}">${dir === 'out' ? '→' : '←'}</span><span class="loc">${esc(ev.loc)}</span>${relTag(ev.type)}<span class="tx">${hl(trim(line, 220), ev.term ? [ev.term] : [])}</span></div>`;
+  };
+  $('tb').innerHTML = `
+    <div class="muted small" style="margin-bottom:10px">사양서 글(요약 · 로직 · 컬럼 설명 · 서비스 · 메모 · 연관 프로그램 · 이력 · 요청 글)에 나온 다른 화면 이름 · 프로그램ID · 요구ID 로 찾았습니다. 종류는 그 줄의 말(재사용 · 기준 · 참조 · 참고 · 호출 · 연계)로 가릅니다. 같은 프로젝트 · 최신 판 기준.</div>
+    ${rels.length ? `<div class="seg relseg"><button class="${relType ? '' : 'on'}" data-rt="">전체 <em>${rels.length}</em></button>${RORDER.filter((t) => cnt[t]).map((t) => `<button class="${relType === t ? 'on' : ''}" data-rt="${esc(t)}">${esc(t)} <em>${cnt[t]}</em></button>`).join('')}</div>` : ''}
+    ${shown.length ? `<div class="rels">${shown.map((e) => {
+      const ev = [...e.out.map((x) => ['out', x]), ...e.in.map((x) => ['in', x])];
+      return `<div class="relrow"><div class="rh">${modTag(e.t.module)}<a onclick="go('${link('s', e.t.key)}')">${esc(e.t.name)}</a><span class="muted small">${esc(pidTxt(e.t))} · ${esc(dateTxt(e.t))}</span>
+          <span class="rts">${e.types.map(relTag).join('')}</span>
+          <span class="dirs">${e.out.length ? `<span title="이 사양서가 저 프로그램을 말함">→ 말함 ${e.out.length}</span>` : ''}${e.in.length ? `<span title="저 프로그램 사양서가 이 사양서를 말함">← 말해짐 ${e.in.length}</span>` : ''}${e.base ? `<span title="둘 다 같은 표준 화면을 기준으로 함">기준 ${esc(e.base)}</span>` : ''}</span></div>
+        ${e.t.overview ? `<div class="rov">${esc(trim(e.t.overview, 160))}</div>` : ''}
+        ${ev.slice(0, 3).map(([d, x]) => evHtml(x, d, e.t)).join('')}
+        ${ev.length > 3 ? `<details class="evmore"><summary>근거 ${ev.length - 3}줄 더</summary>${ev.slice(3).map(([d, x]) => evHtml(x, d, e.t)).join('')}</details>` : ''}</div>`;
+    }).join('')}</div>` : '<div class="empty">사양서 글에서 다른 프로그램을 말한 곳을 찾지 못했습니다.</div>'}
+    ${s.related.length ? `<div class="sec">사양서에 적힌 연관 프로그램 (원문)</div><ul class="list">${s.related.map((r) => `<li style="display:block">${linkify(r.replace('연관 프로그램: ', ''))}</li>`).join('')}</ul>` : ''}`;
+  document.querySelectorAll('[data-rt]').forEach((b) => (b.onclick = () => { relType = b.dataset.rt; tabRel(s, rels); }));
+}
 function tabMat(s) {
   const img = (f) => /\.(png|jpe?g|gif|webp)$/i.test(f.name);
   const fileLi = (f) => `<li><a onclick="openFile('${esc(f.path)}')">${esc(f.name)}</a><span class="r">${esc(f.dir || '')} · ${Math.max(1, Math.round(f.size / 1024))}KB</span></li>`;
@@ -623,7 +861,8 @@ function tabMat(s) {
   const GN = { oldspec: '구사양서 · 옛 판', legacy: '기존 소스', axsrc: 'AX 소스', etc: '기타' };
   const fg = {}; s.files.forEach((f) => (fg[f.group] = fg[f.group] || []).push(f));
   $('tb').innerHTML = `
-    ${s.revisions.length ? `<div class="sec">사양서 판 ${s.revisions.length} · 위가 최신</div><ul class="list">${s.revisions.map((r, k) => `<li><a onclick="openExcelRef('${esc(r.path)}')">${esc(r.name)}</a><span class="r">${k ? '' : '현재 · '}${esc(r.label)}</span></li>`).join('')}</ul>` : ''}
+    ${s.revisions.length ? `<div class="sec">사양서 판 ${s.revisions.length} · 위가 최신</div><ul class="list">${s.revisions.map((r, k) => `<li><span class="chip ${k ? '' : 'ok'}" style="height:20px">${k ? esc(revName(r.no)) : '현재 · ' + esc(revName(r.no))}</span>${DEMO || !r.path ? esc(r.name) : `<a onclick="openExcelRef('${esc(r.path)}')">${esc(r.name)}</a>`}<span class="r">${esc(r.label || '')}</span></li>`).join('')}</ul>
+      ${s.olds.length ? '<div class="muted small" style="margin-top:6px">옛 판 내용도 검색합니다 — 검색어가 옛 판에만 있으면 결과에 「옛 판에만 있음」 으로 나옵니다.</div>' : ''}` : ''}
     ${s.history.length ? `<div class="sec">변경 이력 ${s.history.length}</div><table class="t">${s.history.map((h) => `<tr><td style="width:110px;white-space:nowrap">${esc(h[0])}</td><td class="desc">${esc(h.slice(1).join(' · '))}</td></tr>`).join('')}</table>` : ''}
     ${s.outputs.length ? `<div class="sec">출력물 ${s.outputs.length}</div><div class="outs">${s.outputs.filter(img).map((f) => `<div class="thumb" style="height:150px" onclick="openImg('${esc(f.path)}')"><img data-ref="${esc(f.path)}" alt=""><span class="cap">${esc(f.name)}</span></div>`).join('')}</div><ul class="list">${s.outputs.filter((f) => !img(f)).map(fileLi).join('')}</ul>` : ''}
     ${txt('요청 글 (프롬프트)', s.prompts)}${txt('검토 · 리뷰', s.reviews)}
@@ -657,7 +896,12 @@ function labelsTxt(labels) {
 /* ---------------- 테이블 ---------------- */
 function renderTable(id) {
   const t = TBL[id];
-  if (!t) { $('app').innerHTML = `<div class="card empty">${esc(id)} 를 쓰는 사양서가 ${esc(scopeLabel())} 안에 없습니다.</div>`; return; }
+  // 옛 판 · 다른 폴더 사본에만 나오는 테이블
+  // (그 프로그램의 최신 판이 이 테이블을 쓰면 빼고, 빠진 것만 보인다)
+  const olds = (OLDT[id] || []).filter((x, k, a) => a.findIndex((y) => y.i === x.i && y.no === x.no) === k)
+    .filter((x) => { const L1 = BYKEY[S[x.i].latest]; return !(t && L1 && t.specs[L1.i] !== undefined); });
+  const oldCard = olds.length ? `<div class="card" style="margin-top:14px"><div class="ch">옛 판 · 사본에만 나옴 <span class="muted">최신 판에는 이 테이블이 없음</span></div><div class="cb"><ul class="list">${olds.map((x) => { const o = S[x.i], L1 = BYKEY[o.latest]; return `<li>${modTag(o.module)}<a onclick="go('${link('s', o.key)}')">${esc(o.name)}</a><span class="chip stale" style="height:20px">${x.no ? esc(revName(x.no)) + '에만' : o.stale === 'old' ? '최신 판 아님' : '다른 폴더 사본'}</span><span class="muted small">${esc(o.workspace)}</span>${L1 && L1 !== o ? `<span class="r"><a onclick="go('${link('s', L1.key)}')">최신 판으로 →</a></span>` : ''}</li>`; }).join('')}</ul></div></div>` : '';
+  if (!t) { $('app').innerHTML = `<div class="card empty">${esc(id)} 를 쓰는 최신 판 사양서가 ${esc(scopeLabel())} 안에 없습니다.</div>${oldCard}`; return; }
   const sp = Object.entries(t.specs).map(([i, c]) => ({ s: S[i], c })).sort((a, b) => a.s.module.localeCompare(b.s.module) || a.s.name.localeCompare(b.s.name));
   const cols = Object.keys(t.cols).sort();
   const writers = sp.filter((x) => /[CUD]/.test(x.c)), readers = sp.filter((x) => !/[CUD]/.test(x.c));
@@ -671,7 +915,7 @@ function renderTable(id) {
   <div class="card" style="margin-top:14px"><div class="ch">컬럼 × 화면 <span class="muted">칸 = 그 화면의 라벨 · 컬럼을 누르면 검색</span></div><div class="cb">
     ${cols.length ? `<div class="mx"><table><thead><tr><th class="c0">컬럼</th>${sp.map((x) => `<th><a onclick="go('${link('s', x.s.key, 'col')}')">${esc(x.s.name)}</a><div class="muted small" style="font-weight:400">${esc(x.s.module)} ${crudHtml(x.c)}</div></th>`).join('')}</tr></thead>
     <tbody>${cols.map((c) => `<tr><td class="c0"><a onclick="go('${link('q', c)}')">${esc(c)}</a></td>${sp.map((x) => { const us = t.cols[c].filter((z) => z.s === x.s.i); return us.length ? `<td class="on" title="${esc(us.map((u) => u.area + ' · ' + u.label).join('\n'))}">${esc(labelsTxt(us.map((u) => u.label)))}${us.length > 1 ? ` <span class="muted small">(${us.length}칸)</span>` : ''}</td>` : '<td></td>'; }).join('')}</tr>`).join('')}</tbody></table></div>`
-    : '<div class="muted">화면 컬럼에 직접 매핑된 컬럼이 없습니다 (조인 · 조건 · 쿼리에만 쓰임).</div>'}</div></div>`;
+    : '<div class="muted">화면 컬럼에 직접 매핑된 컬럼이 없습니다 (조인 · 조건 · 쿼리에만 쓰임).</div>'}</div></div>${oldCard}`;
 }
 
 /* ---------------- 폴더 · 설정 ---------------- */
@@ -734,7 +978,8 @@ async function showBanner() {
   const need = [];
   for (const r of SF.roots) if (!(await SF.perm(r.handle, false))) need.push(r);
   $('banner').innerHTML = DEMO ? `<div class="bn" style="background:var(--brand-soft);color:var(--brand-ink)">예시 데이터로 보는 중입니다. 내 사양서를 보려면 폴더를 연결하세요.<button class="btn pri" onclick="document.getElementById('syncBtn').click()">폴더 연결</button></div>`
-    : need.length ? `<div class="bn">브라우저를 다시 열어 폴더 읽기 허용이 풀렸습니다. 검색은 되지만 목업 · 엑셀 미리보기와 새 사양서 반영을 하려면 허용해 주세요.<button class="btn" id="regrant">폴더 다시 허용</button></div>` : '';
+    : need.length ? `<div class="bn">브라우저를 다시 열어 폴더 읽기 허용이 풀렸습니다. 검색은 되지만 목업 · 엑셀 미리보기와 새 사양서 반영을 하려면 허용해 주세요.<button class="btn" id="regrant">폴더 다시 허용</button></div>`
+    : IDX && !syncing && (IDX.revs || 0) < SF.INDEX_REVS ? `<div class="bn">새 기능(판 표시 · 옛 판 검색)을 쓰려면 동기화를 한 번 해 주세요. 옛 판 엑셀을 처음 읽습니다.<button class="btn" id="regrant">지금 동기화</button></div>` : '';
   if ($('regrant')) $('regrant').onclick = () => runSync(true);
 }
 
@@ -810,6 +1055,7 @@ $('viewBtn').onclick = (e) => { e.stopPropagation(); drawView(); $('dpop').class
 $('dpop').onclick = (e) => e.stopPropagation();
 document.addEventListener('click', () => $('dpop').classList.remove('on'));
 (async function boot() {
+  track();
   await SF.loadRoots();
   const idx = await SF.get('index');
   if (idx && idx.schema === SF.SCHEMA && SF.roots.length) prepare(idx);

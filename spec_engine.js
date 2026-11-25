@@ -8,6 +8,7 @@
 (function () {
   const SF = (window.SF = window.SF || {});
   SF.SCHEMA = 3;
+  SF.INDEX_REVS = 2; // 2: 판 번호(초판 · 2판) · 옛 판 내용(olds)을 색인에 담음 — 이보다 낮은 색인은 열 때 다시 동기화를 권한다
 
   /* ---------------- IndexedDB (키-값) ---------------- */
   const DBN = 'spec-finder';
@@ -178,21 +179,57 @@
     ctx.wsProject[ctx.parentRel(rel)] = project;
   }
 
+  /* 옛 판 엑셀 → 검색용 줄 [종류, 글] (현재 판과 같은 종류 이름을 쓴다) */
+  function oldLines(b) {
+    const L = [];
+    const put = (k, t) => { t = String(t ?? '').trim(); if (t) L.push([k, t.slice(0, 600)]); };
+    if (!b || !b.parsed) { String((b && b.fulltext) || '').split('\n').forEach((l) => put('full', l)); return L.slice(0, 3000); }
+    put('ov', b.overview);
+    (b.columns || []).forEach((c) => put('col', [c.label, '←', c.tbl ? c.tbl + '.' + (c.column || '') : c.column, c.desc].filter(Boolean).join(' ')));
+    (b.tables || []).forEach((t) => put('tbl', [t.id, t.name, t.note].filter(Boolean).join(' ')));
+    (b.services || []).forEach((v) => put('svc', [v.id, v.name, v.note].filter(Boolean).join(' ')));
+    (b.combos || []).forEach((v) => put('cmb', [v.id, v.usedBy, v.name].filter(Boolean).join(' ')));
+    [...(b.func || []), ...(b.tech || [])].forEach((l) => put('logic', l));
+    (b.history || []).forEach((h) => put('hist', [].concat(h).join(' · ')));
+    return L.slice(0, 3000);
+  }
+  async function readOld(ctx, ref, fh, fn, tag) {
+    try { return oldLines(await readExcelCached(ctx, ref, fh, fn)); }
+    catch (e) { ctx.warn(`${tag}: 옛 판 읽기 실패 ${e.message || e}`); return []; }
+  }
+  const stdOrFull = (sh) => { const b = SF.adapters.std(sh); return b.parsed ? b : SF.adapters.full(sh); };
+  const isoDate = (d) => (d ? `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}` : '');
+
   async function toolProgram(ctx, o) {
     const { project, ws, mod, pd, conf } = o;
     const name = pd.name;
     const m = name.match(/^(_ID미정|[A-Z0-9]+)_(.+)$/);
     const pid = name.startsWith('_ID미정') ? '미정' : m ? m[1] : '';
     const pname = m ? m[2] : name;
+    // 확정본 = 확정/ 의 <…>_excel_<yyyymmdd>_<n>_컨설턴트확정.xlsx · 옛 확정본 = 확정/old/ ('.확정중' 은 확정본이 아니다)
+    const XRE = /_excel_(\d{8})_(\d+)_컨설턴트확정\.xlsx$/;
+    const seq = (f) => { const d = f.name.match(XRE); return d ? +d[1] * 1000 + +d[2] : 0; };
     const { files: cf } = await listDir(conf);
-    const xs = cf.filter((f) => /_컨설턴트확정\.xlsx$/.test(f.name));
+    const xs = cf.filter((f) => /_컨설턴트확정\.xlsx$/.test(f.name)).sort((a, b) => seq(a) - seq(b) || (a.name < b.name ? -1 : 1));
     if (!xs.length) return;
     const x = xs[xs.length - 1];
-    const dm = x.name.match(/_excel_(\d{8})_(\d+)_컨설턴트확정/);
-    const cdate = dm ? `${dm[1].slice(0, 4)}-${dm[1].slice(4, 6)}-${dm[1].slice(6)}` : '';
-    const ver = dm ? +dm[2] : 1;
+    const oldDir = await child(conf, 'old', 'dir');
+    const olds = oldDir ? (await listDir(oldDir)).files.filter((f) => /_컨설턴트확정\.xlsx$/.test(f.name)).map((f) => ({ ...f, dir: '확정/old/' })) : [];
+    // 판 순서: 날짜 · 번호 순 (현재 확정본이 마지막)
+    const prev = [...olds, ...xs.slice(0, -1).map((f) => ({ ...f, dir: '확정/' }))].filter((f) => seq(f) <= seq(x) || !seq(x)).sort((a, b) => seq(a) - seq(b) || (a.name < b.name ? -1 : 1));
+    const dm = x.name.match(XRE);
+    const cdate = dm ? isoDate(dm[1]) : '';
+    const rev = prev.length + 1;
     const ref = (p) => ctx.root.id + '|' + ctx.relRoot + o.rel + '/' + p;
     const xref = ref('확정/' + x.name);
+    const revLabel = (f) => { const d = f.name.match(XRE); return d ? `${isoDate(d[1])} 확정` : ''; }; // 판 이름(초판 · 2판)은 화면이 no 로 붙인다
+    const revisions = [{ no: rev, label: revLabel(x, rev), path: xref, name: x.name }, ...prev.map((f, k) => ({ no: k + 1, label: revLabel(f, k + 1), path: ref(f.dir + f.name), name: f.name })).reverse()];
+    const oldRevs = [];
+    for (let k = 0; k < prev.length; k++) {
+      const f = prev[k], p = ref(f.dir + f.name), d = f.name.match(XRE);
+      oldRevs.push({ no: k + 1, label: revLabel(f, k + 1), name: f.name, path: p, date: d ? isoDate(d[1]) : '', lines: await readOld(ctx, p, f.h, stdOrFull, `[${project} · ${ws}] ${pname}`) });
+    }
+    const xmt = (await x.h.getFile()).lastModified;
     // 모델 JSON (초안)
     let model = null;
     const draft = await child(pd.h, '초안', 'dir');
@@ -230,7 +267,7 @@
     if (mf) memo = decode(await (await mf.getFile()).arrayBuffer()).slice(0, 6000);
     ctx.specs.push({
       key: `${project}/${ws}/${mod}/${pname}`, source: '도구', project, workspace: ws, module: mod, programId: pid, name: pname,
-      confirmedAt: cdate, version: ver, excel: xref, folder: ctx.root.id + '|' + ctx.relRoot + o.rel, mockups, memo, ...body,
+      confirmedAt: cdate, version: rev, rev, revisions, olds: oldRevs, mtime: xmt, excel: xref, folder: ctx.root.id + '|' + ctx.relRoot + o.rel, mockups, memo, ...body,
     });
   }
 
@@ -331,7 +368,9 @@
         if (!byFam.has(k)) byFam.set(k, []); byFam.get(k).push(h);
       }
       let mainKey = null, mainName = '';
-      for (const [b, versions] of fams) {
+      for (const [b, vs0] of fams) {
+        // '.확정중' 파일은 확정을 마치지 못한 사본이다 — 다른 판이 있으면 판으로 세지 않는다
+        const versions = vs0.some((v) => !/확정중/.test(v.tag)) ? vs0.filter((v) => !/확정중/.test(v.tag)) : vs0;
         versions.sort((a, c) => a.rv - c.rv || a.mt - c.mt);
         const m = FILE_RE.exec(b);
         const sub = m ? m[2] : null;
@@ -355,12 +394,18 @@
         if (own && mainKey === null) mock.push(...(byFam.get('__main__') || []));
         if (isMain && mainKey === null) { mainKey = key; mainName = normName(pname); }
         const dates = (body.history || []).map((h) => h[0]).sort();
+        // 옛 판(현재 판을 뺀 나머지)도 읽어 둔다 — 검색어가 옛 판에만 있을 때 알려 주려고
+        const oldRevs = [];
+        for (let k = 0; k < versions.length - 1; k++) {
+          const v = versions[k];
+          oldRevs.push({ no: k + 1, label: v.tag || '최초', name: v.name, path: R([v.name]), date: '', lines: await readOld(ctx, R([v.name]), v.f.h, SF.adapters.std, `[${project} · ${label}] ${v.name}`) });
+        }
         ctx.specs.push({
           key, project, workspace: label, source: '수기',
           module: MOD_MAP[req.slice(0, 2)] || req.slice(0, 2), reqId: req + (sub ? '-' + sub : ''), programId: body.programIdText || '미정',
-          name: normName(pname), confirmedAt: dates.length ? dates[dates.length - 1] : '', version: versions.length,
-          excel: cur ? R([cur.name]) : '',
-          revisions: [...versions].reverse().map((v) => ({ label: v.tag || '최초', path: R([v.name]), name: v.name })),
+          name: normName(pname), confirmedAt: dates.length ? dates[dates.length - 1] : '', version: versions.length || 1, rev: versions.length || 1,
+          excel: cur ? R([cur.name]) : '', mtime: cur ? cur.mt : 0, olds: oldRevs,
+          revisions: [...versions].map((v, k) => ({ no: k + 1, label: v.tag || '최초', path: R([v.name]), name: v.name })).reverse(),
           folder: ctx.root.id + '|' + base + d.name, mockups: mock.map((h) => R(h.parts)),
           parent: isMain ? null : mainKey,
           sql: own ? extras.sql : [], outputs: own ? extras.output : [], prompts: own ? extras.prompt : [], reviews: own ? extras.review : [],
@@ -465,7 +510,7 @@
       }
     }
     linkSame(specs);
-    const index = { schema: SF.SCHEMA, builtAt: new Date().toISOString(), specs, warnings, skipped, parsedNow };
+    const index = { schema: SF.SCHEMA, revs: SF.INDEX_REVS, builtAt: new Date().toISOString(), specs, warnings, skipped, parsedNow };
     await SF.set('index', index);
     await SF.set('xcache', cacheNew);
     return index;
