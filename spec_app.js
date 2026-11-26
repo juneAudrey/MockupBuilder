@@ -38,7 +38,7 @@ const MODC = { SD: '#1d4ed8', MM: '#047857', IM: '#b45309', PP: '#be123c', BC: '
 function modColor(m) { if (MODC[m]) return MODC[m]; let h = 0; for (const c of m || '') h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 60% 34%)`; }
 const modTag = (m) => `<span class="mod" style="--mc:${modColor(m)}" title="${esc(MODN[m] || m)}">${esc(m || '?')}</span>`;
 const crudHtml = (c) => `<span class="crud">${'CRUD'.split('').map((x) => `<i class="${x} ${c && c.includes(x) ? 'on' : ''}">${x}</i>`).join('')}</span>`;
-const tblHtml = (t) => `<span class="tbl" onclick="event.stopPropagation();go('${link('t', t)}')">${esc(t)}</span>`;
+const tblHtml = (t) => `<span class="tbl" title="누르면 자세히 보기 · 복사 메뉴 (Ctrl + 클릭 = 바로 테이블 보기)" onclick="event.stopPropagation();go('${link('t', t)}')">${esc(t)}</span>`;
 const srcChip = (s) => s.source === '수기' ? '<span class="chip src-m" title="도구 밖에서 만든 사양서">수기</span>' : '<span class="chip src-t" title="AX사양서도구로 만든 사양서">도구</span>';
 const pidTxt = (s) => (s.programId === '미정' || !s.programId ? 'ID 미정' : s.programId);
 /* 판 이름: 1 → 초판 · 2 → 2판 … (0 = 아직 모름 — 새 판 규칙으로 동기화하기 전 색인) */
@@ -427,14 +427,9 @@ function track() {
   ss.set('sf.navb', NAVB); ss.set('sf.navm', NAVM);
 }
 const canBack = () => NAVI > NAVB, canFwd = () => NAVI < NAVM;
-function updateBack() {
-  const home = !location.hash || location.hash === '#/' || location.hash === '#';
-  $('backBtn').hidden = home && !canBack();
-  updateFab();
-}
+function updateBack() { updateFab(); }   // 뒤로 · 앞으로는 오른쪽 아래 이동 버튼에만 있다
 function goBack() { if (canBack()) history.back(); else go('#/'); }
 function goFwd() { if (canFwd()) history.forward(); }
-$('backBtn').onclick = goBack;
 window.addEventListener('hashchange', () => { track(); render(); });
 ss.set('sf.navb', NAVB); ss.set('sf.navm', NAVM);
 
@@ -472,6 +467,73 @@ const FAB_ICON = {
   window.addEventListener('resize', updateFab);
   new ResizeObserver(updateFab).observe(document.body);
 })();
+/* 테이블 이름 · 컬럼 · 프로그램ID 같은 말을 누르면 바로 넘어가지 않고 그 자리에 작은 메뉴(자세히 보기 · 복사 · 이 말로 찾기).
+ * 끌어서 고른 글자가 있으면 메뉴도 이동도 하지 않는다(그대로 복사할 수 있게). Ctrl(⌘) + 클릭은 예전처럼 바로 이동. */
+const CTX_SEL = '.tbl, .mt, .mc, .chip.id, code';
+function ctxInfo(el) {
+  if (el.closest('button, a, textarea, input, select, #ctxm, .fab, .mc.none')) return null;
+  if (el.tagName === 'CODE' && el.closest('pre')) return null;   // 쿼리 글 안의 code 는 그대로(테이블 이름 .tbl 은 메뉴)
+  const m = /go\('#\/t\/([^']+)'\)/.exec(el.getAttribute('onclick') || '');
+  let text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+  if (el.matches('.chip.id')) text = text.replace(/^기준\s+/, '');
+  if (!text || text === 'ID 미정' || text.length > 200) return null;
+  let tbl = null; try { tbl = m ? decodeURIComponent(m[1]) : (TBL[text] ? text : null); } catch (e) {}
+  return { text, tbl };
+}
+function copyText(t, what) {
+  const ok = () => toast(`${what || ''}「${trim(t, 40)}」 복사했습니다`), bad = () => toast('복사하지 못했습니다');
+  const old = () => { try { const a = document.createElement('textarea'); a.value = t; a.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(a); a.select(); const r = document.execCommand('copy'); a.remove(); r ? ok() : bad(); } catch (e) { bad(); } };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(ok, old); else old();
+}
+function closeCtx() { const m = $('ctxm'); if (m) m.remove(); document.querySelectorAll('.ctxon').forEach((x) => x.classList.remove('ctxon')); }
+function openCtx(el, info, x, y) {
+  closeCtx();
+  const I = (p) => `<svg viewBox="0 0 24 24">${p}</svg>`;
+  const items = [];
+  if (info.tbl) items.push(['view', I('<path d="M3 6h18M3 12h18M3 18h18M9 6v12"/>'), '테이블 자세히 보기', TBL[info.tbl] ? '' : '색인에 없음']);
+  items.push(['copy', I('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>'), '복사', '']);
+  items.push(['find', I('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>'), '이 말로 찾기', '']);
+  const m = document.createElement('div'); m.id = 'ctxm'; m.className = 'ctxm'; m.setAttribute('role', 'menu');
+  const nm = info.tbl && TBL[info.tbl] && TBL[info.tbl].name;
+  m.innerHTML = `<div class="ctxh"><code>${esc(trim(info.text, 60))}</code>${nm ? `<span>${esc(trim(nm, 30))}</span>` : ''}</div>` +
+    items.map(([k, ic, t, note]) => `<button type="button" role="menuitem" data-k="${k}"${note ? ' disabled' : ''}>${ic}<span>${t}</span>${note ? `<em>${note}</em>` : ''}</button>`).join('');
+  document.body.appendChild(m); el.classList.add('ctxon');
+  const W = m.offsetWidth, H = m.offsetHeight, vw = document.documentElement.clientWidth, vh = window.innerHeight;
+  m.style.left = Math.max(8, Math.min(x, vw - W - 8)) + 'px';
+  m.style.top = (y + 8 + H > vh - 8 ? Math.max(8, y - H - 8) : y + 8) + 'px';
+  m.onclick = (e) => {
+    const b = e.target.closest('button[data-k]'); if (!b || b.disabled) return;
+    const k = b.dataset.k; closeCtx();
+    if (k === 'copy') { copyText(info.text); return; }
+    closeModal();
+    if (k === 'view') go(link('t', info.tbl));
+    else go(link('q', /\s/.test(info.text) ? `"${info.text}"` : info.text));
+  };
+  m.querySelector('button:not([disabled])')?.focus({ preventScroll: true });
+}
+document.addEventListener('click', (e) => {
+  if ($('ctxm') && !e.target.closest('#ctxm')) { closeCtx(); if (!e.target.closest(CTX_SEL)) return; }
+  const el = e.target.closest(CTX_SEL); if (!el) return;
+  const info = ctxInfo(el); if (!info) return;
+  if ((e.ctrlKey || e.metaKey) && info.tbl) { e.preventDefault(); e.stopPropagation(); closeModal(); go(link('t', info.tbl)); return; }
+  const sel = window.getSelection && String(window.getSelection()).trim();
+  e.preventDefault(); e.stopPropagation();          // 원래 붙은 이동(onclick)은 막는다
+  if (sel) return;                                   // 끌어서 고른 글자는 그대로 둔다
+  openCtx(el, info, e.clientX, e.clientY);
+}, true);
+document.addEventListener('keydown', (e) => {
+  const m = $('ctxm'); if (!m) return;
+  if (e.key === 'Escape') { e.stopPropagation(); closeCtx(); return; }
+  if (m.contains(document.activeElement) && (e.key === 'Enter' || e.key === ' ')) { e.stopPropagation(); return; } // 메뉴 단추만 눌리게(결과 목록 Enter 이동 막음)
+  if (e.key === 'Tab') { closeCtx(); return; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault(); e.stopPropagation();
+    const bs = [...m.querySelectorAll('button:not([disabled])')], i = bs.indexOf(document.activeElement);
+    bs[(i + (e.key === 'ArrowDown' ? 1 : -1) + bs.length) % bs.length].focus();
+  }
+}, true);
+['scroll', 'resize', 'hashchange'].forEach((ev) => window.addEventListener(ev, closeCtx, { passive: true }));
+document.addEventListener('scroll', (e) => { if (!e.target.closest?.('#ctxm')) closeCtx(); }, { capture: true, passive: true });
 function updateFab() {
   const f = $('fab'); if (!f) return;
   const el = document.scrollingElement || document.documentElement;
@@ -752,7 +814,7 @@ function mapRow(c, toks, tc, wide) {
   const ch = c.change === '추가' ? '<span class="chip add">추가</span>' : c.change === '변경' ? '<span class="chip chg">변경</span>' : '';
   const col = colOf(c), nc = col ? '' : noColTxt(c);
   const db = c.tbl
-    ? `<span class="mt" style="--tc:${tc[c.tbl]}" onclick="event.stopPropagation();go('${link('t', c.tbl)}')" title="${esc((TBL[c.tbl] && TBL[c.tbl].name) || c.tbl)} — 누르면 테이블 보기">${hl(c.tbl, toks)}</span>${col ? `<span class="mc" title="${esc(col)}">${hl(col, toks)}</span>` : `<span class="mc none" title="사양서에 이 칸의 DB 컬럼이 적혀 있지 않습니다">${esc(nc)}</span>`}`
+    ? `<span class="mt" style="--tc:${tc[c.tbl]}" onclick="event.stopPropagation();go('${link('t', c.tbl)}')" title="${esc((TBL[c.tbl] && TBL[c.tbl].name) || c.tbl)} — 누르면 자세히 보기 · 복사 메뉴">${hl(c.tbl, toks)}</span>${col ? `<span class="mc" title="${esc(col)}">${hl(col, toks)}</span>` : `<span class="mc none" title="사양서에 이 칸의 DB 컬럼이 적혀 있지 않습니다">${esc(nc)}</span>`}`
     : col ? `<span class="mc solo">${hl(col, toks)}</span>` : `<span class="mnone" title="${esc(c.table && c.table !== '-' ? c.table : '사양서에 이 칸의 DB 컬럼이 적혀 있지 않습니다')}">${esc(trim(nc, 40))}</span>`;
   const req = c.required && !['불가', '선택', 'N', ''].includes(c.required) ? ` · <b>${esc(c.required)}</b>` : '';
   return `<div class="mrow ${colHit(c, toks) ? 'hit' : ''}"${wide ? '' : ` title="${esc(sentTxt(c.desc || ''))}"`}><span class="ml" title="${esc(c.label)}">${hl(c.label || '-', toks)}${ch}</span><span class="ma">→</span><span class="mdb">${db}</span>`
@@ -923,7 +985,7 @@ function tableCards(s) {
     const nSpec = TBL[t.id] ? Object.keys(TBL[t.id].specs).length : 0;
     const MAX = 24;
     return `<div class="tcard" style="--tc:${tc[t.id] || 'var(--line2)'}">
-      <div class="tch"><span class="mt" onclick="go('${link('t', t.id)}')" title="누르면 테이블 보기">${esc(t.id)}</span><b>${esc(t.name || (TBL[t.id] && TBL[t.id].name) || '')}</b>${t.nameFrom ? `<span class="muted small" title="이 사양서에는 테이블 이름이 없어 「${esc(t.nameFrom)}」 사양서에 적힌 이름을 보여 줍니다">· 다른 사양서 이름</span>` : ''}${crudHtml(t.crud)}
+      <div class="tch"><span class="mt" onclick="go('${link('t', t.id)}')" title="누르면 자세히 보기 · 복사 메뉴">${esc(t.id)}</span><b>${esc(t.name || (TBL[t.id] && TBL[t.id].name) || '')}</b>${t.nameFrom ? `<span class="muted small" title="이 사양서에는 테이블 이름이 없어 「${esc(t.nameFrom)}」 사양서에 적힌 이름을 보여 줍니다">· 다른 사양서 이름</span>` : ''}${crudHtml(t.crud)}
         ${nSpec > 1 ? `<a class="r" onclick="go('${link('t', t.id)}')">사양서 ${nSpec}곳에서 씀 →</a>` : ''}</div>
       ${t.note ? `<div class="tcn">${sent(esc(t.note))}</div>` : ''}
       ${cols.length ? `<div class="tcc">${cols.slice(0, MAX).map((c) => `<span class="cc" title="${esc(c.area || '')}${c.desc ? ' — ' + esc(sentTxt(trim(c.desc, 160))) : ''}"><span>${esc(c.label || '-')}</span>${colOf(c) ? `<code>${esc(colOf(c))}</code>` : `<code class="none">${esc(noColTxt(c))}</code>`}</span>`).join('')}
@@ -1264,6 +1326,8 @@ async function hydrate(root) {
  * 새 판을 올릴 때 맨 위에 한 줄 추가한다. 위쪽 버전 표시는 맨 위 항목(PATCH[0].v)으로 바뀐다.
  * 버전 = 날짜(yyyymmdd).번호(3자리) — 날짜가 바뀌면 번호는 001 부터 다시 센다. */
 const PATCH = [
+  { v: '20261126.003', at: '2026-11-26 17:07', sum: '테이블 이름 · 컬럼 누르면 복사 메뉴 · 헤더 뒤로 버튼 정리',
+    items: ['테이블 이름 · 컬럼 · 프로그램ID 를 누르면 바로 넘어가지 않고 그 자리에 메뉴 — 테이블 자세히 보기 · 복사 · 이 말로 찾기', '끌어서 고른 글자는 그대로 남아 Ctrl + C 로 복사 · Ctrl + 클릭은 예전처럼 바로 테이블 보기', '쿼리 팝업 안의 테이블 이름도 같은 메뉴 (복사해도 팝업은 그대로)', '왼쪽 위 뒤로 버튼 없앰 — 뒤로 · 앞으로는 오른쪽 아래 버튼'] },
   { v: '20261126.002', at: '2026-11-26 14:21', sum: '검색 결과 「열기」 버튼',
     items: ['검색 결과 줄마다 오른쪽 끝에 「열기 >」 버튼 — 누르면 그 사양서로 이동 (더블클릭 · 고른 뒤 Enter 와 같음)', '한 번 클릭은 그대로 오른쪽 미리보기만 바꿈'] },
   { v: '20261126.001', at: '2026-11-26 13:39', sum: '쿼리 미리보기 · 도구 작업공간 쿼리 색인',
