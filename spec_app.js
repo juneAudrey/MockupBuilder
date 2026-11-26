@@ -840,7 +840,11 @@ function mapView(s, toks, o, redraw) {
   cols.forEach((c) => { const g = o.by === 'table' ? (c.tbl || '테이블 없음') : (c.area || '기타'); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(c); });
   const head = o.wide ? `<div class="mrow mhd"><span>화면 라벨</span><span></span><span>테이블 · 컬럼</span><span>표시</span><span>어떤 값 · 규칙</span></div>` : '';
   const legend = Object.keys(cnt).length > 1 || o.tf ? `<div class="tleg">${Object.keys(tc).filter((t) => cnt[t]).map((t) => `<button class="${o.tf === t ? 'on' : o.tf ? 'off' : ''}" style="--tc:${tc[t]}" data-tf="${esc(t)}" title="${esc((TBL[t] && TBL[t].name) || '')} — 누르면 이 테이블 컬럼만"><i></i><code>${esc(t)}</code>${TBL[t] && TBL[t].name ? `<span>${esc(trim(TBL[t].name, 14))}</span>` : ''}<em>${cnt[t]}</em></button>`).join('')}</div>` : '';
-  const html = `<div class="mapv ${o.wide ? 'wide' : ''}">${legend}
+  // 테이블 칩 너비(--mtw) · 테이블+컬럼 칸 너비(--mcw) — 글자 수(고정폭 글꼴 기준 · 한글은 1.8배)로 재서 모든 줄을 같은 열에 세운다
+  const wlen = (t) => [...String(t || '')].reduce((a, ch) => a + (/[ㄱ-힣]/.test(ch) ? 1.8 : 1), 0);
+  const mtw = Math.min(o.wide ? 24 : 18, Math.max(0, ...cols.map((c) => (c.tbl || '').length)));
+  const mcw = Math.min(28, Math.ceil(Math.max(0, ...cols.map((c) => wlen(colOf(c) || noColTxt(c)) + (c.tbl ? 0 : -mtw)))));
+  const html = `<div class="mapv ${o.wide ? 'wide' : ''}" style="--mtw:${mtw};--mcw:${Math.max(6, mcw)}">${legend}
     ${[...groups].map(([g, list]) => `<div class="mgrp"><div class="mgh">${o.by === 'table' && tc[g] ? `<span class="mt" style="--tc:${tc[g]};border-radius:6px;font-family:var(--mono)" onclick="go('${link('t', g)}')">${esc(g)}</span> <span style="font-weight:600;color:var(--ink2)">${esc((TBL[g] && TBL[g].name) || '')}</span>` : esc(g)} <em>${list.length}</em></div>${head}${list.map((c) => mapRow(c, toks, tc, o.wide)).join('')}</div>`).join('') || '<div class="empty small">맞는 컬럼이 없습니다.</div>'}
     ${cut ? `<div class="mfoot"><button data-more>전체 ${total}개 보기</button></div>` : ''}</div>`;
   return { html, bind: (root) => {
@@ -896,7 +900,7 @@ function answerCard(toks) {
       return `<div class="answer"><div class="ai"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg></div><div style="flex:1;min-width:0">
         <h3>${tblHtml(T)} <span class="muted" style="font-weight:500;font-size:14px">${esc(e.name)}</span></h3>
         <div class="sub">사양서 <b>${sp.length}</b>곳에서 씀 · 저장 ${w} · 조회 ${sp.length - w} · 화면에 나온 컬럼 ${Object.keys(e.cols).length}개 <a onclick="go('${link('t', T)}')">테이블 전체 보기 →</a></div>
-        <div class="uses">${sp.slice(0, 14).map((x) => `<span class="use" onclick="go('${link('s', x.s.key)}')">${modTag(x.s.module)}${esc(x.s.name)}${crudHtml(x.c)}</span>`).join('')}${sp.length > 14 ? `<span class="muted small">외 ${sp.length - 14}</span>` : ''}</div></div></div>`;
+        <div class="uses">${sp.slice(0, 14).map((x) => `<span class="use" onclick="go('${link('s', x.s.key)}')">${modTag(x.s.module)}<span class="unm" title="${esc(x.s.name)}">${esc(x.s.name)}</span>${crudHtml(x.c)}</span>`).join('')}${sp.length > 14 ? `<span class="muted small">외 ${sp.length - 14}</span>` : ''}</div></div></div>`;
     }
     const tbls = Object.values(TBL).filter((e) => e.cols[T]);
     if (tbls.length) {
@@ -907,7 +911,7 @@ function answerCard(toks) {
       return `<div class="answer"><div class="ai"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/></svg></div><div style="flex:1;min-width:0">
         <h3><code style="color:var(--k-col)">${esc(T)}</code> ${tbls.map((e) => tblHtml(e.id)).join(' ')}</h3>
         <div class="sub">화면 <b>${new Set(uses.map((u) => u.s)).size}</b>곳에 나옴 · 화면 라벨: ${labels.slice(0, 6).map((l) => `<b>${esc(l)}</b>`).join(', ')}</div>
-        <div class="uses">${uses.slice(0, 14).map((u) => `<span class="use" onclick="go('${link('s', S[u.s].key, 'col')}')">${modTag(S[u.s].module)}${esc(S[u.s].name)} <span class="lb">· ${esc(u.label)}</span></span>`).join('')}</div></div></div>`;
+        <div class="uses">${uses.slice(0, 14).map((u) => `<span class="use" onclick="go('${link('s', S[u.s].key, 'col')}')">${modTag(S[u.s].module)}<span class="unm" title="${esc(S[u.s].name)} · ${esc(u.label)}">${esc(S[u.s].name)} <span class="lb">· ${esc(u.label)}</span></span></span>`).join('')}</div></div></div>`;
     }
   }
   return '';
@@ -1116,7 +1120,7 @@ function tabSql(s) {
     $('sqlCopyT').onclick = () => navigator.clipboard.writeText(f.text || '').then(() => toast('쿼리를 복사했습니다'), () => toast('복사하지 못했습니다'));
     document.querySelectorAll('.sqllist li[data-k]').forEach((li) => li.classList.toggle('on', +li.dataset.k === sqlPick));
   };
-  $('tb').innerHTML = `${used.length ? `<div class="sec">쿼리에서 쓰는 테이블 ${used.length} <span class="muted small" style="font-weight:400">확인용 쿼리는 빼고 셉니다</span></div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">${used.map(([t, c]) => `<span>${tblHtml(t)}${crudHtml(mergeCrud('', c))}</span>`).join('')}</div>` : ''}
+  $('tb').innerHTML = `${used.length ? `<div class="sec">쿼리에서 쓰는 테이블 ${used.length} <span class="muted small" style="font-weight:400">확인용 쿼리는 빼고 셉니다</span></div><div class="tgrid">${used.map(([t, c]) => `<span>${tblHtml(t)}${crudHtml(mergeCrud('', c))}</span>`).join('')}</div>` : ''}
     <div class="filterline"><input id="sf" placeholder="쿼리 안에서 찾기 (컬럼 · 조건)" value="${esc(sqlFind)}"></div>
     <div class="sqlwrap"><ul class="sqllist">${[...groups].map(([d, ks]) => `<li class="grp">${esc(d)}</li>` + ks.map((k) => {
       const n = sqlFind ? (s.sql[k].text || '').toLowerCase().split(sqlFind.toLowerCase()).length - 1 : 0;
@@ -1330,6 +1334,8 @@ async function hydrate(root) {
  * 새 판을 올릴 때 맨 위에 한 줄 추가한다. 위쪽 버전 표시는 맨 위 항목(PATCH[0].v)으로 바뀐다.
  * 버전 = 날짜(yyyymmdd).번호(3자리) — 날짜가 바뀌면 번호는 001 부터 다시 센다. */
 const PATCH = [
+  { v: '20261126.004', at: '2026-11-26 17:30', sum: '줄 맞춤 · 메뉴가 누른 자리에서 열림',
+    items: ['테이블 · 컬럼 매핑 — 화살표 · 테이블 이름 · 컬럼 이름이 모든 줄에서 같은 열에 섬 (컬럼 이름은 잘리지 않음)', '검색 결과 위 테이블 안내의 쓰는 사양서 · 쿼리 탭의 쓰는 테이블을 같은 너비 칸으로 — 이름 · CRUD 자리 맞춤', '화면 배율이 100% 가 아닐 때 복사 메뉴가 멀리 열리던 것 — 누른 자리에서 열림'] },
   { v: '20261126.003', at: '2026-11-26 17:07', sum: '테이블 이름 · 컬럼 누르면 복사 메뉴 · 헤더 뒤로 버튼 정리',
     items: ['테이블 이름 · 컬럼 · 프로그램ID 를 누르면 바로 넘어가지 않고 그 자리에 메뉴 — 테이블 자세히 보기 · 복사 · 이 말로 찾기', '끌어서 고른 글자는 그대로 남아 Ctrl + C 로 복사 · Ctrl + 클릭은 예전처럼 바로 테이블 보기', '쿼리 팝업 안의 테이블 이름도 같은 메뉴 (복사해도 팝업은 그대로)', '왼쪽 위 뒤로 버튼 없앰 — 뒤로 · 앞으로는 오른쪽 아래 버튼'] },
   { v: '20261126.002', at: '2026-11-26 14:21', sum: '검색 결과 「열기」 버튼',
