@@ -176,6 +176,7 @@
         await toolProgram(ctx, { project, ws, mod: m.name, pd, conf, rel: (rel ? rel + '/' : '') + m.name + '/' + pd.name });
       }
     }
+    await toolLooseSql(ctx, dh, rel, project, ws);
     ctx.wsProject[ctx.parentRel(rel)] = project;
   }
 
@@ -265,10 +266,61 @@
     let memo = '';
     const mf = await child(pd.h, '_대화메모.md', 'file');
     if (mf) memo = decode(await (await mf.getFile()).arrayBuffer()).slice(0, 6000);
+    // 프로그램 폴더 안의 쿼리 파일(초안/ · 초안/시뮬레이션/ · 초안/_작업/ …) — 확정 엑셀과 함께 바로 본다
+    const sql = [];
+    for (const f of await rlist(pd.h, [], [])) {
+      const fn = f.parts[f.parts.length - 1];
+      if (extOf(fn) !== '.sql' || fn.startsWith('~$')) continue;
+      sql.push(await sqlItem(f, ref(f.parts.join('/')), f.parts.slice(0, -1).join('/')));
+    }
     ctx.specs.push({
       key: `${project}/${ws}/${mod}/${pname}`, source: '도구', project, workspace: ws, module: mod, programId: pid, name: pname,
-      confirmedAt: cdate, version: rev, rev, revisions, olds: oldRevs, mtime: xmt, excel: xref, folder: ctx.root.id + '|' + ctx.relRoot + o.rel, mockups, memo, ...body,
+      confirmedAt: cdate, version: rev, rev, revisions, olds: oldRevs, mtime: xmt, excel: xref, folder: ctx.root.id + '|' + ctx.relRoot + o.rel, mockups, memo, ...body, sql,
     });
+  }
+
+  /* 쿼리 파일 한 개 → { name, path, dir, size, text(앞 30000자), aux }
+   * aux = 확인 · 검증 · 시뮬레이션 · 작업용 쿼리 — 보기 · 검색은 되지만 '이 화면이 쓰는 테이블(CRUD)' 에는 넣지 않는다 */
+  const SQL_MAX = 30000;
+  const AUX_DIR = /(^|\/)(시뮬레이션|_작업|_분석|old|_DS등록|_테이블스크립트)(\/|$)/i;
+  const AUX_NAME = /검증|확인|점검|시뮬|대조|ALTER|_create|레거시|옛데이터|과거데이터|보정|반려|되돌림|상태확인|버튼표시조건/i;
+  async function sqlItem(f, path, dir, text) {
+    const fn = f.parts[f.parts.length - 1];
+    const file = await f.h.getFile();
+    if (text == null) text = decode(await file.arrayBuffer());
+    return { name: fn, path, dir: dir || '', ext: '.sql', size: file.size, text: text.slice(0, SQL_MAX), cut: text.length > SQL_MAX, aux: AUX_DIR.test(dir || '') || AUX_NAME.test(fn) };
+  }
+
+  /* 작업공간 맨 위 · '_' 로 시작하는 폴더(_분석 · _DS등록 …)의 쿼리 → 파일 이름이 프로그램 이름으로 시작하면 그 프로그램에,
+   * 파일 이름이 테이블 ID 이면 그 테이블을 쓰는 프로그램에 붙인다. 못 붙인 것은 읽기 품질 리포트에 남긴다. */
+  async function toolLooseSql(ctx, dh, rel, project, ws) {
+    const loose = [];
+    const { files, dirs } = await listDir(dh);
+    files.forEach((f) => loose.push({ parts: [f.name], h: f.h }));
+    for (const d of dirs) if (d.name.startsWith('_') && !skipName(d.name)) await rlist(d.h, [d.name], loose);
+    const mine = ctx.specs.filter((s) => s.source === '도구' && s.project === project && s.workspace === ws);
+    if (!mine.length) return;
+    const nz = (t) => String(t || '').replace(/\s/g, '').toLowerCase();
+    const base = (n) => nz(n).replace(/\(s\)$/, '');
+    const ref = (p) => ctx.root.id + '|' + ctx.relRoot + (rel ? rel + '/' : '') + p;
+    for (const f of loose) {
+      const fn = f.parts[f.parts.length - 1];
+      if (extOf(fn) !== '.sql' || fn.startsWith('~$')) continue;
+      const st = nz(stemOf(fn));
+      // 이름이 가장 길게 맞는 프로그램 하나 (예: 출고요청현황조회(S) 가 출고요청(…)보다 먼저)
+      let hit = null, len = 0;
+      for (const s of mine) {
+        const a = nz(s.name), b = base(s.name);
+        const ok = st.startsWith(a) || (b && (st === b || st.startsWith(b + '_') || st.startsWith(b + '(')));
+        if (ok && a.length > len) { hit = s; len = a.length; }
+      }
+      let targets = hit ? [hit] : [];
+      if (!targets.length) { const id = stemOf(fn).toUpperCase(); targets = mine.filter((s) => (s.tables || []).some((t) => (t.id || '').toUpperCase() === id)); }
+      if (!targets.length) { ctx.warn(`[${project} · ${ws}] 어느 프로그램 것인지 모르는 쿼리: ${f.parts.join('/')}`); continue; }
+      const item = await sqlItem(f, ref(f.parts.join('/')), (f.parts.length > 1 ? f.parts.slice(0, -1).join('/') : '(작업공간)'));
+      item.aux = true; // 작업공간 공용 자리의 쿼리는 확인 · 분석용으로 본다
+      targets.forEach((s) => s.sql.push({ ...item }));
+    }
   }
 
   /* ---------------- 수기 사양서 폴더 (도구 밖) ----------------
@@ -319,7 +371,8 @@
         const file = await f.h.getFile();
         const item = { name: fn, path: R(f.parts), dir: f.parts.slice(0, -1).join('/'), ext, size: file.size };
         if (g === 'sql' || (ext === '.sql' && g !== 'legacy')) {
-          item.text = (texts.get(f.h)?.t ?? decode(await file.arrayBuffer())).slice(0, 30000);
+          const full = texts.get(f.h)?.t ?? decode(await file.arrayBuffer());
+          item.text = full.slice(0, SQL_MAX); item.cut = full.length > SQL_MAX; item.aux = AUX_DIR.test(item.dir) || AUX_NAME.test(fn);
           extras.sql.push(item);
         } else if ((g === 'prompt' || g === 'review') && TEXT_EXT.has(ext)) {
           const tx = texts.get(f.h);

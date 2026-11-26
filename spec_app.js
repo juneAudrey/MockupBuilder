@@ -80,6 +80,7 @@ function prepare(index) {
   S.forEach((s) => {
     const m = {};
     s.sql.forEach((f) => {
+      if (f.aux) return; // 확인 · 검증 · 시뮬레이션 쿼리는 이 화면이 쓰는 테이블로 세지 않는다
       const t = (f.text || '').replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
       for (const x of t.matchAll(/\b(FROM|JOIN|INTO|UPDATE|MERGE(?:\s+INTO)?|DELETE(?:\s+FROM)?)\s+(?:\[?dbo\]?\.)?\[?([A-Za-z][A-Za-z0-9_]{2,})\]?/gi)) {
         const id = x[2].toUpperCase();
@@ -360,13 +361,13 @@ function searchAll(qx, sc) {
     add('name', null, [s.name, s.programId, s.reqId || '', s.base.join(' ')].join(' '), 10);
     s.columns.forEach((c) => add('col', c, [c.label, c.column, c.tbl, c.desc, c.source].join(' '), toks.some((t) => has(c.column, t) || has(c.tbl, t) || has(c.label, t)) ? 6 : 2));
     s.tables.forEach((t) => add('tbl', t, [t.id, t.name, t.note].join(' '), 5));
-    const addFile = (kind, f) => {
+    const addFile = (kind, f, k) => {
       const m = toks.filter((t) => has(f.text, t) || has(f.name, t)); if (!m.length) return;
       m.forEach((t) => covered.add(t.toLowerCase()));
       const line = (f.text || '').split('\n').find((l) => toks.some((t) => has(l, t))) || '';
-      hits.push({ kind, obj: { name: f.name, line: line.trim() }, m: m.map((t) => t.toLowerCase()), score: (kind === 'sql' ? 3 : 1.5) * m.length * m.length });
+      hits.push({ kind, obj: { name: f.name, line: line.trim(), key: s.key, k, t: m[0] }, m: m.map((t) => t.toLowerCase()), score: (kind === 'sql' ? (f.aux ? 2 : 3) : 1.5) * m.length * m.length });
     };
-    s.sql.forEach((f) => addFile('sql', f)); s.prompts.forEach((f) => addFile('req', f)); s.reviews.forEach((f) => addFile('rev', f));
+    s.sql.forEach((f, k) => addFile('sql', f, k)); s.prompts.forEach((f) => addFile('req', f)); s.reviews.forEach((f) => addFile('rev', f));
     s.services.forEach((v) => add('svc', v, [v.id, v.name, v.note].join(' '), 3));
     s.combos.forEach((v) => add('cmb', v, [v.id, v.usedBy, v.name].join(' '), 3));
     [...s.func, ...s.tech, ...s.layout].forEach((l) => add('logic', l, l, 1.5));
@@ -797,7 +798,7 @@ function preview(r, toks) {
   return `<div class="ph">${staleNote(s, r)}<h3>${modTag(s.module)}${hl(s.name, toks)}</h3>
     <div class="chips"><span class="chip id">${esc(pidTxt(s))}</span>${s.reqId ? `<span class="chip id">${esc(s.reqId)}</span>` : ''}${srcChip(s)}${revTag(s)}${s.base.map((b) => `<span class="chip id" title="기준 화면">기준 ${esc(b)}</span>`).join('')}<span class="chip">${esc(wName(s))}</span>${s.parsed ? '' : '<span class="chip warn">구조 미해석</span>'}</div>
     ${s.overview ? `<div class="ov">${sent(hl(s.overview, toks))}</div>` : ''}
-    <div class="acts"><button class="btn pri" onclick="go('${link('s', s.key)}')">사양서 열기</button>${s.excel && !DEMO ? `<button class="btn" onclick="openExcel('${esc(s.key)}')">엑셀 미리보기</button>` : ''}${nRel ? `<button class="btn" onclick="go('${link('s', s.key, 'rel')}')">연관 프로그램 ${nRel}</button>` : ''}</div>
+    <div class="acts"><button class="btn pri" onclick="go('${link('s', s.key)}')">사양서 열기</button>${s.excel && !DEMO ? `<button class="btn" onclick="openExcel('${esc(s.key)}')">엑셀 미리보기</button>` : ''}${s.sql.length ? `<button class="btn" onclick="openSql('${esc(s.key)}', null, ${esc(JSON.stringify(sqlTok(r)))})">쿼리 ${s.sql.length}</button>` : ''}${nRel ? `<button class="btn" onclick="go('${link('s', s.key, 'rel')}')">연관 프로그램 ${nRel}</button>` : ''}</div>
     ${r.others && r.others.length ? `<div class="muted small" style="margin-top:8px">같은 프로그램의 ${r.others.map((k) => { const o = BYKEY[k]; return o ? `<a onclick="go('${link('s', k)}')">${esc(wName(o))} · ${esc(dateTxt(o))}</a>` : ''; }).join(', ')} 에서도 찾았습니다 (최신 기준으로 하나만 보임)</div>` : ''}
   </div><div class="pb">
     ${s.columns.length ? `<div class="pvsec">화면 ↔ DB 매핑 <span class="n">컬럼 ${s.columns.length} · 테이블 ${Object.keys(tblColors(s)).length}${r.hits.some((h) => h.kind === 'col') ? ` · <mark>검색어 걸린 줄</mark>` : ''}</span><a onclick="go('${link('s', s.key, 'col')}')">크게 보기 →</a></div><div id="pvmap"></div>` : ''}
@@ -811,6 +812,7 @@ function pvRow(h, toks) {
     ${o.display ? `<span class="chip" style="height:20px;margin-left:6px">${esc(o.display)}</span>` : ''}${o.change === '추가' ? '<span class="chip add" style="height:20px;margin-left:4px">추가</span>' : o.change === '변경' ? '<span class="chip chg" style="height:20px;margin-left:4px">변경</span>' : ''}
     <span class="muted small" style="margin-left:6px">${esc(o.area || '')}</span></div>${o.desc ? `<div class="d">${sent(hl(trim(o.desc, 220), toks))}</div>` : ''}`;
   if (h.kind === 'tbl') return `<div>${tblHtml(o.id)} ${esc(o.name)} ${crudHtml(o.crud)}</div>${o.note ? `<div class="d">${sent(hl(trim(o.note, 200), toks))}</div>` : ''}`;
+  if (h.kind === 'sql' && o.key) return `<div><a class="sqlopen" onclick="openSql(${esc(JSON.stringify(o.key))}, ${+o.k}, ${esc(JSON.stringify(o.t || ''))})" title="이 쿼리 바로 보기"><code>${hl(o.name, toks)}</code> 쿼리 보기 →</a></div><pre>${hl(trim(o.line, 220), toks)}</pre>`;
   if (h.kind === 'sql' || h.kind === 'req' || h.kind === 'rev') return `<div><code>${hl(o.name, toks)}</code></div><pre>${hl(trim(o.line, 220), toks)}</pre>`;
   if (h.kind === 'svc') return `<div><code>${hl(o.id, toks)}</code> ${hl(o.name, toks)}</div>${o.note ? `<div class="d">${sent(hl(trim(o.note, 200), toks))}</div>` : ''}`;
   if (h.kind === 'cmb') return `<div><code>${hl(o.id, toks)}</code> · ${hl(o.usedBy, toks)}</div>${o.name ? `<div class="d">${hl(trim(o.name, 200), toks)}</div>` : ''}`;
@@ -866,6 +868,7 @@ function renderSpec(key, tab) {
       ${s.programType ? `<span class="chip">${esc(s.programType.split('(')[0])}</span>` : ''}</div>
     <div class="ov">${sent(esc(s.overview || '요약이 없습니다 (1.개요를 읽지 못함).'))}</div>
     <div class="acts">${s.excel && !DEMO ? `<button class="btn" onclick="openExcel('${esc(s.key)}')"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8l8 8M16 8l-8 8"/></svg>엑셀 미리보기</button>` : ''}
+      ${s.sql.length ? `<button class="btn" onclick="openSql('${esc(s.key)}')"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>쿼리 미리보기 ${s.sql.length}</button>` : ''}
       ${s.folder && !DEMO ? `<button class="btn" onclick="copyPath('${esc(s.folder)}')" title="탐색기 주소창에 붙여 넣으세요"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>폴더 경로 복사</button>` : ''}</div>
     <div class="kpis">
       <div class="kpi"><div class="v">${esc(s.confirmedAt || '—')}</div><div class="l">${s.source === '수기' ? '최종 이력' : '확정'}${s.rev ? ` · ${revName(s.rev)}` : ''}${s.revisions.length > 1 ? ` <a onclick="go('${link('s', s.key, 'mat')}')">(판 ${s.revisions.length}개)</a>` : ''}</div></div>
@@ -972,22 +975,84 @@ function sqlHtml(text, find) {
   if (find) h = h.replace(new RegExp('(' + reEsc(esc(find)) + ')(?![^<]*>)', 'gi'), '<mark>$1</mark>');
   return h;
 }
+/* 쿼리 묶음 이름: 어느 폴더에서 왔는지(수기 폴더에서 합쳐 온 것은 그 작업공간) + 하위 폴더 */
+const sqlGroup = (f) => [f.origin, f.dir || '(프로그램 폴더)'].filter(Boolean).join(' · ');
+/* 보이는 순서: 화면 쿼리 먼저, 확인 · 검증 · 시뮬레이션은 뒤로 (원래 번호는 그대로) */
+const sqlOrder = (s) => s.sql.map((f, k) => k).sort((a, b) => (s.sql[a].aux ? 1 : 0) - (s.sql[b].aux ? 1 : 0));
+/* 검색 결과에서 쿼리를 열 때 쿼리에 걸린 검색어로 바로 찾아 둔다 */
+const sqlTok = (r) => { const h = r && (r.hits || []).find((x) => x.kind === 'sql'); return (h && h.obj && h.obj.t) || ''; };
+/* 색인에 앞부분(30000자)만 들어간 파일인가 — 새 색인은 cut 표시, 옛 색인은 글자 수로 가늠 */
+const sqlCut = (f) => (f.cut != null ? !!f.cut : (f.text || '').length >= 30000);
+const AUX_TIP = '확인 · 검증 · 시뮬레이션 · 작업용 쿼리 — 이 화면이 쓰는 테이블(CRUD)에는 넣지 않습니다';
+
+/* 쿼리 미리보기 (엑셀 미리보기처럼 팝업) — 왼쪽 파일 목록 · 오른쪽 쿼리 · 위에 쿼리 안에서 찾기 */
+const FULLSQL = new Map(); // path → 전체 글 (색인에는 앞 30000자만 있다)
+window.openSql = (key, pick, find) => {
+  const s = BYKEY[key]; if (!s || !s.sql.length) return;
+  const st = { k: pick == null || !s.sql[pick] ? sqlOrder(s)[0] : +pick, q: find || '' };
+  const hit = (f) => has(FULLSQL.get(f.path) || f.text, st.q) || has(f.name, st.q); // 쿼리 글이나 파일 이름에 있으면
+  if (st.q && pick == null && !hit(s.sql[st.k])) { const k = sqlOrder(s).find((i) => hit(s.sql[i])); if (k != null) st.k = k; }
+  const txt = (f) => FULLSQL.get(f.path) || f.text || '';
+  const cut = (f) => !FULLSQL.has(f.path) && sqlCut(f); // 앞부분만 색인됨
+  const cnt = (f) => (st.q ? txt(f).toLowerCase().split(st.q.toLowerCase()).length - 1 : 0);
+  const list = () => {
+    const groups = new Map();
+    sqlOrder(s).forEach((k) => { const g = sqlGroup(s.sql[k]); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(k); });
+    return [...groups].map(([g, ks]) => `<li class="grp">${esc(g)}</li>` + ks.map((k) => {
+      const f = s.sql[k], n = cnt(f);
+      return `<li data-k="${k}" class="${k === st.k ? 'on' : ''}${st.q && !n && !has(f.name, st.q) ? ' dim' : ''}" title="${esc(f.name)}">${esc(f.name.replace(/\.sql$/i, ''))}${f.aux ? `<span class="aux" title="${esc(AUX_TIP)}">확인용</span>` : ''}${n ? `<em>${n}</em>` : ''}</li>`;
+    }).join('')).join('');
+  };
+  const view = () => {
+    const f = s.sql[st.k];
+    return `<div class="sqlhead"><code title="${esc(f.path.split('|').pop())}">${esc(f.dir ? f.dir + '/' : '')}${esc(f.name)}</code>
+      <span class="muted">${(f.size / 1024).toFixed(1)}KB${f.aux ? ' · 확인용' : ''}${cut(f) ? ' · <b>앞부분만</b>' : ''}</span>
+      ${cut(f) && !DEMO ? '<button class="btn sm" id="sqlFull">전체 불러오기</button>' : ''}
+      <span class="sp"></span>${st.q ? `<span class="muted">${cnt(f) ? cnt(f) + '곳' : '쿼리 글에는 없음'}</span>` : ''}
+      <button class="btn sm" id="sqlCopy">복사</button></div><pre class="code" id="sqlCode">${sqlHtml(txt(f) || '(빈 파일)', st.q)}</pre>`;
+  };
+  const draw = (keepFocus) => {
+    $('sqlList').innerHTML = list(); $('sqlView').innerHTML = view();
+    $('sqlList').querySelectorAll('li[data-k]').forEach((li) => (li.onclick = () => { st.k = +li.dataset.k; draw(); }));
+    $('sqlCopy').onclick = () => navigator.clipboard.writeText(txt(s.sql[st.k])).then(() => toast('쿼리를 복사했습니다'), () => toast('복사하지 못했습니다'));
+    const fb = $('sqlFull');
+    if (fb) fb.onclick = async () => {
+      const f = s.sql[st.k]; fb.disabled = true; fb.textContent = '불러오는 중…';
+      try { FULLSQL.set(f.path, SF.decode(await (await (await SF.fileHandle(f.path)).getFile()).arrayBuffer())); draw(); }
+      catch (e) { toast(e.message || '불러오지 못했습니다'); fb.disabled = false; fb.textContent = '전체 불러오기'; }
+    };
+    const m = $('sqlCode').querySelector('mark'); if (m && !keepFocus) m.scrollIntoView({ block: 'center' });
+    else if (!keepFocus) $('sqlCode').scrollTop = 0;
+  };
+  openModal(`쿼리 — ${s.name}`, `<div class="sqlm"><div class="sqlmside"><input id="sqlQ" placeholder="쿼리 안에서 찾기 (컬럼 · 테이블 · 조건)" value="${esc(st.q)}" autocomplete="off" spellcheck="false"><ul class="sqllist" id="sqlList"></ul></div><div class="sqlmmain" id="sqlView"></div></div>`,
+    `<span class="muted small">${s.sql.length}개 파일</span>`);
+  $('sqlQ').oninput = (e) => {
+    st.q = e.target.value.trim();
+    if (st.q && !hit(s.sql[st.k])) { const k = sqlOrder(s).find((i) => hit(s.sql[i])); if (k != null) st.k = k; }
+    draw(true); const m = $('sqlCode').querySelector('mark'); if (m) m.scrollIntoView({ block: 'center' });
+  };
+  // 쿼리 안의 테이블 이름을 누르면 테이블 화면으로 가면서 팝업을 닫는다
+  $('sqlView').addEventListener('click', (e) => { if (e.target.closest('.tbl')) closeModal(); });
+  draw();
+};
 function tabSql(s) {
   if (!s.sql.length) { $('tb').innerHTML = '<div class="empty">이 사양서 폴더에는 쿼리 파일이 없습니다.</div>'; return; }
-  if (sqlPick >= s.sql.length) sqlPick = 0;
-  const groups = {}; s.sql.forEach((f, k) => (groups[f.dir || '.'] = groups[f.dir || '.'] || []).push(k));
+  if (sqlPick >= s.sql.length) sqlPick = sqlOrder(s)[0];
+  const groups = new Map(); sqlOrder(s).forEach((k) => { const g = sqlGroup(s.sql[k]); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(k); });
   const used = Object.entries(s.sqlTables).sort();
   const draw = () => {
     const f = s.sql[sqlPick];
-    $('sqlv').innerHTML = `<div class="sqlhead"><code>${esc(f.dir)}/${esc(f.name)}</code><span class="muted">${(f.size / 1024).toFixed(1)}KB${f.size > 30000 ? ' · 앞부분만' : ''}</span>
-      <a style="margin-left:auto" onclick="navigator.clipboard.writeText(document.querySelector('pre.code').innerText);toastMsg('쿼리를 복사했습니다')">복사</a></div><pre class="code">${sqlHtml(f.text || '(빈 파일)', sqlFind)}</pre>`;
+    const cut = sqlCut(f);
+    $('sqlv').innerHTML = `<div class="sqlhead"><code>${esc(f.dir ? f.dir + '/' : '')}${esc(f.name)}</code><span class="muted">${(f.size / 1024).toFixed(1)}KB${f.aux ? ' · 확인용' : ''}${cut ? ' · 앞부분만' : ''}</span>
+      <span class="sp"></span><button class="btn sm" onclick="openSql('${esc(s.key)}', ${sqlPick}, document.getElementById('sf').value)">크게 보기${cut ? ' · 전체' : ''}</button><button class="btn sm" id="sqlCopyT">복사</button></div><pre class="code">${sqlHtml(f.text || '(빈 파일)', sqlFind)}</pre>`;
+    $('sqlCopyT').onclick = () => navigator.clipboard.writeText(f.text || '').then(() => toast('쿼리를 복사했습니다'), () => toast('복사하지 못했습니다'));
     document.querySelectorAll('.sqllist li[data-k]').forEach((li) => li.classList.toggle('on', +li.dataset.k === sqlPick));
   };
-  $('tb').innerHTML = `${used.length ? `<div class="sec">쿼리에서 쓰는 테이블 ${used.length}</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">${used.map(([t, c]) => `<span>${tblHtml(t)}${crudHtml(mergeCrud('', c))}</span>`).join('')}</div>` : ''}
+  $('tb').innerHTML = `${used.length ? `<div class="sec">쿼리에서 쓰는 테이블 ${used.length} <span class="muted small" style="font-weight:400">확인용 쿼리는 빼고 셉니다</span></div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">${used.map(([t, c]) => `<span>${tblHtml(t)}${crudHtml(mergeCrud('', c))}</span>`).join('')}</div>` : ''}
     <div class="filterline"><input id="sf" placeholder="쿼리 안에서 찾기 (컬럼 · 조건)" value="${esc(sqlFind)}"></div>
-    <div class="sqlwrap"><ul class="sqllist">${Object.entries(groups).map(([d, ks]) => `<li class="grp">${esc(d)}</li>` + ks.map((k) => {
+    <div class="sqlwrap"><ul class="sqllist">${[...groups].map(([d, ks]) => `<li class="grp">${esc(d)}</li>` + ks.map((k) => {
       const n = sqlFind ? (s.sql[k].text || '').toLowerCase().split(sqlFind.toLowerCase()).length - 1 : 0;
-      return `<li data-k="${k}" title="${esc(s.sql[k].name)}">${esc(s.sql[k].name.replace(/\.sql$/i, ''))}${n ? `<em>${n}</em>` : ''}</li>`; }).join('')).join('')}</ul><div id="sqlv"></div></div>`;
+      return `<li data-k="${k}" title="${esc(s.sql[k].name)}">${esc(s.sql[k].name.replace(/\.sql$/i, ''))}${s.sql[k].aux ? `<span class="aux" title="${esc(AUX_TIP)}">확인용</span>` : ''}${n ? `<em>${n}</em>` : ''}</li>`; }).join('')).join('')}</ul><div id="sqlv"></div></div>`;
   document.querySelectorAll('.sqllist li[data-k]').forEach((li) => (li.onclick = () => { sqlPick = +li.dataset.k; draw(); }));
   $('sf').oninput = (e) => {
     sqlFind = e.target.value;
@@ -1196,6 +1261,8 @@ async function hydrate(root) {
 /* ---------------- 패치 노트 ----------------
  * 새 판을 올릴 때 맨 위에 한 줄 추가한다. 위쪽 버전 표시는 맨 위 항목(PATCH[0].v)으로 바뀐다. */
 const PATCH = [
+  { v: '20261126.006', at: '2026-11-26 13:39', sum: '쿼리 미리보기 · 도구 작업공간 쿼리 색인',
+    items: ['쿼리를 엑셀 미리보기처럼 팝업으로 바로 보기 — 사양서 화면 「쿼리 미리보기」 · 검색 미리보기 「쿼리 N」 · 걸린 줄의 「쿼리 보기 →」', '팝업에서 쿼리 안 찾기(파일별 개수) · 복사 · 테이블 이름 눌러 이동 · 30000자 넘는 파일은 전체 불러오기', '도구 작업공간의 쿼리(초안 · 시뮬레이션 · _작업 · _분석)도 그 프로그램에 붙여 검색 · 보기 (동기화 한 번 필요)', '확인 · 검증 · 시뮬레이션 쿼리는 「확인용」 표시 — 그 화면이 쓰는 테이블(CRUD)에는 넣지 않음'] },
   { v: '20261125.005', at: '2026-11-25 15:08', sum: '오른쪽 아래 이동 버튼 · 배지 범례 · 도구/수기 건수',
     items: ['오른쪽 아래 세로 버튼 — 처음 화면 · 뒤로 · 앞으로(뒤로 간 뒤에만) · 맨 위로 · 맨 아래로 (쓸 수 없을 때는 흐리게)', '상단 ? 버튼 — 화면에 나오는 배지를 실제 모양 그대로 한 줄 풀이(출처 · 모듈 · 판 · 걸린 곳 · 연관 · 테이블 · 동기화)', '처음 화면 사양서 수 밑에 도구 · 수기 건수'] },
   { v: '20261125.004', at: '2026-11-25 11:20', sum: '조합 검색(포함 · 또는 · 제외 · 붙은 말) · 검색창 넓힘',
@@ -1257,6 +1324,7 @@ function openLegend() {
     row(crudHtml('CR'), '그 화면이 테이블에 하는 일 — C 등록 · R 조회 · U 수정 · D 삭제(진한 글자만 함)'),
     row(C('add', '추가'), '이 사양서에서 새로 넣은 컬럼 · 항목'),
     row(C('chg', '변경'), '기준 화면에서 바꾼 컬럼 · 항목'),
+    row('<span class="aux">확인용</span>', '쿼리 목록에서 확인 · 검증 · 시뮬레이션 · 작업용 쿼리 — 보기 · 검색은 되지만 그 화면이 쓰는 테이블(CRUD)에는 넣지 않음'),
   ])}
   ${grp('폴더 · 동기화', [
     row(C('ok', '읽기 허용됨'), '연결한 폴더를 지금 읽을 수 있음'),

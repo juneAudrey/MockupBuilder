@@ -351,7 +351,24 @@ svg text{stroke:none}
 .sqllist li.grp{cursor:default;background:var(--surface2);color:var(--ink3);font-weight:700;font-size:calc(12px*var(--fz))}
 .sqllist li.on{background:var(--brand-soft);font-weight:700;color:var(--brand-ink)}
 .sqllist li em{font-style:normal;background:var(--mark);color:var(--mark-ink);border-radius:8px;padding:0 6px;font-size:calc(12px*var(--fz));margin-left:4px}
-.sqlhead{display:flex;gap:10px;align-items:center;margin-bottom:6px;font-size:calc(13px*var(--fz))}
+.sqlhead{display:flex;gap:10px;align-items:center;margin-bottom:6px;font-size:calc(13px*var(--fz));flex-wrap:wrap}
+.sqlhead .sp{flex:1}
+.sqlhead code{overflow-wrap:anywhere}
+.btn.sm{height:28px;padding:0 10px;font-size:calc(12.5px*var(--fz));border-radius:8px}
+.sqllist li .aux,.lgb .aux{display:inline-block;margin-left:6px;padding:0 5px;border-radius:5px;font-size:calc(10.5px*var(--fz));font-weight:600;color:var(--ink3);background:var(--surface2);border:1px solid var(--line);vertical-align:1px}
+.sqllist li.on .aux{background:transparent}
+.sqllist li.dim{opacity:.45}
+a.sqlopen{cursor:pointer;color:var(--brand-ink);font-size:calc(12.5px*var(--fz))}
+a.sqlopen:hover{text-decoration:underline}
+/* 쿼리 미리보기 팝업 */
+.sqlm{display:grid;grid-template-columns:minmax(220px,300px) 1fr;gap:14px;height:100%;padding:14px 16px;box-sizing:border-box;min-height:0}
+.sqlmside{display:flex;flex-direction:column;gap:8px;min-height:0}
+.sqlmside input{height:34px;border:1px solid var(--line2);border-radius:9px;padding:0 10px;background:var(--surface);color:var(--ink);font:inherit;font-size:calc(13px*var(--fz))}
+.sqlmside input:focus{outline:2px solid var(--brand);outline-offset:-1px}
+.sqlmside .sqllist{flex:1;max-height:none;min-height:0}
+.sqlmmain{display:flex;flex-direction:column;min-width:0;min-height:0}
+.sqlmmain pre.code{flex:1;max-height:none;min-height:0}
+@media (max-width:760px){.sqlm{grid-template-columns:1fr;grid-template-rows:200px 1fr}}
 pre.code{background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:14px 16px;font:calc(12.5px*var(--fz))/1.65 var(--mono);overflow:auto;margin:0;max-height:600px;white-space:pre}
 pre.code .k{color:#7fb0ff} pre.code .c{color:#93a0b8} pre.code .tbl{background:#24324d;color:#ffd479} pre.code mark{background:#ffd400;color:#000}
 .outs{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:8px}
