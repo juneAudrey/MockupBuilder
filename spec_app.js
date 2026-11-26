@@ -498,9 +498,13 @@ function openCtx(el, info, x, y) {
   m.innerHTML = `<div class="ctxh"><code>${esc(trim(info.text, 60))}</code>${nm ? `<span>${esc(trim(nm, 30))}</span>` : ''}</div>` +
     items.map(([k, ic, t, note]) => `<button type="button" role="menuitem" data-k="${k}"${note ? ' disabled' : ''}>${ic}<span>${t}</span>${note ? `<em>${note}</em>` : ''}</button>`).join('');
   document.body.appendChild(m); el.classList.add('ctxon');
-  const W = m.offsetWidth, H = m.offsetHeight, vw = document.documentElement.clientWidth, vh = window.innerHeight;
-  m.style.left = Math.max(8, Math.min(x, vw - W - 8)) + 'px';
-  m.style.top = (y + 8 + H > vh - 8 ? Math.max(8, y - H - 8) : y + 8) + 'px';
+  // 화면 배율(body zoom)이 있으면 left · top 이 배율만큼 늘어나 클릭한 곳에서 멀어진다 — 실제 비율을 재서 나눈다
+  m.style.left = '100px'; m.style.top = '0px';
+  const rc = m.getBoundingClientRect(), z = rc.left > 0 ? rc.left / 100 : 1;
+  const W = rc.width, H = rc.height, vw = document.documentElement.clientWidth, vh = window.innerHeight;
+  const L0 = Math.max(8, Math.min(x, vw - W - 8)), T0 = y + 8 + H > vh - 8 ? Math.max(8, y - H - 8) : y + 8;
+  m.style.left = L0 / z + 'px';
+  m.style.top = T0 / z + 'px';
   m.onclick = (e) => {
     const b = e.target.closest('button[data-k]'); if (!b || b.disabled) return;
     const k = b.dataset.k; closeCtx();
