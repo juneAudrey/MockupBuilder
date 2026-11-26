@@ -537,7 +537,7 @@ document.addEventListener('keydown', (e) => {
   const tag = document.activeElement.tagName;
   if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') { e.preventDefault(); const i = $('q1') || $('q2'); i.focus(); i.select(); }
   if (e.key === 'Escape') closeModal();
-  if (route()[0] === 'q' && tag !== 'INPUT' && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')) {
+  if (route()[0] === 'q' && tag !== 'INPUT' && !e.target.closest?.('.riopen') && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')) {
     const items = [...document.querySelectorAll('.ri')]; if (!items.length) return;
     let k = items.findIndex((x) => x.classList.contains('sel'));
     if (e.key === 'Enter') { if (k >= 0) go(link('s', items[k].dataset.key)); return; }
@@ -672,7 +672,9 @@ function renderResults(q) {
   if ($('rclr')) $('rclr').onclick = () => { REF = []; again(true); };
   document.querySelectorAll('.ri').forEach((el) => {
     el.onclick = () => selectResult(el.dataset.key);
-    el.ondblclick = () => go(link('s', el.dataset.key));
+    el.ondblclick = (e) => { if (!e.target.closest('.riopen')) go(link('s', el.dataset.key)); };
+    const ob = el.querySelector('.riopen');
+    if (ob) { ob.onclick = (e) => { e.stopPropagation(); go(link('s', el.dataset.key)); }; ob.ondblclick = (e) => e.stopPropagation(); }
   });
   if (selKey) selectResult(selKey);
 }
@@ -681,7 +683,7 @@ function resultItem(r, toks) {
   const s = r.s, h = bestHit(r);
   const kinds = {}; r.hits.forEach((x) => { if (x.kind !== 'name') kinds[x.kind] = (kinds[x.kind] || 0) + 1; });
   return `<div class="ri ${s.key === selKey ? 'sel' : ''}" data-key="${esc(s.key)}">
-    <div class="l1">${modTag(s.module)}<span class="nm" title="${esc(s.name)}">${hl(s.name, toks)}</span><span class="sd ${s.source === '수기' ? 'm' : ''}" title="${s.source} 사양서"></span><span class="dt">${esc(dateTxt(s))}</span></div>
+    <div class="l1">${modTag(s.module)}<span class="nm" title="${esc(s.name)}">${hl(s.name, toks)}</span><span class="sd ${s.source === '수기' ? 'm' : ''}" title="${s.source} 사양서"></span><span class="dt">${esc(dateTxt(s))}</span><button class="riopen" type="button" title="이 사양서로 이동 — 결과를 더블클릭하거나 고른 뒤 Enter 를 눌러도 됩니다">열기<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button></div>
     ${staleBadges(s, r)}
     <div class="ans">${h ? `${kindTag(h.kind)}<span class="txt">${oneLine(h, toks)}</span>` : `<span class="txt">${hl(trim(s.overview || '', 120), toks) || '<span class="muted">요약 없음</span>'}</span>`}</div>
     ${Object.keys(kinds).length ? `<div class="l3">${Object.entries(kinds).map(([k, n]) => `<span>${KIND[k]} <b>${n}</b></span>`).join('')}</div>` : ''}
@@ -1261,6 +1263,8 @@ async function hydrate(root) {
 /* ---------------- 패치 노트 ----------------
  * 새 판을 올릴 때 맨 위에 한 줄 추가한다. 위쪽 버전 표시는 맨 위 항목(PATCH[0].v)으로 바뀐다. */
 const PATCH = [
+  { v: '20261126.007', at: '2026-11-26 14:21', sum: '검색 결과 「열기」 버튼',
+    items: ['검색 결과 줄마다 오른쪽 끝에 「열기 >」 버튼 — 누르면 그 사양서로 이동 (더블클릭 · 고른 뒤 Enter 와 같음)', '한 번 클릭은 그대로 오른쪽 미리보기만 바꿈'] },
   { v: '20261126.006', at: '2026-11-26 13:39', sum: '쿼리 미리보기 · 도구 작업공간 쿼리 색인',
     items: ['쿼리를 엑셀 미리보기처럼 팝업으로 바로 보기 — 사양서 화면 「쿼리 미리보기」 · 검색 미리보기 「쿼리 N」 · 걸린 줄의 「쿼리 보기 →」', '팝업에서 쿼리 안 찾기(파일별 개수) · 복사 · 테이블 이름 눌러 이동 · 30000자 넘는 파일은 전체 불러오기', '도구 작업공간의 쿼리(초안 · 시뮬레이션 · _작업 · _분석)도 그 프로그램에 붙여 검색 · 보기 (동기화 한 번 필요)', '확인 · 검증 · 시뮬레이션 쿼리는 「확인용」 표시 — 그 화면이 쓰는 테이블(CRUD)에는 넣지 않음'] },
   { v: '20261125.005', at: '2026-11-25 15:08', sum: '오른쪽 아래 이동 버튼 · 배지 범례 · 도구/수기 건수',

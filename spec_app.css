@@ -282,6 +282,10 @@ table.t td.desc{color:var(--ink2);font-size:calc(13px*var(--fz))}
 .ri .l1{display:flex;align-items:center;gap:8px}
 .ri .nm{font-weight:700;font-size:calc(15.5px*var(--fz));letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ri .dt{margin-left:auto;font-size:calc(12px*var(--fz));color:var(--ink3);white-space:nowrap}
+.ri .riopen{flex:none;display:inline-flex;align-items:center;gap:2px;height:24px;padding:0 6px 0 9px;border-radius:7px;border:1px solid var(--line2);background:var(--surface);color:var(--brand);font:inherit;font-size:calc(12px*var(--fz));font-weight:700;cursor:pointer;white-space:nowrap}
+.ri .riopen svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.ri .riopen:hover,.ri.sel .riopen{background:var(--brand);border-color:var(--brand);color:#fff}
+.ri .riopen:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 .ri .sd{width:7px;height:7px;border-radius:50%;flex:none;background:var(--brand)} .ri .sd.m{background:var(--warn)}
 .ri .ans{margin-top:7px;display:flex;align-items:center;gap:8px;font-size:calc(14px*var(--fz));min-width:0}
 .ri .ans .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--ink2)}
